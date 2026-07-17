@@ -72,7 +72,15 @@ pub enum RepositoryAction {
     StageAll,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum AccessMode {
+    ReadOnly,
+    ReadWrite,
+}
+
 pub trait Repository: RepositorySource {
+    fn access_mode(&self) -> AccessMode;
+
     /// Change the repository index.
     ///
     /// # Errors

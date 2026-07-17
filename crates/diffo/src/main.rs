@@ -10,26 +10,27 @@ use std::{
 
 use anyhow::{Context, Result};
 use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
-use diffo_core::{RepositorySource, fixture_source::FixtureRepositorySource};
+use diffo_core::{Repository, RepositoryAction, fixture_source::FixtureRepositorySource};
 use diffo_git::GitRepositorySource;
 use diffo_tui::App;
 use ratatui::{Terminal, backend::CrosstermBackend};
 
 fn main() -> Result<()> {
     let shutdown = install_signal_handlers()?;
-    let source: Box<dyn RepositorySource> = match env::var_os("DIFFO_MOCK_FILE") {
-        Some(path) => Box::new(FixtureRepositorySource::new(path)),
-        None => Box::new(GitRepositorySource::default()),
+    let repository: Box<dyn Repository> = if let Some(path) = env::var_os("DIFFO_MOCK_FILE") {
+        Box::new(FixtureRepositorySource::new(path))
+    } else {
+        Box::new(GitRepositorySource::default())
     };
-    let snapshot = source.snapshot()?;
+    let snapshot = repository.snapshot()?;
     if let Some(path) = env::var_os("DIFFO_DUMP_PATH") {
         return dump_snapshot(Path::new(&path), &snapshot);
     }
 
-    let mut app = App::new(snapshot);
+    let mut app = App::new(snapshot, repository.access_mode());
     let mut terminal = ratatui::init();
 
-    let result = run(&mut terminal, &mut app, &shutdown);
+    let result = run(&mut terminal, &mut app, &shutdown, repository.as_ref());
     ratatui::restore();
     result
 }
@@ -54,6 +55,7 @@ fn run(
     terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
     app: &mut App,
     shutdown: &AtomicBool,
+    repository: &dyn Repository,
 ) -> Result<()> {
     while !app.should_quit && !shutdown.load(Ordering::Relaxed) {
         terminal.draw(|frame| diffo_tui::render(frame, app))?;
@@ -67,16 +69,30 @@ fn run(
                 KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                     app.should_quit = true;
                 }
-                KeyCode::Down | KeyCode::Char('j') => app.scroll_down(),
-                KeyCode::Up | KeyCode::Char('k') => app.scroll_up(),
-                KeyCode::PageDown => app.page_down(),
-                KeyCode::PageUp => app.page_up(),
-                KeyCode::Home | KeyCode::Char('g') => app.scroll_to_top(),
-                KeyCode::End | KeyCode::Char('G') => app.scroll_to_bottom(),
+                KeyCode::Down | KeyCode::Char('j') => app.select_next(),
+                KeyCode::Up | KeyCode::Char('k') => app.select_previous(),
+                KeyCode::Home | KeyCode::Char('g') => app.select_first(),
+                KeyCode::End | KeyCode::Char('G') => app.select_last(),
+                KeyCode::Char('s') => apply_action(repository, app, app.stage_selected()),
+                KeyCode::Char('u') => apply_action(repository, app, app.unstage_selected()),
+                KeyCode::Char('a') => apply_action(repository, app, app.stage_all()),
                 _ => {}
             }
         }
     }
 
     Ok(())
+}
+
+fn apply_action(repository: &dyn Repository, app: &mut App, action: Option<RepositoryAction>) {
+    let Some(action) = action else {
+        return;
+    };
+    if let Err(error) = repository
+        .apply(&action)
+        .and_then(|()| repository.snapshot())
+        .map(|snapshot| app.refresh(snapshot))
+    {
+        app.show_error(error.to_string());
+    }
 }

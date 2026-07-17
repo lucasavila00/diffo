@@ -1,6 +1,6 @@
 # ADR 0007: File navigation and staging
 
-Status: Proposed
+Status: Accepted
 
 ## UI
 
@@ -77,3 +77,4 @@ Run Git outside rendering code. Refresh the snapshot after every action.
 - Stage, unstage, and stage-all work.
 - Snapshot refresh keeps selection when possible.
 - Mock mode can show and test both groups.
+- Read-only mode disables actions in every layer.

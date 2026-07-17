@@ -2,7 +2,7 @@ use std::{fs, path::PathBuf};
 
 use anyhow::{Context, Result, bail};
 
-use crate::{Repository, RepositoryAction, RepositorySnapshot, RepositorySource};
+use crate::{AccessMode, Repository, RepositoryAction, RepositorySnapshot, RepositorySource};
 
 pub struct FixtureRepositorySource {
     path: PathBuf,
@@ -33,6 +33,10 @@ impl RepositorySource for FixtureRepositorySource {
 }
 
 impl Repository for FixtureRepositorySource {
+    fn access_mode(&self) -> AccessMode {
+        AccessMode::ReadOnly
+    }
+
     fn apply(&self, _action: &RepositoryAction) -> Result<()> {
         bail!("mock repository is read-only")
     }

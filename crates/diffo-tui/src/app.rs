@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use diffo_core::{RepositoryAction, RepositorySnapshot};
+use diffo_core::{AccessMode, RepositoryAction, RepositorySnapshot};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ChangeArea {
@@ -19,18 +19,20 @@ pub struct App {
     pub selected: Option<FileKey>,
     pub should_quit: bool,
     pub error: Option<String>,
+    pub access_mode: AccessMode,
     cursor: usize,
 }
 
 impl App {
     #[must_use]
-    pub fn new(snapshot: RepositorySnapshot) -> Self {
+    pub fn new(snapshot: RepositorySnapshot, access_mode: AccessMode) -> Self {
         let selected = file_keys(&snapshot).into_iter().next();
         Self {
             snapshot,
             selected,
             should_quit: false,
             error: None,
+            access_mode,
             cursor: 0,
         }
     }
@@ -65,22 +67,29 @@ impl App {
 
     #[must_use]
     pub fn stage_selected(&self) -> Option<RepositoryAction> {
+        if self.access_mode == AccessMode::ReadOnly {
+            return None;
+        }
         self.selected.as_ref().and_then(|key| {
-            (key.area == ChangeArea::Unstaged)
-                .then(|| RepositoryAction::Stage(key.path.clone()))
+            (key.area == ChangeArea::Unstaged).then(|| RepositoryAction::Stage(key.path.clone()))
         })
     }
 
     #[must_use]
     pub fn unstage_selected(&self) -> Option<RepositoryAction> {
+        if self.access_mode == AccessMode::ReadOnly {
+            return None;
+        }
         self.selected.as_ref().and_then(|key| {
-            (key.area == ChangeArea::Staged)
-                .then(|| RepositoryAction::Unstage(key.path.clone()))
+            (key.area == ChangeArea::Staged).then(|| RepositoryAction::Unstage(key.path.clone()))
         })
     }
 
     #[must_use]
     pub fn stage_all(&self) -> Option<RepositoryAction> {
+        if self.access_mode == AccessMode::ReadOnly {
+            return None;
+        }
         self.snapshot
             .files
             .iter()
@@ -115,10 +124,9 @@ impl App {
 
     #[must_use]
     pub fn selected_row(&self) -> Option<usize> {
-        let unstaged_count = unstaged_files(&self.snapshot).count();
         self.selected.as_ref().map(|selected| match selected.area {
             ChangeArea::Unstaged => self.cursor + 1,
-            ChangeArea::Staged => self.cursor + 2 + usize::from(unstaged_count > 0),
+            ChangeArea::Staged => self.cursor + 2,
         })
     }
 }
@@ -155,7 +163,9 @@ pub(crate) fn staged_files(
 mod tests {
     use std::path::PathBuf;
 
-    use diffo_core::{ChangeKind, FileDiff, FileState, RepositoryAction, RepositorySnapshot};
+    use diffo_core::{
+        AccessMode, ChangeKind, FileDiff, FileState, RepositoryAction, RepositorySnapshot,
+    };
 
     use super::{App, ChangeArea, FileKey};
 
@@ -166,8 +176,12 @@ mod tests {
                     path: PathBuf::from("both.txt"),
                     old_path: None,
                     kind: ChangeKind::Modified,
-                    staged: Some(FileDiff { text: String::new() }),
-                    unstaged: Some(FileDiff { text: String::new() }),
+                    staged: Some(FileDiff {
+                        text: String::new(),
+                    }),
+                    unstaged: Some(FileDiff {
+                        text: String::new(),
+                    }),
                 },
                 FileState {
                     path: PathBuf::from("new.txt"),
@@ -183,18 +197,27 @@ mod tests {
 
     #[test]
     fn navigates_both_groups() {
-        let mut app = App::new(snapshot());
-        assert_eq!(app.selected.as_ref().expect("selection").path, PathBuf::from("both.txt"));
+        let mut app = App::new(snapshot(), AccessMode::ReadWrite);
+        assert_eq!(
+            app.selected.as_ref().expect("selection").path,
+            PathBuf::from("both.txt")
+        );
 
         app.select_next();
-        assert_eq!(app.selected.as_ref().expect("selection").path, PathBuf::from("new.txt"));
+        assert_eq!(
+            app.selected.as_ref().expect("selection").path,
+            PathBuf::from("new.txt")
+        );
         app.select_next();
-        assert_eq!(app.selected.as_ref().expect("selection").area, ChangeArea::Staged);
+        assert_eq!(
+            app.selected.as_ref().expect("selection").area,
+            ChangeArea::Staged
+        );
     }
 
     #[test]
     fn creates_actions_for_the_selected_group() {
-        let mut app = App::new(snapshot());
+        let mut app = App::new(snapshot(), AccessMode::ReadWrite);
         assert_eq!(
             app.stage_selected(),
             Some(RepositoryAction::Stage(PathBuf::from("both.txt")))
@@ -210,7 +233,7 @@ mod tests {
 
     #[test]
     fn keeps_selection_after_refresh() {
-        let mut app = App::new(snapshot());
+        let mut app = App::new(snapshot(), AccessMode::ReadWrite);
         app.select_last();
         let selected = FileKey {
             path: PathBuf::from("both.txt"),
@@ -220,5 +243,13 @@ mod tests {
         app.refresh(snapshot());
 
         assert_eq!(app.selected, Some(selected));
+    }
+
+    #[test]
+    fn read_only_mode_blocks_actions() {
+        let app = App::new(snapshot(), AccessMode::ReadOnly);
+
+        assert_eq!(app.stage_selected(), None);
+        assert_eq!(app.stage_all(), None);
     }
 }

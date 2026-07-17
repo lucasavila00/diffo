@@ -3,7 +3,7 @@ use std::{path::PathBuf, process::Command};
 use anyhow::{Context, Result, bail};
 
 use diffo_core::{
-    BranchState, ChangeKind, Commit, FileDiff, FileState, Repository, RepositoryAction,
+    AccessMode, BranchState, ChangeKind, Commit, FileDiff, FileState, Repository, RepositoryAction,
     RepositorySnapshot, RepositorySource, UpstreamState,
 };
 
@@ -11,12 +11,22 @@ const NO_CHANGE: char = '.';
 
 pub struct GitRepositorySource {
     root: PathBuf,
+    access_mode: AccessMode,
 }
 
 impl GitRepositorySource {
     #[must_use]
     pub fn new(root: impl Into<PathBuf>) -> Self {
-        Self { root: root.into() }
+        Self {
+            root: root.into(),
+            access_mode: AccessMode::ReadWrite,
+        }
+    }
+
+    #[must_use]
+    pub fn with_access_mode(mut self, access_mode: AccessMode) -> Self {
+        self.access_mode = access_mode;
+        self
     }
 
     fn git(&self, args: &[&str]) -> Result<Vec<u8>> {
@@ -125,7 +135,15 @@ impl RepositorySource for GitRepositorySource {
 }
 
 impl Repository for GitRepositorySource {
+    fn access_mode(&self) -> AccessMode {
+        self.access_mode
+    }
+
     fn apply(&self, action: &RepositoryAction) -> Result<()> {
+        if self.access_mode == AccessMode::ReadOnly {
+            bail!("repository is read-only");
+        }
+
         let mut command = Command::new("git");
         command.current_dir(&self.root);
         match action {
@@ -282,10 +300,14 @@ fn change_kind(status: char) -> Result<ChangeKind> {
 
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
+    use std::{
+        fs,
+        path::{Path, PathBuf},
+        process::Command,
+    };
 
     use super::parse_status;
-    use diffo_core::ChangeKind;
+    use diffo_core::{AccessMode, ChangeKind, Repository, RepositoryAction, RepositorySource};
 
     #[test]
     fn parses_branch_files_and_upstream() {
@@ -310,6 +332,94 @@ mod tests {
         assert_eq!(
             parsed.files[0].state.old_path,
             Some(PathBuf::from("old.txt"))
+        );
+    }
+
+    #[test]
+    fn stages_and_unstages_a_file() {
+        let repo = test_repository();
+        fs::write(repo.path().join("new.txt"), "new\n").expect("write file");
+        let source = super::GitRepositorySource::new(repo.path());
+
+        source
+            .apply(&RepositoryAction::Stage(PathBuf::from("new.txt")))
+            .expect("stage file");
+        assert!(
+            source
+                .snapshot()
+                .expect("staged snapshot")
+                .files
+                .iter()
+                .any(|file| file.path == Path::new("new.txt") && file.staged.is_some())
+        );
+
+        source
+            .apply(&RepositoryAction::Unstage(PathBuf::from("new.txt")))
+            .expect("unstage file");
+        let file = source
+            .snapshot()
+            .expect("unstaged snapshot")
+            .files
+            .into_iter()
+            .find(|file| file.path == Path::new("new.txt"))
+            .expect("new file");
+        assert_eq!(file.kind, ChangeKind::Untracked);
+        assert!(file.staged.is_none());
+    }
+
+    #[test]
+    fn stages_all_files() {
+        let repo = test_repository();
+        fs::write(repo.path().join("tracked.txt"), "changed\n").expect("modify file");
+        fs::write(repo.path().join("new.txt"), "new\n").expect("write file");
+        let source = super::GitRepositorySource::new(repo.path());
+
+        source
+            .apply(&RepositoryAction::StageAll)
+            .expect("stage all files");
+        let snapshot = source.snapshot().expect("snapshot");
+
+        assert_eq!(snapshot.files.len(), 2);
+        assert!(snapshot.files.iter().all(|file| file.staged.is_some()));
+    }
+
+    #[test]
+    fn read_only_source_rejects_actions() {
+        let repo = test_repository();
+        let source =
+            super::GitRepositorySource::new(repo.path()).with_access_mode(AccessMode::ReadOnly);
+
+        let error = source
+            .apply(&RepositoryAction::StageAll)
+            .expect_err("read-only action should fail");
+
+        assert!(error.to_string().contains("read-only"));
+    }
+
+    fn test_repository() -> tempfile::TempDir {
+        let repo = tempfile::tempdir().expect("test directory");
+        git(repo.path(), &["init", "--initial-branch=main"]);
+        git(repo.path(), &["config", "user.name", "Diffo Test"]);
+        git(
+            repo.path(),
+            &["config", "user.email", "diffo@example.invalid"],
+        );
+        fs::write(repo.path().join("tracked.txt"), "base\n").expect("write tracked file");
+        git(repo.path(), &["add", "tracked.txt"]);
+        git(repo.path(), &["commit", "-m", "Base commit"]);
+        repo
+    }
+
+    fn git(repo: &std::path::Path, args: &[&str]) {
+        let status = Command::new("git")
+            .args(args)
+            .current_dir(repo)
+            .output()
+            .expect("run git");
+        assert!(
+            status.status.success(),
+            "git failed: {}",
+            String::from_utf8_lossy(&status.stderr)
         );
     }
 }

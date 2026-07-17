@@ -144,7 +144,7 @@ impl Renderer {
         match model.diff_view_mode {
             DiffViewMode::Inline => inline_rows(&document)
                 .iter()
-                .map(|row| inline_line(row, highlighted))
+                .map(|row| inline_line(row, highlighted, usize::from(width)))
                 .collect(),
             DiffViewMode::SideBySide => {
                 let column_width = usize::from(width.saturating_sub(3) / 2);
@@ -254,7 +254,7 @@ fn file_item(file: &FileState, selected: bool) -> ListItem<'static> {
     ListItem::new(Line::styled(line, style))
 }
 
-fn inline_line(row: &RenderLine, highlighted: &HighlightedDiff) -> Line<'static> {
+fn inline_line(row: &RenderLine, highlighted: &HighlightedDiff, width: usize) -> Line<'static> {
     let prefix = match row.kind {
         RowKind::Removed => "-",
         RowKind::Added => "+",
@@ -275,6 +275,7 @@ fn inline_line(row: &RenderLine, highlighted: &HighlightedDiff) -> Line<'static>
         gutter_style(row.kind),
     )];
     spans.extend(code_spans(row, highlighted));
+    pad_to_width(&mut spans, width, diff_background(row.kind));
     Line::from(spans)
 }
 
@@ -336,21 +337,11 @@ fn syntax_spans(line: &HighlightedLine, background: Style) -> Vec<Span<'static>>
 }
 
 fn syntax_style(span: &StyledSpan) -> Style {
-    let mut style = Style::default().fg(Color::Rgb(
+    Style::default().fg(Color::Rgb(
         span.foreground.red,
         span.foreground.green,
         span.foreground.blue,
-    ));
-    if span.bold {
-        style = style.add_modifier(Modifier::BOLD);
-    }
-    if span.italic {
-        style = style.add_modifier(Modifier::ITALIC);
-    }
-    if span.underline {
-        style = style.add_modifier(Modifier::UNDERLINED);
-    }
-    style
+    ))
 }
 
 fn clip_and_pad(
@@ -374,16 +365,31 @@ fn clip_and_pad(
     clipped
 }
 
+fn pad_to_width(spans: &mut Vec<Span<'static>>, width: usize, padding_style: Style) {
+    let used = spans
+        .iter()
+        .map(|span| span.content.chars().count())
+        .sum::<usize>();
+    if used < width {
+        spans.push(Span::styled(" ".repeat(width - used), padding_style));
+    }
+}
+
 fn gutter_style(kind: RowKind) -> Style {
-    Style::default()
-        .fg(Color::DarkGray)
-        .patch(diff_background(kind))
+    let foreground = match kind {
+        RowKind::Removed => Color::LightRed,
+        RowKind::Added => Color::LightGreen,
+        RowKind::Header | RowKind::Context | RowKind::Changed | RowKind::Meta => Color::DarkGray,
+    };
+    Style::default().fg(foreground).patch(diff_background(kind))
 }
 
 fn diff_background(kind: RowKind) -> Style {
     match kind {
-        RowKind::Removed => Style::default().bg(Color::Rgb(55, 30, 35)),
-        RowKind::Added => Style::default().bg(Color::Rgb(25, 50, 35)),
+        // Use xterm-256 colors here instead of RGB. These survive SSH and terminal
+        // multiplexers that advertise `xterm-256color` but filter true-color backgrounds.
+        RowKind::Removed => Style::default().bg(Color::Indexed(52)),
+        RowKind::Added => Style::default().bg(Color::Indexed(22)),
         RowKind::Header | RowKind::Context | RowKind::Changed | RowKind::Meta => Style::default(),
     }
 }
@@ -466,13 +472,29 @@ mod rendering_tests {
             removed
                 .spans
                 .iter()
-                .any(|span| { span.style.bg == Some(Color::Rgb(55, 30, 35)) })
+                .any(|span| { span.style.bg == Some(Color::Indexed(52)) })
         );
         assert!(
             added
                 .spans
                 .iter()
-                .any(|span| { span.style.bg == Some(Color::Rgb(25, 50, 35)) })
+                .any(|span| { span.style.bg == Some(Color::Indexed(22)) })
+        );
+        assert_eq!(removed.spans[0].style.fg, Some(Color::LightRed));
+        assert_eq!(added.spans[0].style.fg, Some(Color::LightGreen));
+        assert!(
+            removed.spans[1..]
+                .iter()
+                .all(|span| span.style.add_modifier.is_empty()),
+            "syntax highlighting should not emit terminal font attributes"
+        );
+        assert_eq!(
+            removed
+                .spans
+                .iter()
+                .map(|span| span.content.chars().count())
+                .sum::<usize>(),
+            80
         );
     }
 

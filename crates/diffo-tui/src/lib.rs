@@ -21,8 +21,8 @@ use ratatui::{
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{
-        Block, Borders, Clear, HighlightSpacing, List, ListItem, ListState, Paragraph, Scrollbar,
-        ScrollbarOrientation, ScrollbarState,
+        Block, Borders, Cell, Clear, HighlightSpacing, List, ListItem, ListState, Paragraph, Row,
+        Scrollbar, ScrollbarOrientation, ScrollbarState, Table,
     },
 };
 
@@ -687,11 +687,39 @@ fn render_help(frame: &mut Frame, model: &Model) {
         horizontal: 2,
     });
     frame.render_widget(block, area);
-    let text = input::help_text(model.access_mode);
+    let sections = Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).split(inner);
+    let rows = input::help_rows(model.access_mode)
+        .into_iter()
+        .map(|(keys, description)| {
+            Row::new([
+                Cell::from(keys).style(
+                    Style::default()
+                        .fg(Color::LightCyan)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Cell::from(description).style(Style::default().fg(Color::White)),
+            ])
+        });
+    let table = Table::new(rows, [Constraint::Length(22), Constraint::Min(24)])
+        .header(
+            Row::new(["Shortcut", "Action"])
+                .style(
+                    Style::default()
+                        .fg(Color::Yellow)
+                        .add_modifier(Modifier::BOLD),
+                )
+                .bottom_margin(1),
+        )
+        .column_spacing(2);
+    frame.render_widget(table, sections[0]);
+    let footer = if model.access_mode == AccessMode::ReadOnly {
+        "Esc: close  ·  Read-only: repository actions are disabled"
+    } else {
+        "Esc: close"
+    };
     frame.render_widget(
-        Paragraph::new(format!("{text}\n\nEsc: close help"))
-            .style(Style::default().fg(Color::White)),
-        inner,
+        Paragraph::new(footer).style(Style::default().fg(Color::DarkGray)),
+        sections[1],
     );
 }
 
@@ -1053,7 +1081,9 @@ fn file_kind_style(kind: ChangeKind, selected: bool) -> Style {
             .fg(Color::LightRed)
             .add_modifier(Modifier::CROSSED_OUT),
         ChangeKind::Renamed | ChangeKind::Copied => Style::default().fg(Color::LightCyan),
-        ChangeKind::Conflicted => Style::default().fg(Color::LightRed),
+        ChangeKind::Conflicted => Style::default()
+            .fg(Color::LightRed)
+            .add_modifier(Modifier::BOLD),
     };
     if selected {
         style.add_modifier(Modifier::BOLD)
@@ -1074,6 +1104,7 @@ fn inline_line(row: &RenderLine, highlighted: &HighlightedDiff, width: usize) ->
     let prefix = match row.kind {
         RowKind::Removed => "-",
         RowKind::Added => "+",
+        RowKind::Conflict => "!",
         RowKind::Header => "@",
         _ => " ",
     };
@@ -1136,7 +1167,7 @@ fn code_spans(row: &RenderLine, highlighted: &HighlightedDiff) -> Vec<Span<'stat
     let highlighted_line = row.number.and_then(|number| match row.kind {
         RowKind::Removed => highlighted.old.get(&number),
         RowKind::Added | RowKind::Context | RowKind::Changed => highlighted.new.get(&number),
-        RowKind::Header | RowKind::Meta => None,
+        RowKind::Header | RowKind::Conflict | RowKind::Meta => None,
     });
     let background = diff_background(row.kind);
     highlighted_line.map_or_else(
@@ -1256,6 +1287,7 @@ fn gutter_style(kind: RowKind) -> Style {
     let foreground = match kind {
         RowKind::Removed => Color::LightRed,
         RowKind::Added => Color::LightGreen,
+        RowKind::Conflict => Color::LightYellow,
         RowKind::Header | RowKind::Context | RowKind::Changed | RowKind::Meta => Color::DarkGray,
     };
     Style::default().fg(foreground).patch(diff_background(kind))
@@ -1267,6 +1299,7 @@ fn diff_background(kind: RowKind) -> Style {
         // multiplexers that advertise `xterm-256color` but filter true-color backgrounds.
         RowKind::Removed => Style::default().bg(Color::Indexed(52)),
         RowKind::Added => Style::default().bg(Color::Indexed(22)),
+        RowKind::Conflict => Style::default().bg(Color::Indexed(58)),
         RowKind::Header | RowKind::Context | RowKind::Changed | RowKind::Meta => Style::default(),
     }
 }
@@ -1283,6 +1316,11 @@ fn diff_background_rgb(kind: RowKind) -> Option<Rgb> {
             green: 95,
             blue: 0,
         }),
+        RowKind::Conflict => Some(Rgb {
+            red: 95,
+            green: 95,
+            blue: 0,
+        }),
         RowKind::Header | RowKind::Context | RowKind::Changed | RowKind::Meta => None,
     }
 }
@@ -1292,6 +1330,10 @@ fn row_style(kind: RowKind) -> Style {
         RowKind::Header => Style::default().fg(Color::Cyan),
         RowKind::Removed => Style::default().fg(Color::Red),
         RowKind::Added => Style::default().fg(Color::Green),
+        RowKind::Conflict => Style::default()
+            .fg(Color::LightYellow)
+            .bg(Color::Indexed(58))
+            .add_modifier(Modifier::BOLD),
         RowKind::Meta => Style::default().fg(Color::Yellow),
         RowKind::Context | RowKind::Changed => Style::default(),
     }
@@ -1362,8 +1404,8 @@ mod rendering_tests {
     };
 
     use super::{
-        Renderer, command_palette_layout, contrast_ratio, contrasting_foreground,
-        diff_background_rgb, file_kind_style,
+        Renderer, command_palette_layout, contrast_ratio, contrasting_foreground, diff_background,
+        diff_background_rgb, file_kind_style, row_style,
     };
 
     #[test]
@@ -1383,11 +1425,23 @@ mod rendering_tests {
         let deleted = file_kind_style(ChangeKind::Deleted, false);
         assert_eq!(deleted.fg, Some(Color::LightRed));
         assert!(deleted.add_modifier.contains(Modifier::CROSSED_OUT));
+        let conflicted = file_kind_style(ChangeKind::Conflicted, false);
+        assert_eq!(conflicted.fg, Some(Color::LightRed));
+        assert!(conflicted.add_modifier.contains(Modifier::BOLD));
         assert!(
             file_kind_style(ChangeKind::Added, true)
                 .add_modifier
                 .contains(Modifier::BOLD)
         );
+    }
+
+    #[test]
+    fn conflict_markers_have_a_dedicated_high_contrast_style() {
+        let marker = row_style(RowKind::Conflict);
+        assert_eq!(marker.fg, Some(Color::LightYellow));
+        assert_eq!(marker.bg, Some(Color::Indexed(58)));
+        assert!(marker.add_modifier.contains(Modifier::BOLD));
+        assert_eq!(diff_background(RowKind::Conflict).bg, marker.bg);
     }
 
     fn model() -> Model {

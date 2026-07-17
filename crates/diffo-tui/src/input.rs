@@ -42,7 +42,7 @@ impl KeyChord {
 struct KeyBinding {
     keys: &'static [KeyChord],
     message: Message,
-    help: Option<&'static str>,
+    description: &'static str,
     availability: Availability,
 }
 
@@ -53,7 +53,7 @@ static KEY_BINDINGS: &[KeyBinding] = &[
             KeyChord::plain(KeyCode::F(1)),
         ],
         message: Message::OpenCommandPalette,
-        help: Some("1 / F1: open command palette"),
+        description: "Open command palette",
         availability: Availability::Always,
     },
     KeyBinding {
@@ -62,7 +62,7 @@ static KEY_BINDINGS: &[KeyBinding] = &[
             KeyChord::plain(KeyCode::F(2)),
         ],
         message: Message::ToggleHelp,
-        help: Some("2 / F2: toggle help"),
+        description: "Toggle help",
         availability: Availability::Always,
     },
     KeyBinding {
@@ -72,7 +72,7 @@ static KEY_BINDINGS: &[KeyBinding] = &[
             KeyChord::control('c'),
         ],
         message: Message::Quit,
-        help: Some("q / Ctrl+C: quit"),
+        description: "Quit",
         availability: Availability::Always,
     },
     KeyBinding {
@@ -81,7 +81,7 @@ static KEY_BINDINGS: &[KeyBinding] = &[
             KeyChord::plain(KeyCode::Char('w')),
         ],
         message: Message::SelectPreviousFile,
-        help: Some("j: previous file · w: previous file"),
+        description: "Previous file",
         availability: Availability::Always,
     },
     KeyBinding {
@@ -91,37 +91,37 @@ static KEY_BINDINGS: &[KeyBinding] = &[
             KeyChord::plain(KeyCode::Char('s')),
         ],
         message: Message::SelectNextFile,
-        help: Some("k: next file · l: next file · s: next file"),
+        description: "Next file",
         availability: Availability::Always,
     },
     KeyBinding {
         keys: &[KeyChord::plain(KeyCode::Up)],
         message: Message::ScrollDiffUp,
-        help: Some("↑ / ↓: scroll diff by four lines"),
+        description: "Scroll diff up by four lines",
         availability: Availability::Always,
     },
     KeyBinding {
         keys: &[KeyChord::plain(KeyCode::Down)],
         message: Message::ScrollDiffDown,
-        help: None,
+        description: "Scroll diff down by four lines",
         availability: Availability::Always,
     },
     KeyBinding {
         keys: &[KeyChord::plain(KeyCode::PageUp)],
         message: Message::ScrollDiffPageUp(0),
-        help: Some("Page Up / Page Down: scroll one page"),
+        description: "Scroll up one page",
         availability: Availability::Always,
     },
     KeyBinding {
         keys: &[KeyChord::plain(KeyCode::PageDown)],
         message: Message::ScrollDiffPageDown(0),
-        help: None,
+        description: "Scroll down one page",
         availability: Availability::Always,
     },
     KeyBinding {
         keys: &[KeyChord::plain(KeyCode::Left)],
         message: Message::ScrollDiffLeft,
-        help: None,
+        description: "Scroll diff left by four columns",
         availability: Availability::Always,
     },
     KeyBinding {
@@ -130,19 +130,19 @@ static KEY_BINDINGS: &[KeyBinding] = &[
             KeyChord::plain(KeyCode::Char('d')),
         ],
         message: Message::ScrollDiffRight,
-        help: Some("← / → / d: scroll diff horizontally"),
+        description: "Scroll diff right by four columns",
         availability: Availability::Always,
     },
     KeyBinding {
         keys: &[KeyChord::plain(KeyCode::Char('r'))],
         message: Message::ToggleDiffView,
-        help: Some("r: toggle inline / side-by-side view"),
+        description: "Toggle inline / side-by-side view",
         availability: Availability::Always,
     },
     KeyBinding {
         keys: &[KeyChord::plain(KeyCode::Char('e'))],
         message: Message::ToggleFilePane,
-        help: Some("e: show / hide file list"),
+        description: "Show / hide file list",
         availability: Availability::Always,
     },
     KeyBinding {
@@ -151,7 +151,7 @@ static KEY_BINDINGS: &[KeyBinding] = &[
             KeyChord::plain(KeyCode::Char('g')),
         ],
         message: Message::SelectFirstFile,
-        help: Some("g: first file · Home: first file"),
+        description: "First file",
         availability: Availability::Always,
     },
     KeyBinding {
@@ -160,34 +160,62 @@ static KEY_BINDINGS: &[KeyBinding] = &[
             KeyChord::plain(KeyCode::Char('G')),
         ],
         message: Message::SelectLastFile,
-        help: Some("G: last file · End: last file"),
+        description: "Last file",
         availability: Availability::Always,
     },
     KeyBinding {
         keys: &[KeyChord::plain(KeyCode::Char(' '))],
         message: Message::ToggleStageSelected,
-        help: Some("Space: stage / unstage selected file"),
+        description: "Stage / unstage selected file",
         availability: Availability::ReadWrite,
     },
     KeyBinding {
         keys: &[KeyChord::plain(KeyCode::Char('a'))],
         message: Message::ToggleStageAll,
-        help: Some("a: stage / unstage all files"),
+        description: "Stage / unstage all files",
         availability: Availability::ReadWrite,
     },
 ];
 
-pub(crate) fn help_text(access_mode: AccessMode) -> String {
-    let mut help = KEY_BINDINGS
+pub(crate) fn help_rows(access_mode: AccessMode) -> Vec<(String, &'static str)> {
+    KEY_BINDINGS
         .iter()
         .filter(|binding| binding.is_available(access_mode))
-        .filter_map(|binding| binding.help)
-        .collect::<Vec<_>>()
-        .join("\n");
-    if access_mode == AccessMode::ReadOnly {
-        help.push_str("\nRead-only: repository actions are disabled");
+        .map(|binding| {
+            let keys = binding
+                .keys
+                .iter()
+                .map(|key| key.label())
+                .collect::<Vec<_>>()
+                .join(" / ");
+            (keys, binding.description)
+        })
+        .collect()
+}
+
+impl KeyChord {
+    fn label(self) -> String {
+        let key = match self.code {
+            KeyCode::Char(' ') => "Space".to_owned(),
+            KeyCode::Char(character) => character.to_string(),
+            KeyCode::Esc => "Esc".to_owned(),
+            KeyCode::Up => "↑".to_owned(),
+            KeyCode::Down => "↓".to_owned(),
+            KeyCode::Left => "←".to_owned(),
+            KeyCode::Right => "→".to_owned(),
+            KeyCode::Home => "Home".to_owned(),
+            KeyCode::End => "End".to_owned(),
+            KeyCode::PageUp => "Page Up".to_owned(),
+            KeyCode::PageDown => "Page Down".to_owned(),
+            KeyCode::F(number) => format!("F{number}"),
+            other => format!("{other:?}"),
+        };
+        if self.required_modifiers.contains(KeyModifiers::CONTROL) {
+            format!("Ctrl+{key}")
+        } else {
+            key
+        }
     }
-    help
 }
 
 impl KeyBinding {
@@ -315,7 +343,7 @@ mod tests {
     use diffo_core::{AccessMode, ChangeKind, FileDiff, FileState, RepositorySnapshot};
     use ratatui::layout::Rect;
 
-    use super::{KEY_BINDINGS, help_text, map_event, map_key};
+    use super::{KEY_BINDINGS, help_rows, map_event, map_key};
 
     fn model() -> Model {
         Model::new(
@@ -391,18 +419,18 @@ mod tests {
             }
         }
 
-        let read_write = help_text(AccessMode::ReadWrite);
-        assert!(read_write.contains("r: toggle inline / side-by-side view"));
-        assert!(read_write.contains("e: show / hide file list"));
-        assert!(read_write.contains("Space: stage / unstage selected file"));
-        assert!(read_write.contains("j: previous file"));
-        assert!(read_write.contains("s: next file"));
+        let read_write = help_rows(AccessMode::ReadWrite);
+        assert!(read_write.contains(&("r".to_owned(), "Toggle inline / side-by-side view")));
+        assert!(read_write.contains(&("e".to_owned(), "Show / hide file list")));
+        assert!(read_write.contains(&("Space".to_owned(), "Stage / unstage selected file")));
+        assert!(read_write.contains(&("j / w".to_owned(), "Previous file")));
+        assert!(read_write.contains(&("k / l / s".to_owned(), "Next file")));
+        assert!(read_write.contains(&("q / Esc / Ctrl+c".to_owned(), "Quit")));
 
-        let read_only = help_text(AccessMode::ReadOnly);
-        assert!(read_only.contains("r: toggle inline / side-by-side view"));
-        assert!(read_only.contains("e: show / hide file list"));
-        assert!(!read_only.contains("Space: stage / unstage selected file"));
-        assert!(read_only.contains("Read-only: repository actions are disabled"));
+        let read_only = help_rows(AccessMode::ReadOnly);
+        assert!(read_only.contains(&("r".to_owned(), "Toggle inline / side-by-side view")));
+        assert!(read_only.contains(&("e".to_owned(), "Show / hide file list")));
+        assert!(!read_only.iter().any(|(keys, _)| keys == "Space"));
     }
 
     #[test]

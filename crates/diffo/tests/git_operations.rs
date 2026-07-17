@@ -14,6 +14,28 @@ use serde::Deserialize;
 const TIMEOUT: Duration = Duration::from_secs(5);
 
 #[test]
+fn real_merge_conflict_renders_as_a_highlighted_worktree_file() -> Result<()> {
+    let repository = TestRepository::new()?;
+    fs::write(
+        repository.worktree.join("tracked.txt"),
+        "fn value() -> i32 { 1 }\n",
+    )?;
+    git(&repository.worktree, &["add", "tracked.txt"])?;
+    git(&repository.worktree, &["commit", "-m", "Local edit"])?;
+    repository.commit_remote("tracked.txt", "fn value() -> i32 { 2 }\n", "Remote edit")?;
+    git(&repository.worktree, &["fetch", "origin"])?;
+    git_must_fail(&repository.worktree, &["merge", "origin/master"])?;
+
+    let mut screen = repository.screen()?;
+    screen
+        .wait_for_text("U  tracked.txt")?
+        .wait_for_text("<<<<<<< HEAD")?
+        .wait_for_text("=======")?
+        .wait_for_text(">>>>>>> origin/master")?;
+    Ok(())
+}
+
+#[test]
 fn space_stages_selected_file() -> Result<()> {
     let repository = TestRepository::new()?;
     fs::write(repository.worktree.join("tracked.txt"), "changed\n")?;
@@ -182,9 +204,13 @@ fn overlays_open_and_close_with_function_keys() -> Result<()> {
         .wait_for_text_gone("Command Palette")?
         .press(Key::Function(2))?
         .wait_for_text("Help")?
-        .wait_for_text("s: next file")?
-        .wait_for_text("Page Up / Page Down: scroll one page")?
-        .wait_for_text("Space: stage / unstage selected file")?
+        .wait_for_text("Shortcut")?
+        .wait_for_text("Action")?
+        .wait_for_text("k / l / s")?
+        .wait_for_text("Next file")?
+        .wait_for_text("Page Up")?
+        .wait_for_text("Scroll up one page")?
+        .wait_for_text("Stage / unstage selected file")?
         .press(Key::Function(2))?
         .wait_for_text_gone("Help")?
         .press(Key::Char('2'))?
@@ -515,6 +541,18 @@ fn git(repository: &Path, args: &[&str]) -> Result<()> {
 
 fn git_output(repository: &Path, args: &[&str]) -> Result<String> {
     git_command(repository, args).map(|output| output.trim().to_owned())
+}
+
+fn git_must_fail(repository: &Path, args: &[&str]) -> Result<()> {
+    let output = Command::new("git")
+        .args(args)
+        .current_dir(repository)
+        .output()
+        .with_context(|| format!("run git {}", args.join(" ")))?;
+    if output.status.success() {
+        bail!("git {} unexpectedly succeeded", args.join(" "));
+    }
+    Ok(())
 }
 
 fn git_command(repository: &Path, args: &[&str]) -> Result<String> {

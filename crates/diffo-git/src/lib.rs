@@ -81,19 +81,19 @@ impl GitRepositorySource {
         Ok((!text.is_empty()).then_some(FileDiff { text }))
     }
 
-    fn untracked_diff(&self, path: &Path) -> Result<FileDiff> {
+    fn worktree_file_diff(&self, path: &Path) -> Result<FileDiff> {
         let full_path = self.root.join(path);
         let metadata = fs::symlink_metadata(&full_path)
-            .with_context(|| format!("failed to inspect untracked file {}", path.display()))?;
+            .with_context(|| format!("failed to inspect worktree file {}", path.display()))?;
         let bytes = if metadata.file_type().is_symlink() {
             fs::read_link(&full_path)
-                .with_context(|| format!("failed to read symlink {}", path.display()))?
+                .with_context(|| format!("failed to read worktree symlink {}", path.display()))?
                 .to_string_lossy()
                 .into_owned()
                 .into_bytes()
         } else {
             fs::read(&full_path)
-                .with_context(|| format!("failed to read untracked file {}", path.display()))?
+                .with_context(|| format!("failed to read worktree file {}", path.display()))?
         };
 
         let Ok(contents) = std::str::from_utf8(&bytes) else {
@@ -177,13 +177,17 @@ impl RepositorySource for GitRepositorySource {
             let paths = old_path
                 .as_deref()
                 .map_or_else(|| vec![path.as_ref()], |old| vec![old, path.as_ref()]);
-            let staged = if file.index_status == NO_CHANGE {
+            let conflicted = file.state.kind == ChangeKind::Conflicted;
+            let staged = if conflicted || file.index_status == NO_CHANGE {
                 None
             } else {
                 self.diff(&paths, true)?
             };
-            let unstaged = if file.state.kind == ChangeKind::Untracked {
-                Some(self.untracked_diff(&file.state.path)?)
+            let unstaged = if matches!(
+                file.state.kind,
+                ChangeKind::Untracked | ChangeKind::Conflicted
+            ) {
+                Some(self.worktree_file_diff(&file.state.path)?)
             } else if file.worktree_status == NO_CHANGE {
                 None
             } else {

@@ -46,6 +46,7 @@ pub enum RowKind {
     Removed,
     Added,
     Changed,
+    Conflict,
     Meta,
 }
 
@@ -114,18 +115,18 @@ pub fn inline_rows(document: &DiffDocument) -> Vec<RenderLine> {
                 DiffBlock::Context(lines) => rows.extend(lines.iter().map(|line| RenderLine {
                     number: line.new_number,
                     text: line.text.clone(),
-                    kind: RowKind::Context,
+                    kind: line_kind(&line.text, RowKind::Context),
                 })),
                 DiffBlock::Change { removed, added, .. } => {
                     rows.extend(removed.iter().map(|line| RenderLine {
                         number: line.old_number,
                         text: line.text.clone(),
-                        kind: RowKind::Removed,
+                        kind: line_kind(&line.text, RowKind::Removed),
                     }));
                     rows.extend(added.iter().map(|line| RenderLine {
                         number: line.new_number,
                         text: line.text.clone(),
-                        kind: RowKind::Added,
+                        kind: line_kind(&line.text, RowKind::Added),
                     }));
                 }
                 DiffBlock::Meta(text) => rows.push(RenderLine {
@@ -159,12 +160,12 @@ pub fn side_by_side_rows(document: &DiffDocument) -> Vec<SideBySideRow> {
                     old: Some(RenderLine {
                         number: line.old_number,
                         text: line.text.clone(),
-                        kind: RowKind::Context,
+                        kind: line_kind(&line.text, RowKind::Context),
                     }),
                     new: Some(RenderLine {
                         number: line.new_number,
                         text: line.text.clone(),
-                        kind: RowKind::Context,
+                        kind: line_kind(&line.text, RowKind::Context),
                     }),
                     kind: RowKind::Context,
                 })),
@@ -173,12 +174,12 @@ pub fn side_by_side_rows(document: &DiffDocument) -> Vec<SideBySideRow> {
                         old: pair.old.as_ref().map(|line| RenderLine {
                             number: line.old_number,
                             text: line.text.clone(),
-                            kind: RowKind::Removed,
+                            kind: line_kind(&line.text, RowKind::Removed),
                         }),
                         new: pair.new.as_ref().map(|line| RenderLine {
                             number: line.new_number,
                             text: line.text.clone(),
-                            kind: RowKind::Added,
+                            kind: line_kind(&line.text, RowKind::Added),
                         }),
                         kind: RowKind::Changed,
                     }));
@@ -196,6 +197,18 @@ pub fn side_by_side_rows(document: &DiffDocument) -> Vec<SideBySideRow> {
         }
     }
     rows
+}
+
+fn line_kind(text: &str, fallback: RowKind) -> RowKind {
+    if text.starts_with("<<<<<<<")
+        || text.starts_with("|||||||")
+        || text.starts_with("=======")
+        || text.starts_with(">>>>>>>")
+    {
+        RowKind::Conflict
+    } else {
+        fallback
+    }
 }
 
 struct HunkBuilder {
@@ -427,5 +440,29 @@ mod tests {
                 .binary
         );
         assert!(parse_unified_patch("diff --cc file\n@@@ -1 -1 +1 @@@").is_err());
+    }
+
+    #[test]
+    fn promotes_merge_markers_to_conflict_rows() {
+        let patch =
+            "@@ -1 +1,5 @@\n-old\n+<<<<<<< HEAD\n+ours\n+=======\n+theirs\n+>>>>>>> branch\n";
+        let document = parse_unified_patch(patch).expect("conflict patch should parse");
+        let inline = inline_rows(&document);
+
+        let markers = inline
+            .iter()
+            .filter(|row| row.kind == RowKind::Conflict)
+            .map(|row| row.text.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(markers, ["<<<<<<< HEAD", "=======", ">>>>>>> branch"]);
+        assert_eq!(
+            side_by_side_rows(&document)
+                .iter()
+                .flat_map(|row| [row.old.as_ref(), row.new.as_ref()])
+                .flatten()
+                .filter(|line| line.kind == RowKind::Conflict)
+                .count(),
+            3
+        );
     }
 }

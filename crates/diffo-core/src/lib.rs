@@ -70,6 +70,7 @@ pub enum RepositoryAction {
     Stage(PathBuf),
     Unstage(PathBuf),
     StageAll,
+    UnstageAll,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

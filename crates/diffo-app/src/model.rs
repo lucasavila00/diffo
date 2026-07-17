@@ -109,19 +109,27 @@ impl Model {
     }
 
     pub fn scroll_diff_down(&mut self) {
-        self.diff_scroll = self.diff_scroll.saturating_sub(4);
+        self.scroll_diff_down_by(4);
     }
 
     pub fn scroll_diff_up(&mut self) {
-        self.diff_scroll = self.diff_scroll.saturating_add(4);
+        self.scroll_diff_up_by(4);
+    }
+
+    pub fn scroll_diff_down_by(&mut self, lines: usize) {
+        self.diff_scroll = self.diff_scroll.saturating_add(lines);
+    }
+
+    pub fn scroll_diff_up_by(&mut self, lines: usize) {
+        self.diff_scroll = self.diff_scroll.saturating_sub(lines);
     }
 
     pub fn scroll_diff_right(&mut self) {
-        self.diff_horizontal_scroll = self.diff_horizontal_scroll.saturating_add(1);
+        self.diff_horizontal_scroll = self.diff_horizontal_scroll.saturating_add(4);
     }
 
     pub fn scroll_diff_left(&mut self) {
-        self.diff_horizontal_scroll = self.diff_horizontal_scroll.saturating_sub(1);
+        self.diff_horizontal_scroll = self.diff_horizontal_scroll.saturating_sub(4);
     }
 
     pub fn toggle_diff_view(&mut self) {
@@ -185,15 +193,24 @@ impl Model {
     }
 
     #[must_use]
-    pub fn stage_all(&self) -> Option<RepositoryAction> {
+    pub fn toggle_stage_all(&self) -> Option<RepositoryAction> {
         if self.access_mode == AccessMode::ReadOnly {
             return None;
         }
-        self.snapshot
+        if self
+            .snapshot
             .files
             .iter()
             .any(|file| file.unstaged.is_some() || file.kind == diffo_core::ChangeKind::Untracked)
-            .then_some(RepositoryAction::StageAll)
+        {
+            Some(RepositoryAction::StageAll)
+        } else {
+            self.snapshot
+                .files
+                .iter()
+                .any(|file| file.staged.is_some())
+                .then_some(RepositoryAction::UnstageAll)
+        }
     }
 
     pub fn refresh(&mut self, snapshot: RepositorySnapshot) {
@@ -355,6 +372,6 @@ mod tests {
         let app = Model::new(snapshot(), AccessMode::ReadOnly);
 
         assert_eq!(app.stage_selected(), None);
-        assert_eq!(app.stage_all(), None);
+        assert_eq!(app.toggle_stage_all(), None);
     }
 }

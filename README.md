@@ -19,8 +19,9 @@ cargo clippy --workspace --all-targets --all-features
 `make diffo` reads the current Git repository. `make diffo-mock` loads a mutable,
 in-memory repository from `crates/diffo-core/fixtures/repository-state.ron`. Stage,
 unstage, and stage-all work for the life of the process without changing the fixture.
-It also generates large changes on demand, including a 100,000-line Rust file, a
-large JSON file, and a 100,000-byte line. These payloads are not stored in the repo.
+It also generates large changes on demand: a 20,000-line Rust file, 5,000 JSON
+items, and a 25,000-byte line. These payloads are not stored in the repo.
+It also includes generated 5k, 50k, 500k, and 5,000k-line stress patches.
 `make diffo-mock-ro` loads the same state in read-only mode. The fixture covers staged
 and unstaged changes, untracked files, recent commits, and commits that have not been
 pushed.

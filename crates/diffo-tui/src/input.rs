@@ -87,13 +87,28 @@ static KEY_BINDINGS: &[KeyBinding] = &[
         availability: Availability::Always,
     },
     KeyBinding {
+        keys: &[KeyChord::plain(KeyCode::PageUp)],
+        message: Message::ScrollDiffPageUp(0),
+        help: Some("pgup/pgdn: page"),
+        availability: Availability::Always,
+    },
+    KeyBinding {
+        keys: &[KeyChord::plain(KeyCode::PageDown)],
+        message: Message::ScrollDiffPageDown(0),
+        help: None,
+        availability: Availability::Always,
+    },
+    KeyBinding {
         keys: &[KeyChord::plain(KeyCode::Left)],
         message: Message::ScrollDiffLeft,
         help: None,
         availability: Availability::Always,
     },
     KeyBinding {
-        keys: &[KeyChord::plain(KeyCode::Right)],
+        keys: &[
+            KeyChord::plain(KeyCode::Right),
+            KeyChord::plain(KeyCode::Char('d')),
+        ],
         message: Message::ScrollDiffRight,
         help: None,
         availability: Availability::Always,
@@ -136,8 +151,8 @@ static KEY_BINDINGS: &[KeyBinding] = &[
     },
     KeyBinding {
         keys: &[KeyChord::plain(KeyCode::Char('a'))],
-        message: Message::StageAll,
-        help: Some("a: all"),
+        message: Message::ToggleStageAll,
+        help: Some("a: stage/unstage all"),
         availability: Availability::ReadWrite,
     },
 ];
@@ -165,7 +180,14 @@ impl KeyBinding {
 pub fn map_event(event: &Event, model: &Model, area: Rect) -> Option<Message> {
     match event {
         Event::Key(key) if key.kind == KeyEventKind::Press => {
-            map_key(key.code, key.modifiers, model.access_mode)
+            map_key(key.code, key.modifiers, model.access_mode).map(|message| {
+                let page_lines = usize::from(area.height.saturating_sub(3)).max(1);
+                match message {
+                    Message::ScrollDiffPageUp(_) => Message::ScrollDiffPageUp(page_lines),
+                    Message::ScrollDiffPageDown(_) => Message::ScrollDiffPageDown(page_lines),
+                    other => other,
+                }
+            })
         }
         Event::Mouse(mouse) if mouse.kind == MouseEventKind::Down(MouseButton::Left) => {
             if is_file_pane_splitter_at(model, area, mouse.column, mouse.row) {
@@ -187,6 +209,12 @@ pub fn map_event(event: &Event, model: &Model, area: Rect) -> Option<Message> {
             if mouse.kind == MouseEventKind::Up(MouseButton::Left) && model.resizing_file_pane =>
         {
             Some(Message::EndFilePaneResize)
+        }
+        Event::Mouse(mouse) if mouse.kind == MouseEventKind::ScrollUp => {
+            Some(Message::ScrollDiffUp)
+        }
+        Event::Mouse(mouse) if mouse.kind == MouseEventKind::ScrollDown => {
+            Some(Message::ScrollDiffDown)
         }
         _ => None,
     }
@@ -242,14 +270,17 @@ mod tests {
             (KeyCode::Char('s'), Message::SelectNextFile),
             (KeyCode::Up, Message::ScrollDiffUp),
             (KeyCode::Down, Message::ScrollDiffDown),
+            (KeyCode::PageUp, Message::ScrollDiffPageUp(1)),
+            (KeyCode::PageDown, Message::ScrollDiffPageDown(1)),
             (KeyCode::Left, Message::ScrollDiffLeft),
             (KeyCode::Right, Message::ScrollDiffRight),
+            (KeyCode::Char('d'), Message::ScrollDiffRight),
             (KeyCode::Char('r'), Message::ToggleDiffView),
             (KeyCode::Char('e'), Message::ToggleFilePane),
             (KeyCode::Home, Message::SelectFirstFile),
             (KeyCode::End, Message::SelectLastFile),
             (KeyCode::Char(' '), Message::ToggleStageSelected),
-            (KeyCode::Char('a'), Message::StageAll),
+            (KeyCode::Char('a'), Message::ToggleStageAll),
         ];
         let model = model();
         for (key, expected) in cases {
@@ -411,6 +442,28 @@ mod tests {
         assert_eq!(
             map_event(&up, &model, area),
             Some(Message::EndFilePaneResize)
+        );
+    }
+
+    #[test]
+    fn maps_mouse_wheel_to_diff_scrolling() {
+        let model = model();
+        let mouse = |kind| {
+            Event::Mouse(MouseEvent {
+                kind,
+                column: 80,
+                row: 10,
+                modifiers: KeyModifiers::NONE,
+            })
+        };
+
+        assert_eq!(
+            map_event(&mouse(MouseEventKind::ScrollUp), &model, Rect::default()),
+            Some(Message::ScrollDiffUp)
+        );
+        assert_eq!(
+            map_event(&mouse(MouseEventKind::ScrollDown), &model, Rect::default()),
+            Some(Message::ScrollDiffDown)
         );
     }
 }

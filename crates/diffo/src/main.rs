@@ -12,6 +12,7 @@ use anyhow::{Context, Result};
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture},
     execute,
+    terminal::{Clear, ClearType},
 };
 use diffo_app::{Effect, Message, Model, update};
 use diffo_core::{
@@ -40,7 +41,11 @@ fn main() -> Result<()> {
     let mut model = Model::new(snapshot, repository.access_mode());
     let mut renderer = diffo_tui::Renderer::new();
     let mut terminal = ratatui::init();
-    execute!(terminal.backend_mut(), EnableMouseCapture)?;
+    execute!(
+        terminal.backend_mut(),
+        Clear(ClearType::Purge),
+        EnableMouseCapture
+    )?;
 
     let result = run(
         &mut terminal,
@@ -81,10 +86,15 @@ fn run(
     while !model.should_quit && !shutdown.load(Ordering::Relaxed) {
         terminal.draw(|frame| renderer.render(frame, model))?;
 
-        if event::poll(Duration::from_millis(250))? {
+        let poll_timeout = if renderer.is_preparing() {
+            Duration::from_millis(16)
+        } else {
+            Duration::from_millis(250)
+        };
+        if event::poll(poll_timeout)? {
             let size = terminal.size()?;
             let area = ratatui::layout::Rect::new(0, 0, size.width, size.height);
-            if let Some(message) = diffo_tui::map_event(&event::read()?, model, area)
+            if let Some(message) = renderer.map_event(&event::read()?, model, area)
                 && let Some(effect) = update(model, message)
             {
                 execute_effect(repository, model, effect);

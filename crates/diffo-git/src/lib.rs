@@ -156,6 +156,9 @@ impl Repository for GitRepositorySource {
             RepositoryAction::StageAll => {
                 command.args(["add", "--all"]);
             }
+            RepositoryAction::UnstageAll => {
+                command.arg("reset");
+            }
         }
 
         let output = command.output().context("failed to run git index action")?;
@@ -368,7 +371,7 @@ mod tests {
     }
 
     #[test]
-    fn stages_all_files() {
+    fn stages_and_unstages_all_files() {
         let repo = test_repository();
         fs::write(repo.path().join("tracked.txt"), "changed\n").expect("modify file");
         fs::write(repo.path().join("new.txt"), "new\n").expect("write file");
@@ -381,6 +384,13 @@ mod tests {
 
         assert_eq!(snapshot.files.len(), 2);
         assert!(snapshot.files.iter().all(|file| file.staged.is_some()));
+
+        source
+            .apply(&RepositoryAction::UnstageAll)
+            .expect("unstage all files");
+        let snapshot = source.snapshot().expect("unstaged snapshot");
+        assert_eq!(snapshot.files.len(), 2);
+        assert!(snapshot.files.iter().all(|file| file.staged.is_none()));
     }
 
     #[test]

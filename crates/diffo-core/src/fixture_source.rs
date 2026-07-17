@@ -70,7 +70,8 @@ impl MutableFixtureRepository {
     /// Returns an error when the base fixture cannot be read or parsed.
     pub fn new_with_large_files(path: impl Into<PathBuf>) -> Result<Self> {
         let mut snapshot = FixtureRepositorySource::new(path).snapshot()?;
-        append_large_files(&mut snapshot, 100_000, 25_000, 100_000);
+        append_large_files(&mut snapshot, 20_000, 5_000, 25_000);
+        append_line_stress_files(&mut snapshot);
         Ok(Self::from_snapshot(snapshot))
     }
 
@@ -164,6 +165,40 @@ fn append_large_files(
     });
 }
 
+fn append_line_stress_files(snapshot: &mut RepositorySnapshot) {
+    for (name, line_count) in [
+        ("stress-5k.txt", 5_000),
+        ("stress-50k.txt", 50_000),
+        ("stress-500k.txt", 500_000),
+        ("stress-5000k.txt", 5_000_000),
+    ] {
+        snapshot.files.push(crate::FileState {
+            path: PathBuf::from("generated").join(name),
+            old_path: None,
+            kind: crate::ChangeKind::Untracked,
+            staged: None,
+            unstaged: Some(crate::FileDiff {
+                text: added_line_stress_patch(name, line_count),
+            }),
+        });
+    }
+}
+
+fn added_line_stress_patch(name: &str, line_count: usize) -> String {
+    use std::fmt::Write;
+
+    let mut patch = String::with_capacity(line_count.saturating_mul(3).saturating_add(160));
+    write!(
+        patch,
+        "diff --git a/generated/{name} b/generated/{name}\nnew file mode 100644\n--- /dev/null\n+++ b/generated/{name}\n@@ -0,0 +1,{line_count} @@\n"
+    )
+    .expect("writing to a String cannot fail");
+    for _ in 0..line_count {
+        patch.push_str("+x\n");
+    }
+    patch
+}
+
 fn added_rust_patch(line_count: usize) -> String {
     use std::fmt::Write;
 
@@ -219,6 +254,20 @@ impl Repository for MutableFixtureRepository {
                     .collect::<Vec<_>>();
                 for path in paths {
                     self.stage(&path)?;
+                }
+                Ok(())
+            }
+            RepositoryAction::UnstageAll => {
+                let paths = self
+                    .snapshot
+                    .borrow()
+                    .files
+                    .iter()
+                    .filter(|file| file.staged.is_some())
+                    .map(|file| file.path.clone())
+                    .collect::<Vec<_>>();
+                for path in paths {
+                    self.unstage(&path)?;
                 }
                 Ok(())
             }
@@ -339,7 +388,7 @@ mod tests {
                 .lines()
                 .filter(|line| line.starts_with("+pub const ITEM_"))
                 .count(),
-            100_000
+            20_000
         );
 
         let long_line = snapshot
@@ -352,7 +401,25 @@ mod tests {
             long_line
                 .text
                 .lines()
-                .any(|line| line.starts_with('+') && line.len() == 100_001)
+                .any(|line| line.starts_with('+') && line.len() == 25_001)
         );
+
+        for (name, expected_lines) in [
+            ("stress-5k.txt", 5_000),
+            ("stress-50k.txt", 50_000),
+            ("stress-500k.txt", 500_000),
+            ("stress-5000k.txt", 5_000_000),
+        ] {
+            let diff = snapshot
+                .files
+                .iter()
+                .find(|file| file.path == Path::new("generated").join(name))
+                .and_then(|file| file.unstaged.as_ref())
+                .expect("generated line stress diff");
+            assert_eq!(
+                diff.text.lines().filter(|line| *line == "+x").count(),
+                expected_lines
+            );
+        }
     }
 }

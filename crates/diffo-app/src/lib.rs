@@ -14,6 +14,10 @@ pub enum Message {
     SelectFile(FileKey),
     ScrollDiffUp,
     ScrollDiffDown,
+    ScrollDiffPageUp(usize),
+    ScrollDiffPageDown(usize),
+    SetDiffScroll(usize),
+    SetDiffHorizontalScroll(usize),
     ScrollDiffLeft,
     ScrollDiffRight,
     ToggleDiffView,
@@ -22,7 +26,7 @@ pub enum Message {
     ResizeFilePane(u16),
     EndFilePaneResize,
     ToggleStageSelected,
-    StageAll,
+    ToggleStageAll,
     SnapshotLoaded(RepositorySnapshot),
     OperationFailed(String),
 }
@@ -42,6 +46,10 @@ pub fn update(model: &mut Model, message: Message) -> Option<Effect> {
         Message::SelectFile(file) => model.select_file(&file),
         Message::ScrollDiffUp => model.scroll_diff_up(),
         Message::ScrollDiffDown => model.scroll_diff_down(),
+        Message::ScrollDiffPageUp(lines) => model.scroll_diff_up_by(lines),
+        Message::ScrollDiffPageDown(lines) => model.scroll_diff_down_by(lines),
+        Message::SetDiffScroll(position) => model.diff_scroll = position,
+        Message::SetDiffHorizontalScroll(position) => model.diff_horizontal_scroll = position,
         Message::ScrollDiffLeft => model.scroll_diff_left(),
         Message::ScrollDiffRight => model.scroll_diff_right(),
         Message::ToggleDiffView => model.toggle_diff_view(),
@@ -52,7 +60,7 @@ pub fn update(model: &mut Model, message: Message) -> Option<Effect> {
         Message::ToggleStageSelected => {
             return model.toggle_stage_selected().map(Effect::Repository);
         }
-        Message::StageAll => return model.stage_all().map(Effect::Repository),
+        Message::ToggleStageAll => return model.toggle_stage_all().map(Effect::Repository),
         Message::SnapshotLoaded(snapshot) => model.refresh(snapshot),
         Message::OperationFailed(error) => model.show_error(error),
     }
@@ -94,20 +102,30 @@ mod tests {
         let mut model = model(AccessMode::ReadWrite);
 
         assert_eq!(update(&mut model, Message::ScrollDiffRight), None);
-        assert_eq!(model.diff_horizontal_scroll, 1);
+        assert_eq!(model.diff_horizontal_scroll, 4);
         assert_eq!(update(&mut model, Message::Quit), None);
         assert!(model.should_quit);
     }
 
     #[test]
-    fn scrolls_four_lines_with_inverted_vertical_arrows() {
+    fn scrolls_four_lines_in_the_arrow_direction() {
         let mut model = model(AccessMode::ReadWrite);
 
-        update(&mut model, Message::ScrollDiffUp);
+        update(&mut model, Message::ScrollDiffDown);
         assert_eq!(model.diff_scroll, 4);
-        update(&mut model, Message::ScrollDiffDown);
+        update(&mut model, Message::ScrollDiffUp);
         assert_eq!(model.diff_scroll, 0);
-        update(&mut model, Message::ScrollDiffDown);
+        update(&mut model, Message::ScrollDiffUp);
+        assert_eq!(model.diff_scroll, 0);
+    }
+
+    #[test]
+    fn scrolls_by_a_page() {
+        let mut model = model(AccessMode::ReadWrite);
+
+        update(&mut model, Message::ScrollDiffPageDown(27));
+        assert_eq!(model.diff_scroll, 27);
+        update(&mut model, Message::ScrollDiffPageUp(27));
         assert_eq!(model.diff_scroll, 0);
     }
 
@@ -164,6 +182,21 @@ mod tests {
             Some(Effect::Repository(RepositoryAction::Stage(PathBuf::from(
                 "file.txt"
             ))))
+        );
+    }
+
+    #[test]
+    fn toggles_all_changes_contextually() {
+        let mut model = model(AccessMode::ReadWrite);
+        assert_eq!(
+            update(&mut model, Message::ToggleStageAll),
+            Some(Effect::Repository(RepositoryAction::StageAll))
+        );
+
+        model.snapshot.files[0].unstaged = None;
+        assert_eq!(
+            update(&mut model, Message::ToggleStageAll),
+            Some(Effect::Repository(RepositoryAction::UnstageAll))
         );
     }
 

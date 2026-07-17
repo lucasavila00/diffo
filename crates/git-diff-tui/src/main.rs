@@ -11,7 +11,7 @@ use ratatui::{Terminal, backend::CrosstermBackend};
 fn main() -> Result<()> {
     let source: Box<dyn RepositorySource> = match env::var_os("DIFFO_MOCK_FILE") {
         Some(path) => Box::new(FixtureRepositorySource::new(path)),
-        None => Box::new(GitRepositorySource),
+        None => Box::new(GitRepositorySource::default()),
     };
     let mut app = App::new(source.snapshot()?);
     let mut terminal = ratatui::init();

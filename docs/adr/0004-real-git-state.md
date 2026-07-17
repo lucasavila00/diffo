@@ -1,6 +1,6 @@
 # ADR 0004: Read and test real Git state
 
-Status: Proposed
+Status: Accepted
 
 ## Decision
 

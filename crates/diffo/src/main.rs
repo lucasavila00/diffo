@@ -9,7 +9,13 @@ use std::{
 };
 
 use anyhow::{Context, Result};
-use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
+use crossterm::{
+    event::{
+        self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEventKind, KeyModifiers,
+        MouseButton, MouseEventKind,
+    },
+    execute,
+};
 use diffo_core::{Repository, RepositoryAction, fixture_source::FixtureRepositorySource};
 use diffo_git::GitRepositorySource;
 use diffo_tui::App;
@@ -29,10 +35,13 @@ fn main() -> Result<()> {
 
     let mut app = App::new(snapshot, repository.access_mode());
     let mut terminal = ratatui::init();
+    execute!(terminal.backend_mut(), EnableMouseCapture)?;
 
     let result = run(&mut terminal, &mut app, &shutdown, repository.as_ref());
+    let mouse_result = execute!(terminal.backend_mut(), DisableMouseCapture)
+        .context("failed to disable mouse capture");
     ratatui::restore();
-    result
+    result.and(mouse_result)
 }
 
 fn install_signal_handlers() -> Result<Arc<AtomicBool>> {
@@ -60,22 +69,31 @@ fn run(
     while !app.should_quit && !shutdown.load(Ordering::Relaxed) {
         terminal.draw(|frame| diffo_tui::render(frame, app))?;
 
-        if event::poll(Duration::from_millis(250))?
-            && let Event::Key(key) = event::read()?
-            && key.kind == KeyEventKind::Press
-        {
-            match key.code {
-                KeyCode::Char('q') | KeyCode::Esc => app.should_quit = true,
-                KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                    app.should_quit = true;
+        if event::poll(Duration::from_millis(250))? {
+            match event::read()? {
+                Event::Key(key) if key.kind == KeyEventKind::Press => match key.code {
+                    KeyCode::Char('q') | KeyCode::Esc => app.should_quit = true,
+                    KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                        app.should_quit = true;
+                    }
+                    KeyCode::Char('j') => app.select_previous(),
+                    KeyCode::Char('k') => app.select_next(),
+                    KeyCode::Up => app.scroll_diff_up(),
+                    KeyCode::Down => app.scroll_diff_down(),
+                    KeyCode::Left => app.scroll_diff_left(),
+                    KeyCode::Right => app.scroll_diff_right(),
+                    KeyCode::Home | KeyCode::Char('g') => app.select_first(),
+                    KeyCode::End | KeyCode::Char('G') => app.select_last(),
+                    KeyCode::Char('s') => apply_action(repository, app, app.stage_selected()),
+                    KeyCode::Char('u') => apply_action(repository, app, app.unstage_selected()),
+                    KeyCode::Char('a') => apply_action(repository, app, app.stage_all()),
+                    _ => {}
+                },
+                Event::Mouse(mouse) if mouse.kind == MouseEventKind::Down(MouseButton::Left) => {
+                    let size = terminal.size()?;
+                    let area = ratatui::layout::Rect::new(0, 0, size.width, size.height);
+                    diffo_tui::select_file_at(app, area, mouse.column, mouse.row);
                 }
-                KeyCode::Down | KeyCode::Char('j') => app.select_next(),
-                KeyCode::Up | KeyCode::Char('k') => app.select_previous(),
-                KeyCode::Home | KeyCode::Char('g') => app.select_first(),
-                KeyCode::End | KeyCode::Char('G') => app.select_last(),
-                KeyCode::Char('s') => apply_action(repository, app, app.stage_selected()),
-                KeyCode::Char('u') => apply_action(repository, app, app.unstage_selected()),
-                KeyCode::Char('a') => apply_action(repository, app, app.stage_all()),
                 _ => {}
             }
         }

@@ -27,6 +27,26 @@ pub fn render(frame: &mut Frame, app: &App) {
     render_status(frame, vertical[1], app);
 }
 
+pub fn select_file_at(app: &mut App, area: ratatui::layout::Rect, column: u16, row: u16) {
+    let vertical = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Min(3), Constraint::Length(1)])
+        .split(area);
+    let panes = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Percentage(35), Constraint::Percentage(65)])
+        .split(vertical[0]);
+    let files = panes[0];
+
+    let inside_files = column > files.x
+        && column < files.x.saturating_add(files.width).saturating_sub(1)
+        && row > files.y
+        && row < files.y.saturating_add(files.height).saturating_sub(1);
+    if inside_files {
+        app.select_display_row(usize::from(row - files.y - 1));
+    }
+}
+
 fn render_files(frame: &mut Frame, area: ratatui::layout::Rect, app: &App) {
     let mut items = vec![group_header("Changes")];
     items.extend(
@@ -91,8 +111,12 @@ fn render_diff_placeholder(frame: &mut Frame, area: ratatui::layout::Rect, app: 
             )
         },
     );
-    let pane =
-        Paragraph::new(text).block(Block::default().borders(Borders::ALL).title(" File Diff "));
+    let pane = Paragraph::new(text)
+        .block(Block::default().borders(Borders::ALL).title(" File Diff "))
+        .scroll((
+            app.diff_scroll.try_into().unwrap_or(u16::MAX),
+            app.diff_horizontal_scroll.try_into().unwrap_or(u16::MAX),
+        ));
     frame.render_widget(pane, area);
 }
 
@@ -101,9 +125,9 @@ fn render_status(frame: &mut Frame, area: ratatui::layout::Rect, app: &App) {
         .error
         .as_deref()
         .unwrap_or(if app.access_mode == AccessMode::ReadOnly {
-            " j/k: select  q: quit  read-only "
+            " j: previous  k: next  arrows: scroll diff  q: quit  read-only "
         } else {
-            " j/k: select  s: stage  u: unstage  a: stage all  q: quit "
+            " j: previous  k: next  arrows: scroll diff  s: stage  u: unstage  a: stage all  q: quit "
         });
     let style = if app.error.is_some() {
         Style::default().fg(Color::Red)

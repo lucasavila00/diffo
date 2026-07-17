@@ -20,6 +20,8 @@ pub struct App {
     pub should_quit: bool,
     pub error: Option<String>,
     pub access_mode: AccessMode,
+    pub diff_scroll: usize,
+    pub diff_horizontal_scroll: usize,
     cursor: usize,
 }
 
@@ -33,6 +35,8 @@ impl App {
             should_quit: false,
             error: None,
             access_mode,
+            diff_scroll: 0,
+            diff_horizontal_scroll: 0,
             cursor: 0,
         }
     }
@@ -44,6 +48,7 @@ impl App {
         }
         self.cursor = self.cursor.saturating_add(1).min(keys.len() - 1);
         self.selected = keys.get(self.cursor).cloned();
+        self.reset_diff_scroll();
         self.error = None;
     }
 
@@ -51,18 +56,55 @@ impl App {
         let keys = file_keys(&self.snapshot);
         self.cursor = self.cursor.saturating_sub(1);
         self.selected = keys.get(self.cursor).cloned();
+        self.reset_diff_scroll();
         self.error = None;
     }
 
     pub fn select_first(&mut self) {
         self.cursor = 0;
         self.selected = file_keys(&self.snapshot).into_iter().next();
+        self.reset_diff_scroll();
     }
 
     pub fn select_last(&mut self) {
         let keys = file_keys(&self.snapshot);
         self.cursor = keys.len().saturating_sub(1);
         self.selected = keys.get(self.cursor).cloned();
+        self.reset_diff_scroll();
+    }
+
+    pub fn select_display_row(&mut self, row: usize) {
+        let unstaged_count = unstaged_files(&self.snapshot).count();
+        let cursor = if (1..=unstaged_count).contains(&row) {
+            Some(row - 1)
+        } else if row >= unstaged_count + 2 {
+            Some(row - 2)
+        } else {
+            None
+        };
+        let keys = file_keys(&self.snapshot);
+        if let Some(cursor) = cursor.filter(|cursor| *cursor < keys.len()) {
+            self.cursor = cursor;
+            self.selected = keys.get(cursor).cloned();
+            self.reset_diff_scroll();
+            self.error = None;
+        }
+    }
+
+    pub fn scroll_diff_down(&mut self) {
+        self.diff_scroll = self.diff_scroll.saturating_add(1);
+    }
+
+    pub fn scroll_diff_up(&mut self) {
+        self.diff_scroll = self.diff_scroll.saturating_sub(1);
+    }
+
+    pub fn scroll_diff_right(&mut self) {
+        self.diff_horizontal_scroll = self.diff_horizontal_scroll.saturating_add(1);
+    }
+
+    pub fn scroll_diff_left(&mut self) {
+        self.diff_horizontal_scroll = self.diff_horizontal_scroll.saturating_sub(1);
     }
 
     #[must_use]
@@ -108,6 +150,7 @@ impl App {
             .and_then(|selected| keys.iter().position(|key| key == selected))
             .unwrap_or_else(|| old_cursor.min(keys.len().saturating_sub(1)));
         self.selected = keys.get(self.cursor).cloned();
+        self.reset_diff_scroll();
         self.error = None;
     }
 
@@ -128,6 +171,11 @@ impl App {
             ChangeArea::Unstaged => self.cursor + 1,
             ChangeArea::Staged => self.cursor + 2,
         })
+    }
+
+    fn reset_diff_scroll(&mut self) {
+        self.diff_scroll = 0;
+        self.diff_horizontal_scroll = 0;
     }
 }
 
@@ -251,5 +299,28 @@ mod tests {
 
         assert_eq!(app.stage_selected(), None);
         assert_eq!(app.stage_all(), None);
+    }
+
+    #[test]
+    fn selects_files_by_rendered_row_and_skips_headers() {
+        let mut app = App::new(snapshot(), AccessMode::ReadWrite);
+
+        app.select_display_row(2);
+        assert_eq!(
+            app.selected.as_ref().expect("selection").path,
+            PathBuf::from("new.txt")
+        );
+
+        app.select_display_row(3);
+        assert_eq!(
+            app.selected.as_ref().expect("selection").path,
+            PathBuf::from("new.txt")
+        );
+
+        app.select_display_row(4);
+        assert_eq!(
+            app.selected.as_ref().expect("selection").area,
+            ChangeArea::Staged
+        );
     }
 }

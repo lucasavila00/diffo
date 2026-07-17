@@ -1,17 +1,174 @@
 use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind};
 use diffo_app::{Message, Model};
+use diffo_core::AccessMode;
 use ratatui::layout::Rect;
 
 use crate::{file_at_position, file_pane_percent_at, is_file_pane_splitter_at};
 
-pub(crate) const READ_ONLY_HELP: &str =
-    " j: previous  k/l: next  arrows: scroll  space: view  e: pane  q: quit  read-only ";
-pub(crate) const READ_WRITE_HELP: &str = " j: previous  k/l: next  arrows: scroll  space: view  e: pane  s: stage  u: unstage  a: all  q: quit ";
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum Availability {
+    Always,
+    ReadWrite,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct KeyChord {
+    code: KeyCode,
+    required_modifiers: KeyModifiers,
+}
+
+impl KeyChord {
+    const fn plain(code: KeyCode) -> Self {
+        Self {
+            code,
+            required_modifiers: KeyModifiers::NONE,
+        }
+    }
+
+    const fn control(character: char) -> Self {
+        Self {
+            code: KeyCode::Char(character),
+            required_modifiers: KeyModifiers::CONTROL,
+        }
+    }
+
+    fn matches(self, code: KeyCode, modifiers: KeyModifiers) -> bool {
+        self.code == code && modifiers.contains(self.required_modifiers)
+    }
+}
+
+struct KeyBinding {
+    keys: &'static [KeyChord],
+    message: Message,
+    help: Option<&'static str>,
+    availability: Availability,
+}
+
+static KEY_BINDINGS: &[KeyBinding] = &[
+    KeyBinding {
+        keys: &[
+            KeyChord::plain(KeyCode::Char('q')),
+            KeyChord::plain(KeyCode::Esc),
+            KeyChord::control('c'),
+        ],
+        message: Message::Quit,
+        help: Some("q: quit"),
+        availability: Availability::Always,
+    },
+    KeyBinding {
+        keys: &[KeyChord::plain(KeyCode::Char('j'))],
+        message: Message::SelectPreviousFile,
+        help: Some("j: previous"),
+        availability: Availability::Always,
+    },
+    KeyBinding {
+        keys: &[
+            KeyChord::plain(KeyCode::Char('k')),
+            KeyChord::plain(KeyCode::Char('l')),
+        ],
+        message: Message::SelectNextFile,
+        help: Some("k/l: next"),
+        availability: Availability::Always,
+    },
+    KeyBinding {
+        keys: &[KeyChord::plain(KeyCode::Up)],
+        message: Message::ScrollDiffUp,
+        help: Some("arrows: scroll"),
+        availability: Availability::Always,
+    },
+    KeyBinding {
+        keys: &[KeyChord::plain(KeyCode::Down)],
+        message: Message::ScrollDiffDown,
+        help: None,
+        availability: Availability::Always,
+    },
+    KeyBinding {
+        keys: &[KeyChord::plain(KeyCode::Left)],
+        message: Message::ScrollDiffLeft,
+        help: None,
+        availability: Availability::Always,
+    },
+    KeyBinding {
+        keys: &[KeyChord::plain(KeyCode::Right)],
+        message: Message::ScrollDiffRight,
+        help: None,
+        availability: Availability::Always,
+    },
+    KeyBinding {
+        keys: &[KeyChord::plain(KeyCode::Char('r'))],
+        message: Message::ToggleDiffView,
+        help: Some("r: view"),
+        availability: Availability::Always,
+    },
+    KeyBinding {
+        keys: &[KeyChord::plain(KeyCode::Char('e'))],
+        message: Message::ToggleFilePane,
+        help: Some("e: pane"),
+        availability: Availability::Always,
+    },
+    KeyBinding {
+        keys: &[
+            KeyChord::plain(KeyCode::Home),
+            KeyChord::plain(KeyCode::Char('g')),
+        ],
+        message: Message::SelectFirstFile,
+        help: None,
+        availability: Availability::Always,
+    },
+    KeyBinding {
+        keys: &[
+            KeyChord::plain(KeyCode::End),
+            KeyChord::plain(KeyCode::Char('G')),
+        ],
+        message: Message::SelectLastFile,
+        help: None,
+        availability: Availability::Always,
+    },
+    KeyBinding {
+        keys: &[KeyChord::plain(KeyCode::Char('s'))],
+        message: Message::StageSelected,
+        help: Some("s: stage"),
+        availability: Availability::ReadWrite,
+    },
+    KeyBinding {
+        keys: &[KeyChord::plain(KeyCode::Char('u'))],
+        message: Message::UnstageSelected,
+        help: Some("u: unstage"),
+        availability: Availability::ReadWrite,
+    },
+    KeyBinding {
+        keys: &[KeyChord::plain(KeyCode::Char('a'))],
+        message: Message::StageAll,
+        help: Some("a: all"),
+        availability: Availability::ReadWrite,
+    },
+];
+
+pub(crate) fn help_text(access_mode: AccessMode) -> String {
+    let mut help = KEY_BINDINGS
+        .iter()
+        .filter(|binding| binding.is_available(access_mode))
+        .filter_map(|binding| binding.help)
+        .collect::<Vec<_>>()
+        .join("  ");
+    if access_mode == AccessMode::ReadOnly {
+        help.push_str("  read-only");
+    }
+    format!(" {help} ")
+}
+
+impl KeyBinding {
+    fn is_available(&self, access_mode: AccessMode) -> bool {
+        self.availability == Availability::Always || access_mode == AccessMode::ReadWrite
+    }
+}
 
 #[must_use]
 pub fn map_event(event: &Event, model: &Model, area: Rect) -> Option<Message> {
     match event {
-        Event::Key(key) if key.kind == KeyEventKind::Press => map_key(key.code, key.modifiers),
+        Event::Key(key) if key.kind == KeyEventKind::Press => {
+            map_key(key.code, key.modifiers, model.access_mode)
+        }
         Event::Mouse(mouse) if mouse.kind == MouseEventKind::Down(MouseButton::Left) => {
             if is_file_pane_splitter_at(model, area, mouse.column, mouse.row) {
                 Some(Message::BeginFilePaneResize)
@@ -37,25 +194,12 @@ pub fn map_event(event: &Event, model: &Model, area: Rect) -> Option<Message> {
     }
 }
 
-fn map_key(code: KeyCode, modifiers: KeyModifiers) -> Option<Message> {
-    match code {
-        KeyCode::Char('q') | KeyCode::Esc => Some(Message::Quit),
-        KeyCode::Char('c') if modifiers.contains(KeyModifiers::CONTROL) => Some(Message::Quit),
-        KeyCode::Char('j') => Some(Message::SelectPreviousFile),
-        KeyCode::Char('k' | 'l') => Some(Message::SelectNextFile),
-        KeyCode::Up => Some(Message::ScrollDiffUp),
-        KeyCode::Down => Some(Message::ScrollDiffDown),
-        KeyCode::Left => Some(Message::ScrollDiffLeft),
-        KeyCode::Right => Some(Message::ScrollDiffRight),
-        KeyCode::Char(' ') => Some(Message::ToggleDiffView),
-        KeyCode::Char('e') => Some(Message::ToggleFilePane),
-        KeyCode::Home | KeyCode::Char('g') => Some(Message::SelectFirstFile),
-        KeyCode::End | KeyCode::Char('G') => Some(Message::SelectLastFile),
-        KeyCode::Char('s') => Some(Message::StageSelected),
-        KeyCode::Char('u') => Some(Message::UnstageSelected),
-        KeyCode::Char('a') => Some(Message::StageAll),
-        _ => None,
-    }
+fn map_key(code: KeyCode, modifiers: KeyModifiers, access_mode: AccessMode) -> Option<Message> {
+    KEY_BINDINGS
+        .iter()
+        .filter(|binding| binding.is_available(access_mode))
+        .find(|binding| binding.keys.iter().any(|key| key.matches(code, modifiers)))
+        .map(|binding| binding.message.clone())
 }
 
 #[cfg(test)]
@@ -70,7 +214,7 @@ mod tests {
     use diffo_core::{AccessMode, ChangeKind, FileState, RepositorySnapshot};
     use ratatui::layout::Rect;
 
-    use super::map_event;
+    use super::{KEY_BINDINGS, help_text, map_event, map_key};
 
     fn model() -> Model {
         Model::new(
@@ -100,7 +244,7 @@ mod tests {
             (KeyCode::Down, Message::ScrollDiffDown),
             (KeyCode::Left, Message::ScrollDiffLeft),
             (KeyCode::Right, Message::ScrollDiffRight),
-            (KeyCode::Char(' '), Message::ToggleDiffView),
+            (KeyCode::Char('r'), Message::ToggleDiffView),
             (KeyCode::Char('e'), Message::ToggleFilePane),
             (KeyCode::Home, Message::SelectFirstFile),
             (KeyCode::End, Message::SelectLastFile),
@@ -117,6 +261,61 @@ mod tests {
                     Rect::default(),
                 ),
                 Some(expected)
+            );
+        }
+        assert_eq!(
+            map_event(
+                &Event::Key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::NONE)),
+                &model,
+                Rect::default(),
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn bindings_are_unique_and_generate_help() {
+        for (index, binding) in KEY_BINDINGS.iter().enumerate() {
+            for key in binding.keys {
+                assert_eq!(
+                    map_key(key.code, key.required_modifiers, AccessMode::ReadWrite),
+                    Some(binding.message.clone())
+                );
+            }
+            for other in &KEY_BINDINGS[index + 1..] {
+                assert!(
+                    !binding.keys.iter().any(|key| other.keys.contains(key)),
+                    "key chord is assigned to more than one action"
+                );
+            }
+        }
+
+        let read_write = help_text(AccessMode::ReadWrite);
+        assert!(read_write.contains("r: view"));
+        assert!(read_write.contains("e: pane"));
+        assert!(read_write.contains("s: stage"));
+        assert!(!read_write.contains("space"));
+
+        let read_only = help_text(AccessMode::ReadOnly);
+        assert!(read_only.contains("r: view"));
+        assert!(read_only.contains("e: pane"));
+        assert!(!read_only.contains("s: stage"));
+        assert!(read_only.contains("read-only"));
+    }
+
+    #[test]
+    fn read_only_mode_does_not_dispatch_mutations() {
+        let mut model = model();
+        model.access_mode = AccessMode::ReadOnly;
+
+        for key in ['s', 'u', 'a'] {
+            assert_eq!(
+                map_event(
+                    &Event::Key(KeyEvent::new(KeyCode::Char(key), KeyModifiers::NONE)),
+                    &model,
+                    Rect::default(),
+                ),
+                None
             );
         }
     }

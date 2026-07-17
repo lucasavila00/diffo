@@ -574,10 +574,8 @@ fn render_status(frame: &mut Frame, area: ratatui::layout::Rect, model: &Model) 
             " Resizing file pane: {}% · release mouse to finish ",
             model.file_pane_percent
         )
-    } else if model.access_mode == AccessMode::ReadOnly {
-        input::READ_ONLY_HELP.to_owned()
     } else {
-        input::READ_WRITE_HELP.to_owned()
+        input::help_text(model.access_mode)
     };
     let style = if model.error.is_some() {
         Style::default().fg(Color::Red)

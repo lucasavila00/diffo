@@ -5,7 +5,7 @@ use diffo_core::{AccessMode, ChangeKind, FileState, RepositorySnapshot};
 use diffo_diff::{
     RenderLine, RowKind, SideBySideRow, inline_rows, parse_unified_patch, side_by_side_rows,
 };
-use diffo_highlight::{HighlightedDiff, HighlightedLine, StyledSpan, SyntaxHighlighter};
+use diffo_highlight::{HighlightedDiff, HighlightedLine, Rgb, StyledSpan, SyntaxHighlighter};
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout},
@@ -325,23 +325,84 @@ fn code_spans(row: &RenderLine, highlighted: &HighlightedDiff) -> Vec<Span<'stat
     let background = diff_background(row.kind);
     highlighted_line.map_or_else(
         || vec![Span::styled(row.text.clone(), background)],
-        |line| syntax_spans(line, background),
+        |line| syntax_spans(line, background, row.kind),
     )
 }
 
-fn syntax_spans(line: &HighlightedLine, background: Style) -> Vec<Span<'static>> {
+fn syntax_spans(
+    line: &HighlightedLine,
+    background: Style,
+    row_kind: RowKind,
+) -> Vec<Span<'static>> {
     line.spans
         .iter()
-        .map(|span| Span::styled(span.text.clone(), syntax_style(span).patch(background)))
+        .map(|span| {
+            Span::styled(
+                span.text.clone(),
+                syntax_style(span, row_kind).patch(background),
+            )
+        })
         .collect()
 }
 
-fn syntax_style(span: &StyledSpan) -> Style {
+fn syntax_style(span: &StyledSpan, row_kind: RowKind) -> Style {
+    let foreground = contrasting_foreground(span.foreground, row_kind);
     Style::default().fg(Color::Rgb(
-        span.foreground.red,
-        span.foreground.green,
-        span.foreground.blue,
+        foreground.red,
+        foreground.green,
+        foreground.blue,
     ))
+}
+
+fn contrasting_foreground(foreground: Rgb, row_kind: RowKind) -> Rgb {
+    let Some(background) = diff_background_rgb(row_kind) else {
+        return foreground;
+    };
+    if contrast_ratio(foreground, background) >= 4.5 {
+        return foreground;
+    }
+    for step in 1..=10 {
+        let candidate = Rgb {
+            red: lighten_channel(foreground.red, step),
+            green: lighten_channel(foreground.green, step),
+            blue: lighten_channel(foreground.blue, step),
+        };
+        if contrast_ratio(candidate, background) >= 4.5 {
+            return candidate;
+        }
+    }
+    Rgb {
+        red: u8::MAX,
+        green: u8::MAX,
+        blue: u8::MAX,
+    }
+}
+
+fn lighten_channel(channel: u8, step: u16) -> u8 {
+    let channel = u16::from(channel);
+    let lightened = channel + (u16::from(u8::MAX) - channel) * step / 10;
+    u8::try_from(lightened).expect("lightened color channel remains within u8")
+}
+
+fn contrast_ratio(foreground: Rgb, background: Rgb) -> f64 {
+    let foreground = relative_luminance(foreground);
+    let background = relative_luminance(background);
+    (foreground.max(background) + 0.05) / (foreground.min(background) + 0.05)
+}
+
+fn relative_luminance(color: Rgb) -> f64 {
+    0.2126 * linear_channel(color.red)
+        + 0.7152 * linear_channel(color.green)
+        + 0.0722 * linear_channel(color.blue)
+}
+
+fn linear_channel(channel: u8) -> f64 {
+    let channel = f64::from(channel) / 255.0;
+    if channel <= 0.04045 {
+        channel / 12.92
+    } else {
+        ((channel + 0.055) / 1.055).powf(2.4)
+    }
 }
 
 fn clip_and_pad(
@@ -394,6 +455,22 @@ fn diff_background(kind: RowKind) -> Style {
     }
 }
 
+fn diff_background_rgb(kind: RowKind) -> Option<Rgb> {
+    match kind {
+        RowKind::Removed => Some(Rgb {
+            red: 95,
+            green: 0,
+            blue: 0,
+        }),
+        RowKind::Added => Some(Rgb {
+            red: 0,
+            green: 95,
+            blue: 0,
+        }),
+        RowKind::Header | RowKind::Context | RowKind::Changed | RowKind::Meta => None,
+    }
+}
+
 fn row_style(kind: RowKind) -> Style {
     match kind {
         RowKind::Header => Style::default().fg(Color::Cyan),
@@ -438,9 +515,11 @@ mod rendering_tests {
 
     use diffo_app::{DiffViewMode, Model};
     use diffo_core::{AccessMode, ChangeKind, FileDiff, FileState, RepositorySnapshot};
+    use diffo_diff::RowKind;
+    use diffo_highlight::Rgb;
     use ratatui::style::Color;
 
-    use super::Renderer;
+    use super::{Renderer, contrast_ratio, contrasting_foreground, diff_background_rgb};
 
     fn model() -> Model {
         Model::new(
@@ -516,5 +595,24 @@ mod rendering_tests {
             .push_str("\\ No newline at end of file\n");
         renderer.diff_lines(&model, 80);
         assert_eq!(renderer.highlight_computations, 2);
+    }
+
+    #[test]
+    fn lifts_low_contrast_theme_colors_on_diff_backgrounds() {
+        let monokai_comment = Rgb {
+            red: 117,
+            green: 113,
+            blue: 94,
+        };
+        for kind in [RowKind::Removed, RowKind::Added] {
+            let adjusted = contrasting_foreground(monokai_comment, kind);
+            let background = diff_background_rgb(kind).expect("changed row has a background");
+
+            assert!(contrast_ratio(adjusted, background) >= 4.5);
+        }
+        assert_eq!(
+            contrasting_foreground(monokai_comment, RowKind::Context),
+            monokai_comment
+        );
     }
 }

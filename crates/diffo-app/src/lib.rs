@@ -95,9 +95,9 @@ mod tests {
 
         assert_eq!(
             update(&mut model, Message::StageSelected),
-            Some(Effect::Repository(RepositoryAction::Stage(
-                PathBuf::from("file.txt")
-            )))
+            Some(Effect::Repository(RepositoryAction::Stage(PathBuf::from(
+                "file.txt"
+            ))))
         );
     }
 

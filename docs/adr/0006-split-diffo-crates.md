@@ -11,13 +11,15 @@ change for different reasons.
 
 ```text
 diffo-core   Snapshot types and RepositorySource trait
+diffo-app    Pure Model, Message, update, and Effect state machine
 diffo-git    Real Git source
 diffo-tui    App state and terminal UI
 diffo        Binary, source choice, startup, shutdown
 ```
 
-`diffo-core` has no Git or TUI dependencies. `diffo-git` and `diffo-tui` depend on
-`diffo-core`. The `diffo` binary wires them together.
+`diffo-core` has no Git or TUI dependencies. `diffo-app` depends only on
+`diffo-core`. `diffo-git` and `diffo-tui` stay outside the pure state layer. The
+`diffo` binary runs effects and wires the crates together.
 
 Keep fixture loading in `diffo-core` for now. Move it only if it grows.
 
@@ -27,6 +29,7 @@ Keep fixture loading in `diffo-core` for now. Move it only if it grows.
 - Crates do not depend on the `diffo` binary.
 - The UI only reads snapshots.
 - Git code does not know about terminal code.
+- App state does not know about Git, Crossterm, Ratatui, or screen coordinates.
 - Keep one workspace version for all Diffo crates.
 
 ## Move order

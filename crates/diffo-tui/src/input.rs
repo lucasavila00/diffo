@@ -1,6 +1,4 @@
-use crossterm::event::{
-    Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind,
-};
+use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind};
 use diffo_app::{Message, Model};
 use ratatui::layout::Rect;
 
@@ -106,10 +104,7 @@ mod tests {
         let model = model();
         assert_eq!(
             map_event(
-                &Event::Key(KeyEvent::new(
-                    KeyCode::Char('c'),
-                    KeyModifiers::CONTROL,
-                )),
+                &Event::Key(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL,)),
                 &model,
                 Rect::default(),
             ),
@@ -143,10 +138,7 @@ mod tests {
                 kind,
                 state: KeyEventState::NONE,
             };
-            assert_eq!(
-                map_event(&Event::Key(key), &model, Rect::default()),
-                None
-            );
+            assert_eq!(map_event(&Event::Key(key), &model, Rect::default()), None);
         }
         assert_eq!(
             map_event(

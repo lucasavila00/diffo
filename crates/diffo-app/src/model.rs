@@ -292,5 +292,4 @@ mod tests {
         assert_eq!(app.stage_selected(), None);
         assert_eq!(app.stage_all(), None);
     }
-
 }

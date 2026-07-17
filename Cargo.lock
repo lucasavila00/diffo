@@ -190,12 +190,20 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "crossterm 0.29.0",
+ "diffo-app",
  "diffo-core",
  "diffo-git",
  "diffo-tui",
  "ratatui",
  "ron 0.10.1",
  "signal-hook",
+]
+
+[[package]]
+name = "diffo-app"
+version = "0.1.0"
+dependencies = [
+ "diffo-core",
 ]
 
 [[package]]
@@ -232,6 +240,7 @@ name = "diffo-tui"
 version = "0.1.0"
 dependencies = [
  "crossterm 0.29.0",
+ "diffo-app",
  "diffo-core",
  "ratatui",
 ]

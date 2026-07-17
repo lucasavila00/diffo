@@ -34,12 +34,7 @@ fn main() -> Result<()> {
     let mut terminal = ratatui::init();
     execute!(terminal.backend_mut(), EnableMouseCapture)?;
 
-    let result = run(
-        &mut terminal,
-        &mut model,
-        &shutdown,
-        repository.as_ref(),
-    );
+    let result = run(&mut terminal, &mut model, &shutdown, repository.as_ref());
     let mouse_result = execute!(terminal.backend_mut(), DisableMouseCapture)
         .context("failed to disable mouse capture");
     ratatui::restore();

@@ -133,10 +133,7 @@ fn render_diff_placeholder(frame: &mut Frame, area: ratatui::layout::Rect, model
         .block(Block::default().borders(Borders::ALL).title(" File Diff "))
         .scroll((
             model.diff_scroll.try_into().unwrap_or(u16::MAX),
-            model
-                .diff_horizontal_scroll
-                .try_into()
-                .unwrap_or(u16::MAX),
+            model.diff_horizontal_scroll.try_into().unwrap_or(u16::MAX),
         ));
     frame.render_widget(pane, area);
 }

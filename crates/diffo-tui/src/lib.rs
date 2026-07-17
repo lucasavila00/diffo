@@ -11,7 +11,7 @@ use ratatui::{
     layout::{Constraint, Direction, Layout},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, List, ListItem, ListState, Paragraph},
+    widgets::{Block, Borders, HighlightSpacing, List, ListItem, ListState, Paragraph},
 };
 
 mod input;
@@ -53,10 +53,7 @@ impl Renderer {
             .direction(Direction::Vertical)
             .constraints([Constraint::Min(3), Constraint::Length(1)])
             .split(frame.area());
-        let panes = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([Constraint::Percentage(35), Constraint::Percentage(65)])
-            .split(vertical[0]);
+        let panes = horizontal_panes(vertical[0], model.file_pane_percent);
 
         render_files(frame, panes[0], model);
         self.render_diff(frame, panes[1], model);
@@ -167,56 +164,139 @@ pub(crate) fn file_at_position(
         .direction(Direction::Vertical)
         .constraints([Constraint::Min(3), Constraint::Length(1)])
         .split(area);
-    let panes = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(35), Constraint::Percentage(65)])
-        .split(vertical[0]);
-    let files = panes[0];
-    let inside_files = column > files.x
-        && column < files.x.saturating_add(files.width).saturating_sub(1)
-        && row > files.y
-        && row < files.y.saturating_add(files.height).saturating_sub(1);
-    if !inside_files {
-        return None;
-    }
-
-    file_at_display_row(model, usize::from(row - files.y - 1))
+    let panes = horizontal_panes(vertical[0], model.file_pane_percent);
+    let groups = file_group_areas(panes[0]);
+    file_in_group_at(
+        staged_files(&model.snapshot),
+        ChangeArea::Staged,
+        groups[0],
+        column,
+        row,
+    )
+    .or_else(|| {
+        file_in_group_at(
+            unstaged_files(&model.snapshot),
+            ChangeArea::Unstaged,
+            groups[1],
+            column,
+            row,
+        )
+    })
 }
 
-fn file_at_display_row(model: &Model, row: usize) -> Option<FileKey> {
-    let unstaged = unstaged_files(&model.snapshot).collect::<Vec<_>>();
-    if (1..=unstaged.len()).contains(&row) {
-        return Some(FileKey {
-            path: unstaged[row - 1].path.clone(),
-            area: ChangeArea::Unstaged,
-        });
+pub(crate) fn is_file_pane_splitter_at(
+    model: &Model,
+    area: ratatui::layout::Rect,
+    column: u16,
+    row: u16,
+) -> bool {
+    let main = main_area(area);
+    if row < main.y || row >= main.y.saturating_add(main.height) {
+        return false;
     }
-    let staged_index = row.checked_sub(unstaged.len() + 2)?;
-    staged_files(&model.snapshot)
-        .nth(staged_index)
+    let panes = horizontal_panes(main, model.file_pane_percent);
+    let splitter = panes[1].x;
+    column.abs_diff(splitter) <= 1
+}
+
+pub(crate) fn file_pane_percent_at(area: ratatui::layout::Rect, column: u16) -> u16 {
+    let main = main_area(area);
+    if main.width == 0 {
+        return 0;
+    }
+    let offset = column.saturating_sub(main.x).min(main.width);
+    u16::try_from(u32::from(offset) * 100 / u32::from(main.width)).unwrap_or(100)
+}
+
+fn main_area(area: ratatui::layout::Rect) -> ratatui::layout::Rect {
+    Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Min(3), Constraint::Length(1)])
+        .split(area)[0]
+}
+
+fn horizontal_panes(
+    area: ratatui::layout::Rect,
+    file_pane_percent: u16,
+) -> std::rc::Rc<[ratatui::layout::Rect]> {
+    Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Percentage(file_pane_percent.min(100)),
+            Constraint::Percentage(100_u16.saturating_sub(file_pane_percent)),
+        ])
+        .split(area)
+}
+
+fn file_in_group_at<'a>(
+    mut files: impl Iterator<Item = &'a FileState>,
+    change_area: ChangeArea,
+    area: ratatui::layout::Rect,
+    column: u16,
+    row: u16,
+) -> Option<FileKey> {
+    let inside = column > area.x
+        && column < area.x.saturating_add(area.width).saturating_sub(1)
+        && row > area.y
+        && row < area.y.saturating_add(area.height).saturating_sub(1);
+    if !inside {
+        return None;
+    }
+    files
+        .nth(usize::from(row - area.y - 1))
         .map(|file| FileKey {
             path: file.path.clone(),
-            area: ChangeArea::Staged,
+            area: change_area,
         })
 }
 
 fn render_files(frame: &mut Frame, area: ratatui::layout::Rect, model: &Model) {
-    let mut items = vec![group_header("Changes")];
-    items.extend(
-        unstaged_files(&model.snapshot)
-            .map(|file| file_item(file, model.is_selected(&file.path, ChangeArea::Unstaged))),
+    let groups = file_group_areas(area);
+    render_file_group(
+        frame,
+        groups[0],
+        " Staged Changes ",
+        staged_files(&model.snapshot),
+        ChangeArea::Staged,
+        model,
     );
-    items.push(group_header("Staged Changes"));
-    items.extend(
-        staged_files(&model.snapshot)
-            .map(|file| file_item(file, model.is_selected(&file.path, ChangeArea::Staged))),
-    );
-
-    let title = if model.access_mode == AccessMode::ReadOnly {
-        " Files · read-only "
+    let changes_title = if model.access_mode == AccessMode::ReadOnly {
+        " Changes · read-only "
     } else {
-        " Files · [a] Stage All "
+        " Changes · [a] Stage All "
     };
+    render_file_group(
+        frame,
+        groups[1],
+        changes_title,
+        unstaged_files(&model.snapshot),
+        ChangeArea::Unstaged,
+        model,
+    );
+}
+
+fn file_group_areas(area: ratatui::layout::Rect) -> std::rc::Rc<[ratatui::layout::Rect]> {
+    Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+        .split(area)
+}
+
+fn render_file_group<'a>(
+    frame: &mut Frame,
+    area: ratatui::layout::Rect,
+    title: &str,
+    files: impl Iterator<Item = &'a FileState>,
+    change_area: ChangeArea,
+    model: &Model,
+) {
+    let files = files.collect::<Vec<_>>();
+    let selected = files
+        .iter()
+        .position(|file| model.is_selected(&file.path, change_area));
+    let items = files
+        .into_iter()
+        .map(|file| file_item(file, model.is_selected(&file.path, change_area)));
     let list = List::new(items)
         .block(Block::default().borders(Borders::ALL).title(title))
         .highlight_style(
@@ -224,16 +304,10 @@ fn render_files(frame: &mut Frame, area: ratatui::layout::Rect, model: &Model) {
                 .bg(Color::DarkGray)
                 .add_modifier(Modifier::BOLD),
         )
-        .highlight_symbol("› ");
-    let mut state = ListState::default().with_selected(model.selected_row());
+        .highlight_symbol("› ")
+        .highlight_spacing(HighlightSpacing::Always);
+    let mut state = ListState::default().with_selected(selected);
     frame.render_stateful_widget(list, area, &mut state);
-}
-
-fn group_header(name: &str) -> ListItem<'_> {
-    ListItem::new(Line::styled(
-        name,
-        Style::default().add_modifier(Modifier::BOLD),
-    ))
 }
 
 fn file_item(file: &FileState, selected: bool) -> ListItem<'static> {

@@ -40,6 +40,9 @@ pub struct Model {
     pub diff_scroll: usize,
     pub diff_horizontal_scroll: usize,
     pub diff_view_mode: DiffViewMode,
+    pub file_pane_percent: u16,
+    pub resizing_file_pane: bool,
+    expanded_file_pane_percent: u16,
     cursor: usize,
 }
 
@@ -56,6 +59,9 @@ impl Model {
             diff_scroll: 0,
             diff_horizontal_scroll: 0,
             diff_view_mode: DiffViewMode::default(),
+            file_pane_percent: 35,
+            resizing_file_pane: false,
+            expanded_file_pane_percent: 35,
             cursor: 0,
         }
     }
@@ -123,6 +129,33 @@ impl Model {
         self.reset_diff_scroll();
     }
 
+    pub fn toggle_file_pane(&mut self) {
+        if self.file_pane_percent == 0 {
+            self.file_pane_percent = self.expanded_file_pane_percent;
+        } else {
+            self.expanded_file_pane_percent = self.file_pane_percent;
+            self.file_pane_percent = 0;
+        }
+        self.resizing_file_pane = false;
+    }
+
+    pub fn begin_file_pane_resize(&mut self) {
+        self.resizing_file_pane = true;
+    }
+
+    pub fn resize_file_pane(&mut self, percent: u16) {
+        if self.resizing_file_pane {
+            self.file_pane_percent = percent.min(80);
+            if self.file_pane_percent > 0 {
+                self.expanded_file_pane_percent = self.file_pane_percent;
+            }
+        }
+    }
+
+    pub fn end_file_pane_resize(&mut self) {
+        self.resizing_file_pane = false;
+    }
+
     #[must_use]
     pub fn stage_selected(&self) -> Option<RepositoryAction> {
         if self.access_mode == AccessMode::ReadOnly {
@@ -181,14 +214,6 @@ impl Model {
             .is_some_and(|key| key.path == path && key.area == area)
     }
 
-    #[must_use]
-    pub fn selected_row(&self) -> Option<usize> {
-        self.selected.as_ref().map(|selected| match selected.area {
-            ChangeArea::Unstaged => self.cursor + 1,
-            ChangeArea::Staged => self.cursor + 2,
-        })
-    }
-
     fn reset_diff_scroll(&mut self) {
         self.diff_scroll = 0;
         self.diff_horizontal_scroll = 0;
@@ -196,14 +221,14 @@ impl Model {
 }
 
 fn file_keys(snapshot: &RepositorySnapshot) -> Vec<FileKey> {
-    unstaged_files(snapshot)
+    staged_files(snapshot)
         .map(|file| FileKey {
             path: file.path.clone(),
-            area: ChangeArea::Unstaged,
-        })
-        .chain(staged_files(snapshot).map(|file| FileKey {
-            path: file.path.clone(),
             area: ChangeArea::Staged,
+        })
+        .chain(unstaged_files(snapshot).map(|file| FileKey {
+            path: file.path.clone(),
+            area: ChangeArea::Unstaged,
         }))
         .collect()
 }
@@ -267,38 +292,46 @@ mod tests {
             PathBuf::from("both.txt")
         );
 
+        assert_eq!(
+            app.selected.as_ref().expect("selection").area,
+            ChangeArea::Staged
+        );
+        app.select_next();
+        assert_eq!(
+            app.selected.as_ref().expect("selection").path,
+            PathBuf::from("both.txt")
+        );
+        assert_eq!(
+            app.selected.as_ref().expect("selection").area,
+            ChangeArea::Unstaged
+        );
         app.select_next();
         assert_eq!(
             app.selected.as_ref().expect("selection").path,
             PathBuf::from("new.txt")
-        );
-        app.select_next();
-        assert_eq!(
-            app.selected.as_ref().expect("selection").area,
-            ChangeArea::Staged
         );
     }
 
     #[test]
     fn creates_actions_for_the_selected_group() {
         let mut app = Model::new(snapshot(), AccessMode::ReadWrite);
-        assert_eq!(
-            app.stage_selected(),
-            Some(RepositoryAction::Stage(PathBuf::from("both.txt")))
-        );
-        assert_eq!(app.unstage_selected(), None);
-
-        app.select_last();
+        assert_eq!(app.stage_selected(), None);
         assert_eq!(
             app.unstage_selected(),
             Some(RepositoryAction::Unstage(PathBuf::from("both.txt")))
+        );
+
+        app.select_next();
+        assert_eq!(app.unstage_selected(), None);
+        assert_eq!(
+            app.stage_selected(),
+            Some(RepositoryAction::Stage(PathBuf::from("both.txt")))
         );
     }
 
     #[test]
     fn keeps_selection_after_refresh() {
         let mut app = Model::new(snapshot(), AccessMode::ReadWrite);
-        app.select_last();
         let selected = FileKey {
             path: PathBuf::from("both.txt"),
             area: ChangeArea::Staged,

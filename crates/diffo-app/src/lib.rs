@@ -17,6 +17,10 @@ pub enum Message {
     ScrollDiffLeft,
     ScrollDiffRight,
     ToggleDiffView,
+    ToggleFilePane,
+    BeginFilePaneResize,
+    ResizeFilePane(u16),
+    EndFilePaneResize,
     StageSelected,
     UnstageSelected,
     StageAll,
@@ -42,6 +46,10 @@ pub fn update(model: &mut Model, message: Message) -> Option<Effect> {
         Message::ScrollDiffLeft => model.scroll_diff_left(),
         Message::ScrollDiffRight => model.scroll_diff_right(),
         Message::ToggleDiffView => model.toggle_diff_view(),
+        Message::ToggleFilePane => model.toggle_file_pane(),
+        Message::BeginFilePaneResize => model.begin_file_pane_resize(),
+        Message::ResizeFilePane(percent) => model.resize_file_pane(percent),
+        Message::EndFilePaneResize => model.end_file_pane_resize(),
         Message::StageSelected => return model.stage_selected().map(Effect::Repository),
         Message::UnstageSelected => return model.unstage_selected().map(Effect::Repository),
         Message::StageAll => return model.stage_all().map(Effect::Repository),
@@ -92,6 +100,26 @@ mod tests {
     }
 
     #[test]
+    fn resizes_and_toggles_the_file_pane() {
+        let mut model = model(AccessMode::ReadWrite);
+
+        update(&mut model, Message::BeginFilePaneResize);
+        update(&mut model, Message::ResizeFilePane(64));
+        update(&mut model, Message::EndFilePaneResize);
+        assert_eq!(model.file_pane_percent, 64);
+        assert!(!model.resizing_file_pane);
+
+        update(&mut model, Message::ToggleFilePane);
+        assert_eq!(model.file_pane_percent, 0);
+        update(&mut model, Message::ToggleFilePane);
+        assert_eq!(model.file_pane_percent, 64);
+
+        update(&mut model, Message::BeginFilePaneResize);
+        update(&mut model, Message::ResizeFilePane(100));
+        assert_eq!(model.file_pane_percent, 80);
+    }
+
+    #[test]
     fn toggles_diff_view_mode() {
         let mut model = model(AccessMode::ReadWrite);
         assert_eq!(model.diff_view_mode, DiffViewMode::Inline);
@@ -110,6 +138,7 @@ mod tests {
     #[test]
     fn returns_repository_effect() {
         let mut model = model(AccessMode::ReadWrite);
+        update(&mut model, Message::SelectNextFile);
 
         assert_eq!(
             update(&mut model, Message::StageSelected),

@@ -2,18 +2,36 @@ use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, 
 use diffo_app::{Message, Model};
 use ratatui::layout::Rect;
 
-use crate::file_at_position;
+use crate::{file_at_position, file_pane_percent_at, is_file_pane_splitter_at};
 
 pub(crate) const READ_ONLY_HELP: &str =
-    " j: previous  k/l: next  arrows: scroll diff  space: view  q: quit  read-only ";
-pub(crate) const READ_WRITE_HELP: &str = " j: previous  k/l: next  arrows: scroll diff  space: view  s: stage  u: unstage  a: stage all  q: quit ";
+    " j: previous  k/l: next  arrows: scroll  space: view  e: pane  q: quit  read-only ";
+pub(crate) const READ_WRITE_HELP: &str = " j: previous  k/l: next  arrows: scroll  space: view  e: pane  s: stage  u: unstage  a: all  q: quit ";
 
 #[must_use]
 pub fn map_event(event: &Event, model: &Model, area: Rect) -> Option<Message> {
     match event {
         Event::Key(key) if key.kind == KeyEventKind::Press => map_key(key.code, key.modifiers),
         Event::Mouse(mouse) if mouse.kind == MouseEventKind::Down(MouseButton::Left) => {
-            file_at_position(model, area, mouse.column, mouse.row).map(Message::SelectFile)
+            if is_file_pane_splitter_at(model, area, mouse.column, mouse.row) {
+                Some(Message::BeginFilePaneResize)
+            } else {
+                file_at_position(model, area, mouse.column, mouse.row).map(Message::SelectFile)
+            }
+        }
+        Event::Mouse(mouse)
+            if mouse.kind == MouseEventKind::Drag(MouseButton::Left)
+                && model.resizing_file_pane =>
+        {
+            Some(Message::ResizeFilePane(file_pane_percent_at(
+                area,
+                mouse.column,
+            )))
+        }
+        Event::Mouse(mouse)
+            if mouse.kind == MouseEventKind::Up(MouseButton::Left) && model.resizing_file_pane =>
+        {
+            Some(Message::EndFilePaneResize)
         }
         _ => None,
     }
@@ -30,6 +48,7 @@ fn map_key(code: KeyCode, modifiers: KeyModifiers) -> Option<Message> {
         KeyCode::Left => Some(Message::ScrollDiffLeft),
         KeyCode::Right => Some(Message::ScrollDiffRight),
         KeyCode::Char(' ') => Some(Message::ToggleDiffView),
+        KeyCode::Char('e') => Some(Message::ToggleFilePane),
         KeyCode::Home | KeyCode::Char('g') => Some(Message::SelectFirstFile),
         KeyCode::End | KeyCode::Char('G') => Some(Message::SelectLastFile),
         KeyCode::Char('s') => Some(Message::StageSelected),
@@ -82,6 +101,7 @@ mod tests {
             (KeyCode::Left, Message::ScrollDiffLeft),
             (KeyCode::Right, Message::ScrollDiffRight),
             (KeyCode::Char(' '), Message::ToggleDiffView),
+            (KeyCode::Char('e'), Message::ToggleFilePane),
             (KeyCode::Home, Message::SelectFirstFile),
             (KeyCode::End, Message::SelectLastFile),
             (KeyCode::Char('s'), Message::StageSelected),
@@ -117,7 +137,7 @@ mod tests {
                 &Event::Mouse(MouseEvent {
                     kind: MouseEventKind::Down(MouseButton::Left),
                     column: 4,
-                    row: 2,
+                    row: 16,
                     modifiers: KeyModifiers::NONE,
                 }),
                 &model,
@@ -162,6 +182,44 @@ mod tests {
                 Rect::new(0, 0, 100, 30),
             ),
             None
+        );
+    }
+
+    #[test]
+    fn maps_file_pane_dragging() {
+        let mut model = model();
+        let area = Rect::new(0, 0, 100, 30);
+        let down = Event::Mouse(MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: 35,
+            row: 5,
+            modifiers: KeyModifiers::NONE,
+        });
+        assert_eq!(
+            map_event(&down, &model, area),
+            Some(Message::BeginFilePaneResize)
+        );
+
+        model.resizing_file_pane = true;
+        let drag = Event::Mouse(MouseEvent {
+            kind: MouseEventKind::Drag(MouseButton::Left),
+            column: 60,
+            row: 5,
+            modifiers: KeyModifiers::NONE,
+        });
+        assert_eq!(
+            map_event(&drag, &model, area),
+            Some(Message::ResizeFilePane(60))
+        );
+        let up = Event::Mouse(MouseEvent {
+            kind: MouseEventKind::Up(MouseButton::Left),
+            column: 60,
+            row: 5,
+            modifiers: KeyModifiers::NONE,
+        });
+        assert_eq!(
+            map_event(&up, &model, area),
+            Some(Message::EndFilePaneResize)
         );
     }
 }

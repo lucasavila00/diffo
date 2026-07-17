@@ -56,6 +56,15 @@ static KEY_BINDINGS: &[KeyBinding] = &[
     },
     KeyBinding {
         keys: &[
+            KeyChord::plain(KeyCode::Char('2')),
+            KeyChord::plain(KeyCode::F(2)),
+        ],
+        message: Message::OpenHelp,
+        help: Some("2/f2: help"),
+        availability: Availability::Always,
+    },
+    KeyBinding {
+        keys: &[
             KeyChord::plain(KeyCode::Char('q')),
             KeyChord::plain(KeyCode::Esc),
             KeyChord::control('c'),
@@ -187,6 +196,9 @@ impl KeyBinding {
 
 #[must_use]
 pub fn map_event(event: &Event, model: &Model, area: Rect) -> Option<Message> {
+    if model.help_open {
+        return map_help_event(event);
+    }
     if model.command_palette.is_some() {
         return map_command_palette_event(event);
     }
@@ -228,6 +240,20 @@ pub fn map_event(event: &Event, model: &Model, area: Rect) -> Option<Message> {
         Event::Mouse(mouse) if mouse.kind == MouseEventKind::ScrollDown => {
             Some(Message::ScrollDiffDown)
         }
+        _ => None,
+    }
+}
+
+fn map_help_event(event: &Event) -> Option<Message> {
+    let Event::Key(key) = event else {
+        return None;
+    };
+    if key.kind != KeyEventKind::Press {
+        return None;
+    }
+    match key.code {
+        KeyCode::Esc => Some(Message::CloseHelp),
+        KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => Some(Message::Quit),
         _ => None,
     }
 }
@@ -300,6 +326,8 @@ mod tests {
             (KeyCode::Char('q'), Message::Quit),
             (KeyCode::Char('1'), Message::OpenCommandPalette),
             (KeyCode::F(1), Message::OpenCommandPalette),
+            (KeyCode::Char('2'), Message::OpenHelp),
+            (KeyCode::F(2), Message::OpenHelp),
             (KeyCode::Esc, Message::Quit),
             (KeyCode::Char('j'), Message::SelectPreviousFile),
             (KeyCode::Char('w'), Message::SelectPreviousFile),

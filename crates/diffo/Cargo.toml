@@ -13,6 +13,7 @@ diffo-app.workspace = true
 diffo-core.workspace = true
 diffo-git.workspace = true
 diffo-tui.workspace = true
+diffo-watch.workspace = true
 ratatui.workspace = true
 ron.workspace = true
 signal-hook.workspace = true

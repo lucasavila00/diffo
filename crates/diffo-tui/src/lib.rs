@@ -138,6 +138,7 @@ impl Renderer {
         self.render_diff(frame, panes[1], model);
         render_status(frame, vertical[1], model);
         render_command_palette(frame, model);
+        render_help(frame, model);
     }
 
     #[must_use]
@@ -151,7 +152,7 @@ impl Renderer {
         model: &Model,
         area: Rect,
     ) -> Option<diffo_app::Message> {
-        if model.command_palette.is_some() {
+        if model.command_palette.is_some() || model.help_open {
             if let Event::Mouse(mouse) = event
                 && mouse.kind == MouseEventKind::Down(MouseButton::Left)
             {
@@ -492,6 +493,31 @@ fn render_command_palette(frame: &mut Frame, model: &Model) {
         Paragraph::new("type to search · ↑↓ select · esc close")
             .style(Style::default().fg(Color::DarkGray)),
         sections[3],
+    );
+}
+
+fn render_help(frame: &mut Frame, model: &Model) {
+    if !model.help_open {
+        return;
+    }
+    let area = command_palette_layout(frame.area()).0;
+    frame.render_widget(Clear, area);
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(Color::Cyan))
+        .title(" Help ");
+    let inner = block.inner(area).inner(ratatui::layout::Margin {
+        vertical: 1,
+        horizontal: 2,
+    });
+    frame.render_widget(block, area);
+    let text = input::help_text(model.access_mode)
+        .trim()
+        .replace("  ", "\n");
+    frame.render_widget(
+        Paragraph::new(format!("{text}\n\nesc: close"))
+            .style(Style::default().fg(Color::White)),
+        inner,
     );
 }
 

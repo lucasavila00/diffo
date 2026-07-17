@@ -45,6 +45,7 @@ pub struct Model {
     pub file_pane_percent: u16,
     pub resizing_file_pane: bool,
     pub command_palette: Option<CommandPalette>,
+    pub help_open: bool,
     expanded_file_pane_percent: u16,
     cursor: usize,
 }
@@ -65,17 +66,28 @@ impl Model {
             file_pane_percent: 25,
             resizing_file_pane: false,
             command_palette: None,
+            help_open: false,
             expanded_file_pane_percent: 25,
             cursor: 0,
         }
     }
 
     pub fn open_command_palette(&mut self) {
+        self.help_open = false;
         self.command_palette = Some(CommandPalette::default());
     }
 
     pub fn close_command_palette(&mut self) {
         self.command_palette = None;
+    }
+
+    pub fn open_help(&mut self) {
+        self.command_palette = None;
+        self.help_open = true;
+    }
+
+    pub fn close_help(&mut self) {
+        self.help_open = false;
     }
 
     pub fn command_palette_input(&mut self, character: char) {

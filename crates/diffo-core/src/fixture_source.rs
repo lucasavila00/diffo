@@ -1,8 +1,8 @@
 use std::{fs, path::PathBuf};
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 
-use crate::{RepositorySnapshot, RepositorySource};
+use crate::{Repository, RepositoryAction, RepositorySnapshot, RepositorySource};
 
 pub struct FixtureRepositorySource {
     path: PathBuf,
@@ -29,6 +29,12 @@ impl RepositorySource for FixtureRepositorySource {
                 self.path.display()
             )
         })
+    }
+}
+
+impl Repository for FixtureRepositorySource {
+    fn apply(&self, _action: &RepositoryAction) -> Result<()> {
+        bail!("mock repository is read-only")
     }
 }
 

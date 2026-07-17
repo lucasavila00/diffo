@@ -3,8 +3,8 @@ use std::{path::PathBuf, process::Command};
 use anyhow::{Context, Result, bail};
 
 use diffo_core::{
-    BranchState, ChangeKind, Commit, FileDiff, FileState, RepositorySnapshot, RepositorySource,
-    UpstreamState,
+    BranchState, ChangeKind, Commit, FileDiff, FileState, Repository, RepositoryAction,
+    RepositorySnapshot, RepositorySource, UpstreamState,
 };
 
 const NO_CHANGE: char = '.';
@@ -121,6 +121,33 @@ impl RepositorySource for GitRepositorySource {
             recent_commits: self.recent_commits()?,
             upstream: parsed.upstream,
         })
+    }
+}
+
+impl Repository for GitRepositorySource {
+    fn apply(&self, action: &RepositoryAction) -> Result<()> {
+        let mut command = Command::new("git");
+        command.current_dir(&self.root);
+        match action {
+            RepositoryAction::Stage(path) => {
+                command.args(["add", "--"]).arg(path);
+            }
+            RepositoryAction::Unstage(path) => {
+                command.args(["reset", "--"]).arg(path);
+            }
+            RepositoryAction::StageAll => {
+                command.args(["add", "--all"]);
+            }
+        }
+
+        let output = command.output().context("failed to run git index action")?;
+        if !output.status.success() {
+            bail!(
+                "git index action failed: {}",
+                String::from_utf8_lossy(&output.stderr).trim()
+            );
+        }
+        Ok(())
     }
 }
 

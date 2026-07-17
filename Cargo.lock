@@ -195,6 +195,7 @@ dependencies = [
  "diffo-tui",
  "ratatui",
  "ron 0.10.1",
+ "signal-hook",
 ]
 
 [[package]]

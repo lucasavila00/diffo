@@ -1,88 +1,224 @@
-use diffo_core::RepositorySnapshot;
+use std::path::{Path, PathBuf};
 
-const PAGE_SIZE: usize = 20;
+use diffo_core::{RepositoryAction, RepositorySnapshot};
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ChangeArea {
+    Unstaged,
+    Staged,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct FileKey {
+    pub path: PathBuf,
+    pub area: ChangeArea,
+}
 
 pub struct App {
     pub snapshot: RepositorySnapshot,
-    pub scroll: usize,
+    pub selected: Option<FileKey>,
     pub should_quit: bool,
-    line_count: usize,
+    pub error: Option<String>,
+    cursor: usize,
 }
 
 impl App {
     #[must_use]
     pub fn new(snapshot: RepositorySnapshot) -> Self {
-        let line_count = snapshot
-            .files
-            .iter()
-            .flat_map(|file| [file.staged.as_ref(), file.unstaged.as_ref()])
-            .flatten()
-            .map(|diff| diff.text.lines().count())
-            .sum();
+        let selected = file_keys(&snapshot).into_iter().next();
         Self {
             snapshot,
-            scroll: 0,
+            selected,
             should_quit: false,
-            line_count,
+            error: None,
+            cursor: 0,
         }
     }
 
-    pub fn scroll_down(&mut self) {
-        self.scroll = self.scroll.saturating_add(1).min(self.max_scroll());
+    pub fn select_next(&mut self) {
+        let keys = file_keys(&self.snapshot);
+        if keys.is_empty() {
+            return;
+        }
+        self.cursor = self.cursor.saturating_add(1).min(keys.len() - 1);
+        self.selected = keys.get(self.cursor).cloned();
+        self.error = None;
     }
 
-    pub fn scroll_up(&mut self) {
-        self.scroll = self.scroll.saturating_sub(1);
+    pub fn select_previous(&mut self) {
+        let keys = file_keys(&self.snapshot);
+        self.cursor = self.cursor.saturating_sub(1);
+        self.selected = keys.get(self.cursor).cloned();
+        self.error = None;
     }
 
-    pub fn page_down(&mut self) {
-        self.scroll = self.scroll.saturating_add(PAGE_SIZE).min(self.max_scroll());
+    pub fn select_first(&mut self) {
+        self.cursor = 0;
+        self.selected = file_keys(&self.snapshot).into_iter().next();
     }
 
-    pub fn page_up(&mut self) {
-        self.scroll = self.scroll.saturating_sub(PAGE_SIZE);
+    pub fn select_last(&mut self) {
+        let keys = file_keys(&self.snapshot);
+        self.cursor = keys.len().saturating_sub(1);
+        self.selected = keys.get(self.cursor).cloned();
     }
 
-    pub fn scroll_to_top(&mut self) {
-        self.scroll = 0;
+    #[must_use]
+    pub fn stage_selected(&self) -> Option<RepositoryAction> {
+        self.selected.as_ref().and_then(|key| {
+            (key.area == ChangeArea::Unstaged)
+                .then(|| RepositoryAction::Stage(key.path.clone()))
+        })
     }
 
-    pub fn scroll_to_bottom(&mut self) {
-        self.scroll = self.max_scroll();
+    #[must_use]
+    pub fn unstage_selected(&self) -> Option<RepositoryAction> {
+        self.selected.as_ref().and_then(|key| {
+            (key.area == ChangeArea::Staged)
+                .then(|| RepositoryAction::Unstage(key.path.clone()))
+        })
     }
 
-    fn max_scroll(&self) -> usize {
-        self.line_count.saturating_sub(1)
+    #[must_use]
+    pub fn stage_all(&self) -> Option<RepositoryAction> {
+        self.snapshot
+            .files
+            .iter()
+            .any(|file| file.unstaged.is_some() || file.kind == diffo_core::ChangeKind::Untracked)
+            .then_some(RepositoryAction::StageAll)
     }
+
+    pub fn refresh(&mut self, snapshot: RepositorySnapshot) {
+        let old_selected = self.selected.clone();
+        let old_cursor = self.cursor;
+        self.snapshot = snapshot;
+        let keys = file_keys(&self.snapshot);
+
+        self.cursor = old_selected
+            .as_ref()
+            .and_then(|selected| keys.iter().position(|key| key == selected))
+            .unwrap_or_else(|| old_cursor.min(keys.len().saturating_sub(1)));
+        self.selected = keys.get(self.cursor).cloned();
+        self.error = None;
+    }
+
+    pub fn show_error(&mut self, error: impl Into<String>) {
+        self.error = Some(error.into());
+    }
+
+    #[must_use]
+    pub fn is_selected(&self, path: &Path, area: ChangeArea) -> bool {
+        self.selected
+            .as_ref()
+            .is_some_and(|key| key.path == path && key.area == area)
+    }
+
+    #[must_use]
+    pub fn selected_row(&self) -> Option<usize> {
+        let unstaged_count = unstaged_files(&self.snapshot).count();
+        self.selected.as_ref().map(|selected| match selected.area {
+            ChangeArea::Unstaged => self.cursor + 1,
+            ChangeArea::Staged => self.cursor + 2 + usize::from(unstaged_count > 0),
+        })
+    }
+}
+
+fn file_keys(snapshot: &RepositorySnapshot) -> Vec<FileKey> {
+    unstaged_files(snapshot)
+        .map(|file| FileKey {
+            path: file.path.clone(),
+            area: ChangeArea::Unstaged,
+        })
+        .chain(staged_files(snapshot).map(|file| FileKey {
+            path: file.path.clone(),
+            area: ChangeArea::Staged,
+        }))
+        .collect()
+}
+
+pub(crate) fn unstaged_files(
+    snapshot: &RepositorySnapshot,
+) -> impl Iterator<Item = &diffo_core::FileState> {
+    snapshot
+        .files
+        .iter()
+        .filter(|file| file.unstaged.is_some() || file.kind == diffo_core::ChangeKind::Untracked)
+}
+
+pub(crate) fn staged_files(
+    snapshot: &RepositorySnapshot,
+) -> impl Iterator<Item = &diffo_core::FileState> {
+    snapshot.files.iter().filter(|file| file.staged.is_some())
 }
 
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
 
-    use diffo_core::{ChangeKind, FileDiff, FileState, RepositorySnapshot};
+    use diffo_core::{ChangeKind, FileDiff, FileState, RepositoryAction, RepositorySnapshot};
 
-    use super::App;
+    use super::{App, ChangeArea, FileKey};
+
+    fn snapshot() -> RepositorySnapshot {
+        RepositorySnapshot {
+            files: vec![
+                FileState {
+                    path: PathBuf::from("both.txt"),
+                    old_path: None,
+                    kind: ChangeKind::Modified,
+                    staged: Some(FileDiff { text: String::new() }),
+                    unstaged: Some(FileDiff { text: String::new() }),
+                },
+                FileState {
+                    path: PathBuf::from("new.txt"),
+                    old_path: None,
+                    kind: ChangeKind::Untracked,
+                    staged: None,
+                    unstaged: None,
+                },
+            ],
+            ..RepositorySnapshot::default()
+        }
+    }
 
     #[test]
-    fn scrolling_stays_within_diff() {
-        let mut app = App::new(RepositorySnapshot {
-            files: vec![FileState {
-                path: PathBuf::from("file.txt"),
-                old_path: None,
-                kind: ChangeKind::Modified,
-                staged: None,
-                unstaged: Some(FileDiff {
-                    text: "one\ntwo\nthree".into(),
-                }),
-            }],
-            ..RepositorySnapshot::default()
-        });
+    fn navigates_both_groups() {
+        let mut app = App::new(snapshot());
+        assert_eq!(app.selected.as_ref().expect("selection").path, PathBuf::from("both.txt"));
 
-        app.page_down();
-        assert_eq!(app.scroll, 2);
+        app.select_next();
+        assert_eq!(app.selected.as_ref().expect("selection").path, PathBuf::from("new.txt"));
+        app.select_next();
+        assert_eq!(app.selected.as_ref().expect("selection").area, ChangeArea::Staged);
+    }
 
-        app.page_up();
-        assert_eq!(app.scroll, 0);
+    #[test]
+    fn creates_actions_for_the_selected_group() {
+        let mut app = App::new(snapshot());
+        assert_eq!(
+            app.stage_selected(),
+            Some(RepositoryAction::Stage(PathBuf::from("both.txt")))
+        );
+        assert_eq!(app.unstage_selected(), None);
+
+        app.select_last();
+        assert_eq!(
+            app.unstage_selected(),
+            Some(RepositoryAction::Unstage(PathBuf::from("both.txt")))
+        );
+    }
+
+    #[test]
+    fn keeps_selection_after_refresh() {
+        let mut app = App::new(snapshot());
+        app.select_last();
+        let selected = FileKey {
+            path: PathBuf::from("both.txt"),
+            area: ChangeArea::Staged,
+        };
+
+        app.refresh(snapshot());
+
+        assert_eq!(app.selected, Some(selected));
     }
 }

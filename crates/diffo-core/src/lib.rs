@@ -64,3 +64,19 @@ pub trait RepositorySource {
     /// Returns an error when repository data cannot be read or parsed.
     fn snapshot(&self) -> Result<RepositorySnapshot>;
 }
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum RepositoryAction {
+    Stage(PathBuf),
+    Unstage(PathBuf),
+    StageAll,
+}
+
+pub trait Repository: RepositorySource {
+    /// Change the repository index.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the action cannot be applied.
+    fn apply(&self, action: &RepositoryAction) -> Result<()>;
+}

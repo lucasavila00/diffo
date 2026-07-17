@@ -152,6 +152,17 @@ mod tests {
     }
 
     #[test]
+    fn help_is_a_toggle_and_closes_the_palette() {
+        let mut model = model(AccessMode::ReadWrite);
+        update(&mut model, Message::OpenCommandPalette);
+        update(&mut model, Message::ToggleHelp);
+        assert!(model.help_open);
+        assert!(model.command_palette.is_none());
+        update(&mut model, Message::ToggleHelp);
+        assert!(!model.help_open);
+    }
+
+    #[test]
     fn scrolls_four_lines_in_the_arrow_direction() {
         let mut model = model(AccessMode::ReadWrite);
 

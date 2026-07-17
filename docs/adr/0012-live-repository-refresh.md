@@ -1,6 +1,6 @@
 # ADR 0012: Live repository refresh
 
-Status: Proposed
+Status: Accepted
 
 Supersedes [ADR 0005](0005-filesystem-watch.md).
 
@@ -57,9 +57,10 @@ Add deterministic unit tests with fake events and a fake snapshot collector:
 Add a real filesystem integration test with a temporary Git repository. Verify edits
 to the worktree and Git metadata both request refreshes.
 
-Add a black-box test in `diffo-e2e` that compiles and starts the no-argument `diffo`
-binary. Use developer-only `DIFFO_WATCH_DUMP_PATH` to run the same watcher and refresh
-pipeline without a terminal. Every accepted snapshot is written atomically as RON.
+Add a black-box integration test to the `diffo` binary crate. Cargo provides the
+compiled no-argument binary to the test. Use developer-only `DIFFO_WATCH_DUMP_PATH`
+to run the same watcher and refresh pipeline without a terminal. Every accepted
+snapshot is written atomically as RON.
 The test:
 
 1. Waits for the initial clean snapshot.

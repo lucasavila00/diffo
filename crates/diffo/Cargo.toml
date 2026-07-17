@@ -20,3 +20,8 @@ signal-hook.workspace = true
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+diffo-core.workspace = true
+ron.workspace = true
+tempfile.workspace = true

@@ -232,6 +232,7 @@ dependencies = [
  "ratatui",
  "ron 0.10.1",
  "signal-hook",
+ "tempfile",
 ]
 
 [[package]]

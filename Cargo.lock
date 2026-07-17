@@ -265,8 +265,14 @@ name = "diffo-e2e"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "crossterm 0.29.0",
+ "diffo-app",
  "diffo-core",
+ "diffo-git",
+ "diffo-tui",
+ "diffo-watch",
  "insta",
+ "ratatui",
  "ron 0.10.1",
  "tempfile",
 ]

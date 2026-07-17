@@ -164,7 +164,10 @@ impl Repository for GitRepositorySource {
         }
 
         let mut command = Command::new("git");
-        command.current_dir(&self.root);
+        command
+            .current_dir(&self.root)
+            .env("GIT_TERMINAL_PROMPT", "0")
+            .env("GIT_EDITOR", "true");
         match action {
             RepositoryAction::Stage(path) => {
                 command.args(["add", "--"]).arg(path);
@@ -177,6 +180,12 @@ impl Repository for GitRepositorySource {
             }
             RepositoryAction::UnstageAll => {
                 command.arg("reset");
+            }
+            RepositoryAction::Fetch => {
+                command.arg("fetch");
+            }
+            RepositoryAction::Pull => {
+                command.args(["pull", "--no-edit"]);
             }
         }
 
@@ -423,6 +432,53 @@ mod tests {
             .expect_err("read-only action should fail");
 
         assert!(error.to_string().contains("read-only"));
+    }
+
+    #[test]
+    fn fetches_and_pulls_from_the_configured_remote() {
+        let root = tempfile::tempdir().expect("test directory");
+        git(root.path(), &["init", "--bare", "remote.git"]);
+        git(root.path(), &["clone", "remote.git", "seed"]);
+        let seed = root.path().join("seed");
+        git(&seed, &["config", "user.name", "Diffo Test"]);
+        git(&seed, &["config", "user.email", "diffo@example.invalid"]);
+        fs::write(seed.join("base.txt"), "base\n").expect("write base file");
+        git(&seed, &["add", "."]);
+        git(&seed, &["commit", "-m", "Base commit"]);
+        git(&seed, &["push", "-u", "origin", "HEAD"]);
+        git(root.path(), &["clone", "remote.git", "work"]);
+        let work = root.path().join("work");
+
+        fs::write(seed.join("remote.txt"), "remote\n").expect("write remote file");
+        git(&seed, &["add", "."]);
+        git(&seed, &["commit", "-m", "Remote commit"]);
+        git(&seed, &["push", "origin", "HEAD"]);
+
+        let source = super::GitRepositorySource::new(&work);
+        source
+            .apply(&RepositoryAction::Fetch)
+            .expect("fetch remote");
+        assert_eq!(
+            source
+                .snapshot()
+                .expect("fetched snapshot")
+                .upstream
+                .unwrap()
+                .behind,
+            1
+        );
+
+        source.apply(&RepositoryAction::Pull).expect("pull remote");
+        assert!(work.join("remote.txt").exists());
+        assert_eq!(
+            source
+                .snapshot()
+                .expect("pulled snapshot")
+                .upstream
+                .unwrap()
+                .behind,
+            0
+        );
     }
 
     fn test_repository() -> tempfile::TempDir {

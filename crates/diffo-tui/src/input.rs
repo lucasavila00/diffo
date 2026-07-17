@@ -3,7 +3,9 @@ use diffo_app::{Message, Model};
 use diffo_core::AccessMode;
 use ratatui::layout::Rect;
 
-use crate::{file_at_position, file_pane_percent_at, is_file_pane_splitter_at};
+use crate::{
+    file_action_at_position, file_at_position, file_pane_percent_at, is_file_pane_splitter_at,
+};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum Availability {
@@ -222,6 +224,10 @@ pub fn map_event(event: &Event, model: &Model, area: Rect) -> Option<Message> {
         Event::Mouse(mouse) if mouse.kind == MouseEventKind::Down(MouseButton::Left) => {
             if is_file_pane_splitter_at(model, area, mouse.column, mouse.row) {
                 Some(Message::BeginFilePaneResize)
+            } else if let Some(message) =
+                file_action_at_position(model, area, mouse.column, mouse.row)
+            {
+                Some(message)
             } else {
                 file_at_position(model, area, mouse.column, mouse.row).map(Message::SelectFile)
             }
@@ -277,6 +283,7 @@ fn map_command_palette_event(event: &Event) -> Option<Message> {
         KeyCode::Backspace => Some(Message::CommandPaletteBackspace),
         KeyCode::Up => Some(Message::CommandPaletteSelectPrevious),
         KeyCode::Down => Some(Message::CommandPaletteSelectNext),
+        KeyCode::Enter => Some(Message::ExecuteSelectedCommand),
         KeyCode::Char(character)
             if !key
                 .modifiers
@@ -305,7 +312,7 @@ mod tests {
         MouseEvent, MouseEventKind,
     };
     use diffo_app::{ChangeArea, FileKey, Message, Model};
-    use diffo_core::{AccessMode, ChangeKind, FileState, RepositorySnapshot};
+    use diffo_core::{AccessMode, ChangeKind, FileDiff, FileState, RepositorySnapshot};
     use ratatui::layout::Rect;
 
     use super::{KEY_BINDINGS, help_text, map_event, map_key};
@@ -454,6 +461,7 @@ mod tests {
             (KeyCode::Backspace, Message::CommandPaletteBackspace),
             (KeyCode::Up, Message::CommandPaletteSelectPrevious),
             (KeyCode::Down, Message::CommandPaletteSelectNext),
+            (KeyCode::Enter, Message::ExecuteSelectedCommand),
             (KeyCode::Esc, Message::CloseCommandPalette),
         ] {
             assert_eq!(
@@ -537,6 +545,36 @@ mod tests {
         assert_eq!(
             map_event(&up, &model, area),
             Some(Message::EndFilePaneResize)
+        );
+    }
+
+    #[test]
+    fn maps_file_action_buttons() {
+        let mut model = model();
+        model.snapshot.files[0].kind = ChangeKind::Modified;
+        model.snapshot.files[0].staged = Some(FileDiff {
+            text: String::new(),
+        });
+        model.snapshot.files[0].unstaged = Some(FileDiff {
+            text: String::new(),
+        });
+        let area = Rect::new(0, 0, 100, 30);
+        let click = |row| {
+            Event::Mouse(MouseEvent {
+                kind: MouseEventKind::Down(MouseButton::Left),
+                column: 22,
+                row,
+                modifiers: KeyModifiers::NONE,
+            })
+        };
+
+        assert_eq!(
+            map_event(&click(1), &model, area),
+            Some(Message::UnstageFile(PathBuf::from("file.txt")))
+        );
+        assert_eq!(
+            map_event(&click(16), &model, area),
+            Some(Message::StageFile(PathBuf::from("file.txt")))
         );
     }
 

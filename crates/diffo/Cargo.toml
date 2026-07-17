@@ -22,6 +22,9 @@ signal-hook.workspace = true
 workspace = true
 
 [dev-dependencies]
+diffo-app.workspace = true
 diffo-core.workspace = true
+diffo-git.workspace = true
+diffo-watch.workspace = true
 ron.workspace = true
 tempfile.workspace = true

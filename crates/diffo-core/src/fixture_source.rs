@@ -277,6 +277,9 @@ impl Repository for MutableFixtureRepository {
                 }
                 Ok(())
             }
+            RepositoryAction::Fetch | RepositoryAction::Pull => {
+                bail!("mock repository has no remote")
+            }
         }
     }
 }

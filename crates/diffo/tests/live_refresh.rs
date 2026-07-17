@@ -4,12 +4,16 @@ use std::{
     fs,
     path::Path,
     process::{Child, Command, Stdio},
+    sync::Arc,
     thread,
     time::{Duration, Instant},
 };
 
 use anyhow::{Context, Result, bail};
-use diffo_core::RepositorySnapshot;
+use diffo_app::Model;
+use diffo_core::{AccessMode, Repository, RepositorySnapshot, RepositorySource};
+use diffo_git::GitRepositorySource;
+use diffo_watch::{RefreshResult, RefreshService};
 
 #[test]
 fn compiled_binary_refreshes_live_git_state() -> Result<()> {
@@ -73,6 +77,65 @@ fn compiled_binary_refreshes_live_git_state() -> Result<()> {
         bail!("Diffo did not shut down cleanly: {status}");
     }
     Ok(())
+}
+
+#[test]
+fn watcher_refresh_preserves_scroll_until_selected_diff_changes() -> Result<()> {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let repository = tempfile::tempdir().context("create repository")?;
+    git(repository.path(), &["init", "--initial-branch=main"])?;
+    git(repository.path(), &["config", "user.name", "Diffo Test"])?;
+    git(
+        repository.path(),
+        &["config", "user.email", "diffo@example.invalid"],
+    )?;
+    fs::write(repository.path().join(".gitignore"), "ignored.tmp\n")?;
+    fs::write(repository.path().join("tracked.txt"), "base\n")?;
+    git(repository.path(), &["add", "."])?;
+    git(repository.path(), &["commit", "-m", "Base commit"])?;
+    fs::write(repository.path().join("tracked.txt"), "first change\n")?;
+
+    let source = Arc::new(GitRepositorySource::new(repository.path()));
+    let paths = source.watch_paths()?;
+    let snapshot = source.snapshot()?;
+    let repository_source = Arc::clone(&source) as Arc<dyn Repository>;
+    let refresh = RefreshService::start(repository_source, &paths)?;
+    let mut model = Model::new(snapshot, AccessMode::ReadWrite);
+    model.diff_scroll = 40;
+
+    fs::write(repository.path().join("ignored.tmp"), "ignored\n")?;
+    model.refresh(wait_for_refresh(&refresh, deadline, |_| true)?);
+    assert_eq!(model.diff_scroll, 40);
+
+    fs::write(repository.path().join("tracked.txt"), "second change\n")?;
+    model.refresh(wait_for_refresh(&refresh, deadline, |snapshot| {
+        snapshot.files.iter().any(|file| {
+            file.unstaged
+                .as_ref()
+                .is_some_and(|diff| diff.text.contains("second change"))
+        })
+    })?);
+    assert_eq!(model.diff_scroll, 0);
+    Ok(())
+}
+
+fn wait_for_refresh(
+    refresh: &RefreshService,
+    deadline: Instant,
+    predicate: impl Fn(&RepositorySnapshot) -> bool,
+) -> Result<RepositorySnapshot> {
+    while Instant::now() < deadline {
+        match refresh.try_recv() {
+            Ok(Some(RefreshResult::Snapshot { snapshot, .. })) if predicate(&snapshot) => {
+                return Ok(snapshot);
+            }
+            Ok(Some(RefreshResult::Snapshot { .. })) => {}
+            Ok(Some(RefreshResult::Error { message, .. })) => bail!(message),
+            Ok(None) => thread::sleep(Duration::from_millis(10)),
+            Err(error) => bail!("refresh worker stopped: {error}"),
+        }
+    }
+    bail!("watcher scroll regression test exceeded its 5-second deadline")
 }
 
 fn wait_for(

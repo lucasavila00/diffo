@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 
 use diffo_core::{AccessMode, RepositoryAction, RepositorySnapshot};
 
-use crate::CommandPalette;
+use crate::{CommandId, CommandPalette};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ChangeArea {
@@ -118,6 +118,18 @@ impl Model {
         if let Some(palette) = self.command_palette.as_mut() {
             palette.select(index);
         }
+    }
+
+    pub fn execute_selected_command(&mut self) -> Option<RepositoryAction> {
+        if self.access_mode == AccessMode::ReadOnly {
+            return None;
+        }
+        let command = self.command_palette.as_ref()?.selected_command()?.id;
+        self.command_palette = None;
+        Some(match command {
+            CommandId::Fetch => RepositoryAction::Fetch,
+            CommandId::Pull => RepositoryAction::Pull,
+        })
     }
 
     pub fn select_next(&mut self) {
@@ -267,18 +279,47 @@ impl Model {
         }
     }
 
+    #[must_use]
+    pub fn stage_file(&self, path: PathBuf) -> Option<RepositoryAction> {
+        (self.access_mode == AccessMode::ReadWrite
+            && self.snapshot.files.iter().any(|file| {
+                file.path == path
+                    && (file.unstaged.is_some() || file.kind == diffo_core::ChangeKind::Untracked)
+            }))
+        .then_some(RepositoryAction::Stage(path))
+    }
+
+    #[must_use]
+    pub fn unstage_file(&self, path: PathBuf) -> Option<RepositoryAction> {
+        (self.access_mode == AccessMode::ReadWrite
+            && self
+                .snapshot
+                .files
+                .iter()
+                .any(|file| file.path == path && file.staged.is_some()))
+        .then_some(RepositoryAction::Unstage(path))
+    }
+
     pub fn refresh(&mut self, snapshot: RepositorySnapshot) {
         let old_selected = self.selected.clone();
         let old_cursor = self.cursor;
-        self.snapshot = snapshot;
-        let keys = file_keys(&self.snapshot);
+        let keys = file_keys(&snapshot);
 
-        self.cursor = old_selected
+        let cursor = old_selected
             .as_ref()
             .and_then(|selected| keys.iter().position(|key| key == selected))
             .unwrap_or_else(|| old_cursor.min(keys.len().saturating_sub(1)));
-        self.selected = keys.get(self.cursor).cloned();
-        self.reset_diff_scroll();
+        let selected = keys.get(cursor).cloned();
+        let preserve_scroll = old_selected == selected
+            && selected.as_ref().is_some_and(|key| {
+                selected_diff(&self.snapshot, key) == selected_diff(&snapshot, key)
+            });
+        self.snapshot = snapshot;
+        self.cursor = cursor;
+        self.selected = selected;
+        if !preserve_scroll {
+            self.reset_diff_scroll();
+        }
         self.error = None;
     }
 
@@ -296,6 +337,17 @@ impl Model {
     fn reset_diff_scroll(&mut self) {
         self.diff_scroll = 0;
         self.diff_horizontal_scroll = 0;
+    }
+}
+
+fn selected_diff<'a>(
+    snapshot: &'a RepositorySnapshot,
+    key: &FileKey,
+) -> Option<&'a diffo_core::FileDiff> {
+    let file = snapshot.files.iter().find(|file| file.path == key.path)?;
+    match key.area {
+        ChangeArea::Staged => file.staged.as_ref(),
+        ChangeArea::Unstaged => file.unstaged.as_ref(),
     }
 }
 
@@ -419,6 +471,28 @@ mod tests {
         app.refresh(snapshot());
 
         assert_eq!(app.selected, Some(selected));
+    }
+
+    #[test]
+    fn preserves_scroll_until_the_selected_diff_changes() {
+        let mut app = Model::new(snapshot(), AccessMode::ReadWrite);
+        app.diff_scroll = 12;
+        app.diff_horizontal_scroll = 8;
+
+        app.refresh(snapshot());
+        assert_eq!(app.diff_scroll, 12);
+        assert_eq!(app.diff_horizontal_scroll, 8);
+
+        let mut changed = snapshot();
+        changed.files[0]
+            .staged
+            .as_mut()
+            .expect("staged diff")
+            .text
+            .push_str("changed");
+        app.refresh(changed);
+        assert_eq!(app.diff_scroll, 0);
+        assert_eq!(app.diff_horizontal_scroll, 0);
     }
 
     #[test]

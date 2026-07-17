@@ -1,21 +1,7 @@
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CommandId {
     Pull,
-    PullFrom,
-    Push,
-    PushTo,
     Fetch,
-    FetchPrune,
-    Sync,
-    Commit,
-    CommitStaged,
-    CommitAll,
-    StageAll,
-    UnstageAll,
-    Refresh,
-    ViewHistory,
-    Checkout,
-    CreateBranch,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -26,68 +12,12 @@ pub struct Command {
 
 pub static COMMANDS: &[Command] = &[
     Command {
-        id: CommandId::Pull,
-        label: "Git: Pull",
-    },
-    Command {
-        id: CommandId::PullFrom,
-        label: "Git: Pull from...",
-    },
-    Command {
-        id: CommandId::Push,
-        label: "Git: Push",
-    },
-    Command {
-        id: CommandId::PushTo,
-        label: "Git: Push to...",
-    },
-    Command {
         id: CommandId::Fetch,
         label: "Git: Fetch",
     },
     Command {
-        id: CommandId::FetchPrune,
-        label: "Git: Fetch (Prune)",
-    },
-    Command {
-        id: CommandId::Sync,
-        label: "Git: Sync",
-    },
-    Command {
-        id: CommandId::Commit,
-        label: "Git: Commit",
-    },
-    Command {
-        id: CommandId::CommitStaged,
-        label: "Git: Commit Staged",
-    },
-    Command {
-        id: CommandId::CommitAll,
-        label: "Git: Commit All",
-    },
-    Command {
-        id: CommandId::StageAll,
-        label: "Git: Stage All Changes",
-    },
-    Command {
-        id: CommandId::UnstageAll,
-        label: "Git: Unstage All Changes",
-    },
-    Command {
-        id: CommandId::Refresh,
-        label: "Git: Refresh",
-    },
-    Command {
-        id: CommandId::ViewHistory,
-        label: "Git: View History",
-    },
-    Command {
-        id: CommandId::Checkout,
-        label: "Git: Checkout...",
-    },
-    Command {
-        id: CommandId::CreateBranch,
-        label: "Git: Create Branch...",
+        id: CommandId::Pull,
+        label: "Git: Pull",
     },
 ];
 
@@ -133,6 +63,11 @@ impl CommandPalette {
     pub fn select(&mut self, index: usize) {
         self.selected = index.min(self.matches().len().saturating_sub(1));
     }
+
+    #[must_use]
+    pub fn selected_command(&self) -> Option<&'static Command> {
+        self.matches().get(self.selected).copied()
+    }
 }
 
 fn fuzzy_score(candidate: &str, query: &str) -> Option<i64> {
@@ -170,11 +105,11 @@ mod tests {
     #[test]
     fn fuzzy_search_prefers_consecutive_and_word_start_matches() {
         let mut palette = CommandPalette::default();
-        for character in "gfp".chars() {
+        for character in "gf".chars() {
             palette.push(character);
         }
 
-        assert_eq!(palette.matches()[0].label, "Git: Fetch (Prune)");
+        assert_eq!(palette.matches()[0].label, "Git: Fetch");
     }
 
     #[test]

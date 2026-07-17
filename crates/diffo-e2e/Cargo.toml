@@ -11,11 +11,21 @@ version.workspace = true
 name = "real_git_state"
 path = "tests/real_git_state.rs"
 
+[[test]]
+name = "git_operations"
+path = "tests/git_operations.rs"
+
 [dev-dependencies]
 anyhow.workspace = true
+crossterm.workspace = true
+diffo-app.workspace = true
 diffo-core.workspace = true
+diffo-git.workspace = true
+diffo-tui.workspace = true
+diffo-watch.workspace = true
 insta = { version = "1.48", features = ["ron"] }
 ron.workspace = true
+ratatui.workspace = true
 tempfile.workspace = true
 
 [lints]

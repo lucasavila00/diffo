@@ -1,5 +1,6 @@
 use diffo_app::{ChangeArea, DiffViewMode, FileKey, Model};
 use std::{
+    collections::VecDeque,
     path::{Path, PathBuf},
     sync::{
         Arc,
@@ -8,7 +9,7 @@ use std::{
     thread,
 };
 
-use crossterm::event::{Event, MouseButton, MouseEventKind};
+use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEventKind};
 use diffo_core::{AccessMode, ChangeKind, FileState, RepositorySnapshot};
 use diffo_diff::{
     DiffDocument, RenderLine, RowKind, SideBySideRow, inline_rows, parse_unified_patch,
@@ -29,6 +30,55 @@ use ratatui::{
 mod input;
 
 pub use input::map_event;
+
+#[derive(Default)]
+pub struct ProgrammaticInputQueue {
+    events: VecDeque<Event>,
+}
+
+impl ProgrammaticInputQueue {
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn key(&mut self, code: KeyCode) -> &mut Self {
+        self.events
+            .push_back(Event::Key(KeyEvent::new(code, KeyModifiers::NONE)));
+        self
+    }
+
+    pub fn text(&mut self, text: &str) -> &mut Self {
+        for character in text.chars() {
+            self.key(KeyCode::Char(character));
+        }
+        self
+    }
+
+    pub fn mouse(&mut self, event: crossterm::event::MouseEvent) -> &mut Self {
+        self.events.push_back(Event::Mouse(event));
+        self
+    }
+
+    pub fn pop_message(
+        &mut self,
+        renderer: &mut Renderer,
+        model: &Model,
+        area: Rect,
+    ) -> Option<diffo_app::Message> {
+        while let Some(event) = self.events.pop_front() {
+            if let Some(message) = renderer.map_event(&event, model, area) {
+                return Some(message);
+            }
+        }
+        None
+    }
+
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.events.is_empty()
+    }
+}
 
 pub struct Renderer {
     highlighter: Arc<SyntaxHighlighter>,
@@ -490,7 +540,7 @@ fn render_command_palette(frame: &mut Frame, model: &Model) {
     );
     frame.render_stateful_widget(list, results_area, &mut state);
     frame.render_widget(
-        Paragraph::new("type to search · ↑↓ select · esc close")
+        Paragraph::new("type to search · ↑↓ select · enter run · esc close")
             .style(Style::default().fg(Color::DarkGray)),
         sections[3],
     );
@@ -623,6 +673,52 @@ pub(crate) fn file_at_position(
     })
 }
 
+pub(crate) fn file_action_at_position(
+    model: &Model,
+    area: Rect,
+    column: u16,
+    row: u16,
+) -> Option<diffo_app::Message> {
+    if model.access_mode == AccessMode::ReadOnly {
+        return None;
+    }
+    let panes = horizontal_panes(main_area(area), model.file_pane_percent);
+    let groups = file_group_areas(panes[0]);
+    for (group, change_area) in [
+        (groups[0], ChangeArea::Staged),
+        (groups[1], ChangeArea::Unstaged),
+    ] {
+        let button_start = group.right().saturating_sub(4);
+        if column < button_start || column >= group.right().saturating_sub(1) {
+            continue;
+        }
+        let key = match change_area {
+            ChangeArea::Staged => file_in_group_at(
+                staged_files(&model.snapshot),
+                change_area,
+                group,
+                column,
+                row,
+            ),
+            ChangeArea::Unstaged => file_in_group_at(
+                unstaged_files(&model.snapshot),
+                change_area,
+                group,
+                column,
+                row,
+            ),
+        };
+        let Some(key) = key else {
+            continue;
+        };
+        return Some(match change_area {
+            ChangeArea::Staged => diffo_app::Message::UnstageFile(key.path),
+            ChangeArea::Unstaged => diffo_app::Message::StageFile(key.path),
+        });
+    }
+    None
+}
+
 pub(crate) fn is_file_pane_splitter_at(
     model: &Model,
     area: ratatui::layout::Rect,
@@ -733,9 +829,15 @@ fn render_file_group<'a>(
     let selected = files
         .iter()
         .position(|file| model.is_selected(&file.path, change_area));
-    let items = files
-        .into_iter()
-        .map(|file| file_item(file, model.is_selected(&file.path, change_area)));
+    let items = files.into_iter().map(|file| {
+        file_item(
+            file,
+            model.is_selected(&file.path, change_area),
+            change_area,
+            usize::from(area.width.saturating_sub(4)),
+            model.access_mode,
+        )
+    });
     let list = List::new(items)
         .block(
             Block::default()
@@ -754,7 +856,13 @@ fn render_file_group<'a>(
     frame.render_stateful_widget(list, area, &mut state);
 }
 
-fn file_item(file: &FileState, selected: bool) -> ListItem<'static> {
+fn file_item(
+    file: &FileState,
+    selected: bool,
+    change_area: ChangeArea,
+    width: usize,
+    access_mode: AccessMode,
+) -> ListItem<'static> {
     let marker = match file.kind {
         ChangeKind::Added | ChangeKind::Untracked => "A",
         ChangeKind::Modified => "M",
@@ -763,13 +871,31 @@ fn file_item(file: &FileState, selected: bool) -> ListItem<'static> {
         ChangeKind::Copied => "C",
         ChangeKind::Conflicted => "U",
     };
-    let line = format!("{marker}  {}", file.path.display());
+    let label = format!("{marker}  {}", file.path.display());
     let style = if selected {
         Style::default().fg(Color::White)
     } else {
         Style::default()
     };
-    ListItem::new(Line::styled(line, style))
+    if access_mode == AccessMode::ReadOnly || width < 3 {
+        return ListItem::new(Line::styled(label, style));
+    }
+    let action = match change_area {
+        ChangeArea::Staged => "[-]",
+        ChangeArea::Unstaged => "[+]",
+    };
+    let label_width = width.saturating_sub(action.len());
+    let mut label = label.chars().take(label_width).collect::<String>();
+    label.push_str(&" ".repeat(label_width.saturating_sub(label.chars().count())));
+    ListItem::new(Line::from(vec![
+        Span::styled(label, style),
+        Span::styled(
+            action,
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        ),
+    ]))
 }
 
 fn inline_line(row: &RenderLine, highlighted: &HighlightedDiff, width: usize) -> Line<'static> {
@@ -1266,13 +1392,13 @@ mod rendering_tests {
         let click = Event::Mouse(MouseEvent {
             kind: MouseEventKind::Down(MouseButton::Left),
             column: results_area.x,
-            row: results_area.y.saturating_add(2),
+            row: results_area.y.saturating_add(1),
             modifiers: KeyModifiers::NONE,
         });
         let mut renderer = Renderer::new();
         assert_eq!(
             renderer.map_event(&click, &model, area),
-            Some(diffo_app::Message::CommandPaletteSelect(2))
+            Some(diffo_app::Message::CommandPaletteSelect(1))
         );
     }
 

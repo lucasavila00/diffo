@@ -18,6 +18,7 @@ pub enum Message {
     CommandPaletteSelectPrevious,
     CommandPaletteSelectNext,
     CommandPaletteSelect(usize),
+    ExecuteSelectedCommand,
     SelectPreviousFile,
     SelectNextFile,
     SelectFirstFile,
@@ -38,6 +39,8 @@ pub enum Message {
     EndFilePaneResize,
     ToggleStageSelected,
     ToggleStageAll,
+    StageFile(std::path::PathBuf),
+    UnstageFile(std::path::PathBuf),
     SnapshotLoaded(RepositorySnapshot),
     OperationFailed(String),
 }
@@ -59,6 +62,9 @@ pub fn update(model: &mut Model, message: Message) -> Option<Effect> {
         Message::CommandPaletteSelectPrevious => model.command_palette_select_previous(),
         Message::CommandPaletteSelectNext => model.command_palette_select_next(),
         Message::CommandPaletteSelect(index) => model.command_palette_select(index),
+        Message::ExecuteSelectedCommand => {
+            return model.execute_selected_command().map(Effect::Repository);
+        }
         Message::SelectPreviousFile => model.select_previous(),
         Message::SelectNextFile => model.select_next(),
         Message::SelectFirstFile => model.select_first(),
@@ -81,6 +87,8 @@ pub fn update(model: &mut Model, message: Message) -> Option<Effect> {
             return model.toggle_stage_selected().map(Effect::Repository);
         }
         Message::ToggleStageAll => return model.toggle_stage_all().map(Effect::Repository),
+        Message::StageFile(path) => return model.stage_file(path).map(Effect::Repository),
+        Message::UnstageFile(path) => return model.unstage_file(path).map(Effect::Repository),
         Message::SnapshotLoaded(snapshot) => model.refresh(snapshot),
         Message::OperationFailed(error) => model.show_error(error),
     }
@@ -144,11 +152,29 @@ mod tests {
         update(&mut model, Message::CommandPaletteSelectNext);
         update(&mut model, Message::CommandPaletteBackspace);
         assert_eq!(model.command_palette.as_ref().unwrap().query, "f");
-        update(&mut model, Message::CommandPaletteSelect(2));
-        assert_eq!(model.command_palette.as_ref().unwrap().selected, 2);
+        update(&mut model, Message::CommandPaletteSelect(1));
+        assert_eq!(model.command_palette.as_ref().unwrap().selected, 0);
         update(&mut model, Message::CloseCommandPalette);
         assert!(model.command_palette.is_none());
         assert!(!model.should_quit);
+    }
+
+    #[test]
+    fn executes_fetch_and_pull_from_the_palette() {
+        let mut model = model(AccessMode::ReadWrite);
+        update(&mut model, Message::OpenCommandPalette);
+        assert_eq!(
+            update(&mut model, Message::ExecuteSelectedCommand),
+            Some(Effect::Repository(RepositoryAction::Fetch))
+        );
+        assert!(model.command_palette.is_none());
+
+        update(&mut model, Message::OpenCommandPalette);
+        update(&mut model, Message::CommandPaletteSelectNext);
+        assert_eq!(
+            update(&mut model, Message::ExecuteSelectedCommand),
+            Some(Effect::Repository(RepositoryAction::Pull))
+        );
     }
 
     #[test]
@@ -237,6 +263,23 @@ mod tests {
             Some(Effect::Repository(RepositoryAction::Stage(PathBuf::from(
                 "file.txt"
             ))))
+        );
+    }
+
+    #[test]
+    fn returns_file_button_effects_without_changing_selection() {
+        let mut model = model(AccessMode::ReadWrite);
+        assert_eq!(
+            update(&mut model, Message::StageFile(PathBuf::from("file.txt"))),
+            Some(Effect::Repository(RepositoryAction::Stage(PathBuf::from(
+                "file.txt"
+            ))))
+        );
+        assert_eq!(
+            update(&mut model, Message::UnstageFile(PathBuf::from("file.txt"))),
+            Some(Effect::Repository(RepositoryAction::Unstage(
+                PathBuf::from("file.txt")
+            )))
         );
     }
 

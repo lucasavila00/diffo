@@ -152,6 +152,21 @@ impl Renderer {
         area: Rect,
     ) -> Option<diffo_app::Message> {
         if model.command_palette.is_some() {
+            if let Event::Mouse(mouse) = event
+                && mouse.kind == MouseEventKind::Down(MouseButton::Left)
+            {
+                let (_, results_area) = command_palette_layout(area);
+                let match_count = model
+                    .command_palette
+                    .as_ref()
+                    .map_or(0, |palette| palette.matches().len());
+                if results_area.contains((mouse.column, mouse.row).into()) {
+                    let index = usize::from(mouse.row.saturating_sub(results_area.y));
+                    if index < match_count {
+                        return Some(diffo_app::Message::CommandPaletteSelect(index));
+                    }
+                }
+            }
             return input::map_event(event, model, area);
         }
         if let Event::Mouse(mouse) = event {
@@ -428,7 +443,7 @@ fn render_command_palette(frame: &mut Frame, model: &Model) {
         return;
     };
     let commands = palette.matches();
-    let area = centered_palette_area(frame.area(), commands.len());
+    let (area, results_area) = command_palette_layout(frame.area());
     frame.render_widget(Clear, area);
     frame.render_widget(
         Block::default()
@@ -441,13 +456,7 @@ fn render_command_palette(frame: &mut Frame, model: &Model) {
         vertical: 1,
         horizontal: 2,
     });
-    let sections = Layout::vertical([
-        Constraint::Length(1),
-        Constraint::Length(1),
-        Constraint::Min(1),
-        Constraint::Length(1),
-    ])
-    .split(inner);
+    let sections = command_palette_sections(inner);
     frame.render_widget(
         Paragraph::new(format!("> {}█", palette.query)).style(
             Style::default()
@@ -478,7 +487,7 @@ fn render_command_palette(frame: &mut Frame, model: &Model) {
     let mut state = ListState::default().with_selected(
         (!commands.is_empty()).then_some(palette.selected.min(commands.len().saturating_sub(1))),
     );
-    frame.render_stateful_widget(list, sections[2], &mut state);
+    frame.render_stateful_widget(list, results_area, &mut state);
     frame.render_widget(
         Paragraph::new("type to search · ↑↓ select · esc close")
             .style(Style::default().fg(Color::DarkGray)),
@@ -486,16 +495,32 @@ fn render_command_palette(frame: &mut Frame, model: &Model) {
     );
 }
 
-fn centered_palette_area(area: Rect, command_count: usize) -> Rect {
+fn command_palette_layout(area: Rect) -> (Rect, Rect) {
     let width = (area.width.saturating_mul(7) / 10).clamp(30.min(area.width), 80.min(area.width));
-    let wanted_height = u16::try_from(command_count.saturating_add(5)).unwrap_or(u16::MAX);
-    let height = wanted_height.clamp(7.min(area.height), 18.min(area.height));
-    Rect::new(
+    let top = area.y.saturating_add(area.height.saturating_mul(20) / 100);
+    let height = 18.min(area.bottom().saturating_sub(top));
+    let palette = Rect::new(
         area.x + area.width.saturating_sub(width) / 2,
-        area.y + area.height.saturating_sub(height) / 4,
+        top,
         width,
         height,
-    )
+    );
+    let inner = palette.inner(ratatui::layout::Margin {
+        vertical: 1,
+        horizontal: 2,
+    });
+    let sections = command_palette_sections(inner);
+    (palette, sections[2])
+}
+
+fn command_palette_sections(area: Rect) -> std::rc::Rc<[Rect]> {
+    Layout::vertical([
+        Constraint::Length(1),
+        Constraint::Length(1),
+        Constraint::Min(1),
+        Constraint::Length(1),
+    ])
+    .split(area)
 }
 
 fn prepare_diff(
@@ -1008,7 +1033,10 @@ mod rendering_tests {
     use diffo_highlight::Rgb;
     use ratatui::{Terminal, backend::TestBackend, layout::Rect, style::Color};
 
-    use super::{Renderer, contrast_ratio, contrasting_foreground, diff_background_rgb};
+    use super::{
+        Renderer, command_palette_layout, contrast_ratio, contrasting_foreground,
+        diff_background_rgb,
+    };
 
     fn model() -> Model {
         Model::new(
@@ -1199,6 +1227,28 @@ mod rendering_tests {
         assert!(screen.contains("Command Palette"));
         assert!(screen.contains("Git: Pull"));
         assert!(screen.contains("esc close"));
+    }
+
+    #[test]
+    fn command_palette_has_fixed_top_and_mouse_selection() {
+        let mut model = model();
+        model.open_command_palette();
+        let area = Rect::new(0, 0, 100, 30);
+        let (palette_area, results_area) = command_palette_layout(area);
+        assert_eq!(palette_area.y, 6);
+        assert_eq!(palette_area.height, 18);
+
+        let click = Event::Mouse(MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: results_area.x,
+            row: results_area.y.saturating_add(2),
+            modifiers: KeyModifiers::NONE,
+        });
+        let mut renderer = Renderer::new();
+        assert_eq!(
+            renderer.map_event(&click, &model, area),
+            Some(diffo_app::Message::CommandPaletteSelect(2))
+        );
     }
 
     #[test]

@@ -129,6 +129,10 @@ impl CommandPalette {
     pub fn select_previous(&mut self) {
         self.selected = self.selected.saturating_sub(1);
     }
+
+    pub fn select(&mut self, index: usize) {
+        self.selected = index.min(self.matches().len().saturating_sub(1));
+    }
 }
 
 fn fuzzy_score(candidate: &str, query: &str) -> Option<i64> {

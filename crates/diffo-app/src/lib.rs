@@ -15,6 +15,7 @@ pub enum Message {
     CommandPaletteBackspace,
     CommandPaletteSelectPrevious,
     CommandPaletteSelectNext,
+    CommandPaletteSelect(usize),
     SelectPreviousFile,
     SelectNextFile,
     SelectFirstFile,
@@ -53,6 +54,7 @@ pub fn update(model: &mut Model, message: Message) -> Option<Effect> {
         Message::CommandPaletteBackspace => model.command_palette_backspace(),
         Message::CommandPaletteSelectPrevious => model.command_palette_select_previous(),
         Message::CommandPaletteSelectNext => model.command_palette_select_next(),
+        Message::CommandPaletteSelect(index) => model.command_palette_select(index),
         Message::SelectPreviousFile => model.select_previous(),
         Message::SelectNextFile => model.select_next(),
         Message::SelectFirstFile => model.select_first(),
@@ -138,6 +140,8 @@ mod tests {
         update(&mut model, Message::CommandPaletteSelectNext);
         update(&mut model, Message::CommandPaletteBackspace);
         assert_eq!(model.command_palette.as_ref().unwrap().query, "f");
+        update(&mut model, Message::CommandPaletteSelect(2));
+        assert_eq!(model.command_palette.as_ref().unwrap().selected, 2);
         update(&mut model, Message::CloseCommandPalette);
         assert!(model.command_palette.is_none());
         assert!(!model.should_quit);

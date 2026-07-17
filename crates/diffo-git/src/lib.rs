@@ -1,4 +1,4 @@
-use std::{path::PathBuf, process::Command};
+use std::{collections::BTreeSet, path::PathBuf, process::Command};
 
 use anyhow::{Context, Result, bail};
 
@@ -27,6 +27,29 @@ impl GitRepositorySource {
     pub fn with_access_mode(mut self, access_mode: AccessMode) -> Self {
         self.access_mode = access_mode;
         self
+    }
+
+    /// Return the worktree and external Git metadata paths that affect snapshots.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when Git cannot resolve repository paths.
+    pub fn watch_paths(&self) -> Result<Vec<PathBuf>> {
+        let mut paths = BTreeSet::new();
+        for args in [
+            &["rev-parse", "--show-toplevel"][..],
+            &["rev-parse", "--path-format=absolute", "--git-dir"][..],
+            &[
+                "rev-parse",
+                "--path-format=absolute",
+                "--git-common-dir",
+            ][..],
+        ] {
+            let output = String::from_utf8(self.git(args)?)
+                .context("git returned a non-UTF-8 repository path")?;
+            paths.insert(PathBuf::from(output.trim()));
+        }
+        Ok(paths.into_iter().collect())
     }
 
     fn git(&self, args: &[&str]) -> Result<Vec<u8>> {

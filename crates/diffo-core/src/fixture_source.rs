@@ -1,8 +1,8 @@
 use std::{
-    cell::RefCell,
     collections::HashSet,
     fs,
     path::{Path, PathBuf},
+    sync::Mutex,
 };
 
 use anyhow::{Context, Result, bail};
@@ -48,7 +48,7 @@ impl Repository for FixtureRepositorySource {
 }
 
 pub struct MutableFixtureRepository {
-    snapshot: RefCell<RepositorySnapshot>,
+    snapshot: Mutex<RepositorySnapshot>,
     untracked_paths: HashSet<PathBuf>,
 }
 
@@ -83,13 +83,13 @@ impl MutableFixtureRepository {
             .map(|file| file.path.clone())
             .collect();
         Self {
-            snapshot: RefCell::new(snapshot),
+            snapshot: Mutex::new(snapshot),
             untracked_paths,
         }
     }
 
     fn stage(&self, path: &Path) -> Result<()> {
-        let mut snapshot = self.snapshot.borrow_mut();
+        let mut snapshot = self.snapshot.lock().expect("mock snapshot mutex poisoned");
         let file = snapshot
             .files
             .iter_mut()
@@ -107,7 +107,7 @@ impl MutableFixtureRepository {
     }
 
     fn unstage(&self, path: &Path) -> Result<()> {
-        let mut snapshot = self.snapshot.borrow_mut();
+        let mut snapshot = self.snapshot.lock().expect("mock snapshot mutex poisoned");
         let file = snapshot
             .files
             .iter_mut()
@@ -230,7 +230,11 @@ fn added_json_patch(item_count: usize) -> String {
 
 impl RepositorySource for MutableFixtureRepository {
     fn snapshot(&self) -> Result<RepositorySnapshot> {
-        Ok(self.snapshot.borrow().clone())
+        Ok(self
+            .snapshot
+            .lock()
+            .expect("mock snapshot mutex poisoned")
+            .clone())
     }
 }
 
@@ -246,7 +250,8 @@ impl Repository for MutableFixtureRepository {
             RepositoryAction::StageAll => {
                 let paths = self
                     .snapshot
-                    .borrow()
+                    .lock()
+                    .expect("mock snapshot mutex poisoned")
                     .files
                     .iter()
                     .filter(|file| file.unstaged.is_some())
@@ -260,7 +265,8 @@ impl Repository for MutableFixtureRepository {
             RepositoryAction::UnstageAll => {
                 let paths = self
                     .snapshot
-                    .borrow()
+                    .lock()
+                    .expect("mock snapshot mutex poisoned")
                     .files
                     .iter()
                     .filter(|file| file.staged.is_some())

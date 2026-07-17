@@ -56,7 +56,7 @@ pub struct UpstreamState {
     pub behind: usize,
 }
 
-pub trait RepositorySource {
+pub trait RepositorySource: Send + Sync {
     /// Build the current repository snapshot.
     ///
     /// # Errors

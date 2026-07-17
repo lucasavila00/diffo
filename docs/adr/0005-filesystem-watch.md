@@ -1,6 +1,6 @@
 # ADR 0005: Watch the filesystem
 
-Status: Proposed
+Status: Superseded by [ADR 0012](0012-live-repository-refresh.md)
 
 ## Decision
 

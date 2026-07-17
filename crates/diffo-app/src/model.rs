@@ -102,6 +102,12 @@ impl Model {
         }
     }
 
+    pub fn command_palette_select(&mut self, index: usize) {
+        if let Some(palette) = self.command_palette.as_mut() {
+            palette.select(index);
+        }
+    }
+
     pub fn select_next(&mut self) {
         let keys = file_keys(&self.snapshot);
         if keys.is_empty() {

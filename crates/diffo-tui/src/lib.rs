@@ -94,11 +94,17 @@ impl Renderer {
             DiffViewMode::SideBySide => "Side by side",
         };
         let lines = self.diff_lines(model, area.width.saturating_sub(2));
+        let resize_label = if model.resizing_file_pane {
+            format!(" · files {}%", model.file_pane_percent)
+        } else {
+            String::new()
+        };
         let pane = Paragraph::new(lines)
             .block(
                 Block::default()
                     .borders(Borders::ALL)
-                    .title(format!(" File Diff · {mode} ")),
+                    .border_style(resize_border_style(model))
+                    .title(format!(" File Diff · {mode}{resize_label} ")),
             )
             .scroll((
                 model.diff_scroll.try_into().unwrap_or(u16::MAX),
@@ -298,7 +304,12 @@ fn render_file_group<'a>(
         .into_iter()
         .map(|file| file_item(file, model.is_selected(&file.path, change_area)));
     let list = List::new(items)
-        .block(Block::default().borders(Borders::ALL).title(title))
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(resize_border_style(model))
+                .title(title),
+        )
         .highlight_style(
             Style::default()
                 .bg(Color::DarkGray)
@@ -556,20 +567,38 @@ fn row_style(kind: RowKind) -> Style {
 }
 
 fn render_status(frame: &mut Frame, area: ratatui::layout::Rect, model: &Model) {
-    let text = model
-        .error
-        .as_deref()
-        .unwrap_or(if model.access_mode == AccessMode::ReadOnly {
-            input::READ_ONLY_HELP
-        } else {
-            input::READ_WRITE_HELP
-        });
+    let text = if let Some(error) = model.error.as_deref() {
+        error.to_owned()
+    } else if model.resizing_file_pane {
+        format!(
+            " Resizing file pane: {}% · release mouse to finish ",
+            model.file_pane_percent
+        )
+    } else if model.access_mode == AccessMode::ReadOnly {
+        input::READ_ONLY_HELP.to_owned()
+    } else {
+        input::READ_WRITE_HELP.to_owned()
+    };
     let style = if model.error.is_some() {
         Style::default().fg(Color::Red)
+    } else if model.resizing_file_pane {
+        Style::default()
+            .fg(Color::Cyan)
+            .add_modifier(Modifier::BOLD)
     } else {
         Style::default()
     };
     frame.render_widget(Paragraph::new(text).style(style), area);
+}
+
+fn resize_border_style(model: &Model) -> Style {
+    if model.resizing_file_pane {
+        Style::default()
+            .fg(Color::Cyan)
+            .add_modifier(Modifier::BOLD)
+    } else {
+        Style::default()
+    }
 }
 
 fn unstaged_files(snapshot: &RepositorySnapshot) -> impl Iterator<Item = &FileState> {

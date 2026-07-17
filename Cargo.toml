@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "crates/diffo",
+    "crates/diffo-app",
     "crates/diffo-core",
     "crates/diffo-e2e",
     "crates/diffo-git",
@@ -18,6 +19,7 @@ version = "0.1.0"
 anyhow = "1.0"
 crossterm = "0.29"
 diffo-core = { path = "crates/diffo-core" }
+diffo-app = { path = "crates/diffo-app" }
 diffo-git = { path = "crates/diffo-git" }
 diffo-tui = { path = "crates/diffo-tui" }
 ratatui = "0.29"

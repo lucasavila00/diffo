@@ -14,7 +14,7 @@ pub struct FileKey {
     pub area: ChangeArea,
 }
 
-pub struct App {
+pub struct Model {
     pub snapshot: RepositorySnapshot,
     pub selected: Option<FileKey>,
     pub should_quit: bool,
@@ -25,7 +25,7 @@ pub struct App {
     cursor: usize,
 }
 
-impl App {
+impl Model {
     #[must_use]
     pub fn new(snapshot: RepositorySnapshot, access_mode: AccessMode) -> Self {
         let selected = file_keys(&snapshot).into_iter().next();
@@ -73,17 +73,9 @@ impl App {
         self.reset_diff_scroll();
     }
 
-    pub fn select_display_row(&mut self, row: usize) {
-        let unstaged_count = unstaged_files(&self.snapshot).count();
-        let cursor = if (1..=unstaged_count).contains(&row) {
-            Some(row - 1)
-        } else if row >= unstaged_count + 2 {
-            Some(row - 2)
-        } else {
-            None
-        };
+    pub fn select_file(&mut self, file: &FileKey) {
         let keys = file_keys(&self.snapshot);
-        if let Some(cursor) = cursor.filter(|cursor| *cursor < keys.len()) {
+        if let Some(cursor) = keys.iter().position(|key| key == file) {
             self.cursor = cursor;
             self.selected = keys.get(cursor).cloned();
             self.reset_diff_scroll();
@@ -215,7 +207,7 @@ mod tests {
         AccessMode, ChangeKind, FileDiff, FileState, RepositoryAction, RepositorySnapshot,
     };
 
-    use super::{App, ChangeArea, FileKey};
+    use super::{ChangeArea, FileKey, Model};
 
     fn snapshot() -> RepositorySnapshot {
         RepositorySnapshot {
@@ -245,7 +237,7 @@ mod tests {
 
     #[test]
     fn navigates_both_groups() {
-        let mut app = App::new(snapshot(), AccessMode::ReadWrite);
+        let mut app = Model::new(snapshot(), AccessMode::ReadWrite);
         assert_eq!(
             app.selected.as_ref().expect("selection").path,
             PathBuf::from("both.txt")
@@ -265,7 +257,7 @@ mod tests {
 
     #[test]
     fn creates_actions_for_the_selected_group() {
-        let mut app = App::new(snapshot(), AccessMode::ReadWrite);
+        let mut app = Model::new(snapshot(), AccessMode::ReadWrite);
         assert_eq!(
             app.stage_selected(),
             Some(RepositoryAction::Stage(PathBuf::from("both.txt")))
@@ -281,7 +273,7 @@ mod tests {
 
     #[test]
     fn keeps_selection_after_refresh() {
-        let mut app = App::new(snapshot(), AccessMode::ReadWrite);
+        let mut app = Model::new(snapshot(), AccessMode::ReadWrite);
         app.select_last();
         let selected = FileKey {
             path: PathBuf::from("both.txt"),
@@ -295,32 +287,10 @@ mod tests {
 
     #[test]
     fn read_only_mode_blocks_actions() {
-        let app = App::new(snapshot(), AccessMode::ReadOnly);
+        let app = Model::new(snapshot(), AccessMode::ReadOnly);
 
         assert_eq!(app.stage_selected(), None);
         assert_eq!(app.stage_all(), None);
     }
 
-    #[test]
-    fn selects_files_by_rendered_row_and_skips_headers() {
-        let mut app = App::new(snapshot(), AccessMode::ReadWrite);
-
-        app.select_display_row(2);
-        assert_eq!(
-            app.selected.as_ref().expect("selection").path,
-            PathBuf::from("new.txt")
-        );
-
-        app.select_display_row(3);
-        assert_eq!(
-            app.selected.as_ref().expect("selection").path,
-            PathBuf::from("new.txt")
-        );
-
-        app.select_display_row(4);
-        assert_eq!(
-            app.selected.as_ref().expect("selection").area,
-            ChangeArea::Staged
-        );
-    }
 }

@@ -1,4 +1,5 @@
 use std::{
+    fmt::Write as _,
     fs,
     path::{Path, PathBuf},
     process::Command,
@@ -7,7 +8,7 @@ use std::{
 };
 
 use anyhow::{Context, Result, bail};
-use diffo_e2e::{DiffoPage, Key, Selector};
+use diffo_e2e::{DiffoScreen, Key, ScrollDirection, Selector};
 
 const TIMEOUT: Duration = Duration::from_secs(5);
 
@@ -15,9 +16,9 @@ const TIMEOUT: Duration = Duration::from_secs(5);
 fn space_stages_selected_file() -> Result<()> {
     let repository = TestRepository::new()?;
     fs::write(repository.worktree.join("tracked.txt"), "changed\n")?;
-    let mut page = repository.page()?;
+    let mut screen = repository.screen()?;
 
-    page.press(Key::Char(' '))?;
+    screen.press(Key::Char(' '))?;
 
     wait_for("tracked.txt to be staged", || {
         Ok(cached_paths(&repository.worktree)?.contains("tracked.txt"))
@@ -29,9 +30,9 @@ fn space_unstages_selected_file() -> Result<()> {
     let repository = TestRepository::new()?;
     fs::write(repository.worktree.join("tracked.txt"), "changed\n")?;
     git(&repository.worktree, &["add", "tracked.txt"])?;
-    let mut page = repository.page()?;
+    let mut screen = repository.screen()?;
 
-    page.press(Key::Char(' '))?;
+    screen.press(Key::Char(' '))?;
 
     wait_for("tracked.txt to be unstaged", || {
         Ok(!cached_paths(&repository.worktree)?.contains("tracked.txt"))
@@ -41,9 +42,9 @@ fn space_unstages_selected_file() -> Result<()> {
 #[test]
 fn a_stages_all_files() -> Result<()> {
     let repository = changed_repository()?;
-    let mut page = repository.page()?;
+    let mut screen = repository.screen()?;
 
-    page.press(Key::Char('a'))?;
+    screen.press(Key::Char('a'))?;
 
     wait_for("all files to be staged", || {
         all_changes_are_staged(&repository.worktree)
@@ -54,9 +55,9 @@ fn a_stages_all_files() -> Result<()> {
 fn a_unstages_all_files() -> Result<()> {
     let repository = changed_repository()?;
     git(&repository.worktree, &["add", "."])?;
-    let mut page = repository.page()?;
+    let mut screen = repository.screen()?;
 
-    page.press(Key::Char('a'))?;
+    screen.press(Key::Char('a'))?;
 
     wait_for("all files to be unstaged", || {
         Ok(cached_paths(&repository.worktree)?.is_empty())
@@ -66,9 +67,9 @@ fn a_unstages_all_files() -> Result<()> {
 #[test]
 fn changes_header_stages_all_files() -> Result<()> {
     let repository = changed_repository()?;
-    let mut page = repository.page()?;
+    let mut screen = repository.screen()?;
 
-    page.click(Selector::panel_action("Changes", "Stage All"))?;
+    screen.click(&Selector::panel_action("Changes", "Stage All"))?;
 
     wait_for("header action to stage all files", || {
         all_changes_are_staged(&repository.worktree)
@@ -79,9 +80,9 @@ fn changes_header_stages_all_files() -> Result<()> {
 fn staged_header_unstages_all_files() -> Result<()> {
     let repository = changed_repository()?;
     git(&repository.worktree, &["add", "."])?;
-    let mut page = repository.page()?;
+    let mut screen = repository.screen()?;
 
-    page.click(Selector::panel_action("Staged", "Unstage All"))?;
+    screen.click(&Selector::panel_action("Staged", "Unstage All"))?;
 
     wait_for("header action to unstage all files", || {
         Ok(cached_paths(&repository.worktree)?.is_empty())
@@ -92,9 +93,9 @@ fn staged_header_unstages_all_files() -> Result<()> {
 fn plus_button_stages_clicked_file() -> Result<()> {
     let repository = TestRepository::new()?;
     fs::write(repository.worktree.join("tracked.txt"), "changed\n")?;
-    let mut page = repository.page()?;
+    let mut screen = repository.screen()?;
 
-    page.click(Selector::file_action("Changes", "tracked.txt", "[+]"))?;
+    screen.click(&Selector::file_action("Changes", "tracked.txt", "[+]"))?;
 
     wait_for("clicked file to be staged", || {
         Ok(cached_paths(&repository.worktree)?.contains("tracked.txt"))
@@ -106,9 +107,9 @@ fn minus_button_unstages_clicked_file() -> Result<()> {
     let repository = TestRepository::new()?;
     fs::write(repository.worktree.join("tracked.txt"), "changed\n")?;
     git(&repository.worktree, &["add", "tracked.txt"])?;
-    let mut page = repository.page()?;
+    let mut screen = repository.screen()?;
 
-    page.click(Selector::file_action("Staged", "tracked.txt", "[-]"))?;
+    screen.click(&Selector::file_action("Staged", "tracked.txt", "[-]"))?;
 
     wait_for("clicked file to be unstaged", || {
         Ok(!cached_paths(&repository.worktree)?.contains("tracked.txt"))
@@ -119,9 +120,10 @@ fn minus_button_unstages_clicked_file() -> Result<()> {
 fn palette_search_runs_fetch() -> Result<()> {
     let repository = TestRepository::new()?;
     let remote_commit = repository.commit_remote("remote.txt", "remote\n", "Remote commit")?;
-    let mut page = repository.page()?;
+    let mut screen = repository.screen()?;
 
-    page.press(Key::Char('1'))?
+    screen
+        .press(Key::Char('1'))?
         .wait_for_text("Command Palette")?
         .type_text("fetch")?
         .press(Key::Enter)?;
@@ -137,9 +139,10 @@ fn palette_search_runs_fetch() -> Result<()> {
 fn palette_search_runs_pull() -> Result<()> {
     let repository = TestRepository::new()?;
     repository.commit_remote("remote.txt", "remote\n", "Remote commit")?;
-    let mut page = repository.page()?;
+    let mut screen = repository.screen()?;
 
-    page.press(Key::Char('1'))?
+    screen
+        .press(Key::Char('1'))?
         .wait_for_text("Command Palette")?
         .type_text("pull")?
         .press(Key::Enter)?;
@@ -153,16 +156,143 @@ fn palette_search_runs_pull() -> Result<()> {
 fn clicking_palette_result_runs_command() -> Result<()> {
     let repository = TestRepository::new()?;
     repository.commit_remote("remote.txt", "remote\n", "Remote commit")?;
-    let mut page = repository.page()?;
+    let mut screen = repository.screen()?;
 
-    page.press(Key::Char('1'))?
+    screen
+        .press(Key::Char('1'))?
         .wait_for_text("Command Palette")?
         .type_text("pull")?
-        .click(Selector::text("Git: Pull"))?;
+        .click(&Selector::text("Git: Pull"))?;
 
     wait_for("clicked pull command to finish", || {
         Ok(repository.worktree.join("remote.txt").exists())
     })
+}
+
+#[test]
+fn overlays_open_and_close_with_function_keys() -> Result<()> {
+    let repository = TestRepository::new()?;
+    let mut screen = repository.screen()?;
+
+    screen
+        .press(Key::Function(1))?
+        .wait_for_text("Command Palette")?
+        .press(Key::Escape)?
+        .wait_for_text_gone("Command Palette")?
+        .press(Key::Function(2))?
+        .wait_for_text("Help")?
+        .press(Key::Function(2))?
+        .wait_for_text_gone("Help")?
+        .press(Key::Char('2'))?
+        .wait_for_text("Help")?
+        .press(Key::Char('2'))?
+        .wait_for_text_gone("Help")?;
+    Ok(())
+}
+
+#[test]
+fn mouse_click_selects_a_file() -> Result<()> {
+    let repository = TestRepository::new()?;
+    fs::write(
+        repository.worktree.join("tracked.txt"),
+        "tracked selected\n",
+    )?;
+    fs::write(repository.worktree.join("new.txt"), "new selected\n")?;
+    let mut screen = repository.screen()?;
+
+    screen
+        .click(&Selector::text("new.txt"))?
+        .wait_for(&Selector::selected_row("new.txt"))?;
+    Ok(())
+}
+
+#[test]
+fn view_and_file_pane_toggles_render_immediately() -> Result<()> {
+    let repository = TestRepository::new()?;
+    fs::write(repository.worktree.join("tracked.txt"), "changed\n")?;
+    let mut screen = repository.screen()?;
+
+    screen
+        .press(Key::Char('r'))?
+        .wait_for_text("Side by side")?
+        .press(Key::Char('e'))?
+        .wait_for_text_gone("Changes")?;
+    assert!(screen.contents().contains("File Diff"));
+    screen.press(Key::Char('e'))?.wait_for_text("Changes")?;
+    Ok(())
+}
+
+#[test]
+fn keyboard_and_mouse_scroll_move_the_visible_diff() -> Result<()> {
+    let repository = TestRepository::new()?;
+    let mut contents = String::new();
+    for line in 0..120 {
+        writeln!(contents, "line {line:03}").context("build scrolling fixture")?;
+    }
+    fs::write(repository.worktree.join("tracked.txt"), contents)?;
+    let mut screen = repository.screen()?;
+    screen.wait_for_text("line 000")?;
+
+    screen
+        .press(Key::Down)?
+        .wait_for_text_gone("line 000")?
+        .press(Key::Up)?
+        .wait_for_text("line 000")?
+        .press(Key::PageDown)?
+        .wait_for_text_gone("line 000")?
+        .press(Key::PageUp)?
+        .wait_for_text("line 000")?
+        .scroll(ScrollDirection::Down)?
+        .wait_for_text_gone("line 000")?
+        .scroll(ScrollDirection::Up)?
+        .wait_for_text("line 000")?;
+    Ok(())
+}
+
+#[test]
+fn every_file_navigation_alias_moves_selection() -> Result<()> {
+    let repository = TestRepository::new()?;
+    fs::write(repository.worktree.join("tracked.txt"), "changed\n")?;
+    fs::write(repository.worktree.join("new.txt"), "new\n")?;
+    let mut screen = repository.screen()?;
+    screen.wait_for(&Selector::selected_row("tracked.txt"))?;
+
+    screen
+        .press(Key::End)?
+        .wait_for(&Selector::selected_row("new.txt"))?
+        .press(Key::Home)?
+        .wait_for(&Selector::selected_row("tracked.txt"))?
+        .press(Key::Char('G'))?
+        .wait_for(&Selector::selected_row("new.txt"))?
+        .press(Key::Char('g'))?
+        .wait_for(&Selector::selected_row("tracked.txt"))?
+        .press(Key::Char('s'))?
+        .wait_for(&Selector::selected_row("new.txt"))?
+        .press(Key::Char('w'))?
+        .wait_for(&Selector::selected_row("tracked.txt"))?
+        .press(Key::Char('k'))?
+        .wait_for(&Selector::selected_row("new.txt"))?
+        .press(Key::Char('j'))?
+        .wait_for(&Selector::selected_row("tracked.txt"))?
+        .press(Key::Char('l'))?
+        .wait_for(&Selector::selected_row("new.txt"))?
+        .press(Key::Char('j'))?
+        .wait_for(&Selector::selected_row("tracked.txt"))?;
+    Ok(())
+}
+
+#[test]
+fn q_and_control_c_exit_cleanly() -> Result<()> {
+    let repository = TestRepository::new()?;
+    repository
+        .screen()?
+        .press(Key::Char('q'))?
+        .wait_for_exit()?;
+    repository
+        .screen()?
+        .press(Key::Ctrl('c'))?
+        .wait_for_exit()?;
+    Ok(())
 }
 
 fn changed_repository() -> Result<TestRepository> {
@@ -219,8 +349,8 @@ impl TestRepository {
         })
     }
 
-    fn page(&self) -> Result<DiffoPage> {
-        DiffoPage::launch(env!("CARGO_BIN_EXE_diffo"), &self.worktree)
+    fn screen(&self) -> Result<DiffoScreen> {
+        DiffoScreen::launch(env!("CARGO_BIN_EXE_diffo"), &self.worktree)
     }
 
     fn commit_remote(&self, path: &str, contents: &str, message: &str) -> Result<String> {

@@ -2,7 +2,7 @@ use std::{
     io::{Read, Write},
     path::Path,
     sync::mpsc::{Receiver, RecvTimeoutError, sync_channel},
-    thread::{self, JoinHandle},
+    thread,
     time::{Duration, Instant},
 };
 
@@ -22,9 +22,18 @@ pub enum Key {
     Down,
     Left,
     Right,
+    Home,
+    End,
     PageUp,
     PageDown,
+    Function(u8),
     Ctrl(char),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ScrollDirection {
+    Up,
+    Down,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -39,6 +48,7 @@ pub enum Selector {
         path: String,
         action: String,
     },
+    SelectedRow(String),
 }
 
 impl Selector {
@@ -67,17 +77,26 @@ impl Selector {
             action: action.into(),
         }
     }
+
+    #[must_use]
+    pub fn selected_row(text: impl Into<String>) -> Self {
+        Self::SelectedRow(text.into())
+    }
 }
 
-pub struct DiffoPage {
+pub struct DiffoScreen {
     parser: vt100::Parser,
     output: Receiver<Vec<u8>>,
     writer: Option<Box<dyn Write + Send>>,
     child: Box<dyn Child + Send + Sync>,
-    reader: Option<JoinHandle<()>>,
 }
 
-impl DiffoPage {
+impl DiffoScreen {
+    /// Launches the compiled Diffo binary in a fixed-size terminal.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the PTY or process cannot start, or the initial UI times out.
     pub fn launch(binary: impl AsRef<Path>, worktree: impl AsRef<Path>) -> Result<Self> {
         let pair = native_pty_system()
             .openpty(PtySize {
@@ -103,40 +122,54 @@ impl DiffoPage {
         drop(pair.slave);
 
         let (output_tx, output) = sync_channel(64);
-        let reader = thread::spawn(move || read_output(reader, &output_tx));
-        let mut page = Self {
+        thread::spawn(move || read_output(reader, &output_tx));
+        let mut screen = Self {
             parser: vt100::Parser::new(ROWS, COLUMNS, 0),
             output,
             writer: Some(writer),
             child,
-            reader: Some(reader),
         };
-        page.wait_for_text("1/f1: commands")?;
-        Ok(page)
+        screen.wait_for_text("1/f1: commands")?;
+        Ok(screen)
     }
 
+    /// Sends one terminal key.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the key is unsupported or the PTY cannot accept input.
     pub fn press(&mut self, key: Key) -> Result<&mut Self> {
         let bytes = key_bytes(key)?;
         self.write(&bytes)?;
         Ok(self)
     }
 
+    /// Types text and waits until it is visible on the terminal.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when input fails or the text does not appear before the deadline.
     pub fn type_text(&mut self, text: &str) -> Result<&mut Self> {
         self.write(text.as_bytes())?;
-        Ok(self)
+        self.wait_for_text(text)
     }
 
-    pub fn click(&mut self, selector: Selector) -> Result<&mut Self> {
+    /// Finds one visible control and sends a real terminal mouse click.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the selector is missing, ambiguous, or input fails.
+    pub fn click(&mut self, selector: &Selector) -> Result<&mut Self> {
         let deadline = Instant::now() + TIMEOUT;
         let (column, row) = loop {
             self.pump_available();
-            match self.locate(&selector)? {
+            match self.locate(selector)? {
                 Some(position) => break position,
                 None if Instant::now() < deadline => self.pump_until(deadline)?,
                 None => {
                     bail!(
                         "selector {selector:?} was not visible within five seconds\n{}",
-                        self.screen()
+                        self.contents()
                     )
                 }
             }
@@ -147,6 +180,25 @@ impl DiffoPage {
         Ok(self)
     }
 
+    /// Sends one real terminal mouse-wheel event over the diff pane.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the PTY cannot accept input.
+    pub fn scroll(&mut self, direction: ScrollDirection) -> Result<&mut Self> {
+        let button = match direction {
+            ScrollDirection::Up => 64,
+            ScrollDirection::Down => 65,
+        };
+        self.write(format!("\x1b[<{button};75;10M").as_bytes())?;
+        Ok(self)
+    }
+
+    /// Waits until text is visible on the terminal.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the process exits or the deadline expires.
     pub fn wait_for_text(&mut self, text: &str) -> Result<&mut Self> {
         let deadline = Instant::now() + TIMEOUT;
         loop {
@@ -157,15 +209,106 @@ impl DiffoPage {
             if Instant::now() >= deadline {
                 bail!(
                     "text {text:?} was not visible within five seconds\n{}",
-                    self.screen()
+                    self.contents()
                 );
             }
             self.pump_until(deadline)?;
         }
     }
 
+    /// Waits until one semantic selector is visible on the terminal.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the selector is ambiguous, the process exits, or time expires.
+    pub fn wait_for(&mut self, selector: &Selector) -> Result<&mut Self> {
+        let deadline = Instant::now() + TIMEOUT;
+        loop {
+            self.pump_available();
+            if self.locate(selector)?.is_some() {
+                return Ok(self);
+            }
+            if Instant::now() >= deadline {
+                bail!(
+                    "selector {selector:?} was not visible within five seconds\n{}",
+                    self.contents()
+                );
+            }
+            self.pump_until(deadline)?;
+        }
+    }
+
+    /// Waits until text is no longer visible on the terminal.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the process exits or the deadline expires.
+    pub fn wait_for_text_gone(&mut self, text: &str) -> Result<&mut Self> {
+        let deadline = Instant::now() + TIMEOUT;
+        loop {
+            self.pump_available();
+            if find_text(&self.cells(), text).is_empty() {
+                return Ok(self);
+            }
+            if Instant::now() >= deadline {
+                bail!(
+                    "text {text:?} remained visible for five seconds\n{}",
+                    self.contents()
+                );
+            }
+            self.pump_until(deadline)?;
+        }
+    }
+
+    /// Waits until a later terminal frame differs from the provided contents.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the process exits or no new frame appears before the deadline.
+    pub fn wait_for_change(&mut self, previous: &str) -> Result<&mut Self> {
+        let deadline = Instant::now() + TIMEOUT;
+        loop {
+            self.pump_available();
+            if self.contents() != previous {
+                return Ok(self);
+            }
+            if Instant::now() >= deadline {
+                bail!(
+                    "terminal did not change within five seconds\n{}",
+                    self.contents()
+                );
+            }
+            self.pump_until(deadline)?;
+        }
+    }
+
+    /// Waits for Diffo to exit successfully.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the process fails or remains alive past the deadline.
+    pub fn wait_for_exit(&mut self) -> Result<&mut Self> {
+        let deadline = Instant::now() + TIMEOUT;
+        loop {
+            if let Some(status) = self.child.try_wait().context("poll Diffo process")? {
+                if !status.success() {
+                    bail!("Diffo exited unsuccessfully: {status:?}");
+                }
+                return Ok(self);
+            }
+            if Instant::now() >= deadline {
+                bail!(
+                    "Diffo did not exit within five seconds\n{}",
+                    self.contents()
+                );
+            }
+            self.pump_available();
+            thread::sleep(Duration::from_millis(10));
+        }
+    }
+
     #[must_use]
-    pub fn screen(&self) -> String {
+    pub fn contents(&self) -> String {
         self.parser.screen().contents()
     }
 
@@ -179,6 +322,12 @@ impl DiffoPage {
                 path,
                 action,
             } => find_file_action(&cells, panel, path, action),
+            Selector::SelectedRow(text) => cells
+                .iter()
+                .enumerate()
+                .filter(|(_, row)| !find_in_row(row, "›").is_empty())
+                .flat_map(|(row, cells)| positions(row, find_in_row(cells, text), text))
+                .collect(),
         };
         match matches.as_slice() {
             [] => Ok(None),
@@ -186,7 +335,7 @@ impl DiffoPage {
             _ => bail!(
                 "selector {selector:?} matched {} visible controls\n{}",
                 matches.len(),
-                self.screen()
+                self.contents()
             ),
         }
     }
@@ -196,10 +345,17 @@ impl DiffoPage {
             .map(|row| {
                 (0..COLUMNS)
                     .map(|column| {
-                        self.parser
-                            .screen()
-                            .cell(row, column)
-                            .map_or_else(|| " ".to_owned(), vt100::Cell::contents)
+                        self.parser.screen().cell(row, column).map_or_else(
+                            || " ".to_owned(),
+                            |cell| {
+                                let contents = cell.contents();
+                                if contents.is_empty() {
+                                    " ".to_owned()
+                                } else {
+                                    contents
+                                }
+                            },
+                        )
                     })
                     .collect()
             })
@@ -237,7 +393,7 @@ impl DiffoPage {
     }
 }
 
-impl Drop for DiffoPage {
+impl Drop for DiffoScreen {
     fn drop(&mut self) {
         if self.child.try_wait().ok().flatten().is_none() {
             let _ = self.write(b"q");
@@ -250,13 +406,16 @@ impl Drop for DiffoPage {
             }
             if self.child.try_wait().ok().flatten().is_none() {
                 let _ = self.child.kill();
-                let _ = self.child.wait();
+                let deadline = Instant::now() + Duration::from_millis(250);
+                while Instant::now() < deadline {
+                    if self.child.try_wait().ok().flatten().is_some() {
+                        break;
+                    }
+                    thread::sleep(Duration::from_millis(10));
+                }
             }
         }
         self.writer.take();
-        if let Some(reader) = self.reader.take() {
-            let _ = reader.join();
-        }
     }
 }
 
@@ -280,8 +439,13 @@ fn key_bytes(key: Key) -> Result<Vec<u8>> {
         Key::Down => b"\x1b[B".to_vec(),
         Key::Right => b"\x1b[C".to_vec(),
         Key::Left => b"\x1b[D".to_vec(),
+        Key::Home => b"\x1b[H".to_vec(),
+        Key::End => b"\x1b[F".to_vec(),
         Key::PageUp => b"\x1b[5~".to_vec(),
         Key::PageDown => b"\x1b[6~".to_vec(),
+        Key::Function(1) => b"\x1bOP".to_vec(),
+        Key::Function(2) => b"\x1bOQ".to_vec(),
+        Key::Function(number) => bail!("unsupported function key F{number}"),
         Key::Ctrl(character) if character.is_ascii_alphabetic() => {
             vec![(character.to_ascii_lowercase() as u8) & 0x1f]
         }

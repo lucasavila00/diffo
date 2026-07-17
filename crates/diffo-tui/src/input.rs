@@ -5,8 +5,8 @@ use ratatui::layout::Rect;
 use crate::file_at_position;
 
 pub(crate) const READ_ONLY_HELP: &str =
-    " j: previous  k: next  arrows: scroll diff  space: view  q: quit  read-only ";
-pub(crate) const READ_WRITE_HELP: &str = " j: previous  k: next  arrows: scroll diff  space: view  s: stage  u: unstage  a: stage all  q: quit ";
+    " j: previous  k/l: next  arrows: scroll diff  space: view  q: quit  read-only ";
+pub(crate) const READ_WRITE_HELP: &str = " j: previous  k/l: next  arrows: scroll diff  space: view  s: stage  u: unstage  a: stage all  q: quit ";
 
 #[must_use]
 pub fn map_event(event: &Event, model: &Model, area: Rect) -> Option<Message> {
@@ -24,7 +24,7 @@ fn map_key(code: KeyCode, modifiers: KeyModifiers) -> Option<Message> {
         KeyCode::Char('q') | KeyCode::Esc => Some(Message::Quit),
         KeyCode::Char('c') if modifiers.contains(KeyModifiers::CONTROL) => Some(Message::Quit),
         KeyCode::Char('j') => Some(Message::SelectPreviousFile),
-        KeyCode::Char('k') => Some(Message::SelectNextFile),
+        KeyCode::Char('k' | 'l') => Some(Message::SelectNextFile),
         KeyCode::Up => Some(Message::ScrollDiffUp),
         KeyCode::Down => Some(Message::ScrollDiffDown),
         KeyCode::Left => Some(Message::ScrollDiffLeft),
@@ -76,6 +76,7 @@ mod tests {
             (KeyCode::Esc, Message::Quit),
             (KeyCode::Char('j'), Message::SelectPreviousFile),
             (KeyCode::Char('k'), Message::SelectNextFile),
+            (KeyCode::Char('l'), Message::SelectNextFile),
             (KeyCode::Up, Message::ScrollDiffUp),
             (KeyCode::Down, Message::ScrollDiffDown),
             (KeyCode::Left, Message::ScrollDiffLeft),

@@ -60,7 +60,10 @@ mod tests {
             .snapshot()
             .expect("fixture should load");
 
-        assert_eq!(snapshot.branch.name.as_deref(), Some("feature/mock-state"));
+        assert_eq!(
+            snapshot.branch.name.as_deref(),
+            Some("feature/syntax-highlighting")
+        );
         assert!(snapshot.files.iter().any(|file| file.staged.is_some()));
         assert!(snapshot.files.iter().any(|file| file.unstaged.is_some()));
         assert!(
@@ -70,6 +73,18 @@ mod tests {
                 .any(|file| file.kind == ChangeKind::Untracked)
         );
         assert!(!snapshot.recent_commits.is_empty());
+        assert!(
+            snapshot
+                .files
+                .iter()
+                .any(|file| file.path == Path::new("web/app.tsx"))
+        );
+        assert!(
+            snapshot
+                .files
+                .iter()
+                .any(|file| file.path == Path::new("scripts/report.py"))
+        );
         assert_eq!(snapshot.upstream.expect("upstream should exist").ahead, 2);
     }
 }

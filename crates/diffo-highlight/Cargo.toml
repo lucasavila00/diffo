@@ -1,0 +1,14 @@
+[package]
+name = "diffo-highlight"
+description = "Bundled syntax highlighting for Diffo"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+version.workspace = true
+
+[dependencies]
+diffo-diff.workspace = true
+two-face.workspace = true
+
+[lints]
+workspace = true

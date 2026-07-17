@@ -31,10 +31,17 @@ fn main() -> Result<()> {
     }
 
     let mut model = Model::new(snapshot, repository.access_mode());
+    let mut renderer = diffo_tui::Renderer::new();
     let mut terminal = ratatui::init();
     execute!(terminal.backend_mut(), EnableMouseCapture)?;
 
-    let result = run(&mut terminal, &mut model, &shutdown, repository.as_ref());
+    let result = run(
+        &mut terminal,
+        &mut renderer,
+        &mut model,
+        &shutdown,
+        repository.as_ref(),
+    );
     let mouse_result = execute!(terminal.backend_mut(), DisableMouseCapture)
         .context("failed to disable mouse capture");
     ratatui::restore();
@@ -59,12 +66,13 @@ fn dump_snapshot(path: &Path, snapshot: &diffo_core::RepositorySnapshot) -> Resu
 
 fn run(
     terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
+    renderer: &mut diffo_tui::Renderer,
     model: &mut Model,
     shutdown: &AtomicBool,
     repository: &dyn Repository,
 ) -> Result<()> {
     while !model.should_quit && !shutdown.load(Ordering::Relaxed) {
-        terminal.draw(|frame| diffo_tui::render(frame, model))?;
+        terminal.draw(|frame| renderer.render(frame, model))?;
 
         if event::poll(Duration::from_millis(250))? {
             let size = terminal.size()?;

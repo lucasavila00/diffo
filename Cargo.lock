@@ -216,6 +216,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "diffo-diff"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "similar",
+]
+
+[[package]]
 name = "diffo-e2e"
 version = "0.1.0"
 dependencies = [
@@ -242,6 +250,7 @@ dependencies = [
  "crossterm 0.29.0",
  "diffo-app",
  "diffo-core",
+ "diffo-diff",
  "ratatui",
 ]
 

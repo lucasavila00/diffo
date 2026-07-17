@@ -1,0 +1,14 @@
+[package]
+name = "diffo-diff"
+description = "Diff parsing and view projections for Diffo"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+version.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+similar.workspace = true
+
+[lints]
+workspace = true

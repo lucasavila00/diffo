@@ -3,6 +3,7 @@ members = [
     "crates/diffo",
     "crates/diffo-app",
     "crates/diffo-core",
+    "crates/diffo-diff",
     "crates/diffo-e2e",
     "crates/diffo-git",
     "crates/diffo-tui",
@@ -19,6 +20,7 @@ version = "0.1.0"
 anyhow = "1.0"
 crossterm = "0.29"
 diffo-core = { path = "crates/diffo-core" }
+diffo-diff = { path = "crates/diffo-diff" }
 diffo-app = { path = "crates/diffo-app" }
 diffo-git = { path = "crates/diffo-git" }
 diffo-tui = { path = "crates/diffo-tui" }
@@ -26,6 +28,7 @@ ratatui = "0.29"
 ron = "0.10"
 serde = { version = "1.0", features = ["derive"] }
 signal-hook = "0.3"
+similar = "2.7"
 tempfile = "3.20"
 
 [workspace.lints.rust]

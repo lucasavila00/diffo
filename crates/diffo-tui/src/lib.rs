@@ -1,10 +1,13 @@
 use diffo_app::{ChangeArea, DiffViewMode, FileKey, Model};
 use diffo_core::{AccessMode, ChangeKind, FileState, RepositorySnapshot};
+use diffo_diff::{
+    RenderLine, RowKind, SideBySideRow, inline_rows, parse_unified_patch, side_by_side_rows,
+};
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout},
     style::{Color, Modifier, Style},
-    text::Line,
+    text::{Line, Span},
     widgets::{Block, Borders, List, ListItem, ListState, Paragraph},
 };
 
@@ -129,16 +132,8 @@ fn render_diff_placeholder(frame: &mut Frame, area: ratatui::layout::Rect, model
         DiffViewMode::Inline => "Inline",
         DiffViewMode::SideBySide => "Side by side",
     };
-    let text = model.selected.as_ref().map_or_else(
-        || "No file selected.".to_owned(),
-        |selected| {
-            format!(
-                "{}\n\nView: {mode}\n\nFile diff comes next.",
-                selected.path.display()
-            )
-        },
-    );
-    let pane = Paragraph::new(text)
+    let lines = diff_lines(model, area.width.saturating_sub(2));
+    let pane = Paragraph::new(lines)
         .block(
             Block::default()
                 .borders(Borders::ALL)
@@ -149,6 +144,104 @@ fn render_diff_placeholder(frame: &mut Frame, area: ratatui::layout::Rect, model
             model.diff_horizontal_scroll.try_into().unwrap_or(u16::MAX),
         ));
     frame.render_widget(pane, area);
+}
+
+fn diff_lines(model: &Model, width: u16) -> Vec<Line<'static>> {
+    let Some(selected) = model.selected.as_ref() else {
+        return vec![Line::raw("No file selected.")];
+    };
+    let Some(file) = model
+        .snapshot
+        .files
+        .iter()
+        .find(|file| file.path == selected.path)
+    else {
+        return vec![Line::raw("Selected file is no longer available.")];
+    };
+    let diff = match selected.area {
+        ChangeArea::Unstaged => file.unstaged.as_ref(),
+        ChangeArea::Staged => file.staged.as_ref(),
+    };
+    let Some(diff) = diff else {
+        return vec![Line::raw("No text diff is available for this file.")];
+    };
+    let Ok(document) = parse_unified_patch(&diff.text) else {
+        return diff
+            .text
+            .lines()
+            .map(|line| Line::raw(line.to_owned()))
+            .collect();
+    };
+    if document.binary {
+        return vec![Line::raw("Binary file changed.")];
+    }
+
+    match model.diff_view_mode {
+        DiffViewMode::Inline => inline_rows(&document).iter().map(inline_line).collect(),
+        DiffViewMode::SideBySide => {
+            let column_width = usize::from(width.saturating_sub(3) / 2);
+            side_by_side_rows(&document)
+                .iter()
+                .map(|row| side_by_side_line(row, column_width))
+                .collect()
+        }
+    }
+}
+
+fn inline_line(row: &RenderLine) -> Line<'static> {
+    let prefix = match row.kind {
+        RowKind::Removed => "-",
+        RowKind::Added => "+",
+        RowKind::Header => "@",
+        _ => " ",
+    };
+    let number = row
+        .number
+        .map_or_else(|| "    ".to_owned(), |number| format!("{number:>4}"));
+    Line::styled(
+        format!("{number} {prefix} {}", row.text),
+        row_style(row.kind),
+    )
+}
+
+fn side_by_side_line(row: &SideBySideRow, column_width: usize) -> Line<'static> {
+    let old = format_cell(row.old.as_ref(), column_width);
+    let new = format_cell(row.new.as_ref(), column_width);
+    let old_style = row
+        .old
+        .as_ref()
+        .map_or_else(Style::default, |line| row_style(line.kind));
+    let new_style = row
+        .new
+        .as_ref()
+        .map_or_else(Style::default, |line| row_style(line.kind));
+    Line::from(vec![
+        Span::styled(old, old_style),
+        Span::raw(" │ "),
+        Span::styled(new, new_style),
+    ])
+}
+
+fn format_cell(line: Option<&RenderLine>, width: usize) -> String {
+    let Some(line) = line else {
+        return " ".repeat(width);
+    };
+    let number = line
+        .number
+        .map_or_else(|| "    ".to_owned(), |number| format!("{number:>4}"));
+    let value = format!("{number} {}", line.text);
+    let clipped = value.chars().take(width).collect::<String>();
+    format!("{clipped:<width$}")
+}
+
+fn row_style(kind: RowKind) -> Style {
+    match kind {
+        RowKind::Header => Style::default().fg(Color::Cyan),
+        RowKind::Removed => Style::default().fg(Color::Red),
+        RowKind::Added => Style::default().fg(Color::Green),
+        RowKind::Meta => Style::default().fg(Color::Yellow),
+        RowKind::Context | RowKind::Changed => Style::default(),
+    }
 }
 
 fn render_status(frame: &mut Frame, area: ratatui::layout::Rect, model: &Model) {

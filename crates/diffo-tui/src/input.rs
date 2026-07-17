@@ -5,9 +5,8 @@ use ratatui::layout::Rect;
 use crate::file_at_position;
 
 pub(crate) const READ_ONLY_HELP: &str =
-    " j: previous  k: next  arrows: scroll diff  q: quit  read-only ";
-pub(crate) const READ_WRITE_HELP: &str =
-    " j: previous  k: next  arrows: scroll diff  s: stage  u: unstage  a: stage all  q: quit ";
+    " j: previous  k: next  arrows: scroll diff  space: view  q: quit  read-only ";
+pub(crate) const READ_WRITE_HELP: &str = " j: previous  k: next  arrows: scroll diff  space: view  s: stage  u: unstage  a: stage all  q: quit ";
 
 #[must_use]
 pub fn map_event(event: &Event, model: &Model, area: Rect) -> Option<Message> {
@@ -30,6 +29,7 @@ fn map_key(code: KeyCode, modifiers: KeyModifiers) -> Option<Message> {
         KeyCode::Down => Some(Message::ScrollDiffDown),
         KeyCode::Left => Some(Message::ScrollDiffLeft),
         KeyCode::Right => Some(Message::ScrollDiffRight),
+        KeyCode::Char(' ') => Some(Message::ToggleDiffView),
         KeyCode::Home | KeyCode::Char('g') => Some(Message::SelectFirstFile),
         KeyCode::End | KeyCode::Char('G') => Some(Message::SelectLastFile),
         KeyCode::Char('s') => Some(Message::StageSelected),
@@ -80,6 +80,7 @@ mod tests {
             (KeyCode::Down, Message::ScrollDiffDown),
             (KeyCode::Left, Message::ScrollDiffLeft),
             (KeyCode::Right, Message::ScrollDiffRight),
+            (KeyCode::Char(' '), Message::ToggleDiffView),
             (KeyCode::Home, Message::SelectFirstFile),
             (KeyCode::End, Message::SelectLastFile),
             (KeyCode::Char('s'), Message::StageSelected),

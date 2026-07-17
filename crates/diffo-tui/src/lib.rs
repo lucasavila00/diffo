@@ -1,4 +1,4 @@
-use diffo_app::{ChangeArea, FileKey, Model};
+use diffo_app::{ChangeArea, DiffViewMode, FileKey, Model};
 use diffo_core::{AccessMode, ChangeKind, FileState, RepositorySnapshot};
 use ratatui::{
     Frame,
@@ -125,12 +125,25 @@ fn file_item(file: &FileState, selected: bool) -> ListItem<'static> {
 }
 
 fn render_diff_placeholder(frame: &mut Frame, area: ratatui::layout::Rect, model: &Model) {
+    let mode = match model.diff_view_mode {
+        DiffViewMode::Inline => "Inline",
+        DiffViewMode::SideBySide => "Side by side",
+    };
     let text = model.selected.as_ref().map_or_else(
         || "No file selected.".to_owned(),
-        |selected| format!("{}\n\nFile diff comes next.", selected.path.display()),
+        |selected| {
+            format!(
+                "{}\n\nView: {mode}\n\nFile diff comes next.",
+                selected.path.display()
+            )
+        },
     );
     let pane = Paragraph::new(text)
-        .block(Block::default().borders(Borders::ALL).title(" File Diff "))
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(format!(" File Diff · {mode} ")),
+        )
         .scroll((
             model.diff_scroll.try_into().unwrap_or(u16::MAX),
             model.diff_horizontal_scroll.try_into().unwrap_or(u16::MAX),

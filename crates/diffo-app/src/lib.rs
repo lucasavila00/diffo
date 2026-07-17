@@ -2,7 +2,7 @@ mod model;
 
 use diffo_core::{RepositoryAction, RepositorySnapshot};
 
-pub use model::{ChangeArea, FileKey, Model};
+pub use model::{ChangeArea, DiffViewMode, FileKey, Model};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Message {
@@ -16,6 +16,7 @@ pub enum Message {
     ScrollDiffDown,
     ScrollDiffLeft,
     ScrollDiffRight,
+    ToggleDiffView,
     StageSelected,
     UnstageSelected,
     StageAll,
@@ -40,6 +41,7 @@ pub fn update(model: &mut Model, message: Message) -> Option<Effect> {
         Message::ScrollDiffDown => model.scroll_diff_down(),
         Message::ScrollDiffLeft => model.scroll_diff_left(),
         Message::ScrollDiffRight => model.scroll_diff_right(),
+        Message::ToggleDiffView => model.toggle_diff_view(),
         Message::StageSelected => return model.stage_selected().map(Effect::Repository),
         Message::UnstageSelected => return model.unstage_selected().map(Effect::Repository),
         Message::StageAll => return model.stage_all().map(Effect::Repository),
@@ -57,7 +59,7 @@ mod tests {
         AccessMode, ChangeKind, FileDiff, FileState, RepositoryAction, RepositorySnapshot,
     };
 
-    use super::{ChangeArea, Effect, FileKey, Message, Model, update};
+    use super::{ChangeArea, DiffViewMode, Effect, FileKey, Message, Model, update};
 
     fn model(access_mode: AccessMode) -> Model {
         Model::new(
@@ -87,6 +89,22 @@ mod tests {
         assert_eq!(model.diff_horizontal_scroll, 1);
         assert_eq!(update(&mut model, Message::Quit), None);
         assert!(model.should_quit);
+    }
+
+    #[test]
+    fn toggles_diff_view_mode() {
+        let mut model = model(AccessMode::ReadWrite);
+        assert_eq!(model.diff_view_mode, DiffViewMode::Inline);
+        model.scroll_diff_down();
+        model.scroll_diff_right();
+
+        update(&mut model, Message::ToggleDiffView);
+        assert_eq!(model.diff_view_mode, DiffViewMode::SideBySide);
+        assert_eq!(model.diff_scroll, 0);
+        assert_eq!(model.diff_horizontal_scroll, 0);
+
+        update(&mut model, Message::ToggleDiffView);
+        assert_eq!(model.diff_view_mode, DiffViewMode::Inline);
     }
 
     #[test]

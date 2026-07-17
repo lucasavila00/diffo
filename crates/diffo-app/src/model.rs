@@ -14,6 +14,23 @@ pub struct FileKey {
     pub area: ChangeArea,
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum DiffViewMode {
+    #[default]
+    Inline,
+    SideBySide,
+}
+
+impl DiffViewMode {
+    #[must_use]
+    pub fn toggled(self) -> Self {
+        match self {
+            Self::Inline => Self::SideBySide,
+            Self::SideBySide => Self::Inline,
+        }
+    }
+}
+
 pub struct Model {
     pub snapshot: RepositorySnapshot,
     pub selected: Option<FileKey>,
@@ -22,6 +39,7 @@ pub struct Model {
     pub access_mode: AccessMode,
     pub diff_scroll: usize,
     pub diff_horizontal_scroll: usize,
+    pub diff_view_mode: DiffViewMode,
     cursor: usize,
 }
 
@@ -37,6 +55,7 @@ impl Model {
             access_mode,
             diff_scroll: 0,
             diff_horizontal_scroll: 0,
+            diff_view_mode: DiffViewMode::default(),
             cursor: 0,
         }
     }
@@ -97,6 +116,11 @@ impl Model {
 
     pub fn scroll_diff_left(&mut self) {
         self.diff_horizontal_scroll = self.diff_horizontal_scroll.saturating_sub(1);
+    }
+
+    pub fn toggle_diff_view(&mut self) {
+        self.diff_view_mode = self.diff_view_mode.toggled();
+        self.reset_diff_scroll();
     }
 
     #[must_use]

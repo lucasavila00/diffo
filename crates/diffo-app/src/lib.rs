@@ -21,8 +21,7 @@ pub enum Message {
     BeginFilePaneResize,
     ResizeFilePane(u16),
     EndFilePaneResize,
-    StageSelected,
-    UnstageSelected,
+    ToggleStageSelected,
     StageAll,
     SnapshotLoaded(RepositorySnapshot),
     OperationFailed(String),
@@ -50,8 +49,9 @@ pub fn update(model: &mut Model, message: Message) -> Option<Effect> {
         Message::BeginFilePaneResize => model.begin_file_pane_resize(),
         Message::ResizeFilePane(percent) => model.resize_file_pane(percent),
         Message::EndFilePaneResize => model.end_file_pane_resize(),
-        Message::StageSelected => return model.stage_selected().map(Effect::Repository),
-        Message::UnstageSelected => return model.unstage_selected().map(Effect::Repository),
+        Message::ToggleStageSelected => {
+            return model.toggle_stage_selected().map(Effect::Repository);
+        }
         Message::StageAll => return model.stage_all().map(Effect::Repository),
         Message::SnapshotLoaded(snapshot) => model.refresh(snapshot),
         Message::OperationFailed(error) => model.show_error(error),
@@ -100,6 +100,18 @@ mod tests {
     }
 
     #[test]
+    fn scrolls_four_lines_with_inverted_vertical_arrows() {
+        let mut model = model(AccessMode::ReadWrite);
+
+        update(&mut model, Message::ScrollDiffUp);
+        assert_eq!(model.diff_scroll, 4);
+        update(&mut model, Message::ScrollDiffDown);
+        assert_eq!(model.diff_scroll, 0);
+        update(&mut model, Message::ScrollDiffDown);
+        assert_eq!(model.diff_scroll, 0);
+    }
+
+    #[test]
     fn resizes_and_toggles_the_file_pane() {
         let mut model = model(AccessMode::ReadWrite);
 
@@ -136,12 +148,19 @@ mod tests {
     }
 
     #[test]
-    fn returns_repository_effect() {
+    fn returns_contextual_stage_effect() {
         let mut model = model(AccessMode::ReadWrite);
+
+        assert_eq!(
+            update(&mut model, Message::ToggleStageSelected),
+            Some(Effect::Repository(RepositoryAction::Unstage(
+                PathBuf::from("file.txt")
+            )))
+        );
         update(&mut model, Message::SelectNextFile);
 
         assert_eq!(
-            update(&mut model, Message::StageSelected),
+            update(&mut model, Message::ToggleStageSelected),
             Some(Effect::Repository(RepositoryAction::Stage(PathBuf::from(
                 "file.txt"
             ))))
@@ -152,7 +171,7 @@ mod tests {
     fn read_only_model_returns_no_effect() {
         let mut model = model(AccessMode::ReadOnly);
 
-        assert_eq!(update(&mut model, Message::StageSelected), None);
+        assert_eq!(update(&mut model, Message::ToggleStageSelected), None);
     }
 
     #[test]

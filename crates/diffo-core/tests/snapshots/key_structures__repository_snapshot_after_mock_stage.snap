@@ -1,0 +1,91 @@
+---
+source: crates/diffo-core/tests/key_structures.rs
+expression: "repository.snapshot().expect(\"snapshot after mock stage\")"
+---
+RepositorySnapshot(
+  branch: BranchState(
+    name: Some("feature/syntax-highlighting"),
+  ),
+  files: [
+    FileState(
+      path: "src/main.rs",
+      old_path: None,
+      kind: Modified,
+      staged: Some(FileDiff(
+        text: "diff --git a/src/main.rs b/src/main.rs\n--- a/src/main.rs\n+++ b/src/main.rs\n@@ -1,5 +1,7 @@\n fn main() {\n-    println!(\"hello\");\n+    let greeting = \"hello from diffo\";\n+    println!(\"{greeting}\");\n }\n \n // Render repository changes.\n",
+      )),
+      unstaged: Some(FileDiff(
+        text: "diff --git a/src/main.rs b/src/main.rs\n--- a/src/main.rs\n+++ b/src/main.rs\n@@ -1,7 +1,9 @@\n fn main() {\n     let greeting = \"hello from diffo\";\n-    println!(\"{greeting}\");\n+    let files = [\"src/main.rs\", \"app.tsx\"];\n+    println!(\"{greeting}: {} files\", files.len());\n }\n \n // Render repository changes.\n",
+      )),
+    ),
+    FileState(
+      path: "web/app.tsx",
+      old_path: None,
+      kind: Modified,
+      staged: None,
+      unstaged: Some(FileDiff(
+        text: "diff --git a/web/app.tsx b/web/app.tsx\n--- a/web/app.tsx\n+++ b/web/app.tsx\n@@ -1,5 +1,8 @@\n export function App() {\n-  return <main>Loading</main>;\n+  const title: string = \"Diffo\";\n+  return (\n+    <main className=\"diff-view\">{title}</main>\n+  );\n }\n",
+      )),
+    ),
+    FileState(
+      path: "scripts/report.py",
+      old_path: None,
+      kind: Modified,
+      staged: Some(FileDiff(
+        text: "diff --git a/scripts/report.py b/scripts/report.py\n--- a/scripts/report.py\n+++ b/scripts/report.py\n@@ -1,5 +1,7 @@\n def changed_files(snapshot):\n-    return []\n+    \"\"\"Return paths changed in the current snapshot.\"\"\"\n+    return [item.path for item in snapshot.files]\n \n-print(\"empty\")\n+for path in changed_files(snapshot):\n+    print(f\"changed: {path}\")\n",
+      )),
+      unstaged: None,
+    ),
+    FileState(
+      path: "Cargo.toml",
+      old_path: None,
+      kind: Modified,
+      staged: None,
+      unstaged: Some(FileDiff(
+        text: "diff --git a/Cargo.toml b/Cargo.toml\n--- a/Cargo.toml\n+++ b/Cargo.toml\n@@ -1,4 +1,5 @@\n [workspace]\n resolver = \"3\"\n-members = []\n+members = [\"crates/diffo\", \"crates/diffo-tui\"]\n+default-members = [\"crates/diffo\"]\n",
+      )),
+    ),
+    FileState(
+      path: "README.md",
+      old_path: None,
+      kind: Modified,
+      staged: Some(FileDiff(
+        text: "diff --git a/README.md b/README.md\n--- a/README.md\n+++ b/README.md\n@@ -1,4 +1,6 @@\n # Diffo\n \n-A small demo.\n+A live Git diff viewer.\n+\n+Use **Space** to switch diff layouts.\n",
+      )),
+      unstaged: None,
+    ),
+    FileState(
+      path: "examples/new_tool.rs",
+      old_path: None,
+      kind: Untracked,
+      staged: None,
+      unstaged: Some(FileDiff(
+        text: "diff --git a/examples/new_tool.rs b/examples/new_tool.rs\nnew file mode 100644\n--- /dev/null\n+++ b/examples/new_tool.rs\n@@ -0,0 +1,5 @@\n+pub fn run(name: &str) -> anyhow::Result<()> {\n+    println!(\"running {name}\");\n+    Ok(())\n+}\n+\n",
+      )),
+    ),
+    FileState(
+      path: "samples/output.unknown",
+      old_path: None,
+      kind: Modified,
+      staged: None,
+      unstaged: Some(FileDiff(
+        text: "diff --git a/samples/output.unknown b/samples/output.unknown\n--- a/samples/output.unknown\n+++ b/samples/output.unknown\n@@ -1,2 +1,2 @@\n-mode: old\n-value: plain text\n+mode: new\n+value: still plain text\n",
+      )),
+    ),
+  ],
+  recent_commits: [
+    Commit(
+      id: "7bd31d2",
+      summary: "Add repository overview",
+    ),
+    Commit(
+      id: "240f4a1",
+      summary: "Add diff parser",
+    ),
+  ],
+  upstream: Some(UpstreamState(
+    name: "origin/feature/syntax-highlighting",
+    ahead: 2,
+    behind: 0,
+  )),
+)

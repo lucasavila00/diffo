@@ -56,18 +56,22 @@ static KEY_BINDINGS: &[KeyBinding] = &[
         availability: Availability::Always,
     },
     KeyBinding {
-        keys: &[KeyChord::plain(KeyCode::Char('j'))],
+        keys: &[
+            KeyChord::plain(KeyCode::Char('j')),
+            KeyChord::plain(KeyCode::Char('w')),
+        ],
         message: Message::SelectPreviousFile,
-        help: Some("j: previous"),
+        help: Some("j/w: previous"),
         availability: Availability::Always,
     },
     KeyBinding {
         keys: &[
             KeyChord::plain(KeyCode::Char('k')),
             KeyChord::plain(KeyCode::Char('l')),
+            KeyChord::plain(KeyCode::Char('s')),
         ],
         message: Message::SelectNextFile,
-        help: Some("k/l: next"),
+        help: Some("k/l/s: next"),
         availability: Availability::Always,
     },
     KeyBinding {
@@ -125,15 +129,9 @@ static KEY_BINDINGS: &[KeyBinding] = &[
         availability: Availability::Always,
     },
     KeyBinding {
-        keys: &[KeyChord::plain(KeyCode::Char('s'))],
-        message: Message::StageSelected,
-        help: Some("s: stage"),
-        availability: Availability::ReadWrite,
-    },
-    KeyBinding {
-        keys: &[KeyChord::plain(KeyCode::Char('u'))],
-        message: Message::UnstageSelected,
-        help: Some("u: unstage"),
+        keys: &[KeyChord::plain(KeyCode::Char(' '))],
+        message: Message::ToggleStageSelected,
+        help: Some("space: stage/unstage"),
         availability: Availability::ReadWrite,
     },
     KeyBinding {
@@ -238,8 +236,10 @@ mod tests {
             (KeyCode::Char('q'), Message::Quit),
             (KeyCode::Esc, Message::Quit),
             (KeyCode::Char('j'), Message::SelectPreviousFile),
+            (KeyCode::Char('w'), Message::SelectPreviousFile),
             (KeyCode::Char('k'), Message::SelectNextFile),
             (KeyCode::Char('l'), Message::SelectNextFile),
+            (KeyCode::Char('s'), Message::SelectNextFile),
             (KeyCode::Up, Message::ScrollDiffUp),
             (KeyCode::Down, Message::ScrollDiffDown),
             (KeyCode::Left, Message::ScrollDiffLeft),
@@ -248,8 +248,7 @@ mod tests {
             (KeyCode::Char('e'), Message::ToggleFilePane),
             (KeyCode::Home, Message::SelectFirstFile),
             (KeyCode::End, Message::SelectLastFile),
-            (KeyCode::Char('s'), Message::StageSelected),
-            (KeyCode::Char('u'), Message::UnstageSelected),
+            (KeyCode::Char(' '), Message::ToggleStageSelected),
             (KeyCode::Char('a'), Message::StageAll),
         ];
         let model = model();
@@ -263,14 +262,6 @@ mod tests {
                 Some(expected)
             );
         }
-        assert_eq!(
-            map_event(
-                &Event::Key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::NONE)),
-                &model,
-                Rect::default(),
-            ),
-            None
-        );
     }
 
     #[test]
@@ -293,13 +284,14 @@ mod tests {
         let read_write = help_text(AccessMode::ReadWrite);
         assert!(read_write.contains("r: view"));
         assert!(read_write.contains("e: pane"));
-        assert!(read_write.contains("s: stage"));
-        assert!(!read_write.contains("space"));
+        assert!(read_write.contains("space: stage/unstage"));
+        assert!(read_write.contains("j/w: previous"));
+        assert!(read_write.contains("k/l/s: next"));
 
         let read_only = help_text(AccessMode::ReadOnly);
         assert!(read_only.contains("r: view"));
         assert!(read_only.contains("e: pane"));
-        assert!(!read_only.contains("s: stage"));
+        assert!(!read_only.contains("space: stage/unstage"));
         assert!(read_only.contains("read-only"));
     }
 
@@ -308,7 +300,7 @@ mod tests {
         let mut model = model();
         model.access_mode = AccessMode::ReadOnly;
 
-        for key in ['s', 'u', 'a'] {
+        for key in [' ', 'a'] {
             assert_eq!(
                 map_event(
                     &Event::Key(KeyEvent::new(KeyCode::Char(key), KeyModifiers::NONE)),
@@ -390,7 +382,7 @@ mod tests {
         let area = Rect::new(0, 0, 100, 30);
         let down = Event::Mouse(MouseEvent {
             kind: MouseEventKind::Down(MouseButton::Left),
-            column: 35,
+            column: 25,
             row: 5,
             modifiers: KeyModifiers::NONE,
         });

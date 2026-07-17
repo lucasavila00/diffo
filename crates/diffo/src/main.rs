@@ -14,14 +14,21 @@ use crossterm::{
     execute,
 };
 use diffo_app::{Effect, Message, Model, update};
-use diffo_core::{Repository, fixture_source::FixtureRepositorySource};
+use diffo_core::{
+    Repository,
+    fixture_source::{FixtureRepositorySource, MutableFixtureRepository},
+};
 use diffo_git::GitRepositorySource;
 use ratatui::{Terminal, backend::CrosstermBackend};
 
 fn main() -> Result<()> {
     let shutdown = install_signal_handlers()?;
     let repository: Box<dyn Repository> = if let Some(path) = env::var_os("DIFFO_MOCK_FILE") {
-        Box::new(FixtureRepositorySource::new(path))
+        if env::var_os("DIFFO_MOCK_MUTABLE").is_some() {
+            Box::new(MutableFixtureRepository::new_with_large_files(path)?)
+        } else {
+            Box::new(FixtureRepositorySource::new(path))
+        }
     } else {
         Box::new(GitRepositorySource::default())
     };

@@ -245,6 +245,7 @@ name = "diffo-core"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "insta",
  "ron 0.10.1",
  "serde",
 ]

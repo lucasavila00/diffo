@@ -11,5 +11,8 @@ anyhow.workspace = true
 ron.workspace = true
 serde.workspace = true
 
+[dev-dependencies]
+insta = { version = "1.48", features = ["ron"] }
+
 [lints]
 workspace = true

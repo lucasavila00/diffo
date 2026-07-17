@@ -59,9 +59,9 @@ impl Model {
             diff_scroll: 0,
             diff_horizontal_scroll: 0,
             diff_view_mode: DiffViewMode::default(),
-            file_pane_percent: 35,
+            file_pane_percent: 25,
             resizing_file_pane: false,
-            expanded_file_pane_percent: 35,
+            expanded_file_pane_percent: 25,
             cursor: 0,
         }
     }
@@ -109,11 +109,11 @@ impl Model {
     }
 
     pub fn scroll_diff_down(&mut self) {
-        self.diff_scroll = self.diff_scroll.saturating_add(1);
+        self.diff_scroll = self.diff_scroll.saturating_sub(4);
     }
 
     pub fn scroll_diff_up(&mut self) {
-        self.diff_scroll = self.diff_scroll.saturating_sub(1);
+        self.diff_scroll = self.diff_scroll.saturating_add(4);
     }
 
     pub fn scroll_diff_right(&mut self) {
@@ -164,6 +164,14 @@ impl Model {
         self.selected.as_ref().and_then(|key| {
             (key.area == ChangeArea::Unstaged).then(|| RepositoryAction::Stage(key.path.clone()))
         })
+    }
+
+    #[must_use]
+    pub fn toggle_stage_selected(&self) -> Option<RepositoryAction> {
+        match self.selected.as_ref()?.area {
+            ChangeArea::Unstaged => self.stage_selected(),
+            ChangeArea::Staged => self.unstage_selected(),
+        }
     }
 
     #[must_use]

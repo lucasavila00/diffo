@@ -9,6 +9,7 @@ use std::{
 
 use anyhow::{Context, Result, bail};
 use diffo_e2e::{DiffoScreen, Key, ScrollDirection, Selector};
+use serde::Deserialize;
 
 const TIMEOUT: Duration = Duration::from_secs(5);
 
@@ -245,6 +246,10 @@ fn keyboard_and_mouse_scroll_move_the_visible_diff() -> Result<()> {
         .scroll(ScrollDirection::Down)?
         .wait_for_text_gone("line 000")?
         .scroll(ScrollDirection::Up)?
+        .wait_for_text("line 000")?
+        .drag_vertical_scrollbar(0, 50)?
+        .wait_for_text_gone("line 000")?
+        .drag_vertical_scrollbar(50, 0)?
         .wait_for_text("line 000")?;
     Ok(())
 }
@@ -295,6 +300,136 @@ fn q_and_control_c_exit_cleanly() -> Result<()> {
     Ok(())
 }
 
+#[test]
+fn wheel_burst_is_one_bounded_frame_transition() -> Result<()> {
+    let repository = TestRepository::new()?;
+    let mut contents = String::new();
+    for line in 0..200 {
+        writeln!(contents, "line {line:03}").context("build trace fixture")?;
+    }
+    fs::write(repository.worktree.join("tracked.txt"), contents)?;
+    let trace_path = repository.root.path().join("frames.ronl");
+    let mut screen = DiffoScreen::launch_with_env(
+        env!("CARGO_BIN_EXE_diffo"),
+        &repository.worktree,
+        &[("DIFFO_TRACE_FRAMES", trace_path.as_os_str())],
+    )?;
+    screen
+        .wait_for_text("line 000")?
+        .scroll_many(ScrollDirection::Down, 10)?
+        .wait_for_text_gone("line 000")?
+        .scroll_many(ScrollDirection::Up, 10)?
+        .wait_for_text("line 000")?
+        .press_many(Key::Down, 10)?
+        .wait_for_text_gone("line 000")?
+        .press(Key::Char('q'))?
+        .wait_for_exit()?;
+    drop(screen);
+
+    let trace = fs::read_to_string(&trace_path).context("read frame trace")?;
+    let records = trace
+        .lines()
+        .map(ron::from_str::<ScrollFrame>)
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+    let frame = records
+        .iter()
+        .find(|record| {
+            record
+                .input_events
+                .iter()
+                .filter(|event| event.contains("ScrollDown"))
+                .count()
+                == 10
+        })
+        .with_context(|| format!("trace has no coalesced wheel frame:\n{trace}"))?;
+    assert_eq!(
+        frame.scroll_after.0.saturating_sub(frame.scroll_before.0),
+        40
+    );
+    let input_to_draw = frame.draw_end_us.saturating_sub(
+        frame
+            .event_read_us
+            .context("wheel frame has no event time")?,
+    );
+    assert!(
+        input_to_draw < 250_000,
+        "input-to-draw took {input_to_draw}µs"
+    );
+    let key_frame = records
+        .iter()
+        .find(|record| {
+            record
+                .input_events
+                .iter()
+                .filter(|event| event.contains("code: Down"))
+                .count()
+                == 10
+        })
+        .with_context(|| format!("trace has no coalesced key-repeat frame:\n{trace}"))?;
+    assert_eq!(
+        key_frame
+            .scroll_after
+            .0
+            .saturating_sub(key_frame.scroll_before.0),
+        40
+    );
+    Ok(())
+}
+
+#[test]
+fn live_content_change_keeps_the_visible_line_anchored() -> Result<()> {
+    let repository = TestRepository::new()?;
+    let contents = numbered_lines(120, false)?;
+    fs::write(repository.worktree.join("tracked.txt"), contents)?;
+    let mut screen = repository.screen()?;
+    screen
+        .wait_for_text("line 000")?
+        .scroll_many(ScrollDirection::Down, 10)?
+        .wait_for_text("line 038")?;
+    let anchor = Selector::text("line 038");
+    let before = screen
+        .position(&anchor)?
+        .context("anchor line is not visible before refresh")?;
+
+    let mut changed = String::new();
+    for index in 0..5 {
+        writeln!(changed, "inserted {index}").context("build inserted lines")?;
+    }
+    changed.push_str(&numbered_lines(120, true)?);
+    fs::write(repository.worktree.join("tracked.txt"), changed)?;
+    screen.wait_for_text("changed neighbor")?;
+    let after = screen
+        .position(&anchor)?
+        .context("anchor line is not visible after refresh")?;
+
+    assert_eq!(
+        after.1, before.1,
+        "content refresh moved the visible anchor"
+    );
+    Ok(())
+}
+
+fn numbered_lines(count: usize, change_neighbor: bool) -> Result<String> {
+    let mut contents = String::new();
+    for line in 0..count {
+        if change_neighbor && line == 39 {
+            writeln!(contents, "changed neighbor").context("build changed line")?;
+        } else {
+            writeln!(contents, "line {line:03}").context("build numbered line")?;
+        }
+    }
+    Ok(contents)
+}
+
+#[derive(Deserialize)]
+struct ScrollFrame {
+    input_events: Vec<String>,
+    scroll_before: (usize, usize),
+    scroll_after: (usize, usize),
+    event_read_us: Option<u64>,
+    draw_end_us: u64,
+}
+
 fn changed_repository() -> Result<TestRepository> {
     let repository = TestRepository::new()?;
     fs::write(repository.worktree.join("tracked.txt"), "changed\n")?;
@@ -323,7 +458,7 @@ fn wait_for(description: &str, mut condition: impl FnMut() -> Result<bool>) -> R
 }
 
 struct TestRepository {
-    _root: tempfile::TempDir,
+    root: tempfile::TempDir,
     seed: PathBuf,
     worktree: PathBuf,
 }
@@ -343,7 +478,7 @@ impl TestRepository {
         let worktree = root.path().join("work");
         configure(&worktree)?;
         Ok(Self {
-            _root: root,
+            root,
             seed,
             worktree,
         })

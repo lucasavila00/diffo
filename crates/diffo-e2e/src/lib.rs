@@ -1,4 +1,5 @@
 use std::{
+    ffi::OsStr,
     io::{Read, Write},
     path::Path,
     sync::mpsc::{Receiver, RecvTimeoutError, sync_channel},
@@ -98,6 +99,19 @@ impl DiffoScreen {
     ///
     /// Returns an error when the PTY or process cannot start, or the initial UI times out.
     pub fn launch(binary: impl AsRef<Path>, worktree: impl AsRef<Path>) -> Result<Self> {
+        Self::launch_with_env(binary, worktree, &[])
+    }
+
+    /// Launches Diffo with developer-only environment hooks.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the PTY or process cannot start, or the initial UI times out.
+    pub fn launch_with_env(
+        binary: impl AsRef<Path>,
+        worktree: impl AsRef<Path>,
+        environment: &[(&str, &OsStr)],
+    ) -> Result<Self> {
         let pair = native_pty_system()
             .openpty(PtySize {
                 rows: ROWS,
@@ -115,6 +129,9 @@ impl DiffoScreen {
         command.cwd(worktree.as_ref().as_os_str());
         command.env("TERM", "xterm-256color");
         command.env("GIT_TERMINAL_PROMPT", "0");
+        for (key, value) in environment {
+            command.env(key, value);
+        }
         let child = pair
             .slave
             .spawn_command(command)
@@ -139,8 +156,17 @@ impl DiffoScreen {
     ///
     /// Returns an error when the key is unsupported or the PTY cannot accept input.
     pub fn press(&mut self, key: Key) -> Result<&mut Self> {
+        self.press_many(key, 1)
+    }
+
+    /// Sends the same terminal key several times in one write.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the key is unsupported or the PTY cannot accept input.
+    pub fn press_many(&mut self, key: Key, count: usize) -> Result<&mut Self> {
         let bytes = key_bytes(key)?;
-        self.write(&bytes)?;
+        self.write(&bytes.repeat(count))?;
         Ok(self)
     }
 
@@ -186,11 +212,48 @@ impl DiffoScreen {
     ///
     /// Returns an error when the PTY cannot accept input.
     pub fn scroll(&mut self, direction: ScrollDirection) -> Result<&mut Self> {
+        self.scroll_many(direction, 1)
+    }
+
+    /// Sends several wheel events in one terminal write.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the PTY cannot accept input.
+    pub fn scroll_many(&mut self, direction: ScrollDirection, count: usize) -> Result<&mut Self> {
         let button = match direction {
             ScrollDirection::Up => 64,
             ScrollDirection::Down => 65,
         };
-        self.write(format!("\x1b[<{button};75;10M").as_bytes())?;
+        let event = format!("\x1b[<{button};75;10M");
+        self.write(event.repeat(count).as_bytes())?;
+        Ok(self)
+    }
+
+    /// Drags the visible vertical scrollbar between two percentages.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when a percentage is invalid or the PTY cannot accept input.
+    pub fn drag_vertical_scrollbar(
+        &mut self,
+        from_percent: u16,
+        to_percent: u16,
+    ) -> Result<&mut Self> {
+        if from_percent > 100 || to_percent > 100 {
+            bail!("scrollbar percentages must be between 0 and 100");
+        }
+        let track_start = 2_u16;
+        let track_length = ROWS.saturating_sub(4);
+        let position =
+            |percent: u16| track_start.saturating_add(track_length.saturating_mul(percent) / 100);
+        let from = position(from_percent);
+        let to = position(to_percent);
+        let column = COLUMNS.saturating_sub(1);
+        self.write(
+            format!("\x1b[<0;{column};{from}M\x1b[<32;{column};{to}M\x1b[<0;{column};{to}m")
+                .as_bytes(),
+        )?;
         Ok(self)
     }
 
@@ -236,6 +299,16 @@ impl DiffoScreen {
             }
             self.pump_until(deadline)?;
         }
+    }
+
+    /// Returns the current terminal cell for one visible selector.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the selector is ambiguous.
+    pub fn position(&mut self, selector: &Selector) -> Result<Option<(u16, u16)>> {
+        self.pump_available();
+        self.locate(selector)
     }
 
     /// Waits until text is no longer visible on the terminal.

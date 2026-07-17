@@ -190,12 +190,39 @@ impl Model {
         self.diff_scroll = self.diff_scroll.saturating_sub(lines);
     }
 
+    pub fn scroll_diff_by(&mut self, lines: i64) {
+        let magnitude = usize::try_from(lines.unsigned_abs()).unwrap_or(usize::MAX);
+        if lines >= 0 {
+            self.diff_scroll = self.diff_scroll.saturating_add(magnitude);
+        } else {
+            self.diff_scroll = self.diff_scroll.saturating_sub(magnitude);
+        }
+    }
+
     pub fn scroll_diff_right(&mut self) {
         self.diff_horizontal_scroll = self.diff_horizontal_scroll.saturating_add(4);
     }
 
     pub fn scroll_diff_left(&mut self) {
         self.diff_horizontal_scroll = self.diff_horizontal_scroll.saturating_sub(4);
+    }
+
+    pub fn scroll_diff_horizontal_by(&mut self, columns: i64) {
+        let magnitude = usize::try_from(columns.unsigned_abs()).unwrap_or(usize::MAX);
+        if columns >= 0 {
+            self.diff_horizontal_scroll = self.diff_horizontal_scroll.saturating_add(magnitude);
+        } else {
+            self.diff_horizontal_scroll = self.diff_horizontal_scroll.saturating_sub(magnitude);
+        }
+    }
+
+    pub fn clamp_diff_scroll(&mut self, maximum_row: usize, maximum_column: usize) {
+        self.diff_scroll = self.diff_scroll.min(maximum_row);
+        self.diff_horizontal_scroll = self.diff_horizontal_scroll.min(maximum_column);
+    }
+
+    pub fn anchor_diff_scroll(&mut self, row: usize) {
+        self.diff_scroll = row;
     }
 
     pub fn toggle_diff_view(&mut self) {
@@ -326,10 +353,7 @@ impl Model {
             .and_then(|selected| keys.iter().position(|key| key == selected))
             .unwrap_or_else(|| old_cursor.min(keys.len().saturating_sub(1)));
         let selected = keys.get(cursor).cloned();
-        let preserve_scroll = old_selected == selected
-            && selected.as_ref().is_some_and(|key| {
-                selected_diff(&self.snapshot, key) == selected_diff(&snapshot, key)
-            });
+        let preserve_scroll = old_selected == selected && selected.is_some();
         self.snapshot = snapshot;
         self.cursor = cursor;
         self.selected = selected;
@@ -353,17 +377,6 @@ impl Model {
     fn reset_diff_scroll(&mut self) {
         self.diff_scroll = 0;
         self.diff_horizontal_scroll = 0;
-    }
-}
-
-fn selected_diff<'a>(
-    snapshot: &'a RepositorySnapshot,
-    key: &FileKey,
-) -> Option<&'a diffo_core::FileDiff> {
-    let file = snapshot.files.iter().find(|file| file.path == key.path)?;
-    match key.area {
-        ChangeArea::Staged => file.staged.as_ref(),
-        ChangeArea::Unstaged => file.unstaged.as_ref(),
     }
 }
 
@@ -490,7 +503,7 @@ mod tests {
     }
 
     #[test]
-    fn preserves_scroll_until_the_selected_diff_changes() {
+    fn preserves_scroll_when_the_selected_file_changes_content() {
         let mut app = Model::new(snapshot(), AccessMode::ReadWrite);
         app.diff_scroll = 12;
         app.diff_horizontal_scroll = 8;
@@ -507,8 +520,8 @@ mod tests {
             .text
             .push_str("changed");
         app.refresh(changed);
-        assert_eq!(app.diff_scroll, 0);
-        assert_eq!(app.diff_horizontal_scroll, 0);
+        assert_eq!(app.diff_scroll, 12);
+        assert_eq!(app.diff_horizontal_scroll, 8);
     }
 
     #[test]

@@ -16,6 +16,7 @@ diffo-tui.workspace = true
 diffo-watch.workspace = true
 ratatui.workspace = true
 ron.workspace = true
+serde.workspace = true
 signal-hook.workspace = true
 
 [lints]

@@ -1,6 +1,6 @@
 # ADR 0014: Smooth scrolling
 
-Status: Proposed
+Status: Accepted
 
 ## Problem
 
@@ -36,6 +36,9 @@ drain input + refresh + renderer results
 - Draw immediately after state changes. Do not wait for the next idle poll.
 - Keep the previous prepared diff and its scroll position until the replacement is
   ready. Swap content and clamp position in one frame.
+- Before a content swap, capture the first visible diff row as an anchor. Find the
+  same row in the new content and keep it at the same terminal row. If it was
+  deleted, use the next surviving visible row. Then clamp.
 
 ## Debug trace
 

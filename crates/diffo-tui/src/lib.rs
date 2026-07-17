@@ -39,6 +39,7 @@ pub struct Renderer {
     failed: Option<(PathBuf, String)>,
     scrollbars: ScrollbarMetrics,
     scrollbar_drag: Option<ScrollbarAxis>,
+    content_revision: u64,
     #[cfg(test)]
     highlight_computations: usize,
 }
@@ -53,6 +54,31 @@ struct HighlightCache {
     highlighted: HighlightedDiff,
     #[cfg(test)]
     syntax_highlighted: bool,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct FramePreparation {
+    pub maximum_vertical_scroll: usize,
+    pub maximum_horizontal_scroll: usize,
+    pub content_revision: u64,
+    pub preparing: bool,
+    pub anchored_vertical_scroll: Option<usize>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum AnchorRow {
+    Inline {
+        kind: RowKind,
+        text: String,
+    },
+    SideBySide {
+        old: Option<(RowKind, String)>,
+        new: Option<(RowKind, String)>,
+    },
+}
+
+struct ScrollAnchor {
+    rows: Vec<(usize, usize, AnchorRow)>,
 }
 
 struct PrepareRequest {
@@ -122,6 +148,7 @@ impl Renderer {
             failed: None,
             scrollbars: ScrollbarMetrics::default(),
             scrollbar_drag: None,
+            content_revision: 0,
             #[cfg(test)]
             highlight_computations: 0,
         }
@@ -139,6 +166,67 @@ impl Renderer {
         render_status(frame, vertical[1], model);
         render_command_palette(frame, model);
         render_help(frame, model);
+    }
+
+    pub fn prepare_frame(&mut self, model: &Model, area: Rect) -> FramePreparation {
+        let diff_area = horizontal_panes(main_area(area), model.file_pane_percent)[1];
+        let viewport_rows = usize::from(diff_area.height.saturating_sub(2));
+        let viewport_columns = usize::from(diff_area.width.saturating_sub(2));
+        let current_diff = model.selected.as_ref().and_then(|selected| {
+            let file = model
+                .snapshot
+                .files
+                .iter()
+                .find(|file| file.path == selected.path)?;
+            let diff = match selected.area {
+                ChangeArea::Unstaged => file.unstaged.as_ref(),
+                ChangeArea::Staged => file.staged.as_ref(),
+            }?;
+            Some((file.path.as_path(), diff.text.as_str()))
+        });
+        let previous_revision = self.content_revision;
+        let anchor = current_diff.and_then(|(path, _)| {
+            self.highlighted
+                .as_ref()
+                .filter(|cache| cache.path == path)
+                .map(|cache| ScrollAnchor::capture(cache, model.diff_view_mode, model.diff_scroll))
+        });
+        if let Some((path, patch)) = current_diff {
+            self.prepared_diff(path, patch);
+        }
+        let anchored_vertical_scroll = (self.content_revision != previous_revision)
+            .then(|| {
+                anchor.and_then(|anchor| {
+                    self.highlighted
+                        .as_ref()
+                        .and_then(|cache| anchor.resolve(cache, model.diff_view_mode))
+                })
+            })
+            .flatten();
+        let failed_rows = current_diff.and_then(|(path, patch)| {
+            self.failed
+                .as_ref()
+                .is_some_and(|failed| failed.0 == path && failed.1 == patch)
+                .then(|| patch.lines().count())
+        });
+        let (rows, columns) = failed_rows.map_or_else(
+            || {
+                self.highlighted
+                    .as_ref()
+                    .map_or((0, 0), |cache| match model.diff_view_mode {
+                        DiffViewMode::Inline => (cache.inline.len(), cache.inline_width),
+                        DiffViewMode::SideBySide => (cache.side_by_side.len(), viewport_columns),
+                    })
+            },
+            |rows| (rows, viewport_columns),
+        );
+        FramePreparation {
+            maximum_vertical_scroll: rows.saturating_sub(viewport_rows),
+            maximum_horizontal_scroll: columns.saturating_sub(viewport_columns),
+            content_revision: self.content_revision,
+            preparing: self.pending.is_some(),
+            anchored_vertical_scroll,
+        }
     }
 
     #[must_use]
@@ -247,7 +335,7 @@ impl Renderer {
                         self.highlight_computations += 1;
                     }
                     self.failed = None;
-                    self.highlighted = Some(cache);
+                    self.install_cache(cache);
                 }
                 Err(key) => self.failed = Some(key),
             }
@@ -273,7 +361,7 @@ impl Renderer {
                 if cache.syntax_highlighted {
                     self.highlight_computations += 1;
                 }
-                self.highlighted = Some(cache);
+                self.install_cache(cache);
                 return self.highlighted.as_ref();
             }
             self.failed = Some(request_key);
@@ -290,6 +378,17 @@ impl Renderer {
             }
         }
         None
+    }
+
+    fn install_cache(&mut self, cache: HighlightCache) {
+        let changed = self
+            .highlighted
+            .as_ref()
+            .is_none_or(|current| current.path != cache.path || current.patch != cache.patch);
+        self.highlighted = Some(cache);
+        if changed {
+            self.content_revision = self.content_revision.saturating_add(1);
+        }
     }
 
     fn render_diff(&mut self, frame: &mut Frame, area: ratatui::layout::Rect, model: &Model) {
@@ -435,6 +534,83 @@ impl Renderer {
                     .map(|row| side_by_side_line(row, column_width, &cache.highlighted))
                     .collect()
             }
+        }
+    }
+}
+
+impl ScrollAnchor {
+    fn capture(cache: &HighlightCache, mode: DiffViewMode, first_row: usize) -> Self {
+        let row_count = projection_len(cache, mode);
+        Self {
+            rows: (first_row..row_count)
+                .take(16)
+                .filter_map(|index| {
+                    anchor_row(cache, mode, index).map(|row| (index - first_row, index, row))
+                })
+                .collect(),
+        }
+    }
+
+    fn resolve(&self, cache: &HighlightCache, mode: DiffViewMode) -> Option<usize> {
+        let row_count = projection_len(cache, mode);
+        self.rows
+            .iter()
+            .find_map(|(viewport_offset, old_index, anchor)| {
+                (0..row_count)
+                    .filter(|index| anchor.matches(cache, mode, *index))
+                    .min_by_key(|index| index.abs_diff(*old_index))
+                    .map(|index| index.saturating_sub(*viewport_offset))
+            })
+    }
+}
+
+impl AnchorRow {
+    fn matches(&self, cache: &HighlightCache, mode: DiffViewMode, index: usize) -> bool {
+        match (self, mode) {
+            (Self::Inline { kind, text }, DiffViewMode::Inline) => cache
+                .inline
+                .get(index)
+                .is_some_and(|row| row.kind == *kind && row.text == *text),
+            (Self::SideBySide { old, new }, DiffViewMode::SideBySide) => {
+                cache.side_by_side.get(index).is_some_and(|row| {
+                    side_line_matches(old, row.old.as_ref())
+                        && side_line_matches(new, row.new.as_ref())
+                })
+            }
+            _ => false,
+        }
+    }
+}
+
+fn side_line_matches(expected: &Option<(RowKind, String)>, actual: Option<&RenderLine>) -> bool {
+    match (expected, actual) {
+        (Some((kind, text)), Some(actual)) => actual.kind == *kind && actual.text == *text,
+        (None, None) => true,
+        _ => false,
+    }
+}
+
+fn projection_len(cache: &HighlightCache, mode: DiffViewMode) -> usize {
+    match mode {
+        DiffViewMode::Inline => cache.inline.len(),
+        DiffViewMode::SideBySide => cache.side_by_side.len(),
+    }
+}
+
+fn anchor_row(cache: &HighlightCache, mode: DiffViewMode, index: usize) -> Option<AnchorRow> {
+    match mode {
+        DiffViewMode::Inline => cache.inline.get(index).map(|row| AnchorRow::Inline {
+            kind: row.kind,
+            text: row.text.clone(),
+        }),
+        DiffViewMode::SideBySide => {
+            cache
+                .side_by_side
+                .get(index)
+                .map(|row| AnchorRow::SideBySide {
+                    old: row.old.as_ref().map(|line| (line.kind, line.text.clone())),
+                    new: row.new.as_ref().map(|line| (line.kind, line.text.clone())),
+                })
         }
     }
 }
@@ -1233,7 +1409,7 @@ mod rendering_tests {
 
     #[test]
     fn prepares_large_diffs_in_the_background() {
-        let mut model = model();
+        let mut inline_model = model();
         let mut patch = String::from("@@ -0,0 +1,501 @@\n");
         for index in 0..501 {
             writeln!(patch, "+line {index}").unwrap();
@@ -1265,6 +1441,77 @@ mod rendering_tests {
 
         assert_eq!(during_transition, previous);
         assert!(renderer.is_preparing());
+    }
+
+    #[test]
+    fn anchors_the_first_visible_row_when_content_moves_above_it() {
+        let mut model = model();
+        let patch = |prefix: &[&str]| {
+            let mut patch = format!("@@ -0,0 +1,{} @@\n", prefix.len() + 40);
+            for line in prefix {
+                writeln!(patch, "+{line}").unwrap();
+            }
+            for index in 0..40 {
+                writeln!(patch, "+stable line {index}").unwrap();
+            }
+            patch
+        };
+        inline_model.snapshot.files[0]
+            .unstaged
+            .as_mut()
+            .unwrap()
+            .text = patch(&[]);
+        inline_model.diff_scroll = 12;
+        let mut renderer = Renderer::new();
+        let area = Rect::new(0, 0, 100, 30);
+        let initial = renderer.prepare_frame(&inline_model, area);
+        assert_eq!(initial.anchored_vertical_scroll, None);
+
+        inline_model.snapshot.files[0]
+            .unstaged
+            .as_mut()
+            .unwrap()
+            .text = patch(&["inserted one", "inserted two", "inserted three"]);
+        let changed = renderer.prepare_frame(&inline_model, area);
+
+        assert_eq!(changed.anchored_vertical_scroll, Some(15));
+
+        let mut side_model = model();
+        side_model.diff_view_mode = DiffViewMode::SideBySide;
+        side_model.snapshot.files[0].unstaged.as_mut().unwrap().text = patch(&[]);
+        side_model.diff_scroll = 12;
+        let mut side_renderer = Renderer::new();
+        side_renderer.prepare_frame(&side_model, area);
+        side_model.snapshot.files[0].unstaged.as_mut().unwrap().text =
+            patch(&["inserted one", "inserted two", "inserted three"]);
+
+        let side_changed = side_renderer.prepare_frame(&side_model, area);
+
+        assert_eq!(side_changed.anchored_vertical_scroll, Some(15));
+    }
+
+    #[test]
+    fn uses_the_next_visible_row_when_the_anchor_was_deleted() {
+        let mut model = model();
+        let patch = |skip: Option<usize>| {
+            let mut patch = String::from("@@ -0,0 +1,40 @@\n");
+            for index in 0..40 {
+                if skip != Some(index) {
+                    writeln!(patch, "+stable line {index}").unwrap();
+                }
+            }
+            patch
+        };
+        model.snapshot.files[0].unstaged.as_mut().unwrap().text = patch(None);
+        model.diff_scroll = 12;
+        let mut renderer = Renderer::new();
+        let area = Rect::new(0, 0, 100, 30);
+        renderer.prepare_frame(&model, area);
+
+        model.snapshot.files[0].unstaged.as_mut().unwrap().text = patch(Some(11));
+        let changed = renderer.prepare_frame(&model, area);
+
+        assert_eq!(changed.anchored_vertical_scroll, Some(11));
     }
 
     #[test]

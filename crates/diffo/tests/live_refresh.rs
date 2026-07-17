@@ -80,7 +80,7 @@ fn compiled_binary_refreshes_live_git_state() -> Result<()> {
 }
 
 #[test]
-fn watcher_refresh_preserves_scroll_until_selected_diff_changes() -> Result<()> {
+fn watcher_refresh_never_resets_scroll_for_the_same_selection() -> Result<()> {
     let deadline = Instant::now() + Duration::from_secs(5);
     let repository = tempfile::tempdir().context("create repository")?;
     git(repository.path(), &["init", "--initial-branch=main"])?;
@@ -115,7 +115,7 @@ fn watcher_refresh_preserves_scroll_until_selected_diff_changes() -> Result<()> 
                 .is_some_and(|diff| diff.text.contains("second change"))
         })
     })?);
-    assert_eq!(model.diff_scroll, 0);
+    assert_eq!(model.diff_scroll, 40);
     Ok(())
 }
 

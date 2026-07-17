@@ -250,6 +250,7 @@ dependencies = [
  "diffo-watch",
  "ratatui",
  "ron 0.10.1",
+ "serde",
  "signal-hook",
  "tempfile",
 ]

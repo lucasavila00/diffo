@@ -1,6 +1,5 @@
 use diffo_app::{ChangeArea, DiffViewMode, FileKey, Model};
 use std::{
-    collections::VecDeque,
     path::{Path, PathBuf},
     sync::{
         Arc,
@@ -9,7 +8,7 @@ use std::{
     thread,
 };
 
-use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEventKind};
+use crossterm::event::{Event, MouseButton, MouseEventKind};
 use diffo_core::{AccessMode, ChangeKind, FileState, RepositorySnapshot};
 use diffo_diff::{
     DiffDocument, RenderLine, RowKind, SideBySideRow, inline_rows, parse_unified_patch,
@@ -30,55 +29,6 @@ use ratatui::{
 mod input;
 
 pub use input::map_event;
-
-#[derive(Default)]
-pub struct ProgrammaticInputQueue {
-    events: VecDeque<Event>,
-}
-
-impl ProgrammaticInputQueue {
-    #[must_use]
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    pub fn key(&mut self, code: KeyCode) -> &mut Self {
-        self.events
-            .push_back(Event::Key(KeyEvent::new(code, KeyModifiers::NONE)));
-        self
-    }
-
-    pub fn text(&mut self, text: &str) -> &mut Self {
-        for character in text.chars() {
-            self.key(KeyCode::Char(character));
-        }
-        self
-    }
-
-    pub fn mouse(&mut self, event: crossterm::event::MouseEvent) -> &mut Self {
-        self.events.push_back(Event::Mouse(event));
-        self
-    }
-
-    pub fn pop_message(
-        &mut self,
-        renderer: &mut Renderer,
-        model: &Model,
-        area: Rect,
-    ) -> Option<diffo_app::Message> {
-        while let Some(event) = self.events.pop_front() {
-            if let Some(message) = renderer.map_event(&event, model, area) {
-                return Some(message);
-            }
-        }
-        None
-    }
-
-    #[must_use]
-    pub fn is_empty(&self) -> bool {
-        self.events.is_empty()
-    }
-}
 
 pub struct Renderer {
     highlighter: Arc<SyntaxHighlighter>,

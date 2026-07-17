@@ -29,6 +29,7 @@ diffo-highlight = { path = "crates/diffo-highlight" }
 diffo-tui = { path = "crates/diffo-tui" }
 diffo-watch = { path = "crates/diffo-watch" }
 notify = "8.2"
+portable-pty = "0.9"
 ratatui = "0.29"
 ron = "0.10"
 serde = { version = "1.0", features = ["derive"] }
@@ -36,6 +37,7 @@ signal-hook = "0.3"
 similar = "2.7"
 tempfile = "3.20"
 two-face = "0.5"
+vt100 = "0.15"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

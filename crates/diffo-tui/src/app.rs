@@ -1,4 +1,4 @@
-use crate::repository::RepositorySnapshot;
+use diffo_core::RepositorySnapshot;
 
 const PAGE_SIZE: usize = 20;
 
@@ -60,7 +60,7 @@ impl App {
 mod tests {
     use std::path::PathBuf;
 
-    use crate::repository::{ChangeKind, FileDiff, FileState, RepositorySnapshot};
+    use diffo_core::{ChangeKind, FileDiff, FileState, RepositorySnapshot};
 
     use super::App;
 

@@ -13,21 +13,20 @@ Status: Accepted
 
 Use NUL-delimited output when Git supports it. Parse output into snapshot types.
 
-## End-to-end scripts
+## End-to-end tests
 
-Scripts will:
+The `diffo-e2e` crate uses Insta snapshot tests. Tests:
 
 1. Clone or create temporary repositories.
 2. Make staged, unstaged, untracked, committed, and unpushed changes.
 3. Run Diffo's collector.
-4. Dump the snapshot.
-5. Compare the dump with expected state.
+4. Compare the full snapshot with a checked-in RON snapshot.
 
-The scripts must clean up their temporary repositories. Dumps may also become mock
-fixtures.
+Temporary repositories are deleted after each test. Use `cargo insta test` to run and
+review snapshot changes.
 
 ## Done when
 
 - All Git state is parsed into a snapshot.
-- E2E scripts cover each state listed above.
+- E2E tests cover each state listed above.
 - Dumps are stable and human-readable.

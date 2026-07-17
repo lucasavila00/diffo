@@ -24,7 +24,7 @@ This repository is a Rust workspace containing small command-line utilities. Eac
 - Keep terminal rendering, input handling, application state, and external commands in separate modules.
 - Document key bindings in the interface and update them when controls change.
 - Avoid blocking work in the rendering and input loop.
-- Keep mock repository states in `crates/git-diff-tui/fixtures/`; do not add mock-only behavior to the real Git data path.
+- Keep mock repository states in `crates/diffo-core/fixtures/`; do not add mock-only behavior to the real Git data path.
 
 ## Validation
 
@@ -35,5 +35,8 @@ cargo fmt --all --check
 cargo test --workspace
 cargo clippy --workspace --all-targets --all-features -- -D warnings
 ```
+
+Real Git behavior is snapshot-tested in `diffo-e2e`. Use `make e2e` to check it and
+`make e2e-review` to review intentional snapshot changes with `cargo-insta`.
 
 When changing a single package, targeted commands are useful during development, but the complete workspace checks should still pass before handoff.

@@ -1,0 +1,14 @@
+[package]
+name = "diffo-tui"
+description = "Terminal UI for Diffo"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+version.workspace = true
+
+[dependencies]
+diffo-core.workspace = true
+ratatui.workspace = true
+
+[lints]
+workspace = true

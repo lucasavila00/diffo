@@ -1,0 +1,22 @@
+[package]
+name = "diffo-e2e"
+description = "End-to-end tests for Diffo"
+edition.workspace = true
+license.workspace = true
+publish = false
+rust-version.workspace = true
+version.workspace = true
+
+[[test]]
+name = "real_git_state"
+path = "tests/real_git_state.rs"
+
+[dev-dependencies]
+anyhow.workspace = true
+diffo-core.workspace = true
+diffo-git.workspace = true
+insta = { version = "1.48", features = ["ron"] }
+tempfile.workspace = true
+
+[lints]
+workspace = true

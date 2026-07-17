@@ -2,7 +2,7 @@ use std::{path::PathBuf, process::Command};
 
 use anyhow::{Context, Result, bail};
 
-use crate::repository::{
+use diffo_core::{
     BranchState, ChangeKind, Commit, FileDiff, FileState, RepositorySnapshot, RepositorySource,
     UpstreamState,
 };
@@ -249,7 +249,7 @@ mod tests {
     use std::path::PathBuf;
 
     use super::parse_status;
-    use crate::repository::ChangeKind;
+    use diffo_core::ChangeKind;
 
     #[test]
     fn parses_branch_files_and_upstream() {

@@ -5,7 +5,9 @@ use ratatui::{
     widgets::{Block, Borders, Paragraph, Wrap},
 };
 
-use crate::app::App;
+mod app;
+
+pub use app::App;
 
 pub fn render(frame: &mut Frame, app: &App) {
     let lines = snapshot_lines(app);

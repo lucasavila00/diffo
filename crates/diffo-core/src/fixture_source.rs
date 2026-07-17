@@ -2,7 +2,7 @@ use std::{fs, path::PathBuf};
 
 use anyhow::{Context, Result};
 
-use crate::repository::{RepositorySnapshot, RepositorySource};
+use crate::{RepositorySnapshot, RepositorySource};
 
 pub struct FixtureRepositorySource {
     path: PathBuf,
@@ -36,7 +36,7 @@ impl RepositorySource for FixtureRepositorySource {
 mod tests {
     use std::path::Path;
 
-    use crate::repository::{ChangeKind, RepositorySource};
+    use crate::{ChangeKind, RepositorySource};
 
     use super::FixtureRepositorySource;
 

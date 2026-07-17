@@ -1,5 +1,11 @@
 [workspace]
-members = ["crates/git-diff-tui"]
+members = [
+    "crates/diffo",
+    "crates/diffo-core",
+    "crates/diffo-e2e",
+    "crates/diffo-git",
+    "crates/diffo-tui",
+]
 resolver = "3"
 
 [workspace.package]
@@ -11,9 +17,13 @@ version = "0.1.0"
 [workspace.dependencies]
 anyhow = "1.0"
 crossterm = "0.29"
+diffo-core = { path = "crates/diffo-core" }
+diffo-git = { path = "crates/diffo-git" }
+diffo-tui = { path = "crates/diffo-tui" }
 ratatui = "0.29"
 ron = "0.10"
 serde = { version = "1.0", features = ["derive"] }
+tempfile = "3.20"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

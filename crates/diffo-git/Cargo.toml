@@ -1,0 +1,14 @@
+[package]
+name = "diffo-git"
+description = "Git repository state collector for Diffo"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+version.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+diffo-core.workspace = true
+
+[lints]
+workspace = true

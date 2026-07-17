@@ -1,0 +1,44 @@
+---
+source: crates/diffo-e2e/tests/real_git_state.rs
+expression: snapshot
+---
+RepositorySnapshot(
+  branch: BranchState(
+    name: Some("main"),
+  ),
+  files: [
+    FileState(
+      path: "tracked.txt",
+      old_path: None,
+      kind: Modified,
+      staged: Some(FileDiff(
+        text: "diff --git a/tracked.txt b/tracked.txt\nindex df967b9..12caafd 100644\n--- a/tracked.txt\n+++ b/tracked.txt\n@@ -1 +1,2 @@\n base\n+staged\n",
+      )),
+      unstaged: Some(FileDiff(
+        text: "diff --git a/tracked.txt b/tracked.txt\nindex 12caafd..913ae38 100644\n--- a/tracked.txt\n+++ b/tracked.txt\n@@ -1,2 +1,3 @@\n base\n staged\n+unstaged\n",
+      )),
+    ),
+    FileState(
+      path: "untracked.txt",
+      old_path: None,
+      kind: Untracked,
+      staged: None,
+      unstaged: None,
+    ),
+  ],
+  recent_commits: [
+    Commit(
+      id: "1bf1e5b638e384d31fa3a1d00f6a475debc8a90c",
+      summary: "Unpushed commit",
+    ),
+    Commit(
+      id: "bcda523971c062781f5cacd58e2704de0f0ede55",
+      summary: "Base commit",
+    ),
+  ],
+  upstream: Some(UpstreamState(
+    name: "origin/main",
+    ahead: 1,
+    behind: 0,
+  )),
+)

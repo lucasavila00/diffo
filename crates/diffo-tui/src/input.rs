@@ -47,6 +47,15 @@ struct KeyBinding {
 static KEY_BINDINGS: &[KeyBinding] = &[
     KeyBinding {
         keys: &[
+            KeyChord::plain(KeyCode::Char('1')),
+            KeyChord::plain(KeyCode::F(1)),
+        ],
+        message: Message::OpenCommandPalette,
+        help: Some("1/f1: commands"),
+        availability: Availability::Always,
+    },
+    KeyBinding {
+        keys: &[
             KeyChord::plain(KeyCode::Char('q')),
             KeyChord::plain(KeyCode::Esc),
             KeyChord::control('c'),
@@ -178,6 +187,9 @@ impl KeyBinding {
 
 #[must_use]
 pub fn map_event(event: &Event, model: &Model, area: Rect) -> Option<Message> {
+    if model.command_palette.is_some() {
+        return map_command_palette_event(event);
+    }
     match event {
         Event::Key(key) if key.kind == KeyEventKind::Press => {
             map_key(key.code, key.modifiers, model.access_mode).map(|message| {
@@ -215,6 +227,30 @@ pub fn map_event(event: &Event, model: &Model, area: Rect) -> Option<Message> {
         }
         Event::Mouse(mouse) if mouse.kind == MouseEventKind::ScrollDown => {
             Some(Message::ScrollDiffDown)
+        }
+        _ => None,
+    }
+}
+
+fn map_command_palette_event(event: &Event) -> Option<Message> {
+    let Event::Key(key) = event else {
+        return None;
+    };
+    if key.kind != KeyEventKind::Press {
+        return None;
+    }
+    match key.code {
+        KeyCode::Esc => Some(Message::CloseCommandPalette),
+        KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => Some(Message::Quit),
+        KeyCode::Backspace => Some(Message::CommandPaletteBackspace),
+        KeyCode::Up => Some(Message::CommandPaletteSelectPrevious),
+        KeyCode::Down => Some(Message::CommandPaletteSelectNext),
+        KeyCode::Char(character)
+            if !key
+                .modifiers
+                .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT) =>
+        {
+            Some(Message::CommandPaletteInput(character))
         }
         _ => None,
     }
@@ -262,6 +298,8 @@ mod tests {
     fn maps_fixed_key_bindings() {
         let cases = [
             (KeyCode::Char('q'), Message::Quit),
+            (KeyCode::Char('1'), Message::OpenCommandPalette),
+            (KeyCode::F(1), Message::OpenCommandPalette),
             (KeyCode::Esc, Message::Quit),
             (KeyCode::Char('j'), Message::SelectPreviousFile),
             (KeyCode::Char('w'), Message::SelectPreviousFile),
@@ -370,6 +408,29 @@ mod tests {
                 area: ChangeArea::Unstaged,
             }))
         );
+    }
+
+    #[test]
+    fn command_palette_captures_keys_and_escape_closes_it() {
+        let mut model = model();
+        model.open_command_palette();
+
+        for (key, expected) in [
+            (KeyCode::Char('q'), Message::CommandPaletteInput('q')),
+            (KeyCode::Backspace, Message::CommandPaletteBackspace),
+            (KeyCode::Up, Message::CommandPaletteSelectPrevious),
+            (KeyCode::Down, Message::CommandPaletteSelectNext),
+            (KeyCode::Esc, Message::CloseCommandPalette),
+        ] {
+            assert_eq!(
+                map_event(
+                    &Event::Key(KeyEvent::new(key, KeyModifiers::NONE)),
+                    &model,
+                    Rect::default()
+                ),
+                Some(expected)
+            );
+        }
     }
 
     #[test]

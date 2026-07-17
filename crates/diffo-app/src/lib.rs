@@ -1,12 +1,20 @@
+mod command_palette;
 mod model;
 
 use diffo_core::{RepositoryAction, RepositorySnapshot};
 
+pub use command_palette::{Command, CommandId, CommandPalette};
 pub use model::{ChangeArea, DiffViewMode, FileKey, Model};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Message {
     Quit,
+    OpenCommandPalette,
+    CloseCommandPalette,
+    CommandPaletteInput(char),
+    CommandPaletteBackspace,
+    CommandPaletteSelectPrevious,
+    CommandPaletteSelectNext,
     SelectPreviousFile,
     SelectNextFile,
     SelectFirstFile,
@@ -39,6 +47,12 @@ pub enum Effect {
 pub fn update(model: &mut Model, message: Message) -> Option<Effect> {
     match message {
         Message::Quit => model.should_quit = true,
+        Message::OpenCommandPalette => model.open_command_palette(),
+        Message::CloseCommandPalette => model.close_command_palette(),
+        Message::CommandPaletteInput(character) => model.command_palette_input(character),
+        Message::CommandPaletteBackspace => model.command_palette_backspace(),
+        Message::CommandPaletteSelectPrevious => model.command_palette_select_previous(),
+        Message::CommandPaletteSelectNext => model.command_palette_select_next(),
         Message::SelectPreviousFile => model.select_previous(),
         Message::SelectNextFile => model.select_next(),
         Message::SelectFirstFile => model.select_first(),
@@ -105,6 +119,28 @@ mod tests {
         assert_eq!(model.diff_horizontal_scroll, 4);
         assert_eq!(update(&mut model, Message::Quit), None);
         assert!(model.should_quit);
+    }
+
+    #[test]
+    fn edits_and_closes_command_palette_state() {
+        let mut model = model(AccessMode::ReadWrite);
+
+        update(&mut model, Message::OpenCommandPalette);
+        update(&mut model, Message::CommandPaletteInput('f'));
+        update(&mut model, Message::CommandPaletteInput('p'));
+        assert_eq!(
+            model
+                .command_palette
+                .as_ref()
+                .map(|palette| palette.query.as_str()),
+            Some("fp")
+        );
+        update(&mut model, Message::CommandPaletteSelectNext);
+        update(&mut model, Message::CommandPaletteBackspace);
+        assert_eq!(model.command_palette.as_ref().unwrap().query, "f");
+        update(&mut model, Message::CloseCommandPalette);
+        assert!(model.command_palette.is_none());
+        assert!(!model.should_quit);
     }
 
     #[test]

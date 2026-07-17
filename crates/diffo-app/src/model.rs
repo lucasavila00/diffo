@@ -2,6 +2,8 @@ use std::path::{Path, PathBuf};
 
 use diffo_core::{AccessMode, RepositoryAction, RepositorySnapshot};
 
+use crate::CommandPalette;
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ChangeArea {
     Unstaged,
@@ -42,6 +44,7 @@ pub struct Model {
     pub diff_view_mode: DiffViewMode,
     pub file_pane_percent: u16,
     pub resizing_file_pane: bool,
+    pub command_palette: Option<CommandPalette>,
     expanded_file_pane_percent: u16,
     cursor: usize,
 }
@@ -61,8 +64,41 @@ impl Model {
             diff_view_mode: DiffViewMode::default(),
             file_pane_percent: 25,
             resizing_file_pane: false,
+            command_palette: None,
             expanded_file_pane_percent: 25,
             cursor: 0,
+        }
+    }
+
+    pub fn open_command_palette(&mut self) {
+        self.command_palette = Some(CommandPalette::default());
+    }
+
+    pub fn close_command_palette(&mut self) {
+        self.command_palette = None;
+    }
+
+    pub fn command_palette_input(&mut self, character: char) {
+        if let Some(palette) = self.command_palette.as_mut() {
+            palette.push(character);
+        }
+    }
+
+    pub fn command_palette_backspace(&mut self) {
+        if let Some(palette) = self.command_palette.as_mut() {
+            palette.backspace();
+        }
+    }
+
+    pub fn command_palette_select_previous(&mut self) {
+        if let Some(palette) = self.command_palette.as_mut() {
+            palette.select_previous();
+        }
+    }
+
+    pub fn command_palette_select_next(&mut self) {
+        if let Some(palette) = self.command_palette.as_mut() {
+            palette.select_next();
         }
     }
 

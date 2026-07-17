@@ -21,7 +21,7 @@ use ratatui::{
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{
-        Block, Borders, HighlightSpacing, List, ListItem, ListState, Paragraph, Scrollbar,
+        Block, Borders, Clear, HighlightSpacing, List, ListItem, ListState, Paragraph, Scrollbar,
         ScrollbarOrientation, ScrollbarState,
     },
 };
@@ -137,6 +137,7 @@ impl Renderer {
         render_files(frame, panes[0], model);
         self.render_diff(frame, panes[1], model);
         render_status(frame, vertical[1], model);
+        render_command_palette(frame, model);
     }
 
     #[must_use]
@@ -150,6 +151,9 @@ impl Renderer {
         model: &Model,
         area: Rect,
     ) -> Option<diffo_app::Message> {
+        if model.command_palette.is_some() {
+            return input::map_event(event, model, area);
+        }
         if let Event::Mouse(mouse) = event {
             if mouse.kind == MouseEventKind::Up(MouseButton::Left) {
                 self.scrollbar_drag = None;
@@ -417,6 +421,81 @@ impl Renderer {
             }
         }
     }
+}
+
+fn render_command_palette(frame: &mut Frame, model: &Model) {
+    let Some(palette) = model.command_palette.as_ref() else {
+        return;
+    };
+    let commands = palette.matches();
+    let area = centered_palette_area(frame.area(), commands.len());
+    frame.render_widget(Clear, area);
+    frame.render_widget(
+        Block::default()
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(Color::Cyan))
+            .title(" Command Palette "),
+        area,
+    );
+    let inner = area.inner(ratatui::layout::Margin {
+        vertical: 1,
+        horizontal: 2,
+    });
+    let sections = Layout::vertical([
+        Constraint::Length(1),
+        Constraint::Length(1),
+        Constraint::Min(1),
+        Constraint::Length(1),
+    ])
+    .split(inner);
+    frame.render_widget(
+        Paragraph::new(format!("> {}█", palette.query)).style(
+            Style::default()
+                .fg(Color::White)
+                .add_modifier(Modifier::BOLD),
+        ),
+        sections[0],
+    );
+    frame.render_widget(
+        Paragraph::new("─".repeat(usize::from(sections[1].width)))
+            .style(Style::default().fg(Color::DarkGray)),
+        sections[1],
+    );
+    let items = if commands.is_empty() {
+        vec![ListItem::new("No matching commands").style(Style::default().fg(Color::DarkGray))]
+    } else {
+        commands
+            .iter()
+            .map(|command| ListItem::new(command.label))
+            .collect()
+    };
+    let list = List::new(items).highlight_symbol("› ").highlight_style(
+        Style::default()
+            .bg(Color::Indexed(24))
+            .fg(Color::White)
+            .add_modifier(Modifier::BOLD),
+    );
+    let mut state = ListState::default().with_selected(
+        (!commands.is_empty()).then_some(palette.selected.min(commands.len().saturating_sub(1))),
+    );
+    frame.render_stateful_widget(list, sections[2], &mut state);
+    frame.render_widget(
+        Paragraph::new("type to search · ↑↓ select · esc close")
+            .style(Style::default().fg(Color::DarkGray)),
+        sections[3],
+    );
+}
+
+fn centered_palette_area(area: Rect, command_count: usize) -> Rect {
+    let width = (area.width.saturating_mul(7) / 10).clamp(30.min(area.width), 80.min(area.width));
+    let wanted_height = u16::try_from(command_count.saturating_add(5)).unwrap_or(u16::MAX);
+    let height = wanted_height.clamp(7.min(area.height), 18.min(area.height));
+    Rect::new(
+        area.x + area.width.saturating_sub(width) / 2,
+        area.y + area.height.saturating_sub(height) / 4,
+        width,
+        height,
+    )
 }
 
 fn prepare_diff(
@@ -1093,6 +1172,33 @@ mod rendering_tests {
             renderer.map_event(&horizontal_click, &model, Rect::new(0, 0, 100, 30)),
             Some(diffo_app::Message::SetDiffHorizontalScroll(position)) if position > 0
         ));
+    }
+
+    #[test]
+    fn renders_command_palette_over_the_diff() {
+        let mut model = model();
+        model.open_command_palette();
+        let mut renderer = Renderer::new();
+        let backend = TestBackend::new(100, 30);
+        let mut terminal = Terminal::new(backend).unwrap();
+
+        terminal
+            .draw(|frame| renderer.render(frame, &model))
+            .unwrap();
+
+        let screen =
+            terminal
+                .backend()
+                .buffer()
+                .content
+                .iter()
+                .fold(String::new(), |mut output, cell| {
+                    output.push_str(cell.symbol());
+                    output
+                });
+        assert!(screen.contains("Command Palette"));
+        assert!(screen.contains("Git: Pull"));
+        assert!(screen.contains("esc close"));
     }
 
     #[test]

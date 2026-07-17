@@ -40,6 +40,8 @@ pub enum Message {
     EndFilePaneResize,
     ToggleStageSelected,
     ToggleStageAll,
+    StageAll,
+    UnstageAll,
     StageFile(std::path::PathBuf),
     UnstageFile(std::path::PathBuf),
     SnapshotLoaded(RepositorySnapshot),
@@ -92,6 +94,8 @@ pub fn update(model: &mut Model, message: Message) -> Option<Effect> {
             return model.toggle_stage_selected().map(Effect::Repository);
         }
         Message::ToggleStageAll => return model.toggle_stage_all().map(Effect::Repository),
+        Message::StageAll => return model.stage_all().map(Effect::Repository),
+        Message::UnstageAll => return model.unstage_all().map(Effect::Repository),
         Message::StageFile(path) => return model.stage_file(path).map(Effect::Repository),
         Message::UnstageFile(path) => return model.unstage_file(path).map(Effect::Repository),
         Message::SnapshotLoaded(snapshot) => model.refresh(snapshot),
@@ -305,6 +309,11 @@ mod tests {
         model.snapshot.files[0].unstaged = None;
         assert_eq!(
             update(&mut model, Message::ToggleStageAll),
+            Some(Effect::Repository(RepositoryAction::UnstageAll))
+        );
+
+        assert_eq!(
+            update(&mut model, Message::UnstageAll),
             Some(Effect::Repository(RepositoryAction::UnstageAll))
         );
     }

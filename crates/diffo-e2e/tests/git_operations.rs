@@ -98,6 +98,53 @@ fn a_unstages_all_files() -> Result<()> {
 }
 
 #[test]
+fn changes_header_stage_all_stages_every_file() -> Result<()> {
+    let repository = TestRepository::new()?;
+    fs::write(repository.worktree.join("tracked.txt"), "changed\n")?;
+    fs::write(repository.worktree.join("new.txt"), "new\n")?;
+    let mut driver = Driver::new(&repository.worktree)?;
+
+    driver.keys(|queue| {
+        queue.mouse(left_click(13, 15));
+    })?;
+
+    assert!(
+        driver
+            .model
+            .snapshot
+            .files
+            .iter()
+            .all(|file| file.staged.is_some() && file.unstaged.is_none())
+    );
+    Ok(())
+}
+
+#[test]
+fn staged_header_unstage_all_unstages_every_file() -> Result<()> {
+    let repository = TestRepository::new()?;
+    fs::write(repository.worktree.join("tracked.txt"), "changed\n")?;
+    fs::write(repository.worktree.join("new.txt"), "new\n")?;
+    git(&repository.worktree, &["add", "."])?;
+    let mut driver = Driver::new(&repository.worktree)?;
+
+    driver.keys(|queue| {
+        queue.mouse(left_click(10, 0));
+    })?;
+
+    assert!(
+        driver
+            .model
+            .snapshot
+            .files
+            .iter()
+            .all(|file| file.staged.is_none())
+    );
+    assert!(driver.file("tracked.txt")?.unstaged.is_some());
+    assert_eq!(driver.file("new.txt")?.kind, ChangeKind::Untracked);
+    Ok(())
+}
+
+#[test]
 fn plus_button_stages_clicked_file() -> Result<()> {
     let repository = TestRepository::new()?;
     fs::write(repository.worktree.join("tracked.txt"), "changed\n")?;

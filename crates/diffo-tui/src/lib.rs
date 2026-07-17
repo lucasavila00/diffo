@@ -684,6 +684,12 @@ pub(crate) fn file_action_at_position(
     }
     let panes = horizontal_panes(main_area(area), model.file_pane_percent);
     let groups = file_group_areas(panes[0]);
+    if header_action_contains(groups[0], " Staged ", "[-] Unstage All", column, row) {
+        return Some(diffo_app::Message::UnstageAll);
+    }
+    if header_action_contains(groups[1], " Changes ", "[+] Stage All", column, row) {
+        return Some(diffo_app::Message::StageAll);
+    }
     for (group, change_area) in [
         (groups[0], ChangeArea::Staged),
         (groups[1], ChangeArea::Unstaged),
@@ -717,6 +723,15 @@ pub(crate) fn file_action_at_position(
         });
     }
     None
+}
+
+fn header_action_contains(area: Rect, prefix: &str, action: &str, column: u16, row: u16) -> bool {
+    let start = area
+        .x
+        .saturating_add(1)
+        .saturating_add(u16::try_from(prefix.chars().count()).unwrap_or(u16::MAX));
+    let end = start.saturating_add(u16::try_from(action.chars().count()).unwrap_or(u16::MAX));
+    row == area.y && column >= start && column < end.min(area.right().saturating_sub(1))
 }
 
 pub(crate) fn is_file_pane_splitter_at(
@@ -790,7 +805,11 @@ fn render_files(frame: &mut Frame, area: ratatui::layout::Rect, model: &Model) {
     render_file_group(
         frame,
         groups[0],
-        " Staged Changes ",
+        if model.access_mode == AccessMode::ReadOnly {
+            " Staged Changes "
+        } else {
+            " Staged [-] Unstage All "
+        },
         staged_files(&model.snapshot),
         ChangeArea::Staged,
         model,
@@ -798,7 +817,7 @@ fn render_files(frame: &mut Frame, area: ratatui::layout::Rect, model: &Model) {
     let changes_title = if model.access_mode == AccessMode::ReadOnly {
         " Changes · read-only "
     } else {
-        " Changes · [a] Stage All "
+        " Changes [+] Stage All "
     };
     render_file_group(
         frame,

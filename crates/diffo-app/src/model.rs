@@ -280,6 +280,22 @@ impl Model {
     }
 
     #[must_use]
+    pub fn stage_all(&self) -> Option<RepositoryAction> {
+        (self.access_mode == AccessMode::ReadWrite
+            && self.snapshot.files.iter().any(|file| {
+                file.unstaged.is_some() || file.kind == diffo_core::ChangeKind::Untracked
+            }))
+        .then_some(RepositoryAction::StageAll)
+    }
+
+    #[must_use]
+    pub fn unstage_all(&self) -> Option<RepositoryAction> {
+        (self.access_mode == AccessMode::ReadWrite
+            && self.snapshot.files.iter().any(|file| file.staged.is_some()))
+        .then_some(RepositoryAction::UnstageAll)
+    }
+
+    #[must_use]
     pub fn stage_file(&self, path: PathBuf) -> Option<RepositoryAction> {
         (self.access_mode == AccessMode::ReadWrite
             && self.snapshot.files.iter().any(|file| {

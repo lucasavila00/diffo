@@ -576,6 +576,32 @@ mod tests {
             map_event(&click(16), &model, area),
             Some(Message::StageFile(PathBuf::from("file.txt")))
         );
+        assert_eq!(
+            map_event(
+                &Event::Mouse(MouseEvent {
+                    kind: MouseEventKind::Down(MouseButton::Left),
+                    column: 13,
+                    row: 15,
+                    modifiers: KeyModifiers::NONE,
+                }),
+                &model,
+                area,
+            ),
+            Some(Message::StageAll)
+        );
+        assert_eq!(
+            map_event(
+                &Event::Mouse(MouseEvent {
+                    kind: MouseEventKind::Down(MouseButton::Left),
+                    column: 10,
+                    row: 0,
+                    modifiers: KeyModifiers::NONE,
+                }),
+                &model,
+                area,
+            ),
+            Some(Message::UnstageAll)
+        );
     }
 
     #[test]

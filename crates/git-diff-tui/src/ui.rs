@@ -8,7 +8,7 @@ use ratatui::{
 use crate::app::App;
 
 pub fn render(frame: &mut Frame, app: &App) {
-    let lines = app.diff.lines().map(styled_diff_line).collect::<Vec<_>>();
+    let lines = snapshot_lines(app);
     let body = Paragraph::new(Text::from(lines))
         .block(
             Block::default()
@@ -20,6 +20,25 @@ pub fn render(frame: &mut Frame, app: &App) {
         .wrap(Wrap { trim: false });
 
     frame.render_widget(body, frame.area());
+}
+
+fn snapshot_lines(app: &App) -> Vec<Line<'_>> {
+    let mut lines = Vec::new();
+
+    for file in &app.snapshot.files {
+        for diff in [file.staged.as_ref(), file.unstaged.as_ref()]
+            .into_iter()
+            .flatten()
+        {
+            lines.extend(diff.text.lines().map(styled_diff_line));
+        }
+    }
+
+    if lines.is_empty() {
+        lines.push(Line::raw("No changes."));
+    }
+
+    lines
 }
 
 fn styled_diff_line(line: &str) -> Line<'_> {

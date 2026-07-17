@@ -1,6 +1,6 @@
 # ADR 0003: Structured mock fixtures
 
-Status: Proposed
+Status: Accepted
 
 ## Decision
 

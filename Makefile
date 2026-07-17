@@ -6,4 +6,4 @@ diffo:
 
 # Run the viewer with a deterministic repository-state fixture.
 diffo-mock:
-	DIFFO_MOCK_FILE=crates/git-diff-tui/fixtures/repository-state.diff cargo run --package git-diff-tui --bin diffo
+	DIFFO_MOCK_FILE=crates/git-diff-tui/fixtures/repository-state.ron cargo run --package git-diff-tui --bin diffo

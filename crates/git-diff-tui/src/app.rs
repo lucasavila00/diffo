@@ -1,17 +1,26 @@
+use crate::repository::RepositorySnapshot;
+
 const PAGE_SIZE: usize = 20;
 
 pub struct App {
-    pub diff: String,
+    pub snapshot: RepositorySnapshot,
     pub scroll: usize,
     pub should_quit: bool,
     line_count: usize,
 }
 
 impl App {
-    pub fn new(diff: String) -> Self {
-        let line_count = diff.lines().count();
+    #[must_use]
+    pub fn new(snapshot: RepositorySnapshot) -> Self {
+        let line_count = snapshot
+            .files
+            .iter()
+            .flat_map(|file| [file.staged.as_ref(), file.unstaged.as_ref()])
+            .flatten()
+            .map(|diff| diff.text.lines().count())
+            .sum();
         Self {
-            diff,
+            snapshot,
             scroll: 0,
             should_quit: false,
             line_count,
@@ -49,11 +58,26 @@ impl App {
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
+
+    use crate::repository::{ChangeKind, FileDiff, FileState, RepositorySnapshot};
+
     use super::App;
 
     #[test]
     fn scrolling_stays_within_diff() {
-        let mut app = App::new("one\ntwo\nthree".into());
+        let mut app = App::new(RepositorySnapshot {
+            files: vec![FileState {
+                path: PathBuf::from("file.txt"),
+                old_path: None,
+                kind: ChangeKind::Modified,
+                staged: None,
+                unstaged: Some(FileDiff {
+                    text: "one\ntwo\nthree".into(),
+                }),
+            }],
+            ..RepositorySnapshot::default()
+        });
 
         app.page_down();
         assert_eq!(app.scroll, 2);

@@ -16,9 +16,9 @@ cargo clippy --workspace --all-targets --all-features
 ```
 
 `make diffo` reads the current Git repository. `make diffo-mock` loads a deterministic
-repository snapshot from `crates/git-diff-tui/fixtures/repository-state.diff`, which is
+repository snapshot from `crates/git-diff-tui/fixtures/repository-state.ron`, which is
 useful while developing the UI. The fixture covers staged and unstaged changes,
 untracked files, recent commits, and commits that have not been pushed.
 
-Set `DIFFO_MOCK_FILE` directly to preview another fixture without changing the normal
+Set `DIFFO_MOCK_FILE` directly to preview another RON fixture without changing the normal
 application behavior.

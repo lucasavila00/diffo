@@ -1,6 +1,6 @@
 # ADR 0002: Snapshot and source
 
-Status: Proposed
+Status: Accepted
 
 ## Decision
 

@@ -34,15 +34,16 @@ impl GitRepositorySource {
         Ok(output.stdout)
     }
 
-    fn diff(&self, path: &str, staged: bool) -> Result<Option<FileDiff>> {
+    fn diff(&self, paths: &[&str], staged: bool) -> Result<Option<FileDiff>> {
         let mut args = vec!["diff", "--no-ext-diff", "--no-color"];
         if staged {
             args.push("--cached");
         }
-        args.extend(["--", path]);
+        args.push("--");
+        args.extend(paths);
 
         let text = String::from_utf8(self.git(&args)?)
-            .with_context(|| format!("git returned a non-UTF-8 diff for {path}"))?;
+            .with_context(|| format!("git returned a non-UTF-8 diff for {}", paths.join(", ")))?;
         Ok((!text.is_empty()).then_some(FileDiff { text }))
     }
 
@@ -89,15 +90,23 @@ impl RepositorySource for GitRepositorySource {
 
         for file in parsed.files {
             let path = file.state.path.to_string_lossy();
+            let old_path = file
+                .state
+                .old_path
+                .as_ref()
+                .map(|path| path.to_string_lossy());
+            let paths = old_path
+                .as_deref()
+                .map_or_else(|| vec![path.as_ref()], |old| vec![old, path.as_ref()]);
             let staged = if file.index_status == NO_CHANGE {
                 None
             } else {
-                self.diff(&path, true)?
+                self.diff(&paths, true)?
             };
             let unstaged = if file.worktree_status == NO_CHANGE {
                 None
             } else {
-                self.diff(&path, false)?
+                self.diff(&paths, false)?
             };
             files.push(FileState {
                 staged,

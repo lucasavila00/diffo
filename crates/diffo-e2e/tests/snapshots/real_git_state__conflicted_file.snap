@@ -1,0 +1,37 @@
+---
+source: crates/diffo-e2e/tests/real_git_state.rs
+expression: collect(&repo.worktree)?
+---
+RepositorySnapshot(
+  branch: BranchState(
+    name: Some("main"),
+  ),
+  files: [
+    FileState(
+      path: "tracked.txt",
+      old_path: None,
+      kind: Conflicted,
+      staged: Some(FileDiff(
+        text: "* Unmerged path tracked.txt\n",
+      )),
+      unstaged: Some(FileDiff(
+        text: "diff --cc tracked.txt\nindex 1cb3f36,7aee121..0000000\n--- a/tracked.txt\n+++ b/tracked.txt\n@@@ -1,1 -1,1 +1,5 @@@\n++<<<<<<< HEAD\n +local version\n++=======\n+ remote version\n++>>>>>>> origin/main\n",
+      )),
+    ),
+  ],
+  recent_commits: [
+    Commit(
+      id: "cd7cdc6bb20e7734bb385385ac9c9b66b2355091",
+      summary: "Local edit",
+    ),
+    Commit(
+      id: "4808d4013094be7c3fb50d5089f8e72193967c32",
+      summary: "Base commit",
+    ),
+  ],
+  upstream: Some(UpstreamState(
+    name: "origin/main",
+    ahead: 1,
+    behind: 1,
+  )),
+)

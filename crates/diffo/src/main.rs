@@ -1,6 +1,6 @@
-use std::{env, io, time::Duration};
+use std::{env, fs, io, path::Path, time::Duration};
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use crossterm::event::{self, Event, KeyCode, KeyEventKind};
 use diffo_core::{RepositorySource, fixture_source::FixtureRepositorySource};
 use diffo_git::GitRepositorySource;
@@ -12,12 +12,24 @@ fn main() -> Result<()> {
         Some(path) => Box::new(FixtureRepositorySource::new(path)),
         None => Box::new(GitRepositorySource::default()),
     };
-    let mut app = App::new(source.snapshot()?);
+    let snapshot = source.snapshot()?;
+    if let Some(path) = env::var_os("DIFFO_DUMP_PATH") {
+        return dump_snapshot(Path::new(&path), &snapshot);
+    }
+
+    let mut app = App::new(snapshot);
     let mut terminal = ratatui::init();
 
     let result = run(&mut terminal, &mut app);
     ratatui::restore();
     result
+}
+
+fn dump_snapshot(path: &Path, snapshot: &diffo_core::RepositorySnapshot) -> Result<()> {
+    let contents = ron::ser::to_string_pretty(snapshot, ron::ser::PrettyConfig::default())
+        .context("failed to serialize repository snapshot")?;
+    fs::write(path, contents)
+        .with_context(|| format!("failed to write repository snapshot to {}", path.display()))
 }
 
 fn run(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App) -> Result<()> {

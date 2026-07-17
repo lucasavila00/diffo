@@ -13,6 +13,7 @@ diffo-core.workspace = true
 diffo-git.workspace = true
 diffo-tui.workspace = true
 ratatui.workspace = true
+ron.workspace = true
 
 [lints]
 workspace = true

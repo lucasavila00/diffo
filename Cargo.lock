@@ -194,6 +194,7 @@ dependencies = [
  "diffo-git",
  "diffo-tui",
  "ratatui",
+ "ron 0.10.1",
 ]
 
 [[package]]
@@ -211,8 +212,8 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "diffo-core",
- "diffo-git",
  "insta",
+ "ron 0.10.1",
  "tempfile",
 ]
 

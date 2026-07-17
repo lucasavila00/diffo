@@ -1,0 +1,21 @@
+---
+source: crates/diffo-e2e/tests/real_git_state.rs
+expression: collect(&repo.worktree)?
+---
+RepositorySnapshot(
+  branch: BranchState(
+    name: Some("main"),
+  ),
+  files: [],
+  recent_commits: [
+    Commit(
+      id: "4808d4013094be7c3fb50d5089f8e72193967c32",
+      summary: "Base commit",
+    ),
+  ],
+  upstream: Some(UpstreamState(
+    name: "origin/main",
+    ahead: 0,
+    behind: 0,
+  )),
+)

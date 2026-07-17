@@ -22,3 +22,6 @@ untracked files, recent commits, and commits that have not been pushed.
 
 Set `DIFFO_MOCK_FILE` directly to preview another RON fixture without changing the normal
 application behavior.
+
+For debugging, `DIFFO_DUMP_PATH=state.ron make diffo` writes one repository snapshot
+and exits without opening the TUI. Diffo has no command-line arguments.

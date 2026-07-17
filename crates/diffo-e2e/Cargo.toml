@@ -14,8 +14,8 @@ path = "tests/real_git_state.rs"
 [dev-dependencies]
 anyhow.workspace = true
 diffo-core.workspace = true
-diffo-git.workspace = true
 insta = { version = "1.48", features = ["ron"] }
+ron.workspace = true
 tempfile.workspace = true
 
 [lints]

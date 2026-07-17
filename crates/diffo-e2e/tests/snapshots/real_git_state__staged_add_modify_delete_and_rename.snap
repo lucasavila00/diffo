@@ -1,0 +1,58 @@
+---
+source: crates/diffo-e2e/tests/real_git_state.rs
+expression: collect(&repo.worktree)?
+---
+RepositorySnapshot(
+  branch: BranchState(
+    name: Some("main"),
+  ),
+  files: [
+    FileState(
+      path: "added.txt",
+      old_path: None,
+      kind: Added,
+      staged: Some(FileDiff(
+        text: "diff --git a/added.txt b/added.txt\nnew file mode 100644\nindex 0000000..d5f7fc3\n--- /dev/null\n+++ b/added.txt\n@@ -0,0 +1 @@\n+added\n",
+      )),
+      unstaged: None,
+    ),
+    FileState(
+      path: "deleted.txt",
+      old_path: None,
+      kind: Deleted,
+      staged: Some(FileDiff(
+        text: "diff --git a/deleted.txt b/deleted.txt\ndeleted file mode 100644\nindex 2d030d7..0000000\n--- a/deleted.txt\n+++ /dev/null\n@@ -1 +0,0 @@\n-delete me\n",
+      )),
+      unstaged: None,
+    ),
+    FileState(
+      path: "moved.txt",
+      old_path: Some("renamed.txt"),
+      kind: Renamed,
+      staged: Some(FileDiff(
+        text: "diff --git a/renamed.txt b/moved.txt\nsimilarity index 100%\nrename from renamed.txt\nrename to moved.txt\n",
+      )),
+      unstaged: None,
+    ),
+    FileState(
+      path: "tracked.txt",
+      old_path: None,
+      kind: Modified,
+      staged: Some(FileDiff(
+        text: "diff --git a/tracked.txt b/tracked.txt\nindex df967b9..efa2dcc 100644\n--- a/tracked.txt\n+++ b/tracked.txt\n@@ -1 +1,2 @@\n base\n+modified\n",
+      )),
+      unstaged: None,
+    ),
+  ],
+  recent_commits: [
+    Commit(
+      id: "4808d4013094be7c3fb50d5089f8e72193967c32",
+      summary: "Base commit",
+    ),
+  ],
+  upstream: Some(UpstreamState(
+    name: "origin/main",
+    ahead: 0,
+    behind: 0,
+  )),
+)

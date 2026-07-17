@@ -182,6 +182,9 @@ fn overlays_open_and_close_with_function_keys() -> Result<()> {
         .wait_for_text_gone("Command Palette")?
         .press(Key::Function(2))?
         .wait_for_text("Help")?
+        .wait_for_text("s: next file")?
+        .wait_for_text("Page Up / Page Down: scroll one page")?
+        .wait_for_text("Space: stage / unstage selected file")?
         .press(Key::Function(2))?
         .wait_for_text_gone("Help")?
         .press(Key::Char('2'))?
@@ -203,7 +206,8 @@ fn mouse_click_selects_a_file() -> Result<()> {
 
     screen
         .click(&Selector::text("new.txt"))?
-        .wait_for(&Selector::selected_row("new.txt"))?;
+        .wait_for(&Selector::selected_row("new.txt"))?
+        .wait_for_text("new selected")?;
     Ok(())
 }
 

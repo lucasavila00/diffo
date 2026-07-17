@@ -53,7 +53,9 @@ RepositorySnapshot(
       old_path: None,
       kind: Untracked,
       staged: None,
-      unstaged: None,
+      unstaged: Some(FileDiff(
+        text: "@@ -0,0 +1,1 @@\n+not committed\n",
+      )),
     ),
   ],
   recent_commits: [],

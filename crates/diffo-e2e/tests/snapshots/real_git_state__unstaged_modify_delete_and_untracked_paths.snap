@@ -30,14 +30,18 @@ RepositorySnapshot(
       old_path: None,
       kind: Untracked,
       staged: None,
-      unstaged: None,
+      unstaged: Some(FileDiff(
+        text: "@@ -0,0 +1,1 @@\n+spaces\n",
+      )),
     ),
     FileState(
       path: "untracked.txt",
       old_path: None,
       kind: Untracked,
       staged: None,
-      unstaged: None,
+      unstaged: Some(FileDiff(
+        text: "@@ -0,0 +1,1 @@\n+untracked\n",
+      )),
     ),
   ],
   recent_commits: [

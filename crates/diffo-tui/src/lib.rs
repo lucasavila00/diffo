@@ -573,8 +573,8 @@ impl AnchorRow {
                 .is_some_and(|row| row.kind == *kind && row.text == *text),
             (Self::SideBySide { old, new }, DiffViewMode::SideBySide) => {
                 cache.side_by_side.get(index).is_some_and(|row| {
-                    side_line_matches(old, row.old.as_ref())
-                        && side_line_matches(new, row.new.as_ref())
+                    side_line_matches(old.as_ref(), row.old.as_ref())
+                        && side_line_matches(new.as_ref(), row.new.as_ref())
                 })
             }
             _ => false,
@@ -582,7 +582,7 @@ impl AnchorRow {
     }
 }
 
-fn side_line_matches(expected: &Option<(RowKind, String)>, actual: Option<&RenderLine>) -> bool {
+fn side_line_matches(expected: Option<&(RowKind, String)>, actual: Option<&RenderLine>) -> bool {
     match (expected, actual) {
         (Some((kind, text)), Some(actual)) => actual.kind == *kind && actual.text == *text,
         (None, None) => true,
@@ -676,7 +676,7 @@ fn render_help(frame: &mut Frame, model: &Model) {
     if !model.help_open {
         return;
     }
-    let area = command_palette_layout(frame.area()).0;
+    let area = help_layout(frame.area());
     frame.render_widget(Clear, area);
     let block = Block::default()
         .borders(Borders::ALL)
@@ -687,13 +687,24 @@ fn render_help(frame: &mut Frame, model: &Model) {
         horizontal: 2,
     });
     frame.render_widget(block, area);
-    let text = input::help_text(model.access_mode)
-        .trim()
-        .replace("  ", "\n");
+    let text = input::help_text(model.access_mode);
     frame.render_widget(
-        Paragraph::new(format!("{text}\n\nesc: close")).style(Style::default().fg(Color::White)),
+        Paragraph::new(format!("{text}\n\nEsc: close help"))
+            .style(Style::default().fg(Color::White)),
         inner,
     );
+}
+
+fn help_layout(area: Rect) -> Rect {
+    let width = (area.width.saturating_mul(4) / 5).clamp(40.min(area.width), 90.min(area.width));
+    let top = area.y.saturating_add(area.height.saturating_mul(10) / 100);
+    let height = 24.min(area.bottom().saturating_sub(top));
+    Rect::new(
+        area.x + area.width.saturating_sub(width) / 2,
+        top,
+        width,
+        height,
+    )
 }
 
 fn command_palette_layout(area: Rect) -> (Rect, Rect) {
@@ -1017,11 +1028,7 @@ fn file_item(
         ChangeKind::Conflicted => "U",
     };
     let label = format!("{marker}  {}", file.path.display());
-    let style = if selected {
-        Style::default().fg(Color::White)
-    } else {
-        Style::default()
-    };
+    let style = file_kind_style(file.kind, selected);
     if access_mode == AccessMode::ReadOnly || width < 3 {
         return ListItem::new(Line::styled(label, style));
     }
@@ -1034,13 +1041,33 @@ fn file_item(
     label.push_str(&" ".repeat(label_width.saturating_sub(label.chars().count())));
     ListItem::new(Line::from(vec![
         Span::styled(label, style),
-        Span::styled(
-            action,
-            Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD),
-        ),
+        Span::styled(action, file_action_style(change_area)),
     ]))
+}
+
+fn file_kind_style(kind: ChangeKind, selected: bool) -> Style {
+    let style = match kind {
+        ChangeKind::Added | ChangeKind::Untracked => Style::default().fg(Color::LightGreen),
+        ChangeKind::Modified => Style::default().fg(Color::Yellow),
+        ChangeKind::Deleted => Style::default()
+            .fg(Color::LightRed)
+            .add_modifier(Modifier::CROSSED_OUT),
+        ChangeKind::Renamed | ChangeKind::Copied => Style::default().fg(Color::LightCyan),
+        ChangeKind::Conflicted => Style::default().fg(Color::LightRed),
+    };
+    if selected {
+        style.add_modifier(Modifier::BOLD)
+    } else {
+        style
+    }
+}
+
+fn file_action_style(change_area: ChangeArea) -> Style {
+    let color = match change_area {
+        ChangeArea::Staged => Color::LightRed,
+        ChangeArea::Unstaged => Color::LightGreen,
+    };
+    Style::default().fg(color).add_modifier(Modifier::BOLD)
 }
 
 fn inline_line(row: &RenderLine, highlighted: &HighlightedDiff, width: usize) -> Line<'static> {
@@ -1327,12 +1354,41 @@ mod rendering_tests {
     use diffo_core::{AccessMode, ChangeKind, FileDiff, FileState, RepositorySnapshot};
     use diffo_diff::RowKind;
     use diffo_highlight::Rgb;
-    use ratatui::{Terminal, backend::TestBackend, layout::Rect, style::Color};
+    use ratatui::{
+        Terminal,
+        backend::TestBackend,
+        layout::Rect,
+        style::{Color, Modifier},
+    };
 
     use super::{
         Renderer, command_palette_layout, contrast_ratio, contrasting_foreground,
-        diff_background_rgb,
+        diff_background_rgb, file_kind_style,
     };
+
+    #[test]
+    fn file_list_styles_show_git_change_kinds() {
+        assert_eq!(
+            file_kind_style(ChangeKind::Untracked, false).fg,
+            Some(Color::LightGreen)
+        );
+        assert_eq!(
+            file_kind_style(ChangeKind::Added, false).fg,
+            Some(Color::LightGreen)
+        );
+        assert_eq!(
+            file_kind_style(ChangeKind::Modified, false).fg,
+            Some(Color::Yellow)
+        );
+        let deleted = file_kind_style(ChangeKind::Deleted, false);
+        assert_eq!(deleted.fg, Some(Color::LightRed));
+        assert!(deleted.add_modifier.contains(Modifier::CROSSED_OUT));
+        assert!(
+            file_kind_style(ChangeKind::Added, true)
+                .add_modifier
+                .contains(Modifier::BOLD)
+        );
+    }
 
     fn model() -> Model {
         Model::new(
@@ -1409,7 +1465,7 @@ mod rendering_tests {
 
     #[test]
     fn prepares_large_diffs_in_the_background() {
-        let mut inline_model = model();
+        let mut model = model();
         let mut patch = String::from("@@ -0,0 +1,501 @@\n");
         for index in 0..501 {
             writeln!(patch, "+line {index}").unwrap();
@@ -1445,7 +1501,7 @@ mod rendering_tests {
 
     #[test]
     fn anchors_the_first_visible_row_when_content_moves_above_it() {
-        let mut model = model();
+        let mut inline_model = model();
         let patch = |prefix: &[&str]| {
             let mut patch = format!("@@ -0,0 +1,{} @@\n", prefix.len() + 40);
             for line in prefix {

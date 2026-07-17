@@ -64,6 +64,60 @@ RepositorySnapshot(
       )),
     ),
     FileState(
+      path: "config/new-defaults.toml",
+      old_path: None,
+      kind: Added,
+      staged: Some(FileDiff(
+        text: "diff --git a/config/new-defaults.toml b/config/new-defaults.toml\nnew file mode 100644\n--- /dev/null\n+++ b/config/new-defaults.toml\n@@ -0,0 +1,2 @@\n+theme = \"dark\"\n+refresh_ms = 100\n",
+      )),
+      unstaged: None,
+    ),
+    FileState(
+      path: "docs/obsolete.md",
+      old_path: None,
+      kind: Deleted,
+      staged: None,
+      unstaged: Some(FileDiff(
+        text: "diff --git a/docs/obsolete.md b/docs/obsolete.md\ndeleted file mode 100644\n--- a/docs/obsolete.md\n+++ /dev/null\n@@ -1,3 +0,0 @@\n-# Old guide\n-\n-This guide is obsolete.\n",
+      )),
+    ),
+    FileState(
+      path: "src/current_name.rs",
+      old_path: Some("src/old_name.rs"),
+      kind: Renamed,
+      staged: Some(FileDiff(
+        text: "diff --git a/src/old_name.rs b/src/current_name.rs\nsimilarity index 100%\nrename from src/old_name.rs\nrename to src/current_name.rs\n",
+      )),
+      unstaged: None,
+    ),
+    FileState(
+      path: "assets/logo.bin",
+      old_path: None,
+      kind: Added,
+      staged: None,
+      unstaged: Some(FileDiff(
+        text: "Binary files /dev/null and b/assets/logo.bin differ\n",
+      )),
+    ),
+    FileState(
+      path: "notes/no-final-newline.txt",
+      old_path: None,
+      kind: Untracked,
+      staged: None,
+      unstaged: Some(FileDiff(
+        text: "@@ -0,0 +1,1 @@\n+new file without final newline\n\\ No newline at end of file\n",
+      )),
+    ),
+    FileState(
+      path: "src/conflicted.rs",
+      old_path: None,
+      kind: Conflicted,
+      staged: None,
+      unstaged: Some(FileDiff(
+        text: "diff --git a/src/conflicted.rs b/src/conflicted.rs\n--- a/src/conflicted.rs\n+++ b/src/conflicted.rs\n@@ -1 +1,5 @@\n-fn value() -> i32 { 1 }\n+<<<<<<< HEAD\n+fn value() -> i32 { 2 }\n+=======\n+fn value() -> i32 { 3 }\n+>>>>>>> feature\n",
+      )),
+    ),
+    FileState(
       path: "samples/output.unknown",
       old_path: None,
       kind: Modified,

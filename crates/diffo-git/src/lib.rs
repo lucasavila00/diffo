@@ -1,4 +1,9 @@
-use std::{collections::BTreeSet, path::PathBuf, process::Command};
+use std::{
+    collections::BTreeSet,
+    fs,
+    path::{Path, PathBuf},
+    process::Command,
+};
 
 use anyhow::{Context, Result, bail};
 
@@ -76,6 +81,45 @@ impl GitRepositorySource {
         Ok((!text.is_empty()).then_some(FileDiff { text }))
     }
 
+    fn untracked_diff(&self, path: &Path) -> Result<FileDiff> {
+        let full_path = self.root.join(path);
+        let metadata = fs::symlink_metadata(&full_path)
+            .with_context(|| format!("failed to inspect untracked file {}", path.display()))?;
+        let bytes = if metadata.file_type().is_symlink() {
+            fs::read_link(&full_path)
+                .with_context(|| format!("failed to read symlink {}", path.display()))?
+                .to_string_lossy()
+                .into_owned()
+                .into_bytes()
+        } else {
+            fs::read(&full_path)
+                .with_context(|| format!("failed to read untracked file {}", path.display()))?
+        };
+
+        let Ok(contents) = std::str::from_utf8(&bytes) else {
+            return Ok(FileDiff {
+                text: format!("Binary files /dev/null and b/{} differ\n", path.display()),
+            });
+        };
+        if bytes.contains(&0) {
+            return Ok(FileDiff {
+                text: format!("Binary files /dev/null and b/{} differ\n", path.display()),
+            });
+        }
+
+        let line_count = contents.lines().count();
+        let mut text = format!("@@ -0,0 +1,{line_count} @@\n");
+        for line in contents.split_inclusive('\n') {
+            text.push('+');
+            text.push_str(line);
+        }
+        if !contents.is_empty() && !contents.ends_with('\n') {
+            text.push('\n');
+            text.push_str("\\ No newline at end of file\n");
+        }
+        Ok(FileDiff { text })
+    }
+
     fn recent_commits(&self) -> Result<Vec<Commit>> {
         let has_head = Command::new("git")
             .args(["rev-parse", "--verify", "HEAD"])
@@ -113,7 +157,13 @@ impl Default for GitRepositorySource {
 
 impl RepositorySource for GitRepositorySource {
     fn snapshot(&self) -> Result<RepositorySnapshot> {
-        let status = self.git(&["status", "--porcelain=v2", "--branch", "-z"])?;
+        let status = self.git(&[
+            "status",
+            "--porcelain=v2",
+            "--branch",
+            "--untracked-files=all",
+            "-z",
+        ])?;
         let parsed = parse_status(&status)?;
         let mut files = Vec::with_capacity(parsed.files.len());
 
@@ -132,7 +182,9 @@ impl RepositorySource for GitRepositorySource {
             } else {
                 self.diff(&paths, true)?
             };
-            let unstaged = if file.worktree_status == NO_CHANGE {
+            let unstaged = if file.state.kind == ChangeKind::Untracked {
+                Some(self.untracked_diff(&file.state.path)?)
+            } else if file.worktree_status == NO_CHANGE {
                 None
             } else {
                 self.diff(&paths, false)?
@@ -396,6 +448,10 @@ mod tests {
             .expect("new file");
         assert_eq!(file.kind, ChangeKind::Untracked);
         assert!(file.staged.is_none());
+        assert_eq!(
+            file.unstaged.expect("untracked diff").text,
+            "@@ -0,0 +1,1 @@\n+new\n"
+        );
     }
 
     #[test]
@@ -419,6 +475,28 @@ mod tests {
         let snapshot = source.snapshot().expect("unstaged snapshot");
         assert_eq!(snapshot.files.len(), 2);
         assert!(snapshot.files.iter().all(|file| file.staged.is_none()));
+        assert!(snapshot.files.iter().all(|file| file.unstaged.is_some()));
+    }
+
+    #[test]
+    fn snapshots_the_whole_untracked_file_as_an_addition() {
+        let repo = test_repository();
+        fs::write(repo.path().join("new.txt"), "first\nsecond").expect("write file");
+        let source = super::GitRepositorySource::new(repo.path());
+
+        let diff = source
+            .snapshot()
+            .expect("snapshot")
+            .files
+            .into_iter()
+            .find(|file| file.path == Path::new("new.txt"))
+            .and_then(|file| file.unstaged)
+            .expect("untracked diff");
+
+        assert_eq!(
+            diff.text,
+            "@@ -0,0 +1,2 @@\n+first\n+second\n\\ No newline at end of file\n"
+        );
     }
 
     #[test]

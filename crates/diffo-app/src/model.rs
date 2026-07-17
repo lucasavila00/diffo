@@ -81,9 +81,9 @@ impl Model {
         self.command_palette = None;
     }
 
-    pub fn open_help(&mut self) {
+    pub fn toggle_help(&mut self) {
         self.command_palette = None;
-        self.help_open = true;
+        self.help_open = !self.help_open;
     }
 
     pub fn close_help(&mut self) {

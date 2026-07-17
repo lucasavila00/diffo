@@ -11,6 +11,10 @@ version.workspace = true
 name = "real_git_state"
 path = "tests/real_git_state.rs"
 
+[[test]]
+name = "live_refresh"
+path = "tests/live_refresh.rs"
+
 [dev-dependencies]
 anyhow.workspace = true
 diffo-core.workspace = true

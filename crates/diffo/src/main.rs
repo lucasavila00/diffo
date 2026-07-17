@@ -25,17 +25,21 @@ use ratatui::{Terminal, backend::CrosstermBackend};
 
 fn main() -> Result<()> {
     let shutdown = install_signal_handlers()?;
-    let (repository, watch_paths): (Arc<dyn Repository>, Option<Vec<_>>) = if let Some(path) = env::var_os("DIFFO_MOCK_FILE") {
-        if env::var_os("DIFFO_MOCK_MUTABLE").is_some() {
-            (Arc::new(MutableFixtureRepository::new_with_large_files(path)?), None)
+    let (repository, watch_paths): (Arc<dyn Repository>, Option<Vec<_>>) =
+        if let Some(path) = env::var_os("DIFFO_MOCK_FILE") {
+            if env::var_os("DIFFO_MOCK_MUTABLE").is_some() {
+                (
+                    Arc::new(MutableFixtureRepository::new_with_large_files(path)?),
+                    None,
+                )
+            } else {
+                (Arc::new(FixtureRepositorySource::new(path)), None)
+            }
         } else {
-            (Arc::new(FixtureRepositorySource::new(path)), None)
-        }
-    } else {
-        let repository = Arc::new(GitRepositorySource::default());
-        let paths = repository.watch_paths()?;
-        (repository, Some(paths))
-    };
+            let repository = Arc::new(GitRepositorySource::default());
+            let paths = repository.watch_paths()?;
+            (repository, Some(paths))
+        };
     let snapshot = repository.snapshot()?;
     if let Some(path) = env::var_os("DIFFO_DUMP_PATH") {
         return dump_snapshot(Path::new(&path), &snapshot);
@@ -48,7 +52,9 @@ fn main() -> Result<()> {
         return run_watch_dump(
             Path::new(&path),
             &snapshot,
-            refresh.as_ref().context("watch dump requires a real Git repository")?,
+            refresh
+                .as_ref()
+                .context("watch dump requires a real Git repository")?,
             &shutdown,
         );
     }
@@ -141,11 +147,12 @@ fn run(
         }
         terminal.draw(|frame| renderer.render(frame, model))?;
 
-        let poll_timeout = if renderer.is_preparing() || refresh.is_some_and(RefreshService::is_busy) {
-            Duration::from_millis(16)
-        } else {
-            Duration::from_millis(50)
-        };
+        let poll_timeout =
+            if renderer.is_preparing() || refresh.is_some_and(RefreshService::is_busy) {
+                Duration::from_millis(16)
+            } else {
+                Duration::from_millis(50)
+            };
         if event::poll(poll_timeout)? {
             let size = terminal.size()?;
             let area = ratatui::layout::Rect::new(0, 0, size.width, size.height);

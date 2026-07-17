@@ -54,8 +54,8 @@ impl RefreshService {
         let wake_pending = Arc::new(AtomicBool::new(false));
         let callback_pending = Arc::clone(&wake_pending);
         let callback_commands = commands.clone();
-        let mut watcher = notify::recommended_watcher(move |event: notify::Result<notify::Event>| {
-            match event {
+        let mut watcher =
+            notify::recommended_watcher(move |event: notify::Result<notify::Event>| match event {
                 Ok(_) => {
                     if !callback_pending.swap(true, Ordering::AcqRel) {
                         let _ = callback_commands.send(Command::Wake);
@@ -64,9 +64,8 @@ impl RefreshService {
                 Err(error) => {
                     let _ = callback_commands.send(Command::WatchError(error.to_string()));
                 }
-            }
-        })
-        .context("failed to create repository watcher")?;
+            })
+            .context("failed to create repository watcher")?;
         for path in paths {
             watcher
                 .watch(path, RecursiveMode::Recursive)
@@ -78,13 +77,7 @@ impl RefreshService {
         let worker = thread::Builder::new()
             .name("diffo-repository-refresh".to_owned())
             .spawn(move || {
-                worker_loop(
-                    repository,
-                    command_rx,
-                    result_tx,
-                    wake_pending,
-                    worker_busy,
-                );
+                worker_loop(repository, command_rx, result_tx, wake_pending, worker_busy);
             })
             .context("failed to start repository refresh worker")?;
 

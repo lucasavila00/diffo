@@ -515,8 +515,7 @@ fn render_help(frame: &mut Frame, model: &Model) {
         .trim()
         .replace("  ", "\n");
     frame.render_widget(
-        Paragraph::new(format!("{text}\n\nesc: close"))
-            .style(Style::default().fg(Color::White)),
+        Paragraph::new(format!("{text}\n\nesc: close")).style(Style::default().fg(Color::White)),
         inner,
     );
 }
@@ -1009,7 +1008,7 @@ fn render_status(frame: &mut Frame, area: ratatui::layout::Rect, model: &Model) 
             model.file_pane_percent
         )
     } else {
-        input::help_text(model.access_mode)
+        " 1/f1: commands  2/f2: help ".to_owned()
     };
     let style = if model.error.is_some() {
         Style::default().fg(Color::Red)

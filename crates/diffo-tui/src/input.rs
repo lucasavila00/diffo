@@ -59,7 +59,7 @@ static KEY_BINDINGS: &[KeyBinding] = &[
             KeyChord::plain(KeyCode::Char('2')),
             KeyChord::plain(KeyCode::F(2)),
         ],
-        message: Message::OpenHelp,
+        message: Message::ToggleHelp,
         help: Some("2/f2: help"),
         availability: Availability::Always,
     },
@@ -197,6 +197,12 @@ impl KeyBinding {
 #[must_use]
 pub fn map_event(event: &Event, model: &Model, area: Rect) -> Option<Message> {
     if model.help_open {
+        if let Event::Key(key) = event
+            && key.kind == KeyEventKind::Press
+            && matches!(key.code, KeyCode::Char('2') | KeyCode::F(2))
+        {
+            return Some(Message::ToggleHelp);
+        }
         return map_help_event(event);
     }
     if model.command_palette.is_some() {
@@ -326,8 +332,8 @@ mod tests {
             (KeyCode::Char('q'), Message::Quit),
             (KeyCode::Char('1'), Message::OpenCommandPalette),
             (KeyCode::F(1), Message::OpenCommandPalette),
-            (KeyCode::Char('2'), Message::OpenHelp),
-            (KeyCode::F(2), Message::OpenHelp),
+            (KeyCode::Char('2'), Message::ToggleHelp),
+            (KeyCode::F(2), Message::ToggleHelp),
             (KeyCode::Esc, Message::Quit),
             (KeyCode::Char('j'), Message::SelectPreviousFile),
             (KeyCode::Char('w'), Message::SelectPreviousFile),

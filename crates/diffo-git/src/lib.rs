@@ -39,11 +39,7 @@ impl GitRepositorySource {
         for args in [
             &["rev-parse", "--show-toplevel"][..],
             &["rev-parse", "--path-format=absolute", "--git-dir"][..],
-            &[
-                "rev-parse",
-                "--path-format=absolute",
-                "--git-common-dir",
-            ][..],
+            &["rev-parse", "--path-format=absolute", "--git-common-dir"][..],
         ] {
             let output = String::from_utf8(self.git(args)?)
                 .context("git returned a non-UTF-8 repository path")?;

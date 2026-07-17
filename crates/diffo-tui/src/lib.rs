@@ -214,7 +214,7 @@ impl Renderer {
                 if results_area.contains((mouse.column, mouse.row).into()) {
                     let index = usize::from(mouse.row.saturating_sub(results_area.y));
                     if index < match_count {
-                        return Some(diffo_app::Message::CommandPaletteSelect(index));
+                        return Some(diffo_app::Message::ExecuteCommand(index));
                     }
                 }
             }
@@ -1381,7 +1381,7 @@ mod rendering_tests {
     }
 
     #[test]
-    fn command_palette_has_fixed_top_and_mouse_selection() {
+    fn command_palette_has_fixed_top_and_mouse_execution() {
         let mut model = model();
         model.open_command_palette();
         let area = Rect::new(0, 0, 100, 30);
@@ -1398,7 +1398,7 @@ mod rendering_tests {
         let mut renderer = Renderer::new();
         assert_eq!(
             renderer.map_event(&click, &model, area),
-            Some(diffo_app::Message::CommandPaletteSelect(1))
+            Some(diffo_app::Message::ExecuteCommand(1))
         );
     }
 

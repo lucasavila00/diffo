@@ -162,6 +162,21 @@ fn palette_search_runs_pull() -> Result<()> {
     Ok(())
 }
 
+#[test]
+fn clicking_palette_result_runs_command() -> Result<()> {
+    let repository = TestRepository::new()?;
+    let mut driver = Driver::new(&repository.worktree)?;
+    repository.commit_remote("remote.txt", "remote\n", "Remote commit")?;
+
+    driver.keys(|queue| {
+        queue.key(KeyCode::Char('1')).mouse(left_click(50, 10));
+    })?;
+
+    assert!(repository.worktree.join("remote.txt").exists());
+    assert_eq!(driver.model.snapshot.upstream.as_ref().unwrap().behind, 0);
+    Ok(())
+}
+
 struct Driver {
     model: Model,
     renderer: Renderer,

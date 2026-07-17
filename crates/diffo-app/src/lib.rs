@@ -18,6 +18,7 @@ pub enum Message {
     CommandPaletteSelectPrevious,
     CommandPaletteSelectNext,
     CommandPaletteSelect(usize),
+    ExecuteCommand(usize),
     ExecuteSelectedCommand,
     SelectPreviousFile,
     SelectNextFile,
@@ -62,6 +63,10 @@ pub fn update(model: &mut Model, message: Message) -> Option<Effect> {
         Message::CommandPaletteSelectPrevious => model.command_palette_select_previous(),
         Message::CommandPaletteSelectNext => model.command_palette_select_next(),
         Message::CommandPaletteSelect(index) => model.command_palette_select(index),
+        Message::ExecuteCommand(index) => {
+            model.command_palette_select(index);
+            return model.execute_selected_command().map(Effect::Repository);
+        }
         Message::ExecuteSelectedCommand => {
             return model.execute_selected_command().map(Effect::Repository);
         }
@@ -173,6 +178,12 @@ mod tests {
         update(&mut model, Message::CommandPaletteSelectNext);
         assert_eq!(
             update(&mut model, Message::ExecuteSelectedCommand),
+            Some(Effect::Repository(RepositoryAction::Pull))
+        );
+
+        update(&mut model, Message::OpenCommandPalette);
+        assert_eq!(
+            update(&mut model, Message::ExecuteCommand(1)),
             Some(Effect::Repository(RepositoryAction::Pull))
         );
     }

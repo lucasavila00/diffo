@@ -286,8 +286,14 @@ impl PendingScroll {
                     .vertical
                     .saturating_add(i64::try_from(*lines).unwrap_or(i64::MAX));
             }
+            Message::ScrollDiffBy(lines) => {
+                self.vertical = self.vertical.saturating_add(*lines);
+            }
             Message::ScrollDiffLeft => self.horizontal = self.horizontal.saturating_sub(4),
             Message::ScrollDiffRight => self.horizontal = self.horizontal.saturating_add(4),
+            Message::ScrollDiffHorizontalBy(columns) => {
+                self.horizontal = self.horizontal.saturating_add(*columns);
+            }
             _ => return false,
         }
         true
@@ -360,6 +366,19 @@ mod tests {
 
         assert_eq!(model.diff_scroll, 40);
         assert_eq!(pending.vertical, 0);
+    }
+
+    #[test]
+    fn coalesces_high_resolution_wheel_events() {
+        let mut pending = PendingScroll::default();
+        for _ in 0..10 {
+            assert!(pending.push(&Message::ScrollDiffBy(1)));
+        }
+        let mut model = Model::new(RepositorySnapshot::default(), AccessMode::ReadWrite);
+
+        pending.flush(&mut model);
+
+        assert_eq!(model.diff_scroll, 10);
     }
 
     #[test]

@@ -247,9 +247,9 @@ fn keyboard_and_mouse_scroll_move_the_visible_diff() -> Result<()> {
         .wait_for_text_gone("line 000")?
         .press(Key::PageUp)?
         .wait_for_text("line 000")?
-        .scroll(ScrollDirection::Down)?
+        .scroll_many(ScrollDirection::Down, 4)?
         .wait_for_text_gone("line 000")?
-        .scroll(ScrollDirection::Up)?
+        .scroll_many(ScrollDirection::Up, 4)?
         .wait_for_text("line 000")?
         .drag_vertical_scrollbar(0, 50)?
         .wait_for_text_gone("line 000")?
@@ -348,7 +348,7 @@ fn wheel_burst_is_one_bounded_frame_transition() -> Result<()> {
         .with_context(|| format!("trace has no coalesced wheel frame:\n{trace}"))?;
     assert_eq!(
         frame.scroll_after.0.saturating_sub(frame.scroll_before.0),
-        40
+        10
     );
     let input_to_draw = frame.draw_end_us.saturating_sub(
         frame
@@ -388,7 +388,7 @@ fn live_content_change_keeps_the_visible_line_anchored() -> Result<()> {
     let mut screen = repository.screen()?;
     screen
         .wait_for_text("line 000")?
-        .scroll_many(ScrollDirection::Down, 10)?
+        .press_many(Key::Down, 10)?
         .wait_for_text("line 038")?;
     let anchor = Selector::text("line 038");
     let before = screen

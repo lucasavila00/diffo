@@ -247,10 +247,10 @@ pub fn map_event(event: &Event, model: &Model, area: Rect) -> Option<Message> {
             Some(Message::EndFilePaneResize)
         }
         Event::Mouse(mouse) if mouse.kind == MouseEventKind::ScrollUp => {
-            Some(Message::ScrollDiffUp)
+            Some(Message::ScrollDiffBy(-1))
         }
         Event::Mouse(mouse) if mouse.kind == MouseEventKind::ScrollDown => {
-            Some(Message::ScrollDiffDown)
+            Some(Message::ScrollDiffBy(1))
         }
         _ => None,
     }
@@ -618,11 +618,11 @@ mod tests {
 
         assert_eq!(
             map_event(&mouse(MouseEventKind::ScrollUp), &model, Rect::default()),
-            Some(Message::ScrollDiffUp)
+            Some(Message::ScrollDiffBy(-1))
         );
         assert_eq!(
             map_event(&mouse(MouseEventKind::ScrollDown), &model, Rect::default()),
-            Some(Message::ScrollDiffDown)
+            Some(Message::ScrollDiffBy(1))
         );
     }
 }

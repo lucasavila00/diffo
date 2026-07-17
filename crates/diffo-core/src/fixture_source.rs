@@ -167,10 +167,10 @@ fn append_large_files(
 
 fn append_line_stress_files(snapshot: &mut RepositorySnapshot) {
     for (name, line_count) in [
-        ("stress-5k.txt", 5_000),
-        ("stress-50k.txt", 50_000),
-        ("stress-500k.txt", 500_000),
-        ("stress-5000k.txt", 5_000_000),
+        ("stress-5k.rs", 5_000),
+        ("stress-50k.rs", 50_000),
+        ("stress-500k.rs", 500_000),
+        ("stress-5000k.rs", 5_000_000),
     ] {
         snapshot.files.push(crate::FileState {
             path: PathBuf::from("generated").join(name),
@@ -178,23 +178,33 @@ fn append_line_stress_files(snapshot: &mut RepositorySnapshot) {
             kind: crate::ChangeKind::Untracked,
             staged: None,
             unstaged: Some(crate::FileDiff {
-                text: added_line_stress_patch(name, line_count),
+                text: added_source_stress_patch(name, line_count),
             }),
         });
     }
 }
 
-fn added_line_stress_patch(name: &str, line_count: usize) -> String {
+fn added_source_stress_patch(name: &str, line_count: usize) -> String {
     use std::fmt::Write;
 
-    let mut patch = String::with_capacity(line_count.saturating_mul(3).saturating_add(160));
+    let mut patch = String::with_capacity(line_count.saturating_mul(28).saturating_add(160));
     write!(
         patch,
         "diff --git a/generated/{name} b/generated/{name}\nnew file mode 100644\n--- /dev/null\n+++ b/generated/{name}\n@@ -0,0 +1,{line_count} @@\n"
     )
     .expect("writing to a String cannot fail");
+    let mut random = 0x9e37_79b9_u32;
     for _ in 0..line_count {
-        patch.push_str("+x\n");
+        random ^= random << 13;
+        random ^= random >> 17;
+        random ^= random << 5;
+        match random & 3 {
+            0 => writeln!(patch, "+const FLAG_{random:08X}: bool = true;"),
+            1 => writeln!(patch, "+pub const LIMIT_{random:08X}: u32 = {random};"),
+            2 => writeln!(patch, "+static NAME_{random:08X}: &str = \"worker\";"),
+            _ => writeln!(patch, "+fn task_{random:08x}() -> u32 {{ {random} }}"),
+        }
+        .expect("writing to a String cannot fail");
     }
     patch
 }
@@ -286,7 +296,7 @@ impl Repository for MutableFixtureRepository {
 
 #[cfg(test)]
 mod tests {
-    use std::path::Path;
+    use std::{collections::HashSet, path::Path};
 
     use crate::{AccessMode, ChangeKind, Repository, RepositoryAction, RepositorySource};
 
@@ -414,10 +424,10 @@ mod tests {
         );
 
         for (name, expected_lines) in [
-            ("stress-5k.txt", 5_000),
-            ("stress-50k.txt", 50_000),
-            ("stress-500k.txt", 500_000),
-            ("stress-5000k.txt", 5_000_000),
+            ("stress-5k.rs", 5_000),
+            ("stress-50k.rs", 50_000),
+            ("stress-500k.rs", 500_000),
+            ("stress-5000k.rs", 5_000_000),
         ] {
             let diff = snapshot
                 .files
@@ -425,10 +435,19 @@ mod tests {
                 .find(|file| file.path == Path::new("generated").join(name))
                 .and_then(|file| file.unstaged.as_ref())
                 .expect("generated line stress diff");
+            let hunk = diff.text.find("@@\n").expect("stress diff hunk");
             assert_eq!(
-                diff.text.lines().filter(|line| *line == "+x").count(),
+                diff.text[hunk + 3..]
+                    .lines()
+                    .filter(|line| line.starts_with('+'))
+                    .count(),
                 expected_lines
             );
+            assert!(diff.text.contains("+const FLAG_"));
+            assert!(diff.text.contains("+fn task_"));
+            let sample = diff.text.lines().skip(6).take(1_000).collect::<Vec<_>>();
+            let unique = sample.iter().collect::<HashSet<_>>();
+            assert_eq!(unique.len(), sample.len());
         }
     }
 }

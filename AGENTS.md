@@ -9,6 +9,12 @@ This repository is a Rust workspace containing small command-line utilities. Eac
 - Prefer focused modules over putting all application logic in `main.rs`.
 - Keep `main.rs` responsible for startup, shutdown, and top-level orchestration.
 
+## Product constraints
+
+- Diffo will never have CLI arguments, configuration files, or configurable key bindings.
+- Keep controls and product behavior fixed in code.
+- Environment variables are developer and test hooks only. Do not turn them into user configuration.
+
 ## Rust conventions
 
 - Use the workspace Rust edition and minimum supported Rust version.

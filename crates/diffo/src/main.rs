@@ -10,15 +10,12 @@ use std::{
 
 use anyhow::{Context, Result};
 use crossterm::{
-    event::{
-        self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEventKind, KeyModifiers,
-        MouseButton, MouseEventKind,
-    },
+    event::{self, DisableMouseCapture, EnableMouseCapture},
     execute,
 };
-use diffo_core::{Repository, RepositoryAction, fixture_source::FixtureRepositorySource};
+use diffo_core::{Repository, fixture_source::FixtureRepositorySource};
 use diffo_git::GitRepositorySource;
-use diffo_tui::App;
+use diffo_tui::{App, Effect};
 use ratatui::{Terminal, backend::CrosstermBackend};
 
 fn main() -> Result<()> {
@@ -69,32 +66,13 @@ fn run(
     while !app.should_quit && !shutdown.load(Ordering::Relaxed) {
         terminal.draw(|frame| diffo_tui::render(frame, app))?;
 
-        if event::poll(Duration::from_millis(250))? {
-            match event::read()? {
-                Event::Key(key) if key.kind == KeyEventKind::Press => match key.code {
-                    KeyCode::Char('q') | KeyCode::Esc => app.should_quit = true,
-                    KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                        app.should_quit = true;
-                    }
-                    KeyCode::Char('j') => app.select_previous(),
-                    KeyCode::Char('k') => app.select_next(),
-                    KeyCode::Up => app.scroll_diff_up(),
-                    KeyCode::Down => app.scroll_diff_down(),
-                    KeyCode::Left => app.scroll_diff_left(),
-                    KeyCode::Right => app.scroll_diff_right(),
-                    KeyCode::Home | KeyCode::Char('g') => app.select_first(),
-                    KeyCode::End | KeyCode::Char('G') => app.select_last(),
-                    KeyCode::Char('s') => apply_action(repository, app, app.stage_selected()),
-                    KeyCode::Char('u') => apply_action(repository, app, app.unstage_selected()),
-                    KeyCode::Char('a') => apply_action(repository, app, app.stage_all()),
-                    _ => {}
-                },
-                Event::Mouse(mouse) if mouse.kind == MouseEventKind::Down(MouseButton::Left) => {
-                    let size = terminal.size()?;
-                    let area = ratatui::layout::Rect::new(0, 0, size.width, size.height);
-                    diffo_tui::select_file_at(app, area, mouse.column, mouse.row);
-                }
-                _ => {}
+        if event::poll(Duration::from_millis(250))?
+            && let Some(action) = diffo_tui::map_event(&event::read()?)
+        {
+            let size = terminal.size()?;
+            let area = ratatui::layout::Rect::new(0, 0, size.width, size.height);
+            if let Some(effect) = diffo_tui::dispatch(app, action, area) {
+                execute_effect(repository, app, effect);
             }
         }
     }
@@ -102,10 +80,8 @@ fn run(
     Ok(())
 }
 
-fn apply_action(repository: &dyn Repository, app: &mut App, action: Option<RepositoryAction>) {
-    let Some(action) = action else {
-        return;
-    };
+fn execute_effect(repository: &dyn Repository, app: &mut App, effect: Effect) {
+    let Effect::Repository(action) = effect;
     if let Err(error) = repository
         .apply(&action)
         .and_then(|()| repository.snapshot())

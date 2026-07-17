@@ -44,12 +44,13 @@ nearest item.
 
 ## Actions
 
-- Up/down selects a file.
+- `j` selects the previous file. `k` selects the next file.
+- Arrow keys scroll the file diff.
 - Enter opens the file diff later.
 - Stage stages the selected unstaged file.
 - Unstage unstages the selected staged file.
 - Stage all stages all changes and untracked files.
-- Mouse click selects a file when mouse support is added.
+- Mouse click selects a file.
 
 Git commands:
 

@@ -7,10 +7,14 @@ use ratatui::{
     widgets::{Block, Borders, List, ListItem, ListState, Paragraph},
 };
 
+mod action;
 mod app;
+mod input;
 
+pub use action::{Effect, UiAction, dispatch};
 pub use app::{App, ChangeArea, FileKey};
 use app::{staged_files, unstaged_files};
+pub use input::map_event;
 
 pub fn render(frame: &mut Frame, app: &App) {
     let vertical = Layout::default()
@@ -125,9 +129,9 @@ fn render_status(frame: &mut Frame, area: ratatui::layout::Rect, app: &App) {
         .error
         .as_deref()
         .unwrap_or(if app.access_mode == AccessMode::ReadOnly {
-            " j: previous  k: next  arrows: scroll diff  q: quit  read-only "
+            input::READ_ONLY_HELP
         } else {
-            " j: previous  k: next  arrows: scroll diff  s: stage  u: unstage  a: stage all  q: quit "
+            input::READ_WRITE_HELP
         });
     let style = if app.error.is_some() {
         Style::default().fg(Color::Red)

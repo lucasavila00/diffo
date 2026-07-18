@@ -13,6 +13,8 @@ use diffo_e2e::{DiffoScreen, Key, ScrollDirection, Selector};
 use serde::Deserialize;
 
 const TIMEOUT: Duration = Duration::from_secs(5);
+const METADATA_LOOKING_SOURCE_BEFORE: &str = "before\nGIT binary patch\nBinary files a/x and b/x differ\ndiff --cc file.rs\n@@@ -1 -1 +1 @@@\n<<<<<<< HEAD\n=======\n>>>>>>> branch\n";
+const METADATA_LOOKING_SOURCE_AFTER: &str = "after\nGIT binary patch\nBinary files a/x and b/x differ\ndiff --cc file.rs\n@@@ -1 -1 +1 @@@\n<<<<<<< HEAD\n=======\n>>>>>>> branch\n";
 
 #[test]
 fn mock_renamed_file_renders_unchanged_content() -> Result<()> {
@@ -80,22 +82,49 @@ fn real_merge_conflict_renders_as_a_highlighted_worktree_file() -> Result<()> {
 }
 
 #[test]
-fn source_code_containing_git_binary_marker_renders_as_text() -> Result<()> {
+fn unstaged_source_containing_git_metadata_renders_as_text() -> Result<()> {
     let repository = TestRepository::new()?;
     let path = repository.worktree.join("crates/diffo-diff/src/lib.rs");
     fs::create_dir_all(path.parent().context("source parent")?)?;
-    fs::write(
-        &path,
-        "before\nGIT binary patch\nBinary files a/x and b/x differ\ndiff --cc file.rs\n@@@ -1 -1 +1 @@@\n<<<<<<< HEAD\n=======\n>>>>>>> branch\n",
-    )?;
+    fs::write(&path, METADATA_LOOKING_SOURCE_BEFORE)?;
     git(&repository.worktree, &["add", "."])?;
     git(&repository.worktree, &["commit", "-m", "Add diff parser"])?;
+    fs::write(&path, METADATA_LOOKING_SOURCE_AFTER)?;
+
+    let mut screen = repository.screen()?;
+    assert_metadata_looking_source_is_text(&mut screen)?;
+    Ok(())
+}
+
+#[test]
+fn staged_source_containing_git_metadata_renders_as_text() -> Result<()> {
+    let repository = TestRepository::new()?;
+    let path = repository.worktree.join("metadata.txt");
+    fs::write(&path, METADATA_LOOKING_SOURCE_BEFORE)?;
+    git(&repository.worktree, &["add", "metadata.txt"])?;
+    git(&repository.worktree, &["commit", "-m", "Add metadata text"])?;
+    fs::write(&path, METADATA_LOOKING_SOURCE_AFTER)?;
+    git(&repository.worktree, &["add", "metadata.txt"])?;
+
+    let mut screen = repository.screen()?;
+    assert_metadata_looking_source_is_text(&mut screen)?;
+    Ok(())
+}
+
+#[test]
+fn untracked_source_containing_git_metadata_renders_as_text() -> Result<()> {
+    let repository = TestRepository::new()?;
     fs::write(
-        &path,
-        "after\nGIT binary patch\nBinary files a/x and b/x differ\ndiff --cc file.rs\n@@@ -1 -1 +1 @@@\n<<<<<<< HEAD\n=======\n>>>>>>> branch\n",
+        repository.worktree.join("metadata.txt"),
+        METADATA_LOOKING_SOURCE_AFTER,
     )?;
 
     let mut screen = repository.screen()?;
+    assert_metadata_looking_source_is_text(&mut screen)?;
+    Ok(())
+}
+
+fn assert_metadata_looking_source_is_text(screen: &mut DiffoScreen) -> Result<()> {
     screen
         .wait_for_text("GIT binary patch")?
         .wait_for_text("Binary files a/x and b/x differ")?

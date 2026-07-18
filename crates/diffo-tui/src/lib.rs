@@ -223,6 +223,7 @@ impl Renderer {
         let coverage = self.highlighted.as_ref().and_then(|cache| {
             cache
                 .highlighted_new_coverage
+                .last()
                 .map(|range| (range.start, range.end))
         });
         TextSurfacePreparation {

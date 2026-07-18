@@ -42,8 +42,8 @@ pub(super) struct HighlightCache {
     pub(super) side_by_side_changes: Vec<usize>,
     pub(super) highlighted: HighlightedDiff,
     pub(super) syntax_highlighted: bool,
-    pub(super) highlighted_old_coverage: Option<LineRange>,
-    pub(super) highlighted_new_coverage: Option<LineRange>,
+    pub(super) highlighted_old_coverage: Vec<LineRange>,
+    pub(super) highlighted_new_coverage: Vec<LineRange>,
     #[cfg(test)]
     pub(super) highlighted_lines_processed: usize,
 }

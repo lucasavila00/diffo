@@ -313,6 +313,7 @@ dependencies = [
  "diffo-core",
  "diffo-diff",
  "diffo-highlight",
+ "diffo-text-view",
  "diffo-ui",
  "ratatui",
 ]
@@ -346,6 +347,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "diffo-text-view"
+version = "0.1.0"
+dependencies = [
+ "diffo-highlight",
+ "diffo-ui",
+ "ratatui",
+]
+
+[[package]]
 name = "diffo-tui"
 version = "0.1.0"
 dependencies = [
@@ -354,6 +364,7 @@ dependencies = [
  "diffo-core",
  "diffo-diff",
  "diffo-highlight",
+ "diffo-text-view",
  "diffo-ui",
  "ratatui",
 ]

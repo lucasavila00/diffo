@@ -18,7 +18,6 @@ use diffo_highlight::{
     MAX_HIGHLIGHT_FILE_LINES, SyntaxHighlighter,
 };
 use diffo_ui::terminal_safe_text;
-use ratatui::text::Span;
 
 use super::model::{GutterMarker, Viewer};
 
@@ -159,15 +158,9 @@ fn prepare_viewer(
             coverage: None,
             syntax_eligible: false,
             message: Some("Binary or non-UTF-8 file.".to_owned()),
-            maximum_width: 0,
         };
     };
     let lines = text.lines().map(terminal_safe_text).collect::<Vec<_>>();
-    let maximum_width = lines
-        .iter()
-        .map(|line| Span::raw(line.as_str()).width())
-        .max()
-        .unwrap_or(0);
     let markers = change_markers(&file.patch, file.deleted, status, &lines);
     let syntax_eligible = lines.len() < MAX_HIGHLIGHT_FILE_LINES;
     let range = visible_range(first_line, viewport_rows, lines.len());
@@ -201,7 +194,6 @@ fn prepare_viewer(
         coverage: range,
         syntax_eligible,
         message: None,
-        maximum_width,
     }
 }
 
@@ -442,6 +434,5 @@ mod tests {
 
         assert_eq!(viewer.lines, ["before    ␛[2J␈after"]);
         assert!(!viewer.lines[0].chars().any(char::is_control));
-        assert_eq!(viewer.maximum_width, Span::raw(&viewer.lines[0]).width());
     }
 }

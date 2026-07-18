@@ -35,12 +35,12 @@ fn maps_fixed_key_bindings() {
         (KeyCode::Char('k'), Message::SelectNextFile),
         (KeyCode::Char('l'), Message::SelectNextFile),
         (KeyCode::Char('s'), Message::SelectNextFile),
-        (KeyCode::Up, Message::ScrollDiffUp),
-        (KeyCode::Down, Message::ScrollDiffDown),
+        (KeyCode::Up, Message::ScrollDiffVerticalBy(-4)),
+        (KeyCode::Down, Message::ScrollDiffVerticalBy(4)),
         (KeyCode::PageUp, Message::ScrollDiffPageUp(1)),
         (KeyCode::PageDown, Message::ScrollDiffPageDown(1)),
-        (KeyCode::Left, Message::ScrollDiffLeft),
-        (KeyCode::Right, Message::ScrollDiffRight),
+        (KeyCode::Left, Message::ScrollDiffHorizontalBy(-4)),
+        (KeyCode::Right, Message::ScrollDiffHorizontalBy(4)),
         (KeyCode::Char('r'), Message::ToggleDiffView),
         (KeyCode::Char('n'), Message::JumpToNextChange),
         (KeyCode::Char('p'), Message::JumpToPreviousChange),
@@ -423,11 +423,11 @@ fn maps_mouse_wheel_to_diff_scrolling() {
 
     assert_eq!(
         map_event(&mouse(MouseEventKind::ScrollUp), &model, Rect::default()),
-        Some(Message::ScrollDiffBy(-1))
+        Some(Message::ScrollDiffVerticalBy(-1))
     );
     assert_eq!(
         map_event(&mouse(MouseEventKind::ScrollDown), &model, Rect::default()),
-        Some(Message::ScrollDiffBy(1))
+        Some(Message::ScrollDiffVerticalBy(1))
     );
 
     let file_wheel = |kind, row| {

@@ -457,7 +457,7 @@ impl PendingScroll {
                     .vertical
                     .saturating_add(i64::try_from(*lines).unwrap_or(i64::MAX));
             }
-            Message::ScrollDiffBy(lines) => {
+            Message::ScrollDiffVerticalBy(lines) => {
                 self.vertical = self.vertical.saturating_add(*lines);
             }
             Message::ScrollDiffLeft => self.horizontal = self.horizontal.saturating_sub(4),
@@ -472,7 +472,7 @@ impl PendingScroll {
 
     fn flush(&mut self, workbench: &mut Workbench) {
         if self.vertical != 0 {
-            let _ = workbench.update_diff(Message::ScrollDiffBy(self.vertical));
+            let _ = workbench.update_diff(Message::ScrollDiffVerticalBy(self.vertical));
         }
         if self.horizontal != 0 {
             let _ = workbench.update_diff(Message::ScrollDiffHorizontalBy(self.horizontal));

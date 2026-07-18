@@ -7,11 +7,15 @@ use std::{collections::VecDeque, path::PathBuf};
 use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind};
 use diffo_command::{Command, CommandId};
 use diffo_core::RepositorySnapshot;
+use diffo_text_view::{
+    LINE_SCROLL_ROWS, ScrollCommand, ScrollbarAxis, Viewport, ViewportMetrics, WHEEL_SCROLL_ROWS,
+    scrollbar_areas, scrollbar_axis_at, scrollbar_command,
+};
 use diffo_ui::PaneSplit;
 use ratatui::{Frame, layout::Rect};
 
 use model::ExplorerModel;
-use view::{TreeAction, VIEWER_GUTTER_WIDTH, explorer_areas, tree_action_at};
+use view::{TreeAction, VIEWER_GUTTER_WIDTH, explorer_areas, tree_action_at, viewer_metrics};
 pub use worker::{ExplorerOutcome, ExplorerRequest, ExplorerWorker};
 
 pub const COLLAPSE_ALL_COMMAND: CommandId = CommandId::new("explorer.collapse_all");
@@ -39,6 +43,8 @@ pub struct ExplorerActivity {
     pending_scroll: Option<usize>,
     viewport_rows: usize,
     viewport_columns: usize,
+    maximum_horizontal_scroll: usize,
+    scrollbar_drag: Option<ScrollbarAxis>,
 }
 
 impl ExplorerActivity {
@@ -55,6 +61,8 @@ impl ExplorerActivity {
             pending_scroll: None,
             viewport_rows: 1,
             viewport_columns: 1,
+            maximum_horizontal_scroll: 0,
+            scrollbar_drag: None,
         };
         activity.request_paths();
         activity
@@ -111,9 +119,23 @@ impl ExplorerActivity {
                 .saturating_sub(2)
                 .saturating_sub(VIEWER_GUTTER_WIDTH),
         );
-        let maximum_horizontal_scroll = self.model.viewer.as_ref().map_or(0, |viewer| {
-            viewer.maximum_width.saturating_sub(self.viewport_columns)
+        let viewer_inner = areas.viewer.inner(ratatui::layout::Margin {
+            vertical: 1,
+            horizontal: 1,
         });
+        let metrics = self
+            .model
+            .viewer
+            .as_ref()
+            .map(|viewer| viewer_metrics(viewer_inner, &self.model, viewer));
+        if let Some(metrics) = metrics {
+            self.viewport_rows = metrics.viewport_rows.max(1);
+            self.viewport_columns = metrics
+                .viewport_columns
+                .saturating_sub(usize::from(VIEWER_GUTTER_WIDTH));
+        }
+        let maximum_horizontal_scroll = metrics.map_or(0, |metrics| metrics.maximum_horizontal);
+        self.maximum_horizontal_scroll = maximum_horizontal_scroll;
         self.model.viewer_horizontal_scroll = self
             .model
             .viewer_horizontal_scroll
@@ -150,38 +172,13 @@ impl ExplorerActivity {
     }
 
     pub fn handle_event(&mut self, event: &Event, area: Rect, split: PaneSplit) -> bool {
+        if self.handle_viewer_mouse(event, area, split) {
+            return true;
+        }
         if let Event::Mouse(mouse) = event
             && mouse.kind == MouseEventKind::Down(MouseButton::Left)
         {
-            let tree_area = explorer_areas(area, split).tree;
-            if let Some(action) = tree_action_at(tree_area, mouse.column, mouse.row) {
-                match action {
-                    TreeAction::CollapseAll => self.model.collapse_all(),
-                    TreeAction::ExpandAll => self.model.expand_all(),
-                }
-                self.selection_changed();
-                return true;
-            }
-            let tree = tree_area.inner(ratatui::layout::Margin {
-                vertical: 1,
-                horizontal: 1,
-            });
-            if tree.contains((mouse.column, mouse.row).into()) {
-                let index = self
-                    .model
-                    .tree_scroll
-                    .saturating_add(usize::from(mouse.row.saturating_sub(tree.y)));
-                self.model.select(index);
-                if self
-                    .model
-                    .selected_entry()
-                    .is_some_and(|entry| entry.directory)
-                {
-                    self.model.toggle_selected_directory();
-                }
-                self.selection_changed();
-                return true;
-            }
+            return self.handle_tree_click(area, split, mouse.column, mouse.row);
         }
         let Event::Key(key) = event else {
             return false;
@@ -202,30 +199,103 @@ impl ExplorerActivity {
                 self.model.toggle_selected_directory();
                 self.selection_changed();
             }
-            KeyCode::Up => self.scroll_viewer(-4),
-            KeyCode::Down => self.scroll_viewer(4),
+            KeyCode::Up => self.scroll_viewer(-LINE_SCROLL_ROWS),
+            KeyCode::Down => self.scroll_viewer(LINE_SCROLL_ROWS),
             KeyCode::PageUp => {
                 self.scroll_viewer(-i64::try_from(self.viewport_rows).unwrap_or(i64::MAX));
             }
             KeyCode::PageDown => {
                 self.scroll_viewer(i64::try_from(self.viewport_rows).unwrap_or(i64::MAX));
             }
-            KeyCode::Left => {
-                self.model.viewer_horizontal_scroll =
-                    self.model.viewer_horizontal_scroll.saturating_sub(4);
-            }
-            KeyCode::Right => {
-                let maximum = self.model.viewer.as_ref().map_or(0, |viewer| {
-                    viewer.maximum_width.saturating_sub(self.viewport_columns)
-                });
-                self.model.viewer_horizontal_scroll = self
-                    .model
-                    .viewer_horizontal_scroll
-                    .saturating_add(4)
-                    .min(maximum);
-            }
+            KeyCode::Left => self.scroll_viewer_horizontal(-LINE_SCROLL_ROWS),
+            KeyCode::Right => self.scroll_viewer_horizontal(LINE_SCROLL_ROWS),
             _ => return false,
         }
+        true
+    }
+
+    fn handle_viewer_mouse(&mut self, event: &Event, area: Rect, split: PaneSplit) -> bool {
+        let viewer_area = explorer_areas(area, split)
+            .viewer
+            .inner(ratatui::layout::Margin {
+                vertical: 1,
+                horizontal: 1,
+            });
+        let viewer_metrics = self
+            .model
+            .viewer
+            .as_ref()
+            .map(|viewer| viewer_metrics(viewer_area, &self.model, viewer));
+        if let Event::Mouse(mouse) = event {
+            if mouse.kind == MouseEventKind::Up(MouseButton::Left) && self.scrollbar_drag.is_some()
+            {
+                self.scrollbar_drag = None;
+                return true;
+            }
+            if let Some(metrics) = viewer_metrics {
+                let scrollbar_areas = scrollbar_areas(viewer_area, metrics);
+                let axis = if mouse.kind == MouseEventKind::Down(MouseButton::Left) {
+                    scrollbar_axis_at(scrollbar_areas, metrics, mouse.column, mouse.row)
+                } else if mouse.kind == MouseEventKind::Drag(MouseButton::Left) {
+                    self.scrollbar_drag
+                } else {
+                    None
+                };
+                if let Some(axis) = axis {
+                    self.scrollbar_drag = Some(axis);
+                    let command =
+                        scrollbar_command(axis, scrollbar_areas, metrics, mouse.column, mouse.row);
+                    self.apply_viewer_command(command, metrics);
+                    return true;
+                }
+                if viewer_area.contains((mouse.column, mouse.row).into()) {
+                    match mouse.kind {
+                        MouseEventKind::ScrollUp => {
+                            self.scroll_viewer(-WHEEL_SCROLL_ROWS);
+                            return true;
+                        }
+                        MouseEventKind::ScrollDown => {
+                            self.scroll_viewer(WHEEL_SCROLL_ROWS);
+                            return true;
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+        false
+    }
+
+    fn handle_tree_click(&mut self, area: Rect, split: PaneSplit, column: u16, row: u16) -> bool {
+        let tree_area = explorer_areas(area, split).tree;
+        if let Some(action) = tree_action_at(tree_area, column, row) {
+            match action {
+                TreeAction::CollapseAll => self.model.collapse_all(),
+                TreeAction::ExpandAll => self.model.expand_all(),
+            }
+            self.selection_changed();
+            return true;
+        }
+        let tree = tree_area.inner(ratatui::layout::Margin {
+            vertical: 1,
+            horizontal: 1,
+        });
+        if !tree.contains((column, row).into()) {
+            return false;
+        }
+        let index = self
+            .model
+            .tree_scroll
+            .saturating_add(usize::from(row.saturating_sub(tree.y)));
+        self.model.select(index);
+        if self
+            .model
+            .selected_entry()
+            .is_some_and(|entry| entry.directory)
+        {
+            self.model.toggle_selected_directory();
+        }
+        self.selection_changed();
         true
     }
 
@@ -262,6 +332,37 @@ impl ExplorerActivity {
         } else if self.pending_scroll != Some(target) {
             self.pending_scroll = Some(target);
             self.request_file(viewer.path.clone(), target);
+        }
+    }
+
+    fn scroll_viewer_horizontal(&mut self, amount: i64) {
+        let mut viewport = Viewport {
+            vertical: self.model.viewer_scroll,
+            horizontal: self.model.viewer_horizontal_scroll,
+        };
+        viewport.apply(
+            ScrollCommand::Columns(amount),
+            ViewportMetrics {
+                maximum_horizontal: self.maximum_horizontal_scroll,
+                ..ViewportMetrics::default()
+            },
+        );
+        self.model.viewer_horizontal_scroll = viewport.horizontal;
+    }
+
+    fn apply_viewer_command(&mut self, command: ScrollCommand, metrics: ViewportMetrics) {
+        if let ScrollCommand::Vertical(target) = command {
+            let current = self.pending_scroll.unwrap_or(self.model.viewer_scroll);
+            let amount = i64::try_from(target).unwrap_or(i64::MAX)
+                - i64::try_from(current).unwrap_or(i64::MAX);
+            self.scroll_viewer(amount);
+        } else {
+            let mut viewport = Viewport {
+                vertical: self.model.viewer_scroll,
+                horizontal: self.model.viewer_horizontal_scroll,
+            };
+            viewport.apply(command, metrics);
+            self.model.viewer_horizontal_scroll = viewport.horizontal;
         }
     }
 
@@ -327,7 +428,6 @@ mod tests {
                 coverage: None,
                 syntax_eligible: false,
                 message: None,
-                maximum_width: 3,
             }),
         });
         assert!(explorer.model.viewer.is_none());
@@ -415,7 +515,6 @@ mod tests {
             coverage: None,
             syntax_eligible: false,
             message: None,
-            maximum_width: 100,
         });
         let area = Rect::new(0, 0, 100, 30);
         explorer.prepare_frame(area, PaneSplit::default());

@@ -50,10 +50,11 @@ use files::{
     file_panel_areas, prepared_file_list_scroll, render_files, render_status, resize_border_style,
     staged_files, unstaged_files,
 };
+#[cfg(test)]
+use geometry::scrollbar_position_count;
 use geometry::{
     file_action_at_position, file_at_position, file_group_at_position, file_pane_percent_at,
     horizontal_panes, is_file_pane_splitter_at, main_area, overview_position,
-    scrollbar_position_count,
 };
 use overlays::{
     commit_editor_action_at_position, map_file_context_menu_event, render_commit_editor,

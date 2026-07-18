@@ -1,18 +1,13 @@
 [package]
-name = "diffo-tui"
-description = "Terminal UI for Diffo"
+name = "diffo-text-view"
+description = "Shared read-only text-buffer surface for Diffo"
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
 version.workspace = true
 
 [dependencies]
-crossterm.workspace = true
-diffo-app.workspace = true
-diffo-core.workspace = true
-diffo-diff.workspace = true
 diffo-highlight.workspace = true
-diffo-text-view.workspace = true
 diffo-ui.workspace = true
 ratatui.workspace = true
 

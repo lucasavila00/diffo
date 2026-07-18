@@ -1,4 +1,5 @@
 use super::{KeyCode, KeyModifiers, Message};
+use diffo_text_view::LINE_SCROLL_ROWS;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) struct KeyChord {
@@ -69,12 +70,12 @@ pub(super) static KEY_BINDINGS: &[KeyBinding] = &[
     },
     KeyBinding {
         keys: &[KeyChord::plain(KeyCode::Up)],
-        message: Message::ScrollDiffUp,
+        message: Message::ScrollDiffVerticalBy(-LINE_SCROLL_ROWS),
         description: "Scroll diff up by four lines",
     },
     KeyBinding {
         keys: &[KeyChord::plain(KeyCode::Down)],
-        message: Message::ScrollDiffDown,
+        message: Message::ScrollDiffVerticalBy(LINE_SCROLL_ROWS),
         description: "Scroll diff down by four lines",
     },
     KeyBinding {
@@ -89,12 +90,12 @@ pub(super) static KEY_BINDINGS: &[KeyBinding] = &[
     },
     KeyBinding {
         keys: &[KeyChord::plain(KeyCode::Left)],
-        message: Message::ScrollDiffLeft,
+        message: Message::ScrollDiffHorizontalBy(-LINE_SCROLL_ROWS),
         description: "Scroll diff left by four columns",
     },
     KeyBinding {
         keys: &[KeyChord::plain(KeyCode::Right)],
-        message: Message::ScrollDiffRight,
+        message: Message::ScrollDiffHorizontalBy(LINE_SCROLL_ROWS),
         description: "Scroll diff right by four columns",
     },
     KeyBinding {

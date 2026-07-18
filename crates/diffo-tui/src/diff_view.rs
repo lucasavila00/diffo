@@ -1,9 +1,9 @@
 use super::{
     Alignment, Block, Borders, Color, DiffViewMode, DiffViewportMetrics, Frame, HunkButtonMetrics,
-    Line, Model, Paragraph, Rect, Renderer, Scrollbar, ScrollbarMetrics, ScrollbarOrientation,
-    ScrollbarState, Style, inline_line, overview_position, resize_border_style,
-    scrollbar_position_count, side_by_side_line, terminal_safe_text,
+    Line, Model, Paragraph, Rect, Renderer, ScrollbarMetrics, Style, inline_line,
+    overview_position, resize_border_style, side_by_side_line, terminal_safe_text,
 };
+use diffo_text_view::{Viewport, ViewportMetrics, render_lines, render_scrollbars};
 
 pub(super) fn render_hunk_button(frame: &mut Frame, area: Rect, label: &str) {
     frame.render_widget(
@@ -74,12 +74,11 @@ impl Renderer {
                 .title(format!(" File Diff · {mode}{resize_label} ")),
             area,
         );
-        frame.render_widget(
-            Paragraph::new(lines).scroll((
-                0,
-                model.diff_horizontal_scroll.try_into().unwrap_or(u16::MAX),
-            )),
+        render_lines(
+            frame,
             viewport.content_area,
+            lines,
+            model.diff_horizontal_scroll,
         );
         self.render_hunk_buttons(frame, area, &viewport);
         self.render_diff_scrollbars(frame, area, &viewport, model);
@@ -138,15 +137,26 @@ impl Renderer {
             viewport_columns: viewport.viewport_columns,
             maximum_vertical_scroll: viewport.maximum_vertical_scroll,
         };
+        let shared = render_scrollbars(
+            frame,
+            Rect::new(area.x, area.y, area.width.saturating_sub(1), area.height),
+            ViewportMetrics {
+                area: viewport.content_area,
+                horizontal_scrollbar: viewport.horizontal_area,
+                rows: viewport.rows,
+                columns: viewport.columns,
+                viewport_rows: viewport.viewport_rows,
+                viewport_columns: viewport.viewport_columns,
+                maximum_vertical: viewport.maximum_vertical_scroll,
+                maximum_horizontal: viewport.columns.saturating_sub(viewport.viewport_columns),
+            },
+            Viewport {
+                vertical: model.diff_scroll,
+                horizontal: model.diff_horizontal_scroll,
+            },
+        );
+        debug_assert_eq!(shared.vertical, self.scrollbars.vertical_area);
         if viewport.maximum_vertical_scroll > 0 {
-            let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
-                .begin_symbol(None)
-                .end_symbol(None)
-                .thumb_style(Style::default().fg(Color::Cyan));
-            let mut state = ScrollbarState::new(viewport.maximum_vertical_scroll.saturating_add(1))
-                .viewport_content_length(viewport.viewport_rows)
-                .position(model.diff_scroll);
-            frame.render_stateful_widget(scrollbar, self.scrollbars.vertical_area, &mut state);
             let changes = self.highlighted.as_ref().map(|cache| match cache.key.mode {
                 DiffViewMode::Inline => cache.inline_changes.as_slice(),
                 DiffViewMode::SideBySide => cache.side_by_side_changes.as_slice(),
@@ -161,19 +171,6 @@ impl Renderer {
                     viewport.viewport_rows,
                 );
             }
-        }
-        if viewport.columns > viewport.viewport_columns {
-            let scrollbar = Scrollbar::new(ScrollbarOrientation::HorizontalBottom)
-                .begin_symbol(None)
-                .end_symbol(None)
-                .thumb_style(Style::default().fg(Color::Cyan));
-            let mut state = ScrollbarState::new(scrollbar_position_count(
-                viewport.columns,
-                viewport.viewport_columns,
-            ))
-            .viewport_content_length(viewport.viewport_columns)
-            .position(model.diff_horizontal_scroll);
-            frame.render_stateful_widget(scrollbar, self.scrollbars.horizontal_area, &mut state);
         }
     }
 

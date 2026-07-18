@@ -25,7 +25,6 @@ pub struct Viewer {
     pub(crate) coverage: Option<LineRange>,
     pub(crate) syntax_eligible: bool,
     pub(crate) message: Option<String>,
-    pub(crate) maximum_width: usize,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

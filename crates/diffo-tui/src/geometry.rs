@@ -3,6 +3,9 @@ use super::{
     Layout, Model, Rect, Renderer, ScrollbarAxis, file_group_areas, file_group_metrics,
     file_panel_areas, staged_files, unstaged_files,
 };
+pub(super) use diffo_text_view::scrollbar_position;
+#[cfg(test)]
+pub(super) use diffo_text_view::scrollbar_position_count;
 
 pub(super) fn overview_position(content_row: usize, content_rows: usize, track_height: u16) -> u16 {
     if track_height <= 1 || content_rows <= 1 {
@@ -14,19 +17,6 @@ pub(super) fn overview_position(content_row: usize, content_rows: usize, track_h
         .saturating_mul(last_track_row)
         / (content_rows - 1);
     u16::try_from(position).unwrap_or(track_height - 1)
-}
-
-pub(super) fn scrollbar_position(coordinate: u16, track_length: u16, maximum: usize) -> usize {
-    if track_length <= 1 {
-        return 0;
-    }
-    usize::from(coordinate.min(track_length - 1)) * maximum / usize::from(track_length - 1)
-}
-
-pub(super) fn scrollbar_position_count(content_length: usize, viewport_length: usize) -> usize {
-    content_length
-        .saturating_sub(viewport_length)
-        .saturating_add(1)
 }
 
 pub(crate) fn file_at_position(

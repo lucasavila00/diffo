@@ -11,6 +11,7 @@ members = [
     "crates/diffo-highlight",
     "crates/diffo-measure",
     "crates/diffo-tui",
+    "crates/diffo-text-view",
     "crates/diffo-ui",
     "crates/diffo-watch",
     "crates/diffo-workbench",
@@ -35,6 +36,7 @@ diffo-app = { path = "crates/diffo-app" }
 diffo-git = { path = "crates/diffo-git" }
 diffo-highlight = { path = "crates/diffo-highlight" }
 diffo-tui = { path = "crates/diffo-tui" }
+diffo-text-view = { path = "crates/diffo-text-view" }
 diffo-ui = { path = "crates/diffo-ui" }
 diffo-watch = { path = "crates/diffo-watch" }
 diffo-workbench = { path = "crates/diffo-workbench" }

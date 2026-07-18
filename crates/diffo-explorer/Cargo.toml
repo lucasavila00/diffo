@@ -12,6 +12,7 @@ diffo-command.workspace = true
 diffo-core.workspace = true
 diffo-diff.workspace = true
 diffo-highlight.workspace = true
+diffo-text-view.workspace = true
 diffo-ui.workspace = true
 ratatui.workspace = true
 

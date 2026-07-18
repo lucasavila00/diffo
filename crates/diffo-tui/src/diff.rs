@@ -295,7 +295,7 @@ impl Renderer {
             diffo_app::Message::ScrollDiffDown => base.saturating_add(4),
             diffo_app::Message::ScrollDiffPageUp(lines) => base.saturating_sub(lines),
             diffo_app::Message::ScrollDiffPageDown(lines) => base.saturating_add(lines),
-            diffo_app::Message::ScrollDiffBy(lines) => {
+            diffo_app::Message::ScrollDiffVerticalBy(lines) => {
                 let magnitude = usize::try_from(lines.unsigned_abs()).unwrap_or(usize::MAX);
                 if lines >= 0 {
                     base.saturating_add(magnitude)

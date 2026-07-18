@@ -1,4 +1,6 @@
 use diffo_core::ChangeKind;
+use diffo_text_view::render_lines;
+use diffo_text_view::{Viewport, ViewportMetrics, render_scrollbars, viewport_metrics};
 use diffo_ui::{PaneSplit, change_kind_style, plain_syntax_spans, terminal_safe_text, tool_areas};
 use ratatui::{
     Frame,
@@ -173,11 +175,39 @@ fn render_viewer(frame: &mut Frame, area: Rect, model: &ExplorerModel, border_st
         if let Some(message) = viewer.message.as_deref() {
             frame.render_widget(Paragraph::new(terminal_safe_text(message)), inner);
         } else {
-            render_viewer_lines(frame, inner, model, viewer);
+            let metrics = viewer_metrics(inner, model, viewer);
+            render_viewer_lines(frame, metrics.area, model, viewer);
+            render_scrollbars(
+                frame,
+                inner,
+                metrics,
+                Viewport {
+                    vertical: model.viewer_scroll,
+                    horizontal: model.viewer_horizontal_scroll,
+                },
+            );
         }
     } else {
         frame.render_widget(Paragraph::new("Select a file to view it."), inner);
     }
+}
+
+pub(crate) fn viewer_metrics(
+    area: Rect,
+    model: &ExplorerModel,
+    viewer: &super::model::Viewer,
+) -> ViewportMetrics {
+    let text_area = Rect::new(area.x, area.y, area.width.saturating_sub(1), area.height);
+    let widths = viewer
+        .lines
+        .iter()
+        .map(|line| {
+            Span::raw(terminal_safe_text(line))
+                .width()
+                .saturating_add(usize::from(VIEWER_GUTTER_WIDTH))
+        })
+        .collect::<Vec<_>>();
+    viewport_metrics(text_area, &widths, model.viewer_scroll, true)
 }
 
 fn render_viewer_lines(
@@ -207,16 +237,7 @@ fn render_viewer_lines(
         .map(|(index, text)| viewer_code(index.saturating_add(1), text, viewer))
         .collect::<Vec<_>>();
     frame.render_widget(Paragraph::new(gutters), columns[0]);
-    frame.render_widget(
-        Paragraph::new(code).scroll((
-            0,
-            model
-                .viewer_horizontal_scroll
-                .try_into()
-                .unwrap_or(u16::MAX),
-        )),
-        columns[1],
-    );
+    render_lines(frame, columns[1], code, model.viewer_horizontal_scroll);
 }
 
 fn viewer_gutter(number: usize, viewer: &super::model::Viewer) -> Line<'static> {
@@ -306,7 +327,6 @@ mod tests {
             coverage: None,
             syntax_eligible: false,
             message: None,
-            maximum_width: 21,
         });
         model.viewer_horizontal_scroll = 8;
         let backend = TestBackend::new(30, 3);

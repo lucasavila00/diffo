@@ -3,6 +3,7 @@ use super::{
     commit_editor_action_at_position, file_action_at_position, file_at_position,
     file_group_at_position, file_pane_percent_at, is_file_pane_splitter_at,
 };
+use diffo_text_view::WHEEL_SCROLL_ROWS;
 
 pub(super) fn map_commit_event(event: &Event, model: &Model, area: Rect) -> Option<Message> {
     match event {
@@ -48,13 +49,13 @@ pub(super) fn map_event(event: &Event, model: &Model, area: Rect) -> Option<Mess
         }
         Event::Mouse(mouse) if mouse.kind == MouseEventKind::ScrollUp => {
             file_group_at_position(model, area, mouse.column, mouse.row).map_or_else(
-                || Some(Message::ScrollDiffBy(-1)),
+                || Some(Message::ScrollDiffVerticalBy(-WHEEL_SCROLL_ROWS)),
                 |area| Some(Message::ScrollFileListBy(area, -1)),
             )
         }
         Event::Mouse(mouse) if mouse.kind == MouseEventKind::ScrollDown => {
             file_group_at_position(model, area, mouse.column, mouse.row).map_or_else(
-                || Some(Message::ScrollDiffBy(1)),
+                || Some(Message::ScrollDiffVerticalBy(WHEEL_SCROLL_ROWS)),
                 |area| Some(Message::ScrollFileListBy(area, 1)),
             )
         }

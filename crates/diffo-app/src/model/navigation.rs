@@ -68,7 +68,7 @@ impl Model {
         self.diff_scroll = self.diff_scroll.saturating_sub(lines);
     }
 
-    pub fn scroll_diff_by(&mut self, lines: i64) {
+    pub fn scroll_diff_vertical_by(&mut self, lines: i64) {
         let magnitude = usize::try_from(lines.unsigned_abs()).unwrap_or(usize::MAX);
         if lines >= 0 {
             self.diff_scroll = self.diff_scroll.saturating_add(magnitude);

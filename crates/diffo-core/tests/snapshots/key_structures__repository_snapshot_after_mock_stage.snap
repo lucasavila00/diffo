@@ -82,11 +82,20 @@ RepositorySnapshot(
       )),
     ),
     FileState(
-      path: "src/current_name.rs",
-      old_path: Some("src/old_name.rs"),
+      path: "src/empty-and-renamed.rs",
+      old_path: Some("src/empty-before-rename.rs"),
       kind: Renamed,
       staged: Some(FileDiff(
-        text: "diff --git a/src/old_name.rs b/src/current_name.rs\nsimilarity index 100%\nrename from src/old_name.rs\nrename to src/current_name.rs\n",
+        text: "diff --git a/src/empty-before-rename.rs b/src/empty-and-renamed.rs\nsimilarity index 100%\nrename from src/empty-before-rename.rs\nrename to src/empty-and-renamed.rs\n@@ -1,0 +1,0 @@ Renamed file contents\n",
+      )),
+      unstaged: None,
+    ),
+    FileState(
+      path: "src/content-and-renamed.rs",
+      old_path: Some("src/content-before-rename.rs"),
+      kind: Renamed,
+      staged: Some(FileDiff(
+        text: "diff --git a/src/content-before-rename.rs b/src/content-and-renamed.rs\nsimilarity index 100%\nrename from src/content-before-rename.rs\nrename to src/content-and-renamed.rs\n@@ -1,4 +1,4 @@ Renamed file contents\n pub struct RenamedFile {\n     pub path: &\'static str,\n }\n // Content is unchanged by the rename.\n",
       )),
       unstaged: None,
     ),

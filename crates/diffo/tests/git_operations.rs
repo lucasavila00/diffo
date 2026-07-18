@@ -1,4 +1,5 @@
 use std::{
+    ffi::OsStr,
     fmt::Write as _,
     fs,
     path::{Path, PathBuf},
@@ -12,6 +13,48 @@ use diffo_e2e::{DiffoScreen, Key, ScrollDirection, Selector};
 use serde::Deserialize;
 
 const TIMEOUT: Duration = Duration::from_secs(5);
+
+#[test]
+fn mock_renamed_file_renders_unchanged_content() -> Result<()> {
+    let fixture =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../diffo-core/fixtures/repository-state.ron");
+    let mut screen = DiffoScreen::launch_with_env(
+        env!("CARGO_BIN_EXE_diffo"),
+        Path::new(env!("CARGO_MANIFEST_DIR")),
+        &[
+            ("DIFFO_MOCK_FILE", fixture.as_os_str()),
+            ("DIFFO_MOCK_MUTABLE", OsStr::new("1")),
+        ],
+    )?;
+
+    screen
+        .wait_for_text("src/empty-and-r")?
+        .click(&Selector::text("src/content-and"))?
+        .wait_for_text("pub struct RenamedFile")?
+        .wait_for_text("Content is unchanged by the rename")?;
+    Ok(())
+}
+
+#[test]
+fn mock_remote_error_shows_the_executed_action() -> Result<()> {
+    let fixture =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../diffo-core/fixtures/repository-state.ron");
+    let mut screen = DiffoScreen::launch_with_env(
+        env!("CARGO_BIN_EXE_diffo"),
+        Path::new(env!("CARGO_MANIFEST_DIR")),
+        &[
+            ("DIFFO_MOCK_FILE", fixture.as_os_str()),
+            ("DIFFO_MOCK_MUTABLE", OsStr::new("1")),
+        ],
+    )?;
+
+    screen
+        .press(Key::Char('1'))?
+        .type_text("fetch")?
+        .press(Key::Enter)?
+        .wait_for_text("cannot execute Fetch: no remote configured")?;
+    Ok(())
+}
 
 #[test]
 fn real_merge_conflict_renders_as_a_highlighted_worktree_file() -> Result<()> {

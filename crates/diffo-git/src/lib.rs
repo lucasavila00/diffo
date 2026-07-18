@@ -1,5 +1,6 @@
 use std::{
     collections::BTreeSet,
+    fmt::Write as _,
     fs,
     path::{Path, PathBuf},
     process::Command,
@@ -120,6 +121,30 @@ impl GitRepositorySource {
         Ok(FileDiff { text })
     }
 
+    fn rename_context(
+        &self,
+        diff: Option<FileDiff>,
+        path: &Path,
+        staged: bool,
+    ) -> Result<Option<FileDiff>> {
+        let Some(mut diff) = diff else {
+            return Ok(None);
+        };
+        if diff.text.lines().any(|line| line.starts_with("@@ ")) {
+            return Ok(Some(diff));
+        }
+
+        let bytes = if staged {
+            let spec = format!(":{}", path.to_string_lossy());
+            self.git(&["show", &spec])?
+        } else {
+            fs::read(self.root.join(path))
+                .with_context(|| format!("failed to read renamed file {}", path.display()))?
+        };
+        append_context_hunk(&mut diff.text, path, &bytes);
+        Ok(Some(diff))
+    }
+
     fn recent_commits(&self) -> Result<Vec<Commit>> {
         let has_head = Command::new("git")
             .args(["rev-parse", "--verify", "HEAD"])
@@ -178,12 +203,12 @@ impl RepositorySource for GitRepositorySource {
                 .as_deref()
                 .map_or_else(|| vec![path.as_ref()], |old| vec![old, path.as_ref()]);
             let conflicted = file.state.kind == ChangeKind::Conflicted;
-            let staged = if conflicted || file.index_status == NO_CHANGE {
+            let mut staged = if conflicted || file.index_status == NO_CHANGE {
                 None
             } else {
                 self.diff(&paths, true)?
             };
-            let unstaged = if matches!(
+            let mut unstaged = if matches!(
                 file.state.kind,
                 ChangeKind::Untracked | ChangeKind::Conflicted
             ) {
@@ -193,6 +218,10 @@ impl RepositorySource for GitRepositorySource {
             } else {
                 self.diff(&paths, false)?
             };
+            if matches!(file.state.kind, ChangeKind::Renamed | ChangeKind::Copied) {
+                staged = self.rename_context(staged, &file.state.path, true)?;
+                unstaged = self.rename_context(unstaged, &file.state.path, false)?;
+            }
             files.push(FileState {
                 staged,
                 unstaged,
@@ -206,6 +235,44 @@ impl RepositorySource for GitRepositorySource {
             recent_commits: self.recent_commits()?,
             upstream: parsed.upstream,
         })
+    }
+}
+
+fn append_context_hunk(output: &mut String, path: &Path, bytes: &[u8]) {
+    let Ok(contents) = std::str::from_utf8(bytes) else {
+        writeln!(
+            output,
+            "Binary files a/{} and b/{} differ",
+            path.display(),
+            path.display()
+        )
+        .expect("writing to a String cannot fail");
+        return;
+    };
+    if bytes.contains(&0) {
+        writeln!(
+            output,
+            "Binary files a/{} and b/{} differ",
+            path.display(),
+            path.display()
+        )
+        .expect("writing to a String cannot fail");
+        return;
+    }
+
+    let line_count = contents.lines().count();
+    writeln!(
+        output,
+        "@@ -1,{line_count} +1,{line_count} @@ Renamed file contents"
+    )
+    .expect("writing to a String cannot fail");
+    for line in contents.split_inclusive('\n') {
+        output.push(' ');
+        output.push_str(line);
+    }
+    if !contents.is_empty() && !contents.ends_with('\n') {
+        output.push('\n');
+        output.push_str("\\ No newline at end of file\n");
     }
 }
 

@@ -58,10 +58,17 @@
             unstaged: Some((text: "diff --git a/docs/obsolete.md b/docs/obsolete.md\ndeleted file mode 100644\n--- a/docs/obsolete.md\n+++ /dev/null\n@@ -1,3 +0,0 @@\n-# Old guide\n-\n-This guide is obsolete.\n")),
         ),
         (
-            path: "src/current_name.rs",
-            old_path: Some("src/old_name.rs"),
+            path: "src/empty-and-renamed.rs",
+            old_path: Some("src/empty-before-rename.rs"),
             kind: Renamed,
-            staged: Some((text: "diff --git a/src/old_name.rs b/src/current_name.rs\nsimilarity index 100%\nrename from src/old_name.rs\nrename to src/current_name.rs\n")),
+            staged: Some((text: "diff --git a/src/empty-before-rename.rs b/src/empty-and-renamed.rs\nsimilarity index 100%\nrename from src/empty-before-rename.rs\nrename to src/empty-and-renamed.rs\n@@ -1,0 +1,0 @@ Renamed file contents\n")),
+            unstaged: None,
+        ),
+        (
+            path: "src/content-and-renamed.rs",
+            old_path: Some("src/content-before-rename.rs"),
+            kind: Renamed,
+            staged: Some((text: "diff --git a/src/content-before-rename.rs b/src/content-and-renamed.rs\nsimilarity index 100%\nrename from src/content-before-rename.rs\nrename to src/content-and-renamed.rs\n@@ -1,4 +1,4 @@ Renamed file contents\n pub struct RenamedFile {\n     pub path: &'static str,\n }\n // Content is unchanged by the rename.\n")),
             unstaged: None,
         ),
         (

@@ -30,7 +30,7 @@ RepositorySnapshot(
       old_path: Some("renamed.txt"),
       kind: Renamed,
       staged: Some(FileDiff(
-        text: "diff --git a/renamed.txt b/moved.txt\nsimilarity index 100%\nrename from renamed.txt\nrename to moved.txt\n",
+        text: "diff --git a/renamed.txt b/moved.txt\nsimilarity index 100%\nrename from renamed.txt\nrename to moved.txt\n@@ -1,1 +1,1 @@ Renamed file contents\n rename me\n",
       )),
       unstaged: None,
     ),

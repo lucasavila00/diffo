@@ -288,7 +288,7 @@ impl Repository for MutableFixtureRepository {
                 Ok(())
             }
             RepositoryAction::Fetch | RepositoryAction::Pull => {
-                bail!("mock repository has no remote")
+                bail!("mock repository cannot execute {action:?}: no remote configured")
             }
         }
     }
@@ -385,6 +385,24 @@ mod tests {
             .expect("fixture file");
         assert!(file.staged.is_none());
         assert!(file.unstaged.is_some());
+    }
+
+    #[test]
+    fn mock_remote_error_names_the_executed_action() {
+        let fixture = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("fixtures")
+            .join("repository-state.ron");
+        let repository = MutableFixtureRepository::new(fixture).expect("fixture should load");
+
+        for action in [RepositoryAction::Fetch, RepositoryAction::Pull] {
+            let action_name = format!("{action:?}");
+            let error = repository
+                .apply(&action)
+                .expect_err("mock remote action should fail");
+            let message = error.to_string();
+            assert!(message.contains(&action_name), "{message}");
+            assert!(message.contains("no remote configured"), "{message}");
+        }
     }
 
     #[test]

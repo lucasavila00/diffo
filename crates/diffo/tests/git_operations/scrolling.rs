@@ -53,6 +53,62 @@ fn keyboard_and_mouse_scroll_move_the_visible_diff() -> Result<()> {
 }
 
 #[test]
+fn mouse_wheel_scrolls_diff_file_panels_independently() -> Result<()> {
+    let repository = TestRepository::new()?;
+    for index in 0..20 {
+        fs::write(
+            repository.worktree.join(format!("staged-{index:02}.txt")),
+            "staged\n",
+        )?;
+    }
+    git(&repository.worktree, &["add", "."])?;
+    for index in 0..20 {
+        fs::write(
+            repository.worktree.join(format!("change-{index:02}.txt")),
+            "change\n",
+        )?;
+    }
+    let mut screen = repository.screen()?;
+
+    screen
+        .wait_for_text("staged-00.txt")?
+        .wait_for_text("change-00.txt")?
+        .scroll_many_at(&Selector::text("staged-00.txt"), ScrollDirection::Down, 4)?
+        .wait_for_text_gone("staged-00.txt")?;
+    assert!(screen.contents().contains("change-00.txt"));
+
+    screen
+        .scroll_many_at(&Selector::text("change-00.txt"), ScrollDirection::Down, 4)?
+        .wait_for_text_gone("change-00.txt")?
+        .scroll_many_at(&Selector::text("Changes"), ScrollDirection::Up, 4)?
+        .wait_for_text("change-00.txt")?;
+    Ok(())
+}
+
+#[test]
+fn mouse_wheel_scrolls_explorer_tree() -> Result<()> {
+    let repository = TestRepository::new()?;
+    for index in 0..40 {
+        fs::write(
+            repository.worktree.join(format!("tree-{index:02}.txt")),
+            "tree\n",
+        )?;
+    }
+    git(&repository.worktree, &["add", "."])?;
+    git(&repository.worktree, &["commit", "-m", "Add tree files"])?;
+    let mut screen = repository.screen()?;
+
+    screen
+        .press(Key::Tab)?
+        .wait_for_text("tree-00.txt")?
+        .scroll_many_at(&Selector::text("tree-00.txt"), ScrollDirection::Down, 4)?
+        .wait_for_text_gone("tree-00.txt")?
+        .scroll_many_at(&Selector::text("Explorer"), ScrollDirection::Up, 4)?
+        .wait_for_text("tree-00.txt")?;
+    Ok(())
+}
+
+#[test]
 fn horizontal_scrollbar_drags_all_the_way_right() -> Result<()> {
     let repository = TestRepository::new()?;
     let contents = format!("{}RIGHT_EDGE\n", "wide-content-".repeat(80));

@@ -169,6 +169,7 @@ where
     K: Clone + Eq + Hash,
 {
     pub fn prepare(&mut self, area: Rect, document: Document<K>, requested_selection: Option<&K>) {
+        let selected_before = self.selected.clone();
         let old_selected_index = self.selected_visible_index();
         self.area = area;
         self.expanded
@@ -195,7 +196,9 @@ where
             self.context_menu = None;
         }
         self.recalculate_metrics();
-        self.ensure_selection_visible();
+        if self.selected != selected_before {
+            self.ensure_selection_visible();
+        }
     }
 
     pub fn render(&self, frame: &mut Frame, focused: bool) {
@@ -803,6 +806,20 @@ mod tests {
 
         assert_eq!(flat.metrics().offset, 3);
         assert_eq!(tree.metrics().offset, flat.metrics().offset);
+
+        flat.prepare(area, Document::flat("Files", rows(8)), None);
+        tree.prepare(
+            area,
+            Document::tree(
+                "Explorer",
+                (0..8)
+                    .map(|id| Row::tree(id, Line::raw(format!("file-{id}")), 0, false))
+                    .collect(),
+            ),
+            None,
+        );
+        assert_eq!(flat.metrics().offset, 3);
+        assert_eq!(tree.metrics().offset, 3);
     }
 
     #[test]

@@ -127,20 +127,7 @@ impl DiffoScreen {
     ///
     /// Returns an error when the selector is missing, ambiguous, or input fails.
     pub fn click(&mut self, selector: &Selector) -> Result<&mut Self> {
-        let deadline = Instant::now() + TIMEOUT;
-        let (column, row) = loop {
-            self.pump_available();
-            match self.locate(selector)? {
-                Some(position) => break position,
-                None if Instant::now() < deadline => self.pump_until(deadline)?,
-                None => {
-                    bail!(
-                        "selector {selector:?} was not visible within five seconds\n{}",
-                        self.contents()
-                    )
-                }
-            }
-        };
+        let (column, row) = self.wait_for_position(selector)?;
         let x = column.saturating_add(1);
         let y = row.saturating_add(1);
         self.write(format!("\x1b[<0;{x};{y}M\x1b[<0;{x};{y}m").as_bytes())?;
@@ -162,13 +149,41 @@ impl DiffoScreen {
     ///
     /// Returns an error when the PTY cannot accept input.
     pub fn scroll_many(&mut self, direction: ScrollDirection, count: usize) -> Result<&mut Self> {
+        self.write_wheel(direction, count, 74, 9)?;
+        Ok(self)
+    }
+
+    /// Sends wheel events over one visible control.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the selector is missing, ambiguous, or input fails.
+    pub fn scroll_many_at(
+        &mut self,
+        selector: &Selector,
+        direction: ScrollDirection,
+        count: usize,
+    ) -> Result<&mut Self> {
+        let (column, row) = self.wait_for_position(selector)?;
+        self.write_wheel(direction, count, column, row)?;
+        Ok(self)
+    }
+
+    fn write_wheel(
+        &mut self,
+        direction: ScrollDirection,
+        count: usize,
+        column: u16,
+        row: u16,
+    ) -> Result<()> {
         let button = match direction {
             ScrollDirection::Up => 64,
             ScrollDirection::Down => 65,
         };
-        let event = format!("\x1b[<{button};75;10M");
-        self.write(event.repeat(count).as_bytes())?;
-        Ok(self)
+        let x = column.saturating_add(1);
+        let y = row.saturating_add(1);
+        let event = format!("\x1b[<{button};{x};{y}M");
+        self.write(event.repeat(count).as_bytes())
     }
 
     /// Drags the visible vertical scrollbar between two percentages.
@@ -400,6 +415,23 @@ impl DiffoScreen {
                 matches.len(),
                 self.contents()
             ),
+        }
+    }
+
+    fn wait_for_position(&mut self, selector: &Selector) -> Result<(u16, u16)> {
+        let deadline = Instant::now() + TIMEOUT;
+        loop {
+            self.pump_available();
+            match self.locate(selector)? {
+                Some(position) => return Ok(position),
+                None if Instant::now() < deadline => self.pump_until(deadline)?,
+                None => {
+                    bail!(
+                        "selector {selector:?} was not visible within five seconds\n{}",
+                        self.contents()
+                    )
+                }
+            }
         }
     }
 

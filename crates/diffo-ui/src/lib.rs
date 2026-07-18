@@ -354,25 +354,13 @@ pub fn plain_syntax_spans(line: &HighlightedLine) -> Vec<Span<'static>> {
     line.spans
         .iter()
         .map(|span| {
-            let mut modifiers = Modifier::empty();
-            if span.bold {
-                modifiers.insert(Modifier::BOLD);
-            }
-            if span.italic {
-                modifiers.insert(Modifier::ITALIC);
-            }
-            if span.underline {
-                modifiers.insert(Modifier::UNDERLINED);
-            }
             Span::styled(
                 terminal_safe_text(&span.text),
-                Style::default()
-                    .fg(Color::Rgb(
-                        span.foreground.red,
-                        span.foreground.green,
-                        span.foreground.blue,
-                    ))
-                    .add_modifier(modifiers),
+                Style::default().fg(Color::Rgb(
+                    span.foreground.red,
+                    span.foreground.green,
+                    span.foreground.blue,
+                )),
             )
         })
         .collect()
@@ -478,7 +466,7 @@ mod tests {
     }
 
     #[test]
-    fn shared_syntax_spans_preserve_terminal_modifiers() {
+    fn shared_syntax_spans_use_only_the_token_foreground() {
         let spans = plain_syntax_spans(&HighlightedLine {
             spans: vec![StyledSpan {
                 text: "value".to_owned(),
@@ -487,15 +475,11 @@ mod tests {
                     green: 2,
                     blue: 3,
                 },
-                bold: true,
-                italic: true,
-                underline: true,
             }],
         });
         assert_eq!(spans[0].style.fg, Some(Color::Rgb(1, 2, 3)));
-        assert!(spans[0].style.add_modifier.contains(Modifier::BOLD));
-        assert!(spans[0].style.add_modifier.contains(Modifier::ITALIC));
-        assert!(spans[0].style.add_modifier.contains(Modifier::UNDERLINED));
+        assert_eq!(spans[0].style.bg, None);
+        assert!(spans[0].style.add_modifier.is_empty());
     }
 
     #[test]

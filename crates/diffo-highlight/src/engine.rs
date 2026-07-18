@@ -4,7 +4,7 @@ use diffo_diff::{DiffBlock, DiffDocument, DiffLine};
 use two_face::{
     re_exports::syntect::{
         easy::HighlightLines,
-        highlighting::{FontStyle, Theme},
+        highlighting::Theme,
         parsing::{SyntaxReference, SyntaxSet},
     },
     theme::EmbeddedThemeName,
@@ -212,9 +212,6 @@ fn highlight_side_window(
                             green: style.foreground.g,
                             blue: style.foreground.b,
                         },
-                        bold: style.font_style.contains(FontStyle::BOLD),
-                        italic: style.font_style.contains(FontStyle::ITALIC),
-                        underline: style.font_style.contains(FontStyle::UNDERLINE),
                     })
                     .collect(),
             },

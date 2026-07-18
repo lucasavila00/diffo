@@ -11,9 +11,6 @@ pub struct Rgb {
 pub struct StyledSpan {
     pub text: String,
     pub foreground: Rgb,
-    pub bold: bool,
-    pub italic: bool,
-    pub underline: bool,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]

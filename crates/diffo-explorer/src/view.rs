@@ -252,6 +252,8 @@ fn marker_style(marker: Option<GutterMarker>) -> Style {
 mod tests {
     use super::*;
     use diffo_core::{FileDiff, FileState, RepositorySnapshot};
+    use diffo_diff::parse_unified_patch;
+    use diffo_highlight::SyntaxHighlighter;
     use ratatui::{Terminal, backend::TestBackend, style::Color};
     use std::collections::HashMap;
 
@@ -339,6 +341,53 @@ mod tests {
         assert!(screen.contains("   1"));
         assert!(screen.contains("␛[2JPAN_TARGET"));
         assert!(!screen.chars().any(char::is_control));
+    }
+
+    #[test]
+    fn rust_keywords_use_the_diff_foreground_without_background_or_modifiers() {
+        let source = "fn main() {}";
+        let document =
+            parse_unified_patch(&format!("@@ -0,0 +1 @@\n+{source}\n")).expect("valid patch");
+        let highlighted = SyntaxHighlighter::new()
+            .highlight(std::path::Path::new("main.rs"), &document)
+            .new;
+        let keyword = highlighted[&1]
+            .spans
+            .first()
+            .expect("highlighted Rust keyword");
+        assert_eq!(keyword.text, "fn");
+        let keyword_foreground = keyword.foreground;
+
+        let mut model = ExplorerModel::new(diffo_core::RepositorySnapshot::default());
+        model.viewer = Some(super::super::model::Viewer {
+            path: "main.rs".into(),
+            lines: vec![source.to_owned()],
+            markers: HashMap::new(),
+            highlighted: highlighted.into_iter().collect(),
+            coverage: vec![diffo_highlight::LineRange::new(1, 1)],
+            syntax_eligible: true,
+            message: None,
+        });
+        let backend = TestBackend::new(40, 5);
+        let mut terminal = Terminal::new(backend).unwrap();
+
+        terminal
+            .draw(|frame| render_viewer(frame, frame.area(), &model, Style::default(), false))
+            .unwrap();
+
+        let code_area = terminal.backend().buffer().area.inner(design::PANEL_INSET);
+        let keyword_cell =
+            &terminal.backend().buffer()[(code_area.x + VIEWER_GUTTER_WIDTH, code_area.y)];
+        assert_eq!(
+            keyword_cell.fg,
+            Color::Rgb(
+                keyword_foreground.red,
+                keyword_foreground.green,
+                keyword_foreground.blue,
+            )
+        );
+        assert_eq!(keyword_cell.bg, Color::Reset);
+        assert!(keyword_cell.modifier.is_empty());
     }
 
     #[test]

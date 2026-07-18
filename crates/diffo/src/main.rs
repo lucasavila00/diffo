@@ -105,7 +105,10 @@ fn main() -> Result<()> {
                 None,
             )
         } else {
-            let repository = Arc::new(GitRepositorySource::default());
+            let repository = Arc::new(
+                GitRepositorySource::with_owned_askpass(".")
+                    .context("failed to prepare the private askpass executable")?,
+            );
             let paths = repository.watch_paths()?;
             (repository, Some(paths))
         };

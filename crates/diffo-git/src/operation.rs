@@ -96,7 +96,7 @@ impl GitRepositorySource {
             }
         }
 
-        let _bridge = configure_askpass(&mut command, action, context)?;
+        let _bridge = configure_askpass(&mut command, action, context, self.askpass_executable())?;
         let outcome = run_cancellable(&mut command, cancellation)
             .map_err(|error| operation_failure(action, FailureKind::Unknown, &error.to_string()))?;
         let output = match outcome {
@@ -132,6 +132,7 @@ fn configure_askpass(
     command: &mut Command,
     action: &RepositoryAction,
     context: Option<&RepositoryOperationContext>,
+    askpass_executable: Option<&std::path::Path>,
 ) -> std::result::Result<Option<AskpassBridge>, OperationFailure> {
     if !matches!(
         action,
@@ -144,12 +145,16 @@ fn configure_askpass(
         .transpose()
         .map_err(|error| operation_failure(action, FailureKind::Unknown, &error.to_string()))?;
     if let Some(bridge) = bridge.as_ref() {
-        let executable = env::current_exe()
-            .and_then(std::fs::canonicalize)
-            .map_err(|error| operation_failure(action, FailureKind::Unknown, &error.to_string()))?;
+        let executable = askpass_executable.ok_or_else(|| {
+            operation_failure(
+                action,
+                FailureKind::Unknown,
+                "prepared askpass executable is unavailable",
+            )
+        })?;
         command
-            .env("GIT_ASKPASS", &executable)
-            .env("SSH_ASKPASS", &executable)
+            .env("GIT_ASKPASS", executable)
+            .env("SSH_ASKPASS", executable)
             .env("SSH_ASKPASS_REQUIRE", "force")
             .env(ASKPASS_MARKER, "1")
             .env(ASKPASS_SOCKET, bridge.socket());

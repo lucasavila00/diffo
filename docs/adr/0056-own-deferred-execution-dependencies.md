@@ -1,6 +1,6 @@
 # ADR 0056: Own dependencies used after deferred execution
 
-Status: Proposed
+Status: Accepted
 
 Refines [ADR 0053](0053-broker-git-interactions.md).
 

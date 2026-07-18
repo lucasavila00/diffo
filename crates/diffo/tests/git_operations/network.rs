@@ -197,6 +197,46 @@ fn local_ssh_host_approval_completes_fetch() -> Result<()> {
 }
 
 #[test]
+fn ssh_push_uses_startup_image_after_launched_binary_is_replaced() -> Result<()> {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    let repository = TestRepository::new()?;
+    fs::write(repository.worktree.join("local.txt"), "local\n")?;
+    git(&repository.worktree, &["add", "local.txt"])?;
+    git(&repository.worktree, &["commit", "-m", "Local commit"])?;
+    let local_head = git_output(&repository.worktree, &["rev-parse", "HEAD"])?;
+    let known_hosts = repository.root.path().join("known_hosts");
+    let ssh = local_ssh_transport(&repository, SshPrompt::ConfirmHost)?;
+    let launched_binary = repository.root.path().join("diffo-under-test");
+    fs::copy(env!("CARGO_BIN_EXE_diffo"), &launched_binary)?;
+    fs::set_permissions(&launched_binary, fs::Permissions::from_mode(0o700))?;
+    let mut screen =
+        ssh_screen_with_binary(&launched_binary, &repository, &ssh, &known_hosts, None)?;
+
+    fs::remove_file(&launched_binary)?;
+    fs::write(&launched_binary, "replacement must not run\n")?;
+    fs::set_permissions(&launched_binary, fs::Permissions::from_mode(0o600))?;
+
+    screen
+        .wait_for_text("[ Push ]")?
+        .click(&Selector::text("[ Push ]"))?
+        .wait_for_text("Trust fakehost?")?
+        .press(Key::Right)?
+        .press(Key::Enter)?
+        .wait_for_text("Pushed ")?;
+
+    assert_eq!(
+        git_output(
+            &repository.root.path().join("remote.git"),
+            &["rev-parse", "HEAD"]
+        )?,
+        local_head
+    );
+    assert_eq!(fs::read_to_string(known_hosts)?, "fakehost\n");
+    Ok(())
+}
+
+#[test]
 fn cancelling_local_ssh_host_approval_preserves_refs_and_known_hosts() -> Result<()> {
     let repository = TestRepository::new()?;
     let before = git_output(&repository.worktree, &["rev-parse", "origin/HEAD"])?;
@@ -211,7 +251,8 @@ fn cancelling_local_ssh_host_approval_preserves_refs_and_known_hosts() -> Result
         .press(Key::Enter)?
         .wait_for_text("Trust fakehost?")?
         .press(Key::Enter)?
-        .wait_for_text("Operation cancelled")?;
+        .wait_for_text_gone("Trust fakehost?")?
+        .wait_for_text_gone("Fetching")?;
 
     assert_eq!(
         git_output(&repository.worktree, &["rev-parse", "origin/HEAD"])?,
@@ -333,6 +374,22 @@ fn ssh_screen(
     known_hosts: &Path,
     secret: Option<&str>,
 ) -> Result<DiffoScreen> {
+    ssh_screen_with_binary(
+        Path::new(env!("CARGO_BIN_EXE_diffo")),
+        repository,
+        ssh,
+        known_hosts,
+        secret,
+    )
+}
+
+fn ssh_screen_with_binary(
+    binary: &Path,
+    repository: &TestRepository,
+    ssh: &Path,
+    known_hosts: &Path,
+    secret: Option<&str>,
+) -> Result<DiffoScreen> {
     let mut environment = vec![
         ("GIT_SSH", ssh.as_os_str()),
         ("GIT_SSH_VARIANT", OsStr::new("ssh")),
@@ -341,9 +398,5 @@ fn ssh_screen(
     if let Some(secret) = secret {
         environment.push(("DIFFO_TEST_SECRET", OsStr::new(secret)));
     }
-    DiffoScreen::launch_with_env(
-        env!("CARGO_BIN_EXE_diffo"),
-        &repository.worktree,
-        &environment,
-    )
+    DiffoScreen::launch_with_env(binary, &repository.worktree, &environment)
 }

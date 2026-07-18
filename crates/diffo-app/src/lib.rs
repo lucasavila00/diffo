@@ -4,7 +4,7 @@ mod model;
 use diffo_core::{RepositoryAction, RepositorySnapshot};
 
 pub use command_palette::{Command, CommandId, CommandPalette};
-pub use model::{ChangeArea, DiffViewMode, FileKey, Model, PrimaryAction};
+pub use model::{ChangeArea, DiffViewMode, FileKey, Model, NetworkOperation, PrimaryAction};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Message {
@@ -129,7 +129,10 @@ mod tests {
         UpstreamState,
     };
 
-    use super::{ChangeArea, DiffViewMode, Effect, FileKey, Message, Model, PrimaryAction, update};
+    use super::{
+        ChangeArea, DiffViewMode, Effect, FileKey, Message, Model, NetworkOperation, PrimaryAction,
+        update,
+    };
 
     fn model(access_mode: AccessMode) -> Model {
         Model::new(
@@ -164,7 +167,11 @@ mod tests {
     #[test]
     fn primary_action_chooses_commit_push_pull_or_blocked_sync() {
         let mut model = model(AccessMode::ReadWrite);
-        assert_eq!(model.primary_action(), PrimaryAction::Disabled);
+        assert_eq!(model.primary_action(), PrimaryAction::Commit);
+        assert_eq!(
+            model.suggested_commit_message().as_deref(),
+            Some("Update 1 file")
+        );
 
         update(&mut model, Message::FocusCommitInput);
         for character in "ship it".chars() {
@@ -189,6 +196,17 @@ mod tests {
             behind: 0,
         });
         assert_eq!(model.primary_action(), PrimaryAction::Push);
+        assert!(model.primary_action_enabled());
+        assert_eq!(
+            update(&mut model, Message::ExecutePrimaryAction),
+            Some(Effect::Repository(RepositoryAction::Push))
+        );
+        assert_eq!(model.primary_action(), PrimaryAction::Push);
+        assert!(!model.primary_action_enabled());
+        assert_eq!(model.network_operation(), Some(NetworkOperation::Push));
+        let refreshed = model.snapshot.clone();
+        update(&mut model, Message::SnapshotLoaded(refreshed));
+        assert_eq!(model.network_operation(), None);
         model.snapshot.upstream.as_mut().unwrap().ahead = 0;
         model.snapshot.upstream.as_mut().unwrap().behind = 1;
         assert_eq!(model.primary_action(), PrimaryAction::Pull);
@@ -197,6 +215,18 @@ mod tests {
         assert_eq!(model.primary_action().label(), "Push + Pull");
         assert!(!model.primary_action().enabled());
         assert_eq!(update(&mut model, Message::ExecutePrimaryAction), None);
+    }
+
+    #[test]
+    fn generated_commit_message_is_used_when_input_is_empty() {
+        let mut model = model(AccessMode::ReadWrite);
+
+        assert_eq!(
+            update(&mut model, Message::ExecutePrimaryAction),
+            Some(Effect::Repository(RepositoryAction::Commit(
+                "Update 1 file".to_owned()
+            )))
+        );
     }
 
     #[test]
@@ -231,15 +261,21 @@ mod tests {
             update(&mut model, Message::ExecuteSelectedCommand),
             Some(Effect::Repository(RepositoryAction::Fetch))
         );
+        assert_eq!(model.network_operation(), Some(NetworkOperation::Fetch));
         assert!(model.command_palette.is_none());
 
+        let refreshed = model.snapshot.clone();
+        update(&mut model, Message::SnapshotLoaded(refreshed));
         update(&mut model, Message::OpenCommandPalette);
         update(&mut model, Message::CommandPaletteSelectNext);
         assert_eq!(
             update(&mut model, Message::ExecuteSelectedCommand),
             Some(Effect::Repository(RepositoryAction::Pull))
         );
+        assert_eq!(model.network_operation(), Some(NetworkOperation::Pull));
 
+        update(&mut model, Message::OperationFailed("offline".to_owned()));
+        assert_eq!(model.network_operation(), None);
         update(&mut model, Message::OpenCommandPalette);
         assert_eq!(
             update(&mut model, Message::ExecuteCommand(1)),

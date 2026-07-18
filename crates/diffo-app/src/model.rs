@@ -32,12 +32,30 @@ pub enum PrimaryAction {
     Disabled,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum NetworkOperation {
+    Fetch,
+    Pull,
+    Push,
+}
+
+impl NetworkOperation {
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Fetch => "Fetching",
+            Self::Pull => "Pulling",
+            Self::Push => "Pushing",
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 enum CommitComposerState {
     #[default]
     Idle,
     Focused,
-    Pending,
+    Pending(PrimaryAction),
 }
 
 impl PrimaryAction {
@@ -82,6 +100,7 @@ pub struct Model {
     pub help_open: bool,
     pub commit_message: String,
     commit_composer_state: CommitComposerState,
+    network_operation: Option<NetworkOperation>,
     expanded_file_pane_percent: u16,
     cursor: usize,
 }
@@ -105,6 +124,7 @@ impl Model {
             help_open: false,
             commit_message: String::new(),
             commit_composer_state: CommitComposerState::Idle,
+            network_operation: None,
             expanded_file_pane_percent: 25,
             cursor: 0,
         }
@@ -156,15 +176,38 @@ impl Model {
     }
 
     #[must_use]
+    pub fn suggested_commit_message(&self) -> Option<String> {
+        let staged_files = self
+            .snapshot
+            .files
+            .iter()
+            .filter(|file| file.staged.is_some())
+            .count();
+        match staged_files {
+            0 => None,
+            1 => Some("Update 1 file".to_owned()),
+            count => Some(format!("Update {count} files")),
+        }
+    }
+
+    fn effective_commit_message(&self) -> Option<String> {
+        let message = self.commit_message.trim();
+        if message.is_empty() {
+            self.suggested_commit_message()
+        } else {
+            Some(message.to_owned())
+        }
+    }
+
+    #[must_use]
     pub fn primary_action(&self) -> PrimaryAction {
         if self.access_mode == AccessMode::ReadOnly {
             return PrimaryAction::Disabled;
         }
-        if self.commit_composer_state == CommitComposerState::Pending {
-            return PrimaryAction::Disabled;
+        if let CommitComposerState::Pending(action) = self.commit_composer_state {
+            return action;
         }
-        let has_staged = self.snapshot.files.iter().any(|file| file.staged.is_some());
-        if has_staged && !self.commit_message.trim().is_empty() {
+        if self.effective_commit_message().is_some() {
             return PrimaryAction::Commit;
         }
         match self.snapshot.upstream.as_ref() {
@@ -177,21 +220,37 @@ impl Model {
         }
     }
 
+    #[must_use]
+    pub fn primary_action_enabled(&self) -> bool {
+        !matches!(self.commit_composer_state, CommitComposerState::Pending(_))
+            && self.network_operation.is_none()
+            && self.primary_action().enabled()
+    }
+
     pub fn execute_primary_action(&mut self) -> Option<RepositoryAction> {
-        let action = match self.primary_action() {
-            PrimaryAction::Commit => {
-                let message = self.commit_message.trim().to_owned();
-                self.commit_composer_state = CommitComposerState::Pending;
-                RepositoryAction::Commit(message)
-            }
+        if !self.primary_action_enabled() {
+            return None;
+        }
+        let primary = self.primary_action();
+        let action = match primary {
+            PrimaryAction::Commit => RepositoryAction::Commit(self.effective_commit_message()?),
             PrimaryAction::Push => RepositoryAction::Push,
             PrimaryAction::Pull => RepositoryAction::Pull,
             PrimaryAction::PushAndPull | PrimaryAction::Disabled => return None,
         };
-        if self.commit_composer_state != CommitComposerState::Pending {
-            self.commit_composer_state = CommitComposerState::Idle;
-        }
+        self.commit_composer_state = CommitComposerState::Pending(primary);
+        self.error = None;
+        self.network_operation = match primary {
+            PrimaryAction::Push => Some(NetworkOperation::Push),
+            PrimaryAction::Pull => Some(NetworkOperation::Pull),
+            PrimaryAction::Commit | PrimaryAction::PushAndPull | PrimaryAction::Disabled => None,
+        };
         Some(action)
+    }
+
+    #[must_use]
+    pub fn network_operation(&self) -> Option<NetworkOperation> {
+        self.network_operation
     }
 
     pub fn command_palette_input(&mut self, character: char) {
@@ -225,15 +284,18 @@ impl Model {
     }
 
     pub fn execute_selected_command(&mut self) -> Option<RepositoryAction> {
-        if self.access_mode == AccessMode::ReadOnly {
+        if self.access_mode == AccessMode::ReadOnly || self.network_operation.is_some() {
             return None;
         }
         let command = self.command_palette.as_ref()?.selected_command()?.id;
         self.command_palette = None;
-        Some(match command {
-            CommandId::Fetch => RepositoryAction::Fetch,
-            CommandId::Pull => RepositoryAction::Pull,
-        })
+        let (operation, action) = match command {
+            CommandId::Fetch => (NetworkOperation::Fetch, RepositoryAction::Fetch),
+            CommandId::Pull => (NetworkOperation::Pull, RepositoryAction::Pull),
+        };
+        self.error = None;
+        self.network_operation = Some(operation);
+        Some(action)
     }
 
     pub fn select_next(&mut self) {
@@ -448,10 +510,11 @@ impl Model {
     }
 
     pub fn refresh(&mut self, snapshot: RepositorySnapshot) {
-        if self.commit_composer_state == CommitComposerState::Pending {
+        if self.commit_composer_state == CommitComposerState::Pending(PrimaryAction::Commit) {
             self.commit_message.clear();
-            self.commit_composer_state = CommitComposerState::Idle;
         }
+        self.commit_composer_state = CommitComposerState::Idle;
+        self.network_operation = None;
         let old_selected = self.selected.clone();
         let old_cursor = self.cursor;
         let keys = file_keys(&snapshot);
@@ -472,9 +535,12 @@ impl Model {
     }
 
     pub fn show_error(&mut self, error: impl Into<String>) {
-        if self.commit_composer_state == CommitComposerState::Pending {
-            self.commit_composer_state = CommitComposerState::Focused;
-        }
+        self.commit_composer_state = match self.commit_composer_state {
+            CommitComposerState::Pending(PrimaryAction::Commit) => CommitComposerState::Focused,
+            CommitComposerState::Pending(_) => CommitComposerState::Idle,
+            state => state,
+        };
+        self.network_operation = None;
         self.error = Some(error.into());
     }
 

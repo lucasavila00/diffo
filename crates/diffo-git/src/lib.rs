@@ -1,9 +1,12 @@
 use std::{
     collections::BTreeSet,
+    env,
     fmt::Write as _,
     fs,
     path::{Path, PathBuf},
     process::Command,
+    thread,
+    time::Duration,
 };
 
 use anyhow::{Context, Result, bail};
@@ -286,6 +289,14 @@ impl Repository for GitRepositorySource {
             bail!("repository is read-only");
         }
 
+        if matches!(
+            action,
+            RepositoryAction::Fetch | RepositoryAction::Pull | RepositoryAction::Push
+        ) && let Some(delay) = e2e_network_delay()
+        {
+            thread::sleep(delay);
+        }
+
         let mut command = Command::new("git");
         command
             .current_dir(&self.root)
@@ -327,6 +338,15 @@ impl Repository for GitRepositorySource {
         }
         Ok(())
     }
+}
+
+fn e2e_network_delay() -> Option<Duration> {
+    let milliseconds = env::var("DIFFO_E2E_NETWORK_DELAY_MS")
+        .ok()?
+        .parse::<u64>()
+        .ok()?
+        .min(2_000);
+    Some(Duration::from_millis(milliseconds))
 }
 
 struct ParsedStatus {

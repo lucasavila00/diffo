@@ -190,10 +190,10 @@ fn commit_composer_commits_then_pushes() -> Result<()> {
         "committed change\n",
     )?;
     git(&repository.worktree, &["add", "tracked.txt"])?;
-    let mut screen = repository.screen()?;
+    let mut screen = repository.screen_with_network_delay()?;
 
     screen
-        .click(&Selector::text("Type a message"))?
+        .click(&Selector::text("Update 1 file"))?
         .type_text("Commit from composer")?
         .click(&Selector::text("[ Commit ]"))?;
     wait_for("composer commit", || {
@@ -205,29 +205,34 @@ fn commit_composer_commits_then_pushes() -> Result<()> {
 
     screen
         .wait_for_text("[ Push ]")?
-        .click(&Selector::text("[ Push ]"))?;
+        .click(&Selector::text("[ Push ]"))?
+        .wait_for_text("Pushing")?;
     wait_for("composer push", || {
         let local = git_output(&repository.worktree, &["rev-parse", "HEAD"])?;
         let remote = git_output(&repository.worktree, &["ls-remote", "origin", "HEAD"])?;
         Ok(remote.starts_with(&local))
-    })
+    })?;
+    screen.wait_for_text_gone("Pushing")?;
+    Ok(())
 }
 
 #[test]
 fn palette_search_runs_fetch() -> Result<()> {
     let repository = TestRepository::new()?;
     let remote_commit = repository.commit_remote("remote.txt", "remote\n", "Remote commit")?;
-    let mut screen = repository.screen()?;
+    let mut screen = repository.screen_with_network_delay()?;
 
     screen
         .press(Key::Char('1'))?
         .wait_for_text("Command Palette")?
         .type_text("fetch")?
-        .press(Key::Enter)?;
+        .press(Key::Enter)?
+        .wait_for_text("Fetching")?;
 
     wait_for("origin tracking branch to be fetched", || {
         Ok(git_output(&repository.worktree, &["rev-parse", "origin/HEAD"])? == remote_commit)
     })?;
+    screen.wait_for_text_gone("Fetching")?;
     assert!(!repository.worktree.join("remote.txt").exists());
     Ok(())
 }
@@ -236,17 +241,103 @@ fn palette_search_runs_fetch() -> Result<()> {
 fn palette_search_runs_pull() -> Result<()> {
     let repository = TestRepository::new()?;
     repository.commit_remote("remote.txt", "remote\n", "Remote commit")?;
-    let mut screen = repository.screen()?;
+    let mut screen = repository.screen_with_network_delay()?;
 
     screen
         .press(Key::Char('1'))?
         .wait_for_text("Command Palette")?
         .type_text("pull")?
-        .press(Key::Enter)?;
+        .press(Key::Enter)?
+        .wait_for_text("Pulling")?;
 
     wait_for("remote file to be pulled", || {
         Ok(repository.worktree.join("remote.txt").exists())
-    })
+    })?;
+    screen.wait_for_text_gone("Pulling")?;
+    Ok(())
+}
+
+#[test]
+fn primary_pull_button_shows_loading_and_pulls() -> Result<()> {
+    let repository = TestRepository::new()?;
+    repository.commit_remote("remote.txt", "remote\n", "Remote commit")?;
+    git(&repository.worktree, &["fetch", "origin"])?;
+    let mut screen = repository.screen_with_network_delay()?;
+
+    screen
+        .wait_for_text("[ Pull ]")?
+        .click(&Selector::text("[ Pull ]"))?
+        .wait_for_text("Pulling")?;
+    wait_for("primary pull to update the worktree", || {
+        Ok(repository.worktree.join("remote.txt").exists())
+    })?;
+    screen.wait_for_text_gone("Pulling")?;
+    Ok(())
+}
+
+#[test]
+fn generated_commit_message_commits_staged_changes() -> Result<()> {
+    let repository = TestRepository::new()?;
+    fs::write(repository.worktree.join("tracked.txt"), "staged change\n")?;
+    git(&repository.worktree, &["add", "tracked.txt"])?;
+    let mut screen = repository.screen()?;
+
+    screen
+        .wait_for_text("Update 1 file")?
+        .wait_for_text("[ Commit ]")?
+        .click(&Selector::text("[ Commit ]"))?;
+    thread::sleep(Duration::from_millis(150));
+
+    assert_eq!(
+        git_output(&repository.worktree, &["rev-parse", "HEAD"])?,
+        before
+    );
+    assert!(cached_paths(&repository.worktree)?.contains("tracked.txt"));
+    Ok(())
+}
+
+#[test]
+fn disabled_commit_button_does_not_commit_without_staged_changes() -> Result<()> {
+    let repository = TestRepository::new()?;
+    fs::write(repository.worktree.join("tracked.txt"), "unstaged change\n")?;
+    let before = git_output(&repository.worktree, &["rev-parse", "HEAD"])?;
+    let mut screen = repository.screen()?;
+
+    screen
+        .click(&Selector::text("Type a message"))?
+        .type_text("Must stay uncommitted")?
+        .click(&Selector::text("[ Commit ]"))?;
+    thread::sleep(Duration::from_millis(150));
+
+    assert_eq!(
+        git_output(&repository.worktree, &["rev-parse", "HEAD"])?,
+        before
+    );
+    Ok(())
+}
+
+#[test]
+fn divergent_primary_button_is_blocked() -> Result<()> {
+    let repository = TestRepository::new()?;
+    fs::write(repository.worktree.join("local.txt"), "local\n")?;
+    git(&repository.worktree, &["add", "local.txt"])?;
+    git(&repository.worktree, &["commit", "-m", "Local commit"])?;
+    repository.commit_remote("remote.txt", "remote\n", "Remote commit")?;
+    git(&repository.worktree, &["fetch", "origin"])?;
+    let before = git_output(&repository.worktree, &["rev-parse", "HEAD"])?;
+    let mut screen = repository.screen()?;
+
+    screen
+        .wait_for_text("[ Push + Pull ]")?
+        .click(&Selector::text("[ Push + Pull ]"))?;
+    thread::sleep(Duration::from_millis(150));
+
+    assert_eq!(
+        git_output(&repository.worktree, &["rev-parse", "HEAD"])?,
+        before
+    );
+    assert!(!repository.worktree.join("remote.txt").exists());
+    Ok(())
 }
 
 #[test]
@@ -609,6 +700,14 @@ impl TestRepository {
 
     fn screen(&self) -> Result<DiffoScreen> {
         DiffoScreen::launch(env!("CARGO_BIN_EXE_diffo"), &self.worktree)
+    }
+
+    fn screen_with_network_delay(&self) -> Result<DiffoScreen> {
+        DiffoScreen::launch_with_env(
+            env!("CARGO_BIN_EXE_diffo"),
+            &self.worktree,
+            &[("DIFFO_E2E_NETWORK_DELAY_MS", OsStr::new("300"))],
+        )
     }
 
     fn commit_remote(&self, path: &str, contents: &str, message: &str) -> Result<String> {

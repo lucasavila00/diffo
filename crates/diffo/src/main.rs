@@ -163,12 +163,14 @@ fn run(
         draw_end_us,
     ));
     while !model.should_quit && !shutdown.load(Ordering::Relaxed) {
-        let poll_timeout =
-            if renderer.is_preparing() || refresh.is_some_and(RefreshService::is_busy) {
-                Duration::from_millis(16)
-            } else {
-                Duration::from_millis(50)
-            };
+        let poll_timeout = if renderer.is_preparing()
+            || refresh.is_some_and(RefreshService::is_busy)
+            || model.network_operation().is_some()
+        {
+            Duration::from_millis(16)
+        } else {
+            Duration::from_millis(50)
+        };
         let mut events = Vec::new();
         let mut event_read_us = None;
         if event::poll(poll_timeout)? {

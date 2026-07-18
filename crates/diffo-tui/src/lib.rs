@@ -17,7 +17,7 @@ use diffo_diff::{
 use diffo_highlight::{HighlightedDiff, HighlightedLine, Rgb, StyledSpan, SyntaxHighlighter};
 use ratatui::{
     Frame,
-    layout::{Constraint, Direction, Layout, Rect},
+    layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{
@@ -40,6 +40,7 @@ pub struct Renderer {
     scrollbars: ScrollbarMetrics,
     scrollbar_drag: Option<ScrollbarAxis>,
     content_revision: u64,
+    network_animation_tick: usize,
     #[cfg(test)]
     highlight_computations: usize,
 }
@@ -149,12 +150,18 @@ impl Renderer {
             scrollbars: ScrollbarMetrics::default(),
             scrollbar_drag: None,
             content_revision: 0,
+            network_animation_tick: 0,
             #[cfg(test)]
             highlight_computations: 0,
         }
     }
 
     pub fn render(&mut self, frame: &mut Frame, model: &Model) {
+        if model.network_operation().is_some() {
+            self.network_animation_tick = self.network_animation_tick.wrapping_add(1);
+        } else {
+            self.network_animation_tick = 0;
+        }
         let vertical = Layout::default()
             .direction(Direction::Vertical)
             .constraints([Constraint::Min(3), Constraint::Length(1)])
@@ -163,9 +170,17 @@ impl Renderer {
 
         render_files(frame, panes[0], model);
         self.render_diff(frame, panes[1], model);
-        render_status(frame, vertical[1], model);
+        render_status(frame, vertical[1], model, self.network_animation_tick);
         render_command_palette(frame, model);
         render_help(frame, model);
+        if model.network_operation().is_some() {
+            frame.render_widget(
+                Block::default()
+                    .borders(Borders::TOP | Borders::LEFT | Borders::RIGHT)
+                    .border_style(network_animation_style(self.network_animation_tick)),
+                frame.area(),
+            );
+        }
     }
 
     pub fn prepare_frame(&mut self, model: &Model, area: Rect) -> FramePreparation {
@@ -1000,18 +1015,25 @@ fn render_files(frame: &mut Frame, area: ratatui::layout::Rect, model: &Model) {
 }
 
 fn file_panel_areas(area: Rect) -> std::rc::Rc<[Rect]> {
-    Layout::vertical([Constraint::Length(4), Constraint::Min(2)]).split(area)
+    Layout::vertical([Constraint::Length(6), Constraint::Min(2)]).split(area)
 }
 
 fn commit_composer_areas(area: Rect) -> std::rc::Rc<[Rect]> {
-    Layout::vertical([Constraint::Length(3), Constraint::Length(1)]).split(area)
+    Layout::vertical([
+        Constraint::Length(3),
+        Constraint::Length(2),
+        Constraint::Length(1),
+    ])
+    .split(area)
 }
 
 fn render_commit_composer(frame: &mut Frame, area: Rect, model: &Model) {
     let sections = commit_composer_areas(area);
     let empty = model.commit_message.is_empty();
     let message = if empty {
-        "Type a message…".to_owned()
+        model
+            .suggested_commit_message()
+            .unwrap_or_else(|| "Type a message…".to_owned())
     } else {
         model.commit_message.clone()
     };
@@ -1035,7 +1057,7 @@ fn render_commit_composer(frame: &mut Frame, area: Rect, model: &Model) {
         sections[0],
     );
     let action = model.primary_action();
-    let style = if action.enabled() {
+    let style = if model.primary_action_enabled() {
         Style::default()
             .bg(Color::Indexed(24))
             .fg(Color::White)
@@ -1044,7 +1066,9 @@ fn render_commit_composer(frame: &mut Frame, area: Rect, model: &Model) {
         Style::default().fg(Color::DarkGray)
     };
     frame.render_widget(
-        Paragraph::new(format!("[ {} ]", action.label())).style(style),
+        Paragraph::new(format!("[ {} ]", action.label()))
+            .alignment(Alignment::Center)
+            .style(style),
         sections[1],
     );
 }
@@ -1061,7 +1085,7 @@ pub(crate) fn commit_action_at_position(
     if sections[0].contains((column, row).into()) {
         return Some(diffo_app::Message::FocusCommitInput);
     }
-    if sections[1].contains((column, row).into()) && model.primary_action().enabled() {
+    if sections[1].contains((column, row).into()) && model.primary_action_enabled() {
         return Some(diffo_app::Message::ExecutePrimaryAction);
     }
     None
@@ -1412,9 +1436,28 @@ fn row_style(kind: RowKind) -> Style {
     }
 }
 
-fn render_status(frame: &mut Frame, area: ratatui::layout::Rect, model: &Model) {
+fn network_animation_style(tick: usize) -> Style {
+    const GRADIENT: [u8; 12] = [24, 25, 31, 37, 43, 42, 36, 30, 24, 60, 54, 53];
+    Style::default()
+        .fg(Color::Indexed(GRADIENT[(tick / 4) % GRADIENT.len()]))
+        .add_modifier(Modifier::BOLD)
+}
+
+fn render_status(
+    frame: &mut Frame,
+    area: ratatui::layout::Rect,
+    model: &Model,
+    animation_tick: usize,
+) {
     let text = if let Some(error) = model.error.as_deref() {
         error.to_owned()
+    } else if let Some(operation) = model.network_operation() {
+        const SPINNER: [&str; 4] = ["◐", "◓", "◑", "◒"];
+        format!(
+            " {} {}… · Ctrl+C to exit ",
+            SPINNER[(animation_tick / 2) % SPINNER.len()],
+            operation.label()
+        )
     } else if model.resizing_file_pane {
         format!(
             " Resizing file pane: {}% · release mouse to finish ",
@@ -1425,6 +1468,8 @@ fn render_status(frame: &mut Frame, area: ratatui::layout::Rect, model: &Model) 
     };
     let style = if model.error.is_some() {
         Style::default().fg(Color::Red)
+    } else if model.network_operation().is_some() {
+        network_animation_style(animation_tick)
     } else if model.resizing_file_pane {
         Style::default()
             .fg(Color::Cyan)
@@ -1466,7 +1511,10 @@ mod rendering_tests {
 
     use crossterm::event::{Event, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
     use diffo_app::{DiffViewMode, Model};
-    use diffo_core::{AccessMode, ChangeKind, FileDiff, FileState, RepositorySnapshot};
+    use diffo_core::{
+        AccessMode, ChangeKind, FileDiff, FileState, RepositoryAction, RepositorySnapshot,
+        UpstreamState,
+    };
     use diffo_diff::RowKind;
     use diffo_highlight::Rgb;
     use ratatui::{
@@ -1533,6 +1581,44 @@ mod rendering_tests {
             },
             AccessMode::ReadWrite,
         )
+    }
+
+    #[test]
+    fn network_operations_animate_the_frame_and_name_the_operation() {
+        let mut model = model();
+        model.snapshot.files[0].unstaged = None;
+        model.snapshot.upstream = Some(UpstreamState {
+            name: "origin/main".to_owned(),
+            ahead: 1,
+            behind: 0,
+        });
+        assert_eq!(model.execute_primary_action(), Some(RepositoryAction::Push));
+
+        let mut renderer = Renderer::new();
+        let backend = TestBackend::new(80, 24);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal
+            .draw(|frame| renderer.render(frame, &model))
+            .unwrap();
+        let first_border = terminal.backend().buffer()[(0, 0)].fg;
+        let screen =
+            terminal
+                .backend()
+                .buffer()
+                .content
+                .iter()
+                .fold(String::new(), |mut output, cell| {
+                    output.push_str(cell.symbol());
+                    output
+                });
+        assert!(screen.contains("Pushing"));
+
+        for _ in 0..4 {
+            terminal
+                .draw(|frame| renderer.render(frame, &model))
+                .unwrap();
+        }
+        assert_ne!(terminal.backend().buffer()[(0, 0)].fg, first_border);
     }
 
     fn diff_lines(

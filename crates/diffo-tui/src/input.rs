@@ -486,7 +486,7 @@ mod tests {
                 &Event::Mouse(MouseEvent {
                     kind: MouseEventKind::Down(MouseButton::Left),
                     column: 4,
-                    row: 18,
+                    row: 19,
                     modifiers: KeyModifiers::NONE,
                 }),
                 &model,
@@ -640,11 +640,11 @@ mod tests {
         };
 
         assert_eq!(
-            map_event(&click(5), &model, area),
+            map_event(&click(7), &model, area),
             Some(Message::UnstageFile(PathBuf::from("file.txt")))
         );
         assert_eq!(
-            map_event(&click(18), &model, area),
+            map_event(&click(19), &model, area),
             Some(Message::StageFile(PathBuf::from("file.txt")))
         );
         assert_eq!(
@@ -652,7 +652,7 @@ mod tests {
                 &Event::Mouse(MouseEvent {
                     kind: MouseEventKind::Down(MouseButton::Left),
                     column: 11,
-                    row: 17,
+                    row: 18,
                     modifiers: KeyModifiers::NONE,
                 }),
                 &model,
@@ -665,7 +665,7 @@ mod tests {
                 &Event::Mouse(MouseEvent {
                     kind: MouseEventKind::Down(MouseButton::Left),
                     column: 13,
-                    row: 17,
+                    row: 18,
                     modifiers: KeyModifiers::NONE,
                 }),
                 &model,
@@ -679,7 +679,7 @@ mod tests {
                 &Event::Mouse(MouseEvent {
                     kind: MouseEventKind::Down(MouseButton::Left),
                     column: 10,
-                    row: 4,
+                    row: 6,
                     modifiers: KeyModifiers::NONE,
                 }),
                 &model,
@@ -692,7 +692,7 @@ mod tests {
                 &Event::Mouse(MouseEvent {
                     kind: MouseEventKind::Down(MouseButton::Left),
                     column: 13,
-                    row: 4,
+                    row: 6,
                     modifiers: KeyModifiers::NONE,
                 }),
                 &model,

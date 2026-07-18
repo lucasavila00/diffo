@@ -213,9 +213,7 @@ fn status_line_distinguishes_unborn_and_detached_head() {
         },
         ..RepositorySnapshot::default()
     });
-    assert!(
-        line_text(&status_line(&model, 0, 80)).contains(" branch main (unborn) · clean")
-    );
+    assert!(line_text(&status_line(&model, 0, 80)).contains(" branch main (unborn) · clean"));
 
     model.snapshot.head = HeadState::Detached {
         commit: "123456789abcdef".to_owned(),

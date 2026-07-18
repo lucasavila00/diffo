@@ -112,8 +112,8 @@ struct ScrollbarMetrics {
     horizontal_area: Rect,
     rows: usize,
     columns: usize,
-    viewport_rows: usize,
     viewport_columns: usize,
+    maximum_vertical_scroll: usize,
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -460,7 +460,7 @@ impl Renderer {
     }
 
     fn scrollbar_at(&self, column: u16, row: u16) -> Option<ScrollbarAxis> {
-        if self.scrollbars.rows > self.scrollbars.viewport_rows
+        if self.scrollbars.maximum_vertical_scroll > 0
             && self.scrollbars.vertical_area.contains((column, row).into())
         {
             Some(ScrollbarAxis::Vertical)
@@ -481,15 +481,15 @@ impl Renderer {
             ScrollbarAxis::Vertical => diffo_app::Message::SetDiffScroll(scrollbar_position(
                 row.saturating_sub(self.scrollbars.vertical_area.y),
                 self.scrollbars.vertical_area.height,
-                self.scrollbars.rows,
-                self.scrollbars.viewport_rows,
+                self.scrollbars.maximum_vertical_scroll,
             )),
             ScrollbarAxis::Horizontal => {
                 diffo_app::Message::SetDiffHorizontalScroll(scrollbar_position(
                     column.saturating_sub(self.scrollbars.horizontal_area.x),
                     self.scrollbars.horizontal_area.width,
-                    self.scrollbars.columns,
-                    self.scrollbars.viewport_columns,
+                    self.scrollbars
+                        .columns
+                        .saturating_sub(self.scrollbars.viewport_columns),
                 ))
             }
         }
@@ -643,6 +643,19 @@ impl Renderer {
         area: Rect,
         requested_scroll: usize,
     ) -> DiffViewportMetrics {
+        let mut viewport = self.diff_viewport_metrics_at(mode, area, requested_scroll);
+        viewport.maximum_vertical_scroll = self
+            .diff_viewport_metrics_at(mode, area, usize::MAX)
+            .maximum_vertical_scroll;
+        viewport
+    }
+
+    fn diff_viewport_metrics_at(
+        &self,
+        mode: DiffViewMode,
+        area: Rect,
+        requested_scroll: usize,
+    ) -> DiffViewportMetrics {
         let inner = area.inner(ratatui::layout::Margin {
             vertical: 1,
             horizontal: 1,
@@ -754,6 +767,16 @@ impl Renderer {
             )),
             viewport.content_area,
         );
+        self.render_hunk_buttons(frame, area, &viewport);
+        self.render_diff_scrollbars(frame, area, &viewport, model);
+    }
+
+    fn render_hunk_buttons(
+        &mut self,
+        frame: &mut Frame,
+        area: Rect,
+        viewport: &DiffViewportMetrics,
+    ) {
         let inner = area.inner(ratatui::layout::Margin {
             vertical: 1,
             horizontal: 1,
@@ -789,6 +812,15 @@ impl Renderer {
                 self.hovered_hunk_button == Some(HunkDirection::Next),
             );
         }
+    }
+
+    fn render_diff_scrollbars(
+        &mut self,
+        frame: &mut Frame,
+        area: Rect,
+        viewport: &DiffViewportMetrics,
+        model: &Model,
+    ) {
         self.scrollbars = ScrollbarMetrics {
             vertical_area: Rect::new(
                 area.right().saturating_sub(2),
@@ -799,20 +831,17 @@ impl Renderer {
             horizontal_area: viewport.horizontal_area,
             rows: viewport.rows,
             columns: viewport.columns,
-            viewport_rows: viewport.viewport_rows,
             viewport_columns: viewport.viewport_columns,
+            maximum_vertical_scroll: viewport.maximum_vertical_scroll,
         };
-        if viewport.rows > viewport.viewport_rows {
+        if viewport.maximum_vertical_scroll > 0 {
             let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
                 .begin_symbol(None)
                 .end_symbol(None)
                 .thumb_style(Style::default().fg(Color::Cyan));
-            let mut state = ScrollbarState::new(scrollbar_position_count(
-                viewport.rows,
-                viewport.viewport_rows,
-            ))
-            .viewport_content_length(viewport.viewport_rows)
-            .position(model.diff_scroll);
+            let mut state = ScrollbarState::new(viewport.maximum_vertical_scroll.saturating_add(1))
+                .viewport_content_length(viewport.viewport_rows)
+                .position(model.diff_scroll);
             frame.render_stateful_widget(scrollbar, self.scrollbars.vertical_area, &mut state);
             let changes = self
                 .highlighted
@@ -1434,7 +1463,7 @@ fn prepare_diff(
     highlighter: &SyntaxHighlighter,
 ) -> Option<HighlightCache> {
     let document = parse_unified_patch(&request.key.patch).ok()?;
-    let syntax_highlighted = diff_file_lines(&document) < MAX_HIGHLIGHT_FILE_LINES;
+    let syntax_highlighted = should_syntax_highlight(&document);
     let syntax_styles = if syntax_highlighted {
         highlighter.highlight(&request.key.file.path, &document)
     } else {
@@ -1460,22 +1489,31 @@ fn prepare_diff(
     })
 }
 
+fn should_syntax_highlight(document: &DiffDocument) -> bool {
+    diff_file_lines(document) < MAX_HIGHLIGHT_FILE_LINES
+}
+
 fn diff_file_lines(document: &DiffDocument) -> usize {
-    document
-        .hunks
-        .iter()
-        .flat_map(|hunk| &hunk.blocks)
-        .flat_map(|block| match block {
-            DiffBlock::Context(lines) => lines.iter().collect::<Vec<_>>(),
+    let mut maximum = 0;
+    let mut include = |line: &diffo_diff::DiffLine| {
+        maximum = maximum.max(
+            line.old_number
+                .into_iter()
+                .chain(line.new_number)
+                .max()
+                .map_or(0, |number| number as usize),
+        );
+    };
+    for block in document.hunks.iter().flat_map(|hunk| &hunk.blocks) {
+        match block {
+            DiffBlock::Context(lines) => lines.iter().for_each(&mut include),
             DiffBlock::Change { removed, added, .. } => {
-                removed.iter().chain(added).collect::<Vec<_>>()
+                removed.iter().chain(added).for_each(&mut include);
             }
-            DiffBlock::Meta(_) => Vec::new(),
-        })
-        .flat_map(|line| [line.old_number, line.new_number])
-        .flatten()
-        .max()
-        .map_or(0, |line| line as usize)
+            DiffBlock::Meta(_) => {}
+        }
+    }
+    maximum
 }
 
 fn preparation_delay_from_environment() -> Duration {
@@ -1499,13 +1537,7 @@ fn overview_position(content_row: usize, content_rows: usize, track_height: u16)
     u16::try_from(position).unwrap_or(track_height - 1)
 }
 
-fn scrollbar_position(
-    coordinate: u16,
-    track_length: u16,
-    content_length: usize,
-    viewport_length: usize,
-) -> usize {
-    let maximum = content_length.saturating_sub(viewport_length);
+fn scrollbar_position(coordinate: u16, track_length: u16, maximum: usize) -> usize {
     if track_length <= 1 {
         return 0;
     }
@@ -2218,7 +2250,7 @@ mod rendering_tests {
     use super::{
         Renderer, command_palette_layout, contrast_ratio, contrasting_foreground, diff_background,
         diff_background_rgb, diff_file_lines, file_kind_style, overview_position, row_style,
-        scrollbar_position_count,
+        scrollbar_position_count, should_syntax_highlight,
     };
 
     #[test]
@@ -2317,6 +2349,15 @@ mod rendering_tests {
             },
             AccessMode::ReadWrite,
         )
+    }
+
+    fn mouse_at(kind: MouseEventKind, area: Rect) -> Event {
+        Event::Mouse(MouseEvent {
+            kind,
+            column: area.x,
+            row: area.y,
+            modifiers: KeyModifiers::NONE,
+        })
     }
 
     #[test]
@@ -2850,7 +2891,7 @@ mod rendering_tests {
         let mut renderer = Renderer::new();
         let backend = TestBackend::new(100, 30);
         let mut terminal = Terminal::new(backend).unwrap();
-        renderer.prepare_frame(&model, area);
+        let top_preparation = renderer.prepare_frame(&model, area);
         terminal
             .draw(|frame| renderer.render(frame, &model))
             .unwrap();
@@ -2861,12 +2902,7 @@ mod rendering_tests {
         assert_eq!(next_area.bottom(), renderer.scrollbars.horizontal_area.y);
         assert_eq!(
             renderer.map_event(
-                &Event::Mouse(MouseEvent {
-                    kind: MouseEventKind::Down(MouseButton::Left),
-                    column: next_area.x,
-                    row: next_area.y,
-                    modifiers: KeyModifiers::NONE,
-                }),
+                &mouse_at(MouseEventKind::Down(MouseButton::Left), next_area),
                 &model,
                 area,
             ),
@@ -2884,12 +2920,7 @@ mod rendering_tests {
         assert!(renderer.hunk_buttons.next.is_some());
         assert_eq!(
             renderer.map_event(
-                &Event::Mouse(MouseEvent {
-                    kind: MouseEventKind::Moved,
-                    column: previous_area.x,
-                    row: previous_area.y,
-                    modifiers: KeyModifiers::NONE,
-                }),
+                &mouse_at(MouseEventKind::Moved, previous_area),
                 &model,
                 area,
             ),
@@ -2908,12 +2939,7 @@ mod rendering_tests {
         );
         assert_eq!(
             renderer.map_event(
-                &Event::Mouse(MouseEvent {
-                    kind: MouseEventKind::Down(MouseButton::Left),
-                    column: previous_area.x,
-                    row: previous_area.y,
-                    modifiers: KeyModifiers::NONE,
-                }),
+                &mouse_at(MouseEventKind::Down(MouseButton::Left), previous_area),
                 &model,
                 area,
             ),
@@ -2928,11 +2954,15 @@ mod rendering_tests {
             .last()
             .copied()
             .unwrap();
-        renderer.prepare_frame(&model, area);
+        let end_preparation = renderer.prepare_frame(&model, area);
         terminal
             .draw(|frame| renderer.render(frame, &model))
             .unwrap();
         assert!(renderer.hunk_buttons.next.is_none());
+        assert_eq!(
+            end_preparation.maximum_vertical_scroll,
+            top_preparation.maximum_vertical_scroll
+        );
         assert_eq!(
             renderer.hunk_button_target_at(next_area.x, next_area.y),
             None
@@ -3020,9 +3050,9 @@ mod rendering_tests {
         .unwrap();
 
         assert_eq!(diff_file_lines(&below_limit), 9_999);
-        assert!(diff_file_lines(&below_limit) < super::MAX_HIGHLIGHT_FILE_LINES);
+        assert!(should_syntax_highlight(&below_limit));
         assert_eq!(diff_file_lines(&at_limit), 10_000);
-        assert!(diff_file_lines(&at_limit) >= super::MAX_HIGHLIGHT_FILE_LINES);
+        assert!(!should_syntax_highlight(&at_limit));
     }
 
     #[test]

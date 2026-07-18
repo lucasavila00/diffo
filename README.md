@@ -30,6 +30,13 @@ application behavior.
 For debugging, `DIFFO_DUMP_PATH=state.ron make diffo` writes one repository snapshot
 and exits without opening the TUI. Diffo has no command-line arguments.
 
+## Keyboard controls
+
+Diffo's keyboard shortcuts are fixed and always use lowercase characters. Uppercase
+characters are never assigned as shortcuts, so no action requires holding Shift.
+Non-character keys such as arrows, function keys, Enter, and Escape may still be
+used where they fit the interaction.
+
 ## TUI architecture invariants
 
 Diff-buffer changes are atomic. While a selected file is being prepared, Diffo keeps

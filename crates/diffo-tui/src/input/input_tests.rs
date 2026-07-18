@@ -43,10 +43,8 @@ fn maps_fixed_key_bindings() {
         (KeyCode::PageDown, Message::ScrollDiffPageDown(1)),
         (KeyCode::Left, Message::ScrollDiffLeft),
         (KeyCode::Right, Message::ScrollDiffRight),
-        (KeyCode::Char('d'), Message::ScrollDiffRight),
         (KeyCode::Char('r'), Message::ToggleDiffView),
         (KeyCode::Char('n'), Message::JumpToNextChange),
-        (KeyCode::Char('N'), Message::JumpToPreviousChange),
         (KeyCode::Char('e'), Message::ToggleFilePane),
         (KeyCode::Home, Message::SelectFirstFile),
         (KeyCode::End, Message::SelectLastFile),
@@ -90,6 +88,20 @@ fn bindings_are_unique_and_generate_help() {
     assert!(rows.contains(&("j / w".to_owned(), "Previous file")));
     assert!(rows.contains(&("k / l / s".to_owned(), "Next file")));
     assert!(rows.contains(&("q / Esc / Ctrl+c".to_owned(), "Quit")));
+}
+
+#[test]
+fn uppercase_characters_and_d_are_not_shortcuts() {
+    for character in ['A', 'D', 'G', 'N', 'Q', 'd'] {
+        assert_eq!(map_key(KeyCode::Char(character), KeyModifiers::NONE), None);
+    }
+
+    assert!(KEY_BINDINGS.iter().all(|binding| {
+        binding
+            .keys
+            .iter()
+            .all(|key| !matches!(key.code, KeyCode::Char(character) if character.is_uppercase()))
+    }));
 }
 
 #[test]

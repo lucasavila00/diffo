@@ -13,6 +13,7 @@ This repository is a Rust workspace containing small command-line utilities. Eac
 
 - Diffo will never have CLI arguments, configuration files, or configurable key bindings.
 - Keep controls and product behavior fixed in code.
+- Never add uppercase character shortcuts. Character shortcuts must be lowercase and must not require Shift.
 - Environment variables are developer and test hooks only. Do not turn them into user configuration.
 
 ## Rust conventions
@@ -29,6 +30,7 @@ This repository is a Rust workspace containing small command-line utilities. Eac
 - Always restore the terminal before returning from the application.
 - Keep terminal rendering, input handling, application state, and external commands in separate modules.
 - Document key bindings in the interface and update them when controls change.
+- Keep tests that reject uppercase character entries in the fixed key-binding table.
 - Avoid blocking work in the rendering and input loop.
 - Treat the displayed diff buffer and its viewport as one atomic commit. Keep the previous buffer unchanged until the replacement content, projections, hunk targets, scroll bounds, and initial position are ready to draw together.
 - Treat visible syntax coverage as part of the atomic commit. File opens and uncached vertical jumps must not display a plain target and color it in a later frame.

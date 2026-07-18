@@ -101,10 +101,7 @@ pub(super) static KEY_BINDINGS: &[KeyBinding] = &[
         description: "Scroll diff left by four columns",
     },
     KeyBinding {
-        keys: &[
-            KeyChord::plain(KeyCode::Right),
-            KeyChord::plain(KeyCode::Char('d')),
-        ],
+        keys: &[KeyChord::plain(KeyCode::Right)],
         message: Message::ScrollDiffRight,
         description: "Scroll diff right by four columns",
     },
@@ -112,11 +109,6 @@ pub(super) static KEY_BINDINGS: &[KeyBinding] = &[
         keys: &[KeyChord::plain(KeyCode::Char('r'))],
         message: Message::ToggleDiffView,
         description: "Toggle inline / side-by-side view",
-    },
-    KeyBinding {
-        keys: &[KeyChord::plain(KeyCode::Char('N'))],
-        message: Message::JumpToPreviousChange,
-        description: "Previous change",
     },
     KeyBinding {
         keys: &[KeyChord::plain(KeyCode::Char('n'))],
@@ -137,10 +129,7 @@ pub(super) static KEY_BINDINGS: &[KeyBinding] = &[
         description: "First file",
     },
     KeyBinding {
-        keys: &[
-            KeyChord::plain(KeyCode::End),
-            KeyChord::plain(KeyCode::Char('G')),
-        ],
+        keys: &[KeyChord::plain(KeyCode::End)],
         message: Message::SelectLastFile,
         description: "Last file",
     },

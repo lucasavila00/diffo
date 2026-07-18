@@ -44,11 +44,11 @@ fn every_file_navigation_alias_moves_selection() -> Result<()> {
     screen
         .press(Key::End)?
         .wait_for(&Selector::selected_row("new.txt"))?
-        .press(Key::Home)?
-        .wait_for(&Selector::selected_row("tracked.txt"))?
-        .press(Key::Char('G'))?
-        .wait_for(&Selector::selected_row("new.txt"))?
         .press(Key::Char('g'))?
+        .wait_for(&Selector::selected_row("tracked.txt"))?
+        .press(Key::Char('k'))?
+        .wait_for(&Selector::selected_row("new.txt"))?
+        .press(Key::Home)?
         .wait_for(&Selector::selected_row("tracked.txt"))?
         .press(Key::Char('s'))?
         .wait_for(&Selector::selected_row("new.txt"))?

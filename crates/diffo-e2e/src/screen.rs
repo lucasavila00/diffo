@@ -27,6 +27,7 @@ const TIMEOUT: Duration = Duration::from_secs(5);
 pub struct DiffoScreen {
     parser: vt100::Parser,
     output: Receiver<Vec<u8>>,
+    raw_output: Vec<u8>,
     writer: Option<Box<dyn Write + Send>>,
     child: Box<dyn Child + Send + Sync>,
 }
@@ -82,6 +83,7 @@ impl DiffoScreen {
         let mut screen = Self {
             parser: vt100::Parser::new(ROWS, COLUMNS, 0),
             output,
+            raw_output: Vec::new(),
             writer: Some(writer),
             child,
         };
@@ -354,6 +356,13 @@ impl DiffoScreen {
         self.parser.screen().contents()
     }
 
+    /// Returns all bytes emitted by Diffo since launch.
+    #[must_use]
+    pub fn raw_output(&mut self) -> &[u8] {
+        self.pump_available();
+        &self.raw_output
+    }
+
     fn locate(&self, selector: &Selector) -> Result<Option<(u16, u16)>> {
         let cells = self.cells();
         let matches = match selector {
@@ -424,7 +433,7 @@ impl DiffoScreen {
 
     fn pump_available(&mut self) {
         while let Ok(bytes) = self.output.try_recv() {
-            self.parser.process(&bytes);
+            self.process_output(&bytes);
         }
     }
 
@@ -434,7 +443,7 @@ impl DiffoScreen {
             .output
             .recv_timeout(remaining.min(Duration::from_millis(50)))
         {
-            Ok(bytes) => self.parser.process(&bytes),
+            Ok(bytes) => self.process_output(&bytes),
             Err(RecvTimeoutError::Timeout) => {}
             Err(RecvTimeoutError::Disconnected) => {
                 if let Some(status) = self.child.try_wait().context("poll Diffo process")? {
@@ -444,6 +453,11 @@ impl DiffoScreen {
             }
         }
         Ok(())
+    }
+
+    fn process_output(&mut self, bytes: &[u8]) {
+        self.raw_output.extend_from_slice(bytes);
+        self.parser.process(bytes);
     }
 }
 

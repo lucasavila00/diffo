@@ -1,6 +1,6 @@
 use std::{
     collections::HashMap,
-    env, fs,
+    env, fmt, fs,
     io::{self, Write as _},
     path::Path,
     sync::{
@@ -12,8 +12,11 @@ use std::{
 
 use anyhow::{Context, Result};
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
+#[cfg(windows)]
+use crossterm::event::EnableMouseCapture;
 use crossterm::{
-    event::{self, DisableMouseCapture, EnableMouseCapture},
+    Command,
+    event::{self, DisableMouseCapture},
     execute,
     terminal::{Clear, ClearType},
 };
@@ -28,6 +31,33 @@ mod frame_trace;
 use diffo_explorer::ExplorerWorker;
 use diffo_workbench::{Activity, Workbench};
 use frame_trace::{FrameRecord, FrameTracer};
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct EnableActionMouseCapture;
+
+impl Command for EnableActionMouseCapture {
+    fn write_ansi(&self, f: &mut impl fmt::Write) -> fmt::Result {
+        f.write_str(concat!(
+            // Press and release events.
+            "\x1b[?1000h",
+            // Movement events only while a button is held, for dragging.
+            "\x1b[?1002h",
+            // Extended coordinates, with SGR preferred over RXVT mode.
+            "\x1b[?1015h",
+            "\x1b[?1006h",
+        ))
+    }
+
+    #[cfg(windows)]
+    fn execute_winapi(&self) -> io::Result<()> {
+        Command::execute_winapi(&EnableMouseCapture)
+    }
+
+    #[cfg(windows)]
+    fn is_ansi_code_supported(&self) -> bool {
+        Command::is_ansi_code_supported(&EnableMouseCapture)
+    }
+}
 
 fn main() -> Result<()> {
     let shutdown = install_signal_handlers()?;
@@ -69,7 +99,7 @@ fn main() -> Result<()> {
     execute!(
         terminal.backend_mut(),
         Clear(ClearType::Purge),
-        EnableMouseCapture
+        EnableActionMouseCapture
     )?;
 
     let result = run(
@@ -486,10 +516,24 @@ fn copy_with_tmux(value: &str) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
+    use crossterm::Command;
     use diffo_app::{Message, Model};
     use diffo_core::RepositorySnapshot;
 
-    use super::PendingScroll;
+    use super::{EnableActionMouseCapture, PendingScroll};
+
+    #[test]
+    fn mouse_capture_requests_only_actionable_events() {
+        let mut sequence = String::new();
+        EnableActionMouseCapture.write_ansi(&mut sequence).unwrap();
+
+        assert_eq!(
+            sequence,
+            concat!("\x1b[?1000h", "\x1b[?1002h", "\x1b[?1015h", "\x1b[?1006h")
+        );
+        assert_eq!(sequence.len(), 32, "mouse setup has a fixed byte budget");
+        assert!(!sequence.contains("\x1b[?1003h"));
+    }
 
     #[test]
     fn coalesces_ready_scroll_events_into_one_transition() {

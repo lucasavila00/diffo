@@ -1,6 +1,27 @@
 use super::support::*;
 
 #[test]
+fn terminal_enables_action_mouse_events_without_passive_motion() -> Result<()> {
+    let repository = TestRepository::new()?;
+    let mut screen = repository.screen()?;
+    let output = screen.raw_output();
+
+    assert!(
+        output
+            .windows(b"\x1b[?1000h\x1b[?1002h".len())
+            .any(|window| window == b"\x1b[?1000h\x1b[?1002h"),
+        "compiled Diffo did not enable press and drag mouse reporting"
+    );
+    assert!(
+        !output
+            .windows(b"\x1b[?1003h".len())
+            .any(|window| window == b"\x1b[?1003h"),
+        "compiled Diffo enabled passive mouse movement reporting"
+    );
+    Ok(())
+}
+
+#[test]
 fn keyboard_and_mouse_scroll_move_the_visible_diff() -> Result<()> {
     let repository = TestRepository::new()?;
     let mut contents = String::new();

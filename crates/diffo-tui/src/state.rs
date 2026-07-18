@@ -26,7 +26,6 @@ pub struct Renderer {
     pub(super) file_lists: FileListMetrics,
     pub(super) file_scrollbar_drag: Option<ChangeArea>,
     pub(super) hunk_buttons: HunkButtonMetrics,
-    pub(super) hovered_hunk_button: Option<HunkDirection>,
     pub(super) content_revision: u64,
     pub(super) network_animation_tick: usize,
     #[cfg(test)]
@@ -135,12 +134,6 @@ pub(super) struct DiffViewportMetrics {
     pub(super) maximum_vertical_scroll: usize,
     pub(super) previous_change: Option<usize>,
     pub(super) next_change: Option<usize>,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(super) enum HunkDirection {
-    Previous,
-    Next,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

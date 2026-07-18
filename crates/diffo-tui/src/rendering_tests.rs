@@ -893,7 +893,7 @@ fn hunk_markers_have_a_separate_clickable_rail_beside_the_scrollbar() {
 }
 
 #[test]
-fn large_hunk_buttons_are_fixed_hoverable_and_do_not_wrap() {
+fn large_hunk_buttons_are_fixed_and_do_not_wrap() {
     let mut model = model();
     let mut patch = String::from("@@ -1,100 +1,100 @@\n");
     for line in 1..=100 {
@@ -941,25 +941,6 @@ fn large_hunk_buttons_are_fixed_hoverable_and_do_not_wrap() {
     assert!(renderer.hunk_buttons.next.is_some());
     assert_eq!(
         renderer.map_event(
-            &mouse_at(MouseEventKind::Moved, previous_area),
-            &model,
-            area,
-        ),
-        None
-    );
-    assert_eq!(
-        renderer.hovered_hunk_button,
-        Some(super::HunkDirection::Previous)
-    );
-    terminal
-        .draw(|frame| renderer.render(frame, &model))
-        .unwrap();
-    assert_eq!(
-        terminal.backend().buffer()[(previous_area.x, previous_area.y)].bg,
-        Color::Cyan
-    );
-    assert_eq!(
-        renderer.map_event(
             &mouse_at(MouseEventKind::Down(MouseButton::Left), previous_area),
             &model,
             area,
@@ -987,6 +968,59 @@ fn large_hunk_buttons_are_fixed_hoverable_and_do_not_wrap() {
     assert_eq!(
         renderer.hunk_button_target_at(next_area.x, next_area.y),
         None
+    );
+}
+
+#[test]
+fn passive_mouse_movement_does_not_change_hunk_buttons_or_request_actions() {
+    let mut model = model();
+    let mut patch = String::from("@@ -1,100 +1,100 @@\n");
+    for line in 1..=100 {
+        if matches!(line, 2 | 50 | 90) {
+            writeln!(patch, "-old {line}").unwrap();
+            writeln!(patch, "+new {line}").unwrap();
+        } else {
+            writeln!(patch, " line {line}").unwrap();
+        }
+    }
+    model.snapshot.files[0].unstaged.as_mut().unwrap().text = patch;
+    model.diff_scroll = 50;
+    let area = Rect::new(0, 0, 100, 30);
+    let mut renderer = Renderer::new();
+    let backend = TestBackend::new(100, 30);
+    let mut terminal = Terminal::new(backend).unwrap();
+    renderer.prepare_frame(&model, area);
+    terminal
+        .draw(|frame| renderer.render(frame, &model))
+        .unwrap();
+
+    let previous = renderer.hunk_buttons.previous.expect("previous button").0;
+    let next = renderer.hunk_buttons.next.expect("next button").0;
+    let before_movement = terminal.backend().buffer().clone();
+    let positions = [
+        previous,
+        Rect::new(previous.right().saturating_sub(1), previous.y, 1, 1),
+        next,
+        Rect::new(next.right().saturating_sub(1), next.y, 1, 1),
+        Rect::new(area.x, area.y, 1, 1),
+    ];
+
+    for _ in 0..100 {
+        for position in positions {
+            assert_eq!(
+                renderer.map_event(&mouse_at(MouseEventKind::Moved, position), &model, area),
+                None
+            );
+        }
+    }
+    terminal
+        .draw(|frame| renderer.render(frame, &model))
+        .unwrap();
+
+    assert_eq!(
+        terminal.backend().buffer(),
+        &before_movement,
+        "passive movement must produce zero changed terminal cells"
     );
 }
 

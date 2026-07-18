@@ -1,7 +1,7 @@
 use super::{
     ChangeArea, Constraint, DiffViewMode, DiffViewportMetrics, Direction, FileKey, FileState,
-    HunkDirection, Layout, Model, Rect, Renderer, ScrollbarAxis, file_group_areas,
-    file_group_metrics, file_panel_areas, staged_files, unstaged_files,
+    Layout, Model, Rect, Renderer, ScrollbarAxis, file_group_areas, file_group_metrics,
+    file_panel_areas, staged_files, unstaged_files,
 };
 
 pub(super) fn overview_position(content_row: usize, content_rows: usize, track_height: u16) -> u16 {
@@ -263,30 +263,17 @@ impl Renderer {
         }
     }
 
-    pub(super) fn hunk_button_at(&self, column: u16, row: u16) -> Option<HunkDirection> {
-        let position = (column, row).into();
-        if self
-            .hunk_buttons
-            .previous
-            .is_some_and(|(area, _)| area.contains(position))
-        {
-            Some(HunkDirection::Previous)
-        } else if self
-            .hunk_buttons
-            .next
-            .is_some_and(|(area, _)| area.contains(position))
-        {
-            Some(HunkDirection::Next)
-        } else {
-            None
-        }
-    }
-
     pub(super) fn hunk_button_target_at(&self, column: u16, row: u16) -> Option<usize> {
-        match self.hunk_button_at(column, row)? {
-            HunkDirection::Previous => self.hunk_buttons.previous.map(|(_, target)| target),
-            HunkDirection::Next => self.hunk_buttons.next.map(|(_, target)| target),
+        let position = (column, row).into();
+        if let Some((area, target)) = self.hunk_buttons.previous
+            && area.contains(position)
+        {
+            return Some(target);
         }
+        self.hunk_buttons
+            .next
+            .filter(|(area, _)| area.contains(position))
+            .map(|(_, target)| target)
     }
 
     pub(super) fn change_at_marker(&self, column: u16, row: u16, _model: &Model) -> Option<usize> {

@@ -592,7 +592,6 @@ impl Renderer {
             file_lists: super::FileListMetrics::default(),
             file_scrollbar_drag: None,
             hunk_buttons: HunkButtonMetrics::default(),
-            hovered_hunk_button: None,
             content_revision: 0,
             network_animation_tick: 0,
             #[cfg(test)]

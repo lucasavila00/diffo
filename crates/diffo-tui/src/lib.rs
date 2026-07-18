@@ -68,8 +68,8 @@ use style::{file_action_style, inline_line, network_animation_style, side_by_sid
 
 use state::{
     AnchorRow, DiffKey, DiffViewportMetrics, HIGHLIGHT_PREFETCH_VIEWPORTS, HighlightCache,
-    HunkButtonMetrics, HunkDirection, MAX_SYNC_BYTES, MAX_SYNC_LINES, PREPARED_BUFFER_CACHE_SIZE,
-    PrepareCommit, PrepareOutcome, PrepareRequest, ScrollAnchor, ScrollbarAxis, ScrollbarMetrics,
+    HunkButtonMetrics, MAX_SYNC_BYTES, MAX_SYNC_LINES, PREPARED_BUFFER_CACHE_SIZE, PrepareCommit,
+    PrepareOutcome, PrepareRequest, ScrollAnchor, ScrollbarAxis, ScrollbarMetrics,
 };
 
 pub use diffo_highlight::{
@@ -255,7 +255,6 @@ impl Renderer {
             return input::map_event(event, model, area);
         }
         if let Event::Mouse(mouse) = event {
-            self.hovered_hunk_button = self.hunk_button_at(mouse.column, mouse.row);
             if mouse.kind == MouseEventKind::Down(MouseButton::Left)
                 && let Some(target) = self.hunk_button_target_at(mouse.column, mouse.row)
             {

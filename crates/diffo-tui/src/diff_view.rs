@@ -1,23 +1,15 @@
 use super::{
     Alignment, Block, Borders, Color, DiffViewMode, DiffViewportMetrics, Frame, HunkButtonMetrics,
-    HunkDirection, Line, Model, Modifier, Paragraph, Rect, Renderer, Scrollbar, ScrollbarMetrics,
-    ScrollbarOrientation, ScrollbarState, Style, inline_line, overview_position,
-    resize_border_style, scrollbar_position_count, side_by_side_line,
+    Line, Model, Paragraph, Rect, Renderer, Scrollbar, ScrollbarMetrics, ScrollbarOrientation,
+    ScrollbarState, Style, inline_line, overview_position, resize_border_style,
+    scrollbar_position_count, side_by_side_line,
 };
 
-pub(super) fn render_hunk_button(frame: &mut Frame, area: Rect, label: &str, hovered: bool) {
-    let style = if hovered {
-        Style::default()
-            .fg(Color::Black)
-            .bg(Color::Cyan)
-            .add_modifier(Modifier::BOLD)
-    } else {
-        Style::default().fg(Color::Yellow).bg(Color::Indexed(235))
-    };
+pub(super) fn render_hunk_button(frame: &mut Frame, area: Rect, label: &str) {
     frame.render_widget(
         Paragraph::new(label)
             .alignment(Alignment::Center)
-            .style(style),
+            .style(Style::default().fg(Color::Yellow).bg(Color::Indexed(235))),
         area,
     );
 }
@@ -119,20 +111,10 @@ impl Renderer {
             next: next_area.zip(viewport.next_change),
         };
         if let Some((button, _)) = self.hunk_buttons.previous {
-            render_hunk_button(
-                frame,
-                button,
-                "↑ Previous change (p)",
-                self.hovered_hunk_button == Some(HunkDirection::Previous),
-            );
+            render_hunk_button(frame, button, "↑ Previous change (p)");
         }
         if let Some((button, _)) = self.hunk_buttons.next {
-            render_hunk_button(
-                frame,
-                button,
-                "↓ Next change (n)",
-                self.hovered_hunk_button == Some(HunkDirection::Next),
-            );
+            render_hunk_button(frame, button, "↓ Next change (n)");
         }
     }
 

@@ -102,6 +102,7 @@ pub mod design {
     pub const HELP_COLUMN_GAP: u16 = 2;
     pub const COMMIT_EDITOR_WIDTH: ResponsiveWidth = ResponsiveWidth::new(70, 34, 84);
     pub const COMMIT_EDITOR_MAX_HEIGHT: u16 = 11;
+    pub const PROMPT_MESSAGE_HEIGHT: u16 = 2;
 
     pub const TOAST_MAX_WIDTH: u16 = 44;
     pub const TOAST_MIN_WIDTH: u16 = 4;

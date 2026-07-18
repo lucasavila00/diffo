@@ -109,6 +109,14 @@ impl Repository for GitRepositorySource {
         &self,
         action: &diffo_core::RepositoryAction,
     ) -> std::result::Result<diffo_core::OperationResult, diffo_core::OperationFailure> {
-        self.apply_operation(action)
+        self.apply_operation(action, None)
+    }
+
+    fn apply_with_context(
+        &self,
+        action: &diffo_core::RepositoryAction,
+        context: &diffo_core::RepositoryOperationContext,
+    ) -> std::result::Result<diffo_core::OperationResult, diffo_core::OperationFailure> {
+        self.apply_operation(action, Some(context))
     }
 }

@@ -43,6 +43,7 @@ diffo-ui = { path = "crates/diffo-ui" }
 diffo-watch = { path = "crates/diffo-watch" }
 diffo-workbench = { path = "crates/diffo-workbench" }
 notify = "8.2"
+nix = { version = "0.28", features = ["process", "signal"] }
 portable-pty = "0.9"
 ratatui = "0.29"
 ron = "0.10"

@@ -1,6 +1,6 @@
 # ADR 0053: Show Git prompts inside Diffo
 
-Status: Proposed
+Status: Accepted
 
 Depends on [ADR 0052](0052-terminal-safe-footer-errors.md) and refines
 [ADR 0018](0018-network-operation-feedback.md) and

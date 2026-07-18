@@ -1,21 +1,22 @@
 use std::{
     sync::{
+        Arc,
         atomic::{AtomicBool, Ordering},
         mpsc::{self, Receiver, Sender},
     },
     time::Duration,
 };
 
-use diffo_core::{OperationFailure, Repository, RepositoryAction};
+use diffo_core::{OperationFailure, Repository, RepositoryAction, RepositoryOperationContext};
 
-use crate::service::RefreshResult;
+use crate::service::{PromptBroker, RefreshResult};
 
 #[cfg(test)]
 use anyhow::Result;
 #[cfg(test)]
 use diffo_core::{OperationResult, RepositorySnapshot};
 #[cfg(test)]
-use std::{sync::Arc, thread};
+use std::thread;
 
 const DEBOUNCE: Duration = Duration::from_millis(100);
 
@@ -38,6 +39,7 @@ pub(super) fn worker_loop(
     results: &Sender<RefreshResult>,
     wake_pending: &AtomicBool,
     busy: &AtomicBool,
+    prompts: &Arc<PromptBroker>,
 ) {
     let mut generation = 0_u64;
     while let Ok(command) = commands.recv() {
@@ -46,14 +48,18 @@ pub(super) fn worker_loop(
             Command::Wake => {
                 wake_pending.store(false, Ordering::Release);
                 match debounce(commands, wake_pending) {
-                    Debounced::Refresh => Some(collect(repository, None, &mut generation)),
+                    Debounced::Refresh => Some(collect(repository, None, &mut generation, prompts)),
                     Debounced::Action(action) => {
-                        Some(collect(repository, Some(&action), &mut generation))
+                        prompts.begin_operation();
+                        Some(collect(repository, Some(&action), &mut generation, prompts))
                     }
                     Debounced::Shutdown => break,
                 }
             }
-            Command::Action(action) => Some(collect(repository, Some(&action), &mut generation)),
+            Command::Action(action) => {
+                prompts.begin_operation();
+                Some(collect(repository, Some(&action), &mut generation, prompts))
+            }
             Command::WatchError(message) => {
                 generation = generation.saturating_add(1);
                 Some(RefreshResult::Error {
@@ -91,10 +97,17 @@ fn collect(
     repository: &dyn Repository,
     action: Option<&RepositoryAction>,
     generation: &mut u64,
+    prompts: &Arc<PromptBroker>,
 ) -> RefreshResult {
     *generation = generation.saturating_add(1);
     match action {
-        Some(action) => match repository.apply(action) {
+        Some(action) => match repository.apply_with_context(
+            action,
+            &RepositoryOperationContext::new(
+                Arc::clone(prompts) as Arc<dyn diffo_core::PromptHandler>,
+                Arc::clone(&prompts.cancelled),
+            ),
+        ) {
             Ok(result) => match repository.snapshot() {
                 Ok(snapshot) => RefreshResult::ActionCompleted {
                     generation: *generation,
@@ -164,6 +177,7 @@ mod tests {
         });
         let (commands, command_rx) = mpsc::channel();
         let (results, result_rx) = mpsc::channel();
+        let prompts = Arc::new(PromptBroker::new(results.clone()));
         let pending = Arc::new(AtomicBool::new(false));
         let busy = Arc::new(AtomicBool::new(false));
         let worker_repository = Arc::clone(&repository) as Arc<dyn Repository>;
@@ -171,7 +185,14 @@ mod tests {
             let pending = Arc::clone(&pending);
             let busy = Arc::clone(&busy);
             move || {
-                worker_loop(&*worker_repository, &command_rx, &results, &pending, &busy);
+                worker_loop(
+                    &*worker_repository,
+                    &command_rx,
+                    &results,
+                    &pending,
+                    &busy,
+                    &prompts,
+                );
             }
         });
 
@@ -195,10 +216,18 @@ mod tests {
         });
         let (commands, command_rx) = mpsc::channel();
         let (results, _result_rx) = mpsc::channel();
+        let prompts = Arc::new(PromptBroker::new(results.clone()));
         let worker = thread::spawn(move || {
             let pending = AtomicBool::new(false);
             let busy = AtomicBool::new(false);
-            worker_loop(&*repository, &command_rx, &results, &pending, &busy);
+            worker_loop(
+                &*repository,
+                &command_rx,
+                &results,
+                &pending,
+                &busy,
+                &prompts,
+            );
         });
 
         commands.send(Command::Wake).unwrap();
@@ -212,12 +241,15 @@ mod tests {
             collections: AtomicUsize::new(0),
         };
         let mut generation = 0;
+        let (results, _result_rx) = mpsc::channel();
+        let prompts = Arc::new(PromptBroker::new(results));
 
-        let watcher = collect(&repository, None, &mut generation);
+        let watcher = collect(&repository, None, &mut generation, &prompts);
         let action = collect(
             &repository,
             Some(&RepositoryAction::StageAll),
             &mut generation,
+            &prompts,
         );
 
         assert!(matches!(watcher, RefreshResult::Snapshot { .. }));

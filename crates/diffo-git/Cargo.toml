@@ -10,9 +10,10 @@ version.workspace = true
 [dependencies]
 anyhow.workspace = true
 diffo-core.workspace = true
+nix.workspace = true
+tempfile.workspace = true
 
 [dev-dependencies]
-tempfile.workspace = true
 
 [lints]
 workspace = true

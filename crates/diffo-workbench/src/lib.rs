@@ -5,14 +5,19 @@ use std::{collections::HashMap, time::Instant};
 use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind};
 use diffo_app::{Effect, Message, Model, ToastKind, ToastQueue, update};
 use diffo_command::{Command, CommandId, CommandPalette, PaletteEvent};
-use diffo_core::{OperationFailure, OperationResult, RepositoryAction, RepositorySnapshot};
+use diffo_core::{
+    GitPrompt, OperationFailure, OperationResult, PromptId, RepositoryAction, RepositorySnapshot,
+};
 use diffo_text_view::{TextRenderMode, TextSurfacePreparation};
 use diffo_tui::{FramePreparation, Renderer, RendererEvent, render_toasts, toast_at_position};
-use diffo_ui::{PaneSplit, enabled_control_style, interaction, tool_areas};
+use diffo_ui::{
+    PaneSplit, design, enabled_control_style, interaction, terminal_safe_text, theme, tool_areas,
+};
 use ratatui::{
     Frame,
-    layout::Rect,
-    widgets::{Clear, Paragraph},
+    layout::{Alignment, Constraint, Layout, Rect},
+    style::{Modifier, Style},
+    widgets::{Block, Borders, Clear, Paragraph},
 };
 
 use diffo_explorer::{ExplorerActivity, ExplorerEvent, ExplorerOutcome, ExplorerRequest};
@@ -36,14 +41,46 @@ enum WorkbenchCommand {
     Effect(WorkbenchEffect),
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq)]
 pub enum WorkbenchEffect {
     Repository(RepositoryAction),
     CopyPath {
         path: std::path::PathBuf,
         absolute: bool,
     },
+    Prompt {
+        id: PromptId,
+        response: PromptResponse,
+    },
 }
+
+pub enum PromptResponse {
+    Text(String),
+    Confirm,
+    Cancel,
+}
+
+impl std::fmt::Debug for PromptResponse {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Text(_) => formatter.write_str("Text([redacted])"),
+            Self::Confirm => formatter.write_str("Confirm"),
+            Self::Cancel => formatter.write_str("Cancel"),
+        }
+    }
+}
+
+impl PartialEq for PromptResponse {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Text(left), Self::Text(right)) => left == right,
+            (Self::Confirm, Self::Confirm) | (Self::Cancel, Self::Cancel) => true,
+            _ => false,
+        }
+    }
+}
+
+impl Eq for PromptResponse {}
 
 pub enum WorkbenchTask {
     Explorer(ExplorerRequest),
@@ -74,6 +111,21 @@ pub struct Workbench {
     toasts: ToastQueue,
     toast_deadlines: HashMap<u64, Instant>,
     should_quit: bool,
+    prompt: Option<PromptModal>,
+    last_prompt_id: Option<PromptId>,
+}
+
+struct PromptModal {
+    id: PromptId,
+    prompt: GitPrompt,
+    input: String,
+    confirm_choice: ConfirmChoice,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ConfirmChoice {
+    Cancel,
+    Continue,
 }
 
 struct DiffActivity {
@@ -141,6 +193,8 @@ impl Workbench {
             toasts: ToastQueue::new(),
             toast_deadlines: HashMap::new(),
             should_quit: false,
+            prompt: None,
+            last_prompt_id: None,
         }
     }
 
@@ -161,6 +215,13 @@ impl Workbench {
 
     pub fn diff_model_mut(&mut self) -> &mut Model {
         &mut self.diff.model
+    }
+
+    #[must_use]
+    pub fn secret_prompt_open(&self) -> bool {
+        self.prompt
+            .as_ref()
+            .is_some_and(|modal| matches!(modal.prompt, GitPrompt::Secret { .. }))
     }
 
     pub fn tick(&mut self) {
@@ -200,6 +261,9 @@ impl Workbench {
         render_toasts(frame, self.toasts.as_slice(), content);
         self.active_palette().render(frame, content);
         render_activity_bar(frame, area, self.active);
+        if let Some(prompt) = self.prompt.as_ref() {
+            render_prompt(frame, prompt, area);
+        }
     }
 
     pub fn handle_events(&mut self, events: &[Event], area: Rect) -> Vec<WorkbenchEffect> {
@@ -233,19 +297,12 @@ impl Workbench {
     }
 
     fn handle_event(&mut self, event: &Event, area: Rect) -> Option<WorkbenchCommand> {
-        if let Event::Key(key) = event
-            && key.kind == KeyEventKind::Press
-            && key.code == KeyCode::Tab
-            && key.modifiers == KeyModifiers::NONE
-        {
-            self.active = self.active.next();
-            return None;
+        if self.prompt.is_some() {
+            return self
+                .handle_prompt_event(event, area)
+                .map(WorkbenchCommand::Effect);
         }
-        if let Event::Mouse(mouse) = event
-            && mouse.kind == MouseEventKind::Down(MouseButton::Left)
-            && let Some(activity) = activity_at_position(area, mouse.column, mouse.row)
-        {
-            self.active = activity;
+        if self.select_activity(event, area) {
             return None;
         }
         let content = workbench_areas(area).content;
@@ -332,6 +389,25 @@ impl Workbench {
             }
             Activity::Search => self.search.handle_event(event, content, self.pane_split),
         }
+    }
+
+    fn select_activity(&mut self, event: &Event, area: Rect) -> bool {
+        if let Event::Key(key) = event
+            && key.kind == KeyEventKind::Press
+            && key.code == KeyCode::Tab
+            && key.modifiers == KeyModifiers::NONE
+        {
+            self.active = self.active.next();
+            return true;
+        }
+        if let Event::Mouse(mouse) = event
+            && mouse.kind == MouseEventKind::Down(MouseButton::Left)
+            && let Some(activity) = activity_at_position(area, mouse.column, mouse.row)
+        {
+            self.active = activity;
+            return true;
+        }
+        false
     }
 
     fn dismiss_clicked_toast(&mut self, event: &Event, area: Rect) -> bool {
@@ -459,11 +535,107 @@ impl Workbench {
         result: OperationResult,
         snapshot: RepositorySnapshot,
     ) {
+        self.prompt = None;
+        self.last_prompt_id = None;
         let _ = self.update_diff(Message::OperationCompleted(action, result, snapshot));
     }
 
     pub fn action_failed(&mut self, failure: OperationFailure) {
+        self.prompt = None;
+        self.last_prompt_id = None;
         let _ = self.update_diff(Message::ActionFailed(failure));
+    }
+
+    pub fn open_prompt(&mut self, id: PromptId, prompt: GitPrompt) -> bool {
+        if self.prompt.is_some() || self.last_prompt_id.is_some_and(|last| id.0 <= last.0) {
+            return false;
+        }
+        self.prompt = Some(PromptModal {
+            id,
+            prompt,
+            input: String::new(),
+            confirm_choice: ConfirmChoice::Cancel,
+        });
+        true
+    }
+
+    fn handle_prompt_event(&mut self, event: &Event, area: Rect) -> Option<WorkbenchEffect> {
+        let modal = self.prompt.as_mut()?;
+        let response = match event {
+            Event::Key(key) if key.kind == KeyEventKind::Press => match key.code {
+                KeyCode::Esc => Some(PromptResponse::Cancel),
+                KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                    self.should_quit = true;
+                    Some(PromptResponse::Cancel)
+                }
+                KeyCode::Enter => match modal.prompt {
+                    GitPrompt::ConfirmSshHost { .. } => Some(match modal.confirm_choice {
+                        ConfirmChoice::Cancel => PromptResponse::Cancel,
+                        ConfirmChoice::Continue => PromptResponse::Confirm,
+                    }),
+                    GitPrompt::Username { .. } | GitPrompt::Secret { .. }
+                        if !modal.input.is_empty() =>
+                    {
+                        Some(PromptResponse::Text(std::mem::take(&mut modal.input)))
+                    }
+                    GitPrompt::Username { .. } | GitPrompt::Secret { .. } => None,
+                },
+                KeyCode::Left | KeyCode::Up
+                    if matches!(modal.prompt, GitPrompt::ConfirmSshHost { .. }) =>
+                {
+                    modal.confirm_choice = ConfirmChoice::Cancel;
+                    None
+                }
+                KeyCode::Right | KeyCode::Down
+                    if matches!(modal.prompt, GitPrompt::ConfirmSshHost { .. }) =>
+                {
+                    modal.confirm_choice = ConfirmChoice::Continue;
+                    None
+                }
+                KeyCode::Backspace if !matches!(modal.prompt, GitPrompt::ConfirmSshHost { .. }) => {
+                    modal.input.pop();
+                    None
+                }
+                KeyCode::Char(character)
+                    if !matches!(modal.prompt, GitPrompt::ConfirmSshHost { .. })
+                        && !key
+                            .modifiers
+                            .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT)
+                        && !character.is_control() =>
+                {
+                    modal.input.push(character);
+                    None
+                }
+                _ => None,
+            },
+            Event::Mouse(mouse) if mouse.kind == MouseEventKind::Down(MouseButton::Left) => {
+                let layout = prompt_layout(area);
+                let position = (mouse.column, mouse.row).into();
+                if layout.cancel.contains(position) {
+                    Some(PromptResponse::Cancel)
+                } else if layout.continue_button.contains(position) {
+                    match modal.prompt {
+                        GitPrompt::ConfirmSshHost { .. } => Some(PromptResponse::Confirm),
+                        GitPrompt::Username { .. } | GitPrompt::Secret { .. }
+                            if !modal.input.is_empty() =>
+                        {
+                            Some(PromptResponse::Text(std::mem::take(&mut modal.input)))
+                        }
+                        GitPrompt::Username { .. } | GitPrompt::Secret { .. } => None,
+                    }
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        };
+        let response = response?;
+        let prompt = self.prompt.take()?;
+        self.last_prompt_id = Some(prompt.id);
+        Some(WorkbenchEffect::Prompt {
+            id: prompt.id,
+            response,
+        })
     }
 
     fn expire_toasts(&mut self) {
@@ -487,6 +659,146 @@ impl Workbench {
             self.toast_deadlines.remove(&id);
         }
     }
+}
+
+struct PromptLayout {
+    modal: Rect,
+    message: Rect,
+    input: Rect,
+    cancel: Rect,
+    continue_button: Rect,
+    footer: Rect,
+}
+
+fn prompt_layout(area: Rect) -> PromptLayout {
+    let width = design::COMMIT_EDITOR_WIDTH.resolve(area.width);
+    let height = design::COMMIT_EDITOR_MAX_HEIGHT.min(area.height);
+    let modal = Rect::new(
+        area.x + area.width.saturating_sub(width) / 2,
+        area.y + area.height.saturating_sub(height) / 2,
+        width,
+        height,
+    );
+    let rows = Layout::vertical([
+        Constraint::Length(design::PROMPT_MESSAGE_HEIGHT),
+        Constraint::Length(design::COMMIT_FIELD_HEIGHT),
+        Constraint::Length(design::SINGLE_LINE_HEIGHT),
+        Constraint::Min(0),
+        Constraint::Length(design::SINGLE_LINE_HEIGHT),
+    ])
+    .split(modal.inner(design::DIALOG_INSET));
+    let buttons = Layout::horizontal([
+        Constraint::Percentage(design::EQUAL_SPLIT_PERCENT),
+        Constraint::Percentage(design::EQUAL_SPLIT_PERCENT),
+    ])
+    .split(rows[2]);
+    PromptLayout {
+        modal,
+        message: rows[0],
+        input: rows[1],
+        cancel: buttons[0],
+        continue_button: buttons[1],
+        footer: rows[4],
+    }
+}
+
+fn render_prompt(frame: &mut Frame, modal: &PromptModal, area: Rect) {
+    let layout = prompt_layout(area);
+    frame.render_widget(Clear, layout.modal);
+    frame.render_widget(
+        Block::default()
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(theme::CHROME))
+            .title(" Git prompt "),
+        layout.modal,
+    );
+    let (message, secret) = match &modal.prompt {
+        GitPrompt::Username { host } => {
+            (format!("Username for {}", terminal_safe_text(host)), false)
+        }
+        GitPrompt::Secret { kind, context } => {
+            let label = match kind {
+                diffo_core::SecretKind::HttpsSecret => "Secret for",
+                diffo_core::SecretKind::SshKeyPassphrase => "Passphrase for",
+            };
+            (format!("{label} {}", terminal_safe_text(context)), true)
+        }
+        GitPrompt::ConfirmSshHost { host, fingerprint } => (
+            format!(
+                "Trust {}?\n{}",
+                terminal_safe_text(host),
+                terminal_safe_text(fingerprint)
+            ),
+            false,
+        ),
+    };
+    frame.render_widget(Paragraph::new(message), layout.message);
+    if !matches!(modal.prompt, GitPrompt::ConfirmSshHost { .. }) {
+        let field = Block::default()
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(theme::CHROME));
+        let inner = field.inner(layout.input);
+        let value = if secret {
+            "•".repeat(modal.input.chars().count())
+        } else {
+            terminal_safe_text(&modal.input)
+        };
+        let width = usize::from(inner.width);
+        let visible = value
+            .chars()
+            .rev()
+            .take(width)
+            .collect::<String>()
+            .chars()
+            .rev()
+            .collect::<String>();
+        let cursor = u16::try_from(visible.chars().count()).unwrap_or(u16::MAX);
+        frame.render_widget(Paragraph::new(visible), inner);
+        frame.render_widget(field, layout.input);
+        frame.set_cursor_position((inner.x.saturating_add(cursor.min(inner.width)), inner.y));
+    }
+    let confirm = matches!(modal.prompt, GitPrompt::ConfirmSshHost { .. });
+    let cancel_selected = confirm && modal.confirm_choice == ConfirmChoice::Cancel;
+    let continue_selected = confirm && modal.confirm_choice == ConfirmChoice::Continue;
+    frame.render_widget(
+        Paragraph::new("[ Cancel ]")
+            .alignment(Alignment::Center)
+            .style(prompt_button_style(cancel_selected, true)),
+        layout.cancel,
+    );
+    frame.render_widget(
+        Paragraph::new("[ Continue ]")
+            .alignment(Alignment::Center)
+            .style(prompt_button_style(
+                continue_selected,
+                confirm || !modal.input.is_empty(),
+            )),
+        layout.continue_button,
+    );
+    frame.render_widget(
+        Paragraph::new(if confirm {
+            "Arrows: select · Enter: choose · Esc: cancel"
+        } else {
+            "Enter: continue · Esc: cancel"
+        })
+        .alignment(Alignment::Center)
+        .style(enabled_control_style()),
+        layout.footer,
+    );
+}
+
+fn prompt_button_style(selected: bool, enabled: bool) -> Style {
+    let mut style = if enabled {
+        enabled_control_style()
+    } else {
+        Style::default().fg(theme::CHROME)
+    };
+    if selected {
+        style = style
+            .bg(theme::SELECTION_BACKGROUND)
+            .add_modifier(Modifier::BOLD);
+    }
+    style
 }
 
 fn render_pane_drag_marker(frame: &mut Frame, area: Rect, split: PaneSplit) {
@@ -1034,5 +1346,157 @@ mod tests {
             .collect::<String>();
         assert!(screen.contains("Git: Fetch"));
         assert!(screen.contains("Explorer: Collapse All Folders"));
+    }
+
+    #[test]
+    fn prompt_modal_has_priority_and_keeps_network_operation_pending() {
+        let area = Rect::new(0, 0, 100, 30);
+        let mut workbench = Workbench::new(RepositorySnapshot::default());
+        assert_eq!(
+            workbench
+                .diff
+                .model
+                .start_repository_action(RepositoryAction::Fetch),
+            Some(RepositoryAction::Fetch)
+        );
+        assert!(workbench.open_prompt(
+            PromptId(1),
+            GitPrompt::Username {
+                host: "example.com".to_owned()
+            }
+        ));
+
+        let effects = workbench.handle_events(
+            &[
+                key(KeyCode::Tab),
+                key(KeyCode::Char('u')),
+                key(KeyCode::Char('s')),
+                key(KeyCode::Char('e')),
+                key(KeyCode::Char('r')),
+                key(KeyCode::Enter),
+            ],
+            area,
+        );
+
+        assert_eq!(workbench.active, Activity::Diff);
+        assert_eq!(
+            effects,
+            vec![WorkbenchEffect::Prompt {
+                id: PromptId(1),
+                response: PromptResponse::Text("user".to_owned())
+            }]
+        );
+        assert_eq!(
+            workbench.diff.model.network_operation(),
+            Some(NetworkOperation::Fetch)
+        );
+    }
+
+    #[test]
+    fn secret_input_is_masked_in_frames_and_debug_output() {
+        let area = Rect::new(0, 0, 80, 24);
+        let mut workbench = Workbench::new(RepositorySnapshot::default());
+        assert!(workbench.open_prompt(
+            PromptId(1),
+            GitPrompt::Secret {
+                kind: diffo_core::SecretKind::HttpsSecret,
+                context: "example.com".to_owned(),
+            }
+        ));
+        let sentinel = "sentinel-secret";
+        let events = sentinel
+            .chars()
+            .map(|character| key(KeyCode::Char(character)))
+            .collect::<Vec<_>>();
+        assert!(workbench.handle_events(&events, area).is_empty());
+        let backend = TestBackend::new(area.width, area.height);
+        let mut terminal = Terminal::new(backend).unwrap();
+
+        terminal.draw(|frame| workbench.render(frame)).unwrap();
+
+        let screen = terminal
+            .backend()
+            .buffer()
+            .content
+            .iter()
+            .map(ratatui::buffer::Cell::symbol)
+            .collect::<String>();
+        assert!(!screen.contains(sentinel));
+        assert!(screen.contains("••••"));
+        let effects = workbench.handle_events(&[key(KeyCode::Enter)], area);
+        assert!(!format!("{effects:?}").contains(sentinel));
+        assert!(matches!(
+            effects.as_slice(),
+            [WorkbenchEffect::Prompt {
+                response: PromptResponse::Text(answer),
+                ..
+            }] if answer == sentinel
+        ));
+    }
+
+    #[test]
+    fn ssh_confirmation_is_cancel_first_and_supports_picker_controls() {
+        let area = Rect::new(0, 0, 100, 30);
+        let prompt = || GitPrompt::ConfirmSshHost {
+            host: "git.example.com".to_owned(),
+            fingerprint: "SHA256:abc".to_owned(),
+        };
+        let mut workbench = Workbench::new(RepositorySnapshot::default());
+        assert!(workbench.open_prompt(PromptId(1), prompt()));
+        assert_eq!(
+            workbench.prompt.as_ref().map(|modal| modal.confirm_choice),
+            Some(ConfirmChoice::Cancel)
+        );
+        assert_eq!(
+            workbench.handle_events(&[key(KeyCode::Enter)], area),
+            vec![WorkbenchEffect::Prompt {
+                id: PromptId(1),
+                response: PromptResponse::Cancel,
+            }]
+        );
+
+        assert!(workbench.open_prompt(PromptId(2), prompt()));
+        assert_eq!(
+            workbench.handle_events(&[key(KeyCode::Right), key(KeyCode::Enter)], area),
+            vec![WorkbenchEffect::Prompt {
+                id: PromptId(2),
+                response: PromptResponse::Confirm,
+            }]
+        );
+
+        assert!(workbench.open_prompt(PromptId(3), prompt()));
+        let button = prompt_layout(area).continue_button;
+        let click = Event::Mouse(MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: button.x,
+            row: button.y,
+            modifiers: KeyModifiers::NONE,
+        });
+        assert_eq!(
+            workbench.handle_events(&[click], area),
+            vec![WorkbenchEffect::Prompt {
+                id: PromptId(3),
+                response: PromptResponse::Confirm,
+            }]
+        );
+    }
+
+    #[test]
+    fn prompt_rejects_concurrent_stale_ids_and_escape_cancels() {
+        let area = Rect::new(0, 0, 100, 30);
+        let mut workbench = Workbench::new(RepositorySnapshot::default());
+        let prompt = GitPrompt::Username {
+            host: "example.com".to_owned(),
+        };
+        assert!(workbench.open_prompt(PromptId(1), prompt.clone()));
+        assert!(!workbench.open_prompt(PromptId(2), prompt.clone()));
+        assert_eq!(
+            workbench.handle_events(&[key(KeyCode::Esc)], area),
+            vec![WorkbenchEffect::Prompt {
+                id: PromptId(1),
+                response: PromptResponse::Cancel,
+            }]
+        );
+        assert!(!workbench.open_prompt(PromptId(1), prompt));
     }
 }

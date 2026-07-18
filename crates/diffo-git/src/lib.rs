@@ -4,11 +4,13 @@ use std::path::PathBuf;
 
 const NO_CHANGE: char = '.';
 
+mod askpass;
 mod command;
 mod explorer;
 mod operation;
 mod snapshot;
 mod status;
+pub use askpass::run_askpass_if_requested;
 pub struct GitRepositorySource {
     root: PathBuf,
 }

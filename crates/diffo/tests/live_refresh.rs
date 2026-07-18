@@ -132,7 +132,8 @@ fn wait_for_refresh(
             Ok(Some(
                 RefreshResult::Snapshot { .. }
                 | RefreshResult::ActionCompleted { .. }
-                | RefreshResult::ActionFailed { .. },
+                | RefreshResult::ActionFailed { .. }
+                | RefreshResult::Prompt { .. },
             )) => {}
             Ok(Some(RefreshResult::Error { message, .. })) => bail!(message),
             Ok(None) => thread::sleep(Duration::from_millis(10)),

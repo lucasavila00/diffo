@@ -73,6 +73,7 @@ pub(crate) fn operation_failure_title(failure: &OperationFailure) -> String {
         RepositoryAction::Commit(_) => "Commit",
     };
     match failure.kind {
+        FailureKind::Cancelled => format!("Operation cancelled: {}", failure.detail),
         FailureKind::PullRequired => format!("Push blocked: {}", failure.detail),
         FailureKind::Diverged => format!("Pull blocked: {}", failure.detail),
         FailureKind::PushRejected | FailureKind::HookRejected => {

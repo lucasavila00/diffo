@@ -1,16 +1,30 @@
-use std::{env, process::Command, thread, time::Duration};
-
-use diffo_core::{
-    FailureKind, OperationFailure, OperationResult, RepositoryAction, RepositorySource,
-    UpstreamState,
+use std::{
+    env, io,
+    os::unix::process::CommandExt as _,
+    process::{Command, Output, Stdio},
+    thread,
+    time::{Duration, Instant},
 };
 
-use super::GitRepositorySource;
+use diffo_core::{
+    FailureKind, OperationFailure, OperationResult, RepositoryAction, RepositoryOperationContext,
+    RepositorySource, UpstreamState,
+};
+use nix::{
+    sys::signal::{Signal, killpg},
+    unistd::Pid,
+};
+
+use super::{
+    GitRepositorySource,
+    askpass::{ASKPASS_MARKER, ASKPASS_SOCKET, AskpassBridge},
+};
 
 impl GitRepositorySource {
     pub(super) fn apply_operation(
         &self,
         action: &RepositoryAction,
+        context: Option<&RepositoryOperationContext>,
     ) -> std::result::Result<OperationResult, OperationFailure> {
         if matches!(
             action,
@@ -46,7 +60,8 @@ impl GitRepositorySource {
         command
             .current_dir(&self.root)
             .env("GIT_TERMINAL_PROMPT", "0")
-            .env("GIT_EDITOR", "true");
+            .env("GIT_EDITOR", "true")
+            .stdin(Stdio::null());
         match action {
             RepositoryAction::Stage(path) => {
                 command.args(["add", "--"]).arg(path);
@@ -74,15 +89,140 @@ impl GitRepositorySource {
             }
         }
 
-        let output = command
-            .output()
-            .map_err(|error| operation_failure(action, FailureKind::Unknown, &error.to_string()))?;
+        let _bridge = configure_askpass(&mut command, action, context)?;
+        let outcome = match context {
+            Some(context) => run_cancellable(&mut command, &context.cancelled),
+            None => command.output().map(CommandOutcome::Output),
+        }
+        .map_err(|error| operation_failure(action, FailureKind::Unknown, &error.to_string()))?;
+        let output = match outcome {
+            CommandOutcome::Output(output) => output,
+            CommandOutcome::Cancelled => {
+                return Err(operation_failure(
+                    action,
+                    FailureKind::Cancelled,
+                    "cancelled by user",
+                ));
+            }
+        };
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             let stdout = String::from_utf8_lossy(&output.stdout);
             return Err(classify_failure(action, &format!("{stdout}\n{stderr}")));
         }
         collect_operation_result(self, action, before_head, before_fetch.as_ref())
+    }
+}
+
+fn configure_askpass(
+    command: &mut Command,
+    action: &RepositoryAction,
+    context: Option<&RepositoryOperationContext>,
+) -> std::result::Result<Option<AskpassBridge>, OperationFailure> {
+    if !matches!(
+        action,
+        RepositoryAction::Fetch | RepositoryAction::Pull | RepositoryAction::Push
+    ) {
+        return Ok(None);
+    }
+    let bridge = context
+        .map(AskpassBridge::start)
+        .transpose()
+        .map_err(|error| operation_failure(action, FailureKind::Unknown, &error.to_string()))?;
+    if let Some(bridge) = bridge.as_ref() {
+        let executable = env::current_exe()
+            .and_then(std::fs::canonicalize)
+            .map_err(|error| operation_failure(action, FailureKind::Unknown, &error.to_string()))?;
+        command
+            .env("GIT_ASKPASS", &executable)
+            .env("SSH_ASKPASS", &executable)
+            .env("SSH_ASKPASS_REQUIRE", "force")
+            .env(ASKPASS_MARKER, "1")
+            .env(ASKPASS_SOCKET, bridge.socket());
+    }
+    Ok(bridge)
+}
+
+enum CommandOutcome {
+    Output(Output),
+    Cancelled,
+}
+
+fn run_cancellable(
+    command: &mut Command,
+    cancelled: &std::sync::atomic::AtomicBool,
+) -> io::Result<CommandOutcome> {
+    command
+        .process_group(0)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    let mut child = command.spawn()?;
+    let stdout = child.stdout.take().map(read_output);
+    let stderr = child.stderr.take().map(read_output);
+    let mut was_cancelled = false;
+    let status = loop {
+        if cancelled.load(std::sync::atomic::Ordering::Acquire) && !was_cancelled {
+            was_cancelled = true;
+            signal_process_group(child.id(), Signal::SIGTERM);
+        }
+        if let Some(status) = child.try_wait()? {
+            break status;
+        }
+        if was_cancelled {
+            let deadline = Instant::now() + Duration::from_millis(200);
+            while Instant::now() < deadline {
+                if let Some(status) = child.try_wait()? {
+                    let _ = join_output(stdout);
+                    let _ = join_output(stderr);
+                    let _ = status;
+                    return Ok(CommandOutcome::Cancelled);
+                }
+                thread::sleep(Duration::from_millis(10));
+            }
+            signal_process_group(child.id(), Signal::SIGKILL);
+            let _ = child.wait();
+            let _ = join_output(stdout);
+            let _ = join_output(stderr);
+            return Ok(CommandOutcome::Cancelled);
+        }
+        thread::sleep(Duration::from_millis(10));
+    };
+    let stdout = join_output(stdout)?;
+    let stderr = join_output(stderr)?;
+    if was_cancelled {
+        return Ok(CommandOutcome::Cancelled);
+    }
+    Ok(CommandOutcome::Output(Output {
+        status,
+        stdout,
+        stderr,
+    }))
+}
+
+fn read_output(
+    mut pipe: impl io::Read + Send + 'static,
+) -> thread::JoinHandle<io::Result<Vec<u8>>> {
+    thread::spawn(move || {
+        let mut output = Vec::new();
+        pipe.read_to_end(&mut output)?;
+        Ok(output)
+    })
+}
+
+fn join_output(reader: Option<thread::JoinHandle<io::Result<Vec<u8>>>>) -> io::Result<Vec<u8>> {
+    reader.map_or_else(
+        || Ok(Vec::new()),
+        |reader| {
+            reader
+                .join()
+                .map_err(|_| io::Error::other("Git output reader stopped"))?
+        },
+    )
+}
+
+fn signal_process_group(id: u32, signal: Signal) {
+    if let Ok(id) = i32::try_from(id) {
+        let _ = killpg(Pid::from_raw(id), signal);
     }
 }
 
@@ -206,4 +346,45 @@ fn e2e_network_delay() -> Option<Duration> {
         .ok()?
         .min(2_000);
     Some(Duration::from_millis(milliseconds))
+}
+
+#[cfg(test)]
+mod cancellation_tests {
+    use std::sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    };
+
+    use nix::{errno::Errno, sys::signal::kill};
+
+    use super::*;
+
+    #[test]
+    fn cancellation_reaps_the_operation_process_group() {
+        let directory = tempfile::tempdir().unwrap();
+        let pid_path = directory.path().join("child.pid");
+        let script = format!("sleep 30 & echo $! > {}; wait", pid_path.display());
+        let cancelled = Arc::new(AtomicBool::new(false));
+        let trigger = {
+            let cancelled = Arc::clone(&cancelled);
+            thread::spawn(move || {
+                thread::sleep(Duration::from_millis(100));
+                cancelled.store(true, Ordering::Release);
+            })
+        };
+        let mut command = Command::new("sh");
+        command.args(["-c", &script]);
+
+        assert!(matches!(
+            run_cancellable(&mut command, &cancelled),
+            Ok(CommandOutcome::Cancelled)
+        ));
+        trigger.join().unwrap();
+        let child_pid = std::fs::read_to_string(pid_path)
+            .unwrap()
+            .trim()
+            .parse::<i32>()
+            .unwrap();
+        assert_eq!(kill(Pid::from_raw(child_pid), None), Err(Errno::ESRCH));
+    }
 }

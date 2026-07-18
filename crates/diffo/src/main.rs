@@ -23,14 +23,14 @@ use crossterm::{
 };
 use diffo_app::ToastKind;
 use diffo_core::{Repository, fixture_source::MutableFixtureRepository};
-use diffo_git::GitRepositorySource;
+use diffo_git::{GitRepositorySource, run_askpass_if_requested};
 use diffo_watch::{RefreshResult, RefreshService};
 use ratatui::{Terminal, backend::CrosstermBackend};
 
 mod frame_trace;
 mod tool_tasks;
 
-use diffo_workbench::{Workbench, WorkbenchEffect};
+use diffo_workbench::{PromptResponse, Workbench, WorkbenchEffect};
 use frame_trace::{FrameRecord, FrameTracer};
 use tool_tasks::ToolTasks;
 
@@ -92,6 +92,9 @@ impl Command for EnableActionMouseCapture {
 }
 
 fn main() -> Result<()> {
+    if let Some(status) = run_askpass_if_requested() {
+        std::process::exit(status);
+    }
     let shutdown = install_signal_handlers()?;
     let (repository, watch_paths): (Arc<dyn Repository>, Option<Vec<_>>) =
         if let Some(path) = env::var_os("DIFFO_MOCK_FILE") {
@@ -193,7 +196,8 @@ fn run_watch_dump(
                 RefreshResult::Error { message, .. } => eprintln!("{message}"),
                 RefreshResult::Snapshot { .. }
                 | RefreshResult::ActionCompleted { .. }
-                | RefreshResult::ActionFailed { .. } => {}
+                | RefreshResult::ActionFailed { .. }
+                | RefreshResult::Prompt { .. } => {}
             }
         }
         std::thread::sleep(Duration::from_millis(10));
@@ -248,7 +252,7 @@ fn run(
                 events.push(event::read()?);
             }
         }
-        let input_events = events.iter().map(|event| format!("{event:?}")).collect();
+        let input_events = trace_input_events(&events, workbench.secret_prompt_open());
         let input_time = Instant::now();
         events.retain(|event| wheel_friction.accepts(event, input_time));
         let scroll_before = (
@@ -275,7 +279,21 @@ fn run(
         ));
     }
 
+    if let Some(refresh) = refresh {
+        refresh.cancel();
+    }
+
     Ok(())
+}
+
+fn trace_input_events(events: &[Event], redact: bool) -> Vec<String> {
+    if redact {
+        return events
+            .iter()
+            .map(|_| "GitPrompt([redacted])".to_owned())
+            .collect();
+    }
+    events.iter().map(|event| format!("{event:?}")).collect()
 }
 
 fn draw_frame(
@@ -333,6 +351,19 @@ fn dispatch_effect(
                 }
             }
         }
+        WorkbenchEffect::Prompt { id, response } if refresh.is_some() => {
+            let refresh = refresh.expect("checked above");
+            let cancelled = matches!(response, PromptResponse::Cancel);
+            let answer = match response {
+                PromptResponse::Text(answer) => diffo_core::PromptAnswer::Text(answer),
+                PromptResponse::Confirm => diffo_core::PromptAnswer::Confirm,
+                PromptResponse::Cancel => diffo_core::PromptAnswer::Cancel,
+            };
+            if !refresh.answer_prompt(id, answer) || cancelled {
+                refresh.cancel();
+            }
+        }
+        WorkbenchEffect::Prompt { .. } => {}
         WorkbenchEffect::Repository(action) => execute_effect(repository, workbench, action),
     }
 }
@@ -340,6 +371,12 @@ fn dispatch_effect(
 fn drain_refresh(refresh: &RefreshService, workbench: &mut Workbench, generation: &mut u64) {
     while let Ok(Some(result)) = refresh.try_recv() {
         match result {
+            RefreshResult::Prompt { id, prompt } => {
+                if !workbench.open_prompt(id, prompt) {
+                    let _ = refresh.answer_prompt(id, diffo_core::PromptAnswer::Cancel);
+                    refresh.cancel();
+                }
+            }
             RefreshResult::Snapshot {
                 generation: next,
                 snapshot,
@@ -457,7 +494,7 @@ mod tests {
         event::{Event, KeyModifiers, MouseEvent, MouseEventKind},
     };
 
-    use super::{EnableActionMouseCapture, WheelFriction};
+    use super::{EnableActionMouseCapture, WheelFriction, trace_input_events};
 
     #[test]
     fn mouse_capture_requests_only_actionable_events() {
@@ -488,6 +525,24 @@ mod tests {
             &wheel(MouseEventKind::ScrollUp),
             started + Duration::from_millis(218)
         ));
+    }
+
+    #[test]
+    fn secret_prompt_input_is_redacted_from_frame_traces() {
+        let sentinel = "sentinel-secret";
+        let events = sentinel
+            .chars()
+            .map(|character| {
+                Event::Key(crossterm::event::KeyEvent::new(
+                    crossterm::event::KeyCode::Char(character),
+                    KeyModifiers::NONE,
+                ))
+            })
+            .collect::<Vec<_>>();
+
+        let redacted = trace_input_events(&events, true).join("");
+        assert!(!redacted.contains(sentinel));
+        assert!(redacted.contains("[redacted]"));
     }
 
     fn wheel(kind: MouseEventKind) -> Event {

@@ -1,6 +1,9 @@
 #![doc = include_str!("../README.md")]
 
-use std::path::PathBuf;
+use std::{
+    path::PathBuf,
+    sync::{Arc, atomic::AtomicBool},
+};
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
@@ -114,6 +117,7 @@ pub enum OperationResult {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum FailureKind {
+    Cancelled,
     PullRequired,
     Diverged,
     PushRejected,
@@ -124,6 +128,44 @@ pub enum FailureKind {
     HookRejected,
     NoRemote,
     Unknown,
+}
+
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub struct PromptId(pub u64);
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SecretKind {
+    HttpsSecret,
+    SshKeyPassphrase,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum GitPrompt {
+    Username { host: String },
+    Secret { kind: SecretKind, context: String },
+    ConfirmSshHost { host: String, fingerprint: String },
+}
+
+pub enum PromptAnswer {
+    Text(String),
+    Confirm,
+    Cancel,
+}
+
+pub trait PromptHandler: Send + Sync {
+    fn prompt(&self, id: PromptId, prompt: GitPrompt, cancelled: &AtomicBool) -> PromptAnswer;
+}
+
+pub struct RepositoryOperationContext {
+    pub prompts: Arc<dyn PromptHandler>,
+    pub cancelled: Arc<AtomicBool>,
+}
+
+impl RepositoryOperationContext {
+    #[must_use]
+    pub fn new(prompts: Arc<dyn PromptHandler>, cancelled: Arc<AtomicBool>) -> Self {
+        Self { prompts, cancelled }
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -174,4 +216,20 @@ pub trait Repository: RepositorySource {
         &self,
         action: &RepositoryAction,
     ) -> std::result::Result<OperationResult, OperationFailure>;
+
+    /// Apply an action with access to operation-scoped prompts and cancellation.
+    ///
+    /// Repository implementations that do not interact with users can use the default
+    /// implementation, which delegates to [`Repository::apply`].
+    ///
+    /// # Errors
+    ///
+    /// Returns an operation failure when the action cannot be applied or is cancelled.
+    fn apply_with_context(
+        &self,
+        action: &RepositoryAction,
+        _context: &RepositoryOperationContext,
+    ) -> std::result::Result<OperationResult, OperationFailure> {
+        self.apply(action)
+    }
 }

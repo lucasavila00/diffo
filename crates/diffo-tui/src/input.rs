@@ -704,6 +704,32 @@ mod tests {
     }
 
     #[test]
+    fn maps_commit_input_and_only_the_enabled_primary_button() {
+        let mut model = model();
+        let area = Rect::new(0, 0, 100, 30);
+        let click = |column, row| {
+            Event::Mouse(MouseEvent {
+                kind: MouseEventKind::Down(MouseButton::Left),
+                column,
+                row,
+                modifiers: KeyModifiers::NONE,
+            })
+        };
+
+        assert_eq!(
+            map_event(&click(2, 1), &model, area),
+            Some(Message::FocusCommitInput)
+        );
+        assert_eq!(map_event(&click(2, 3), &model, area), None);
+        model.focus_commit_input();
+        model.commit_message_input('x');
+        assert_eq!(
+            map_event(&click(2, 3), &model, area),
+            Some(Message::ExecutePrimaryAction)
+        );
+    }
+
+    #[test]
     fn maps_mouse_wheel_to_diff_scrolling() {
         let model = model();
         let mouse = |kind| {

@@ -549,6 +549,13 @@ fn diff_file_picker_uses_the_shared_path_menu() {
             absolute: true,
         })
     );
+
+    let shortcut = Event::Key(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::NONE));
+    assert_eq!(
+        renderer.map_event(&shortcut, &model, area),
+        Some(RendererEvent::Consumed)
+    );
+    assert!(renderer.has_open_picker_menu());
 }
 
 #[test]

@@ -358,14 +358,30 @@ fn empty_narrow_picker_has_no_phantom_target() {
     );
 }
 
-#[test]
-fn context_menu_is_shared_and_terminal_safe() {
+fn prepared_picker() -> FilePicker<usize> {
     let mut picker = FilePicker::default();
     picker.prepare(
         Rect::new(0, 0, 20, 5),
         Document::flat("Files", rows(1)),
         None,
     );
+    picker
+}
+
+fn open_menu_with_key(picker: &mut FilePicker<usize>) {
+    assert_eq!(
+        picker.handle_event(
+            &Event::Key(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::NONE)),
+            Rect::new(0, 0, 40, 10),
+        ),
+        Some(Outcome::Consumed)
+    );
+    assert!(picker.has_open_menu());
+}
+
+#[test]
+fn context_menu_renders_spacing_and_shortcuts() {
+    let mut picker = prepared_picker();
     assert_eq!(
         picker.handle_event(
             &mouse(MouseEventKind::Down(MouseButton::Right), 2, 1),
@@ -373,7 +389,6 @@ fn context_menu_is_shared_and_terminal_safe() {
         ),
         Some(Outcome::Selected(0))
     );
-    assert!(picker.has_open_menu());
 
     let backend = TestBackend::new(30, 8);
     let mut terminal = Terminal::new(backend).unwrap();
@@ -392,6 +407,26 @@ fn context_menu_is_shared_and_terminal_safe() {
         .find(|cell| cell.symbol() == "C")
         .expect("copy action");
     assert_enabled_control(copy_action);
+    let shortcut = terminal
+        .backend()
+        .buffer()
+        .content
+        .iter()
+        .find(|cell| cell.symbol() == "c")
+        .expect("menu shortcut");
+    assert_enabled_control(shortcut);
+    assert_eq!(
+        rendered_row(terminal.backend().buffer(), Rect::new(3, 2, 22, 1)),
+        "[a] Copy absolute path"
+    );
+    assert_eq!(
+        rendered_row(terminal.backend().buffer(), Rect::new(3, 3, 22, 1)).trim(),
+        ""
+    );
+    assert_eq!(
+        rendered_row(terminal.backend().buffer(), Rect::new(3, 4, 22, 1)),
+        "[r] Copy relative path"
+    );
     let dismiss = terminal
         .backend()
         .buffer()
@@ -400,7 +435,12 @@ fn context_menu_is_shared_and_terminal_safe() {
         .find(|cell| cell.symbol() == interaction::DISMISS)
         .expect("menu dismiss control");
     assert_enabled_control(dismiss);
+}
 
+#[test]
+fn context_menu_mouse_actions_have_an_inert_row_between_them() {
+    let mut picker = prepared_picker();
+    open_menu_with_key(&mut picker);
     assert_eq!(
         picker.handle_event(
             &mouse(MouseEventKind::Down(MouseButton::Left), 3, 2),
@@ -412,13 +452,20 @@ fn context_menu_is_shared_and_terminal_safe() {
         })
     );
 
-    picker.handle_event(
-        &mouse(MouseEventKind::Down(MouseButton::Right), 2, 1),
-        Rect::new(0, 0, 40, 10),
-    );
+    open_menu_with_key(&mut picker);
     assert_eq!(
         picker.handle_event(
             &mouse(MouseEventKind::Down(MouseButton::Left), 3, 3),
+            Rect::new(0, 0, 40, 10),
+        ),
+        Some(Outcome::Consumed)
+    );
+    assert!(!picker.has_open_menu());
+
+    open_menu_with_key(&mut picker);
+    assert_eq!(
+        picker.handle_event(
+            &mouse(MouseEventKind::Down(MouseButton::Left), 3, 4),
             Rect::new(0, 0, 40, 10),
         ),
         Some(Outcome::CopyPath {
@@ -429,8 +476,73 @@ fn context_menu_is_shared_and_terminal_safe() {
 }
 
 #[test]
+fn context_menu_action_shortcuts_are_lowercase() {
+    let mut picker = prepared_picker();
+    open_menu_with_key(&mut picker);
+    assert_eq!(
+        picker.handle_event(
+            &Event::Key(KeyEvent::new(KeyCode::Char('a'), KeyModifiers::NONE)),
+            Rect::new(0, 0, 40, 10),
+        ),
+        Some(Outcome::CopyPath {
+            id: 0,
+            absolute: true,
+        })
+    );
+
+    open_menu_with_key(&mut picker);
+    assert_eq!(
+        picker.handle_event(
+            &Event::Key(KeyEvent::new(KeyCode::Char('r'), KeyModifiers::NONE)),
+            Rect::new(0, 0, 40, 10),
+        ),
+        Some(Outcome::CopyPath {
+            id: 0,
+            absolute: false,
+        })
+    );
+
+    open_menu_with_key(&mut picker);
+    for character in ['A', 'R', 'C'] {
+        assert_eq!(
+            picker.handle_event(
+                &Event::Key(KeyEvent::new(KeyCode::Char(character), KeyModifiers::NONE,)),
+                Rect::new(0, 0, 40, 10),
+            ),
+            None
+        );
+        assert!(picker.has_open_menu());
+    }
+}
+
+#[test]
+fn context_menu_open_key_toggles_and_escape_closes() {
+    let mut picker = prepared_picker();
+
+    open_menu_with_key(&mut picker);
+    assert_eq!(
+        picker.handle_event(
+            &Event::Key(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::NONE)),
+            Rect::new(0, 0, 40, 10),
+        ),
+        Some(Outcome::Consumed)
+    );
+    assert!(!picker.has_open_menu());
+
+    open_menu_with_key(&mut picker);
+    assert_eq!(
+        picker.handle_event(
+            &Event::Key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE)),
+            Rect::new(0, 0, 40, 10),
+        ),
+        Some(Outcome::Consumed)
+    );
+    assert!(!picker.has_open_menu());
+}
+
+#[test]
 fn uppercase_shortcuts_are_rejected() {
-    for character in ['J', 'W', 'K', 'L', 'S', 'G'] {
+    for character in ['J', 'W', 'K', 'L', 'S', 'G', 'C'] {
         assert_eq!(
             navigation(&KeyEvent::new(KeyCode::Char(character), KeyModifiers::NONE)),
             None

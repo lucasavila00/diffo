@@ -104,7 +104,7 @@ pub mod design {
     pub const COMMAND_PALETTE_MAX_HEIGHT: u16 = 18;
     pub const HELP_WIDTH: ResponsiveWidth = ResponsiveWidth::new(80, 40, 90);
     pub const HELP_TOP_PERCENT: u16 = 10;
-    pub const HELP_MAX_HEIGHT: u16 = 26;
+    pub const HELP_MAX_HEIGHT: u16 = 27;
     pub const HELP_SHORTCUT_COLUMN_WIDTH: u16 = 22;
     pub const HELP_ACTION_MIN_WIDTH: u16 = 24;
     pub const HELP_COLUMN_GAP: u16 = 2;
@@ -117,14 +117,14 @@ pub mod design {
     pub const TOAST_MIN_HEIGHT: u16 = 3;
     pub const TOAST_MAX_HEIGHT: u16 = 6;
     pub const PATH_MENU_WIDTH: u16 = 24;
-    pub const PATH_MENU_HEIGHT: u16 = 4;
+    pub const PATH_MENU_HEIGHT: u16 = 5;
     pub const TREE_HEADER_MIN_WIDTH: u16 = 12;
     pub const TREE_HEADER_ACTION_WIDTH: u16 = 3;
     pub const TREE_HEADER_ACTION_GAP: u16 = 1;
     pub const TREE_HEADER_ACTIONS_WIDTH: u16 =
         TREE_HEADER_ACTION_WIDTH * 2 + TREE_HEADER_ACTION_GAP + BORDER_WIDTH;
     pub const PATH_MENU_FIRST_ACTION_ROW: u16 = 1;
-    pub const PATH_MENU_SECOND_ACTION_ROW: u16 = 2;
+    pub const PATH_MENU_SECOND_ACTION_ROW: u16 = 3;
     pub const SIDE_BY_SIDE_DIVIDER_WIDTH: u16 = 3;
     pub const SIDE_BY_SIDE_COLUMN_COUNT: u16 = 2;
     pub const DIFF_RIGHT_RAIL_WIDTH: u16 = BORDER_WIDTH * 2;

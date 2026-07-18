@@ -503,7 +503,7 @@ fn merge_coverage(viewer: &mut model::Viewer) {
 mod tests {
     use super::model::Viewer;
     use super::*;
-    use crossterm::event::MouseEvent;
+    use crossterm::event::{KeyEvent, MouseEvent};
     use ratatui::{Terminal, backend::TestBackend, text::Line};
     use std::collections::HashMap;
 
@@ -682,6 +682,13 @@ mod tests {
                 absolute: true,
             })
         );
+
+        let shortcut = Event::Key(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::NONE));
+        assert_eq!(
+            explorer.handle_event(&shortcut, area, split),
+            Some(ExplorerEvent::Consumed)
+        );
+        assert!(explorer.picker.has_open_menu());
     }
 
     #[test]

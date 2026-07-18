@@ -79,6 +79,7 @@ fn bindings_are_unique_and_generate_help() {
     assert!(rows.contains(&("Space".to_owned(), "Stage / unstage selected file")));
     assert!(rows.contains(&("j / w".to_owned(), "Previous file")));
     assert!(rows.contains(&("k / l / s".to_owned(), "Next file")));
+    assert!(rows.contains(&("c".to_owned(), "Open path menu")));
     assert!(rows.contains(&("n".to_owned(), "Next change")));
     assert!(rows.contains(&("p".to_owned(), "Previous change")));
     assert!(rows.contains(&("q / Esc / Ctrl+c".to_owned(), "Quit")));
@@ -93,6 +94,7 @@ fn private_diff_bindings_do_not_own_picker_navigation() {
         KeyCode::Char('l'),
         KeyCode::Char('s'),
         KeyCode::Char('g'),
+        KeyCode::Char('c'),
         KeyCode::Home,
         KeyCode::End,
     ] {

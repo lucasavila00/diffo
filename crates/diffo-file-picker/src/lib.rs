@@ -35,6 +35,7 @@ pub enum Navigation {
     First,
     Last,
     Activate,
+    OpenMenu,
 }
 
 #[derive(Clone, Debug)]
@@ -380,6 +381,7 @@ where
                     Some(Outcome::Activated(id))
                 }
             }
+            Navigation::OpenMenu => self.open_context_menu(),
         }
     }
 
@@ -637,9 +639,28 @@ where
         overlay_area: Rect,
     ) -> Option<Outcome<K>> {
         match event {
-            Event::Key(key) if key.kind == KeyEventKind::Press && key.code == KeyCode::Esc => {
+            Event::Key(key)
+                if key.kind == KeyEventKind::Press
+                    && (key.code == KeyCode::Esc
+                        || (key.code == KeyCode::Char('c')
+                            && key.modifiers == KeyModifiers::NONE)) =>
+            {
                 self.context_menu = None;
                 Some(Outcome::Consumed)
+            }
+            Event::Key(key)
+                if key.kind == KeyEventKind::Press && key.modifiers == KeyModifiers::NONE =>
+            {
+                let absolute = match key.code {
+                    KeyCode::Char('a') => true,
+                    KeyCode::Char('r') => false,
+                    _ => return None,
+                };
+                let menu = self.context_menu.take()?;
+                Some(Outcome::CopyPath {
+                    id: menu.id,
+                    absolute,
+                })
             }
             Event::Mouse(mouse) if mouse.kind == MouseEventKind::Down(MouseButton::Left) => {
                 let menu_area = self.context_menu_area(overlay_area)?;
@@ -666,6 +687,25 @@ where
         }
     }
 
+    fn open_context_menu(&mut self) -> Option<Outcome<K>> {
+        let id = self.selected.clone()?;
+        if !self.row(&id).is_some_and(|row| row.context_menu) {
+            return None;
+        }
+        let index = self.selected_visible_index()?;
+        let row = self
+            .metrics
+            .list_area
+            .y
+            .saturating_add(u16::try_from(index.saturating_sub(self.metrics.offset)).ok()?);
+        self.context_menu = Some(ContextMenu {
+            id,
+            column: self.metrics.list_area.x,
+            row,
+        });
+        Some(Outcome::Consumed)
+    }
+
     fn render_context_menu(&self, frame: &mut Frame) {
         let Some(area) = self.context_menu_area(frame.area()) else {
             return;
@@ -673,12 +713,17 @@ where
         frame.render_widget(Clear, area);
         frame.render_widget(
             List::new([
-                ListItem::new("Copy absolute path").style(enabled_control_style()),
-                ListItem::new("Copy relative path").style(enabled_control_style()),
+                ListItem::new("[a] Copy absolute path").style(enabled_control_style()),
+                ListItem::new(""),
+                ListItem::new("[r] Copy relative path").style(enabled_control_style()),
             ])
             .block(
                 Block::default()
-                    .title(" Path ")
+                    .title(Line::from(vec![
+                        Span::raw(" Path "),
+                        Span::styled("[c]", enabled_control_style()),
+                        Span::raw(" "),
+                    ]))
                     .title(
                         Line::styled(interaction::DISMISS, enabled_control_style())
                             .alignment(Alignment::Right),
@@ -774,6 +819,7 @@ pub fn navigation(key: &KeyEvent) -> Option<Navigation> {
         KeyCode::Home | KeyCode::Char('g') => Some(Navigation::First),
         KeyCode::End => Some(Navigation::Last),
         KeyCode::Enter => Some(Navigation::Activate),
+        KeyCode::Char('c') => Some(Navigation::OpenMenu),
         _ => None,
     }
 }
@@ -785,6 +831,7 @@ pub fn help_rows() -> Vec<(String, &'static str)> {
         ("k / l / s".to_owned(), "Next file"),
         ("Home / g".to_owned(), "First file"),
         ("End".to_owned(), "Last file"),
+        ("c".to_owned(), "Open path menu"),
     ]
 }
 

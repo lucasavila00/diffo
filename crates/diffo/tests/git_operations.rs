@@ -93,6 +93,23 @@ fn space_stages_selected_file() -> Result<()> {
 }
 
 #[test]
+fn space_stages_and_selects_the_next_unstaged_file() -> Result<()> {
+    let repository = TestRepository::new()?;
+    fs::write(repository.worktree.join("tracked.txt"), "changed\n")?;
+    fs::write(repository.worktree.join("next.txt"), "next\n")?;
+    let mut screen = repository.screen()?;
+
+    screen
+        .wait_for(&Selector::selected_row("tracked.txt"))?
+        .press(Key::Char(' '))?;
+    wait_for("tracked.txt to be staged", || {
+        Ok(cached_paths(&repository.worktree)?.contains("tracked.txt"))
+    })?;
+    screen.wait_for(&Selector::selected_row("next.txt"))?;
+    Ok(())
+}
+
+#[test]
 fn space_unstages_selected_file() -> Result<()> {
     let repository = TestRepository::new()?;
     fs::write(repository.worktree.join("tracked.txt"), "changed\n")?;

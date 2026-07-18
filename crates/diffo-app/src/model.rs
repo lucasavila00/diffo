@@ -124,6 +124,7 @@ pub struct Model {
     expanded_file_pane_percent: u16,
     cursor: usize,
     next_toast_id: u64,
+    selection_after_action: Option<FileKey>,
 }
 
 impl Model {
@@ -151,6 +152,7 @@ impl Model {
             expanded_file_pane_percent: 25,
             cursor: 0,
             next_toast_id: 1,
+            selection_after_action: None,
         }
     }
 
@@ -496,11 +498,26 @@ impl Model {
     }
 
     #[must_use]
-    pub fn toggle_stage_selected(&self) -> Option<RepositoryAction> {
-        match self.selected.as_ref()?.area {
+    pub fn toggle_stage_selected(&mut self) -> Option<RepositoryAction> {
+        let selected = self.selected.clone()?;
+        let action = match selected.area {
             ChangeArea::Unstaged => self.stage_selected(),
             ChangeArea::Staged => self.unstage_selected(),
+        };
+        if action.is_some() {
+            let peers = file_keys(&self.snapshot)
+                .into_iter()
+                .filter(|key| key.area == selected.area)
+                .collect::<Vec<_>>();
+            self.selection_after_action =
+                peers
+                    .iter()
+                    .position(|key| key == &selected)
+                    .and_then(|index| {
+                        (peers.len() > 1).then(|| peers[(index + 1) % peers.len()].clone())
+                    });
         }
+        action
     }
 
     #[must_use]
@@ -571,26 +588,26 @@ impl Model {
         .then_some(RepositoryAction::Unstage(path))
     }
 
-    pub fn refresh(&mut self, snapshot: RepositorySnapshot) {
-        let composer_state = self.commit_composer_state;
-        if composer_state == CommitComposerState::Pending(PrimaryAction::Commit) {
-            self.commit_message.clear();
-            self.commit_message_cursor = 0;
-        }
-        self.commit_composer_state = match composer_state {
-            CommitComposerState::Focused => CommitComposerState::Focused,
-            CommitComposerState::Idle | CommitComposerState::Pending(_) => {
-                CommitComposerState::Idle
-            }
-        };
-        self.network_operation = None;
+    pub fn repository_changed(&mut self, snapshot: RepositorySnapshot) {
+        self.install_snapshot(snapshot, false);
+    }
+
+    fn install_snapshot(&mut self, snapshot: RepositorySnapshot, action_completed: bool) {
+        let intended_selection = action_completed
+            .then(|| self.selection_after_action.take())
+            .flatten();
         let old_selected = self.selected.clone();
         let old_cursor = self.cursor;
         let keys = file_keys(&snapshot);
 
-        let cursor = old_selected
+        let cursor = intended_selection
             .as_ref()
             .and_then(|selected| keys.iter().position(|key| key == selected))
+            .or_else(|| {
+                old_selected
+                    .as_ref()
+                    .and_then(|selected| keys.iter().position(|key| key == selected))
+            })
             .unwrap_or_else(|| old_cursor.min(keys.len().saturating_sub(1)));
         let selected = keys.get(cursor).cloned();
         let preserve_scroll = old_selected == selected && selected.is_some();
@@ -603,6 +620,21 @@ impl Model {
         self.error = None;
     }
 
+    fn finish_pending_operation(&mut self) {
+        let composer_state = self.commit_composer_state;
+        if composer_state == CommitComposerState::Pending(PrimaryAction::Commit) {
+            self.commit_message.clear();
+            self.commit_message_cursor = 0;
+        }
+        self.commit_composer_state = match composer_state {
+            CommitComposerState::Focused => CommitComposerState::Focused,
+            CommitComposerState::Idle | CommitComposerState::Pending(_) => {
+                CommitComposerState::Idle
+            }
+        };
+        self.network_operation = None;
+    }
+
     pub fn show_error(&mut self, error: impl Into<String>) {
         self.commit_composer_state = match self.commit_composer_state {
             CommitComposerState::Pending(PrimaryAction::Commit) => CommitComposerState::Focused,
@@ -610,11 +642,13 @@ impl Model {
             state => state,
         };
         self.network_operation = None;
+        self.selection_after_action = None;
         self.error = Some(error.into());
     }
 
     pub fn complete_operation(&mut self, result: &OperationResult, snapshot: RepositorySnapshot) {
-        self.refresh(snapshot);
+        self.finish_pending_operation();
+        self.install_snapshot(snapshot, true);
         if let Some((kind, title)) = operation_result_toast(result) {
             self.push_toast(kind, title, None);
         }
@@ -811,6 +845,35 @@ mod tests {
         assert_eq!(
             app.stage_selected(),
             Some(RepositoryAction::Stage(PathBuf::from("both.txt")))
+        );
+    }
+
+    #[test]
+    fn staging_for_review_selects_the_next_unstaged_file_after_refresh() {
+        let mut app = Model::new(snapshot(), AccessMode::ReadWrite);
+        app.select_next();
+        assert_eq!(
+            app.selected,
+            Some(FileKey {
+                path: PathBuf::from("both.txt"),
+                area: ChangeArea::Unstaged,
+            })
+        );
+
+        assert_eq!(
+            app.toggle_stage_selected(),
+            Some(RepositoryAction::Stage(PathBuf::from("both.txt")))
+        );
+        let mut refreshed = snapshot();
+        refreshed.files[0].unstaged = None;
+        app.refresh(refreshed);
+
+        assert_eq!(
+            app.selected,
+            Some(FileKey {
+                path: PathBuf::from("new.txt"),
+                area: ChangeArea::Unstaged,
+            })
         );
     }
 

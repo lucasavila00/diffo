@@ -123,7 +123,7 @@ pub fn update(model: &mut Model, message: Message) -> Option<Effect> {
         Message::ExecutePrimaryAction => {
             return model.execute_primary_action().map(Effect::Repository);
         }
-        Message::SnapshotLoaded(snapshot) => model.refresh(snapshot),
+        Message::SnapshotLoaded(snapshot) => model.repository_changed(snapshot),
         Message::OperationFailed(error) => model.show_error(error),
         Message::OperationCompleted(result, snapshot) => {
             model.complete_operation(&result, snapshot);

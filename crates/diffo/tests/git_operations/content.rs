@@ -11,8 +11,8 @@ fn mock_renamed_file_renders_unchanged_content() -> Result<()> {
     )?;
 
     screen
-        .wait_for_text("src/empty-and-")?
-        .click(&Selector::text("src/content-an"))?
+        .wait_for_text("src/empty-...")?
+        .click(&Selector::text("src/conten..."))?
         .wait_for_text("pub struct RenamedFile")?
         .wait_for_text("Content is unchanged by the rename")?;
     Ok(())

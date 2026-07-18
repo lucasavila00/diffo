@@ -1,8 +1,8 @@
 use super::{
-    Alignment, Block, Borders, Cell, Clear, Constraint, Frame, Layout, Model, Modifier, Paragraph,
-    Rect, Row, Style, Table, Toast, ToastKind, input, terminal_safe_text,
+    Alignment, Block, Borders, Cell, Clear, Constraint, Frame, Layout, Line, Model, Modifier,
+    Paragraph, Rect, Row, Style, Table, Toast, ToastKind, input, terminal_safe_text,
 };
-use diffo_ui::{design, theme};
+use diffo_ui::{design, disabled_control_style, enabled_control_style, interaction, theme};
 
 pub(super) fn render_help(frame: &mut Frame, model: &Model, content_area: Rect) {
     if !model.help_open {
@@ -77,7 +77,11 @@ pub fn render_toasts(frame: &mut Frame, toasts: &[Toast], content_area: Rect) {
                 .block(
                     Block::default()
                         .borders(Borders::ALL)
-                        .border_style(Style::default().fg(theme::CHROME)),
+                        .border_style(Style::default().fg(theme::CHROME))
+                        .title(
+                            Line::styled(interaction::DISMISS, enabled_control_style())
+                                .alignment(Alignment::Right),
+                        ),
                 ),
             area,
         );
@@ -177,12 +181,9 @@ pub(super) fn render_commit_editor(frame: &mut Frame, model: &Model, content_are
     let commit_style = if model.primary_action() == diffo_app::PrimaryAction::Commit
         && model.primary_action_enabled()
     {
-        Style::default()
-            .bg(theme::SELECTION_BACKGROUND)
-            .fg(theme::TEXT)
-            .add_modifier(Modifier::BOLD)
+        enabled_control_style().bg(theme::SELECTION_BACKGROUND)
     } else {
-        Style::default().fg(theme::CHROME)
+        disabled_control_style()
     };
     frame.render_widget(
         Paragraph::new("[ Commit ]")
@@ -193,13 +194,13 @@ pub(super) fn render_commit_editor(frame: &mut Frame, model: &Model, content_are
     frame.render_widget(
         Paragraph::new("[ Cancel ]")
             .alignment(Alignment::Center)
-            .style(Style::default().fg(theme::TEXT)),
+            .style(enabled_control_style()),
         cancel,
     );
     frame.render_widget(
         Paragraph::new("Enter: commit · Esc: cancel · click outside: close")
             .alignment(Alignment::Center)
-            .style(Style::default().fg(theme::CHROME)),
+            .style(enabled_control_style()),
         footer,
     );
 

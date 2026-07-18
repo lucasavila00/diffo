@@ -6,9 +6,10 @@ use std::hash::Hash;
 use crossterm::event::{
     Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind,
 };
+use diffo_ui::interaction;
 use diffo_ui::{
-    design, maximum_scroll, scroll_offset, scrollbar_position, scrollbar_position_count,
-    terminal_safe_text, theme, wheel_scroll_delta,
+    design, enabled_control_style, maximum_scroll, scroll_offset, scrollbar_position,
+    scrollbar_position_count, terminal_safe_text, theme, wheel_scroll_delta,
 };
 use ratatui::{
     Frame,
@@ -16,7 +17,7 @@ use ratatui::{
     style::{Modifier, Style},
     text::{Line, Span},
     widgets::{
-        Block, Borders, Clear, HighlightSpacing, List, ListItem, ListState, Paragraph, Scrollbar,
+        Block, Borders, Clear, List, ListItem, ListState, Paragraph, Scrollbar,
         ScrollbarOrientation, ScrollbarState,
     },
 };
@@ -42,7 +43,7 @@ pub struct Row<K> {
     pub label: Line<'static>,
     pub depth: usize,
     pub branch: bool,
-    pub action: Option<(String, Style)>,
+    pub action: Option<String>,
     pub context_menu: bool,
 }
 
@@ -70,8 +71,8 @@ impl<K> Row<K> {
     }
 
     #[must_use]
-    pub fn with_action(mut self, label: impl Into<String>, style: Style) -> Self {
-        self.action = Some((label.into(), style));
+    pub fn with_action(mut self, label: impl Into<String>) -> Self {
+        self.action = Some(label.into());
         self
     }
 }
@@ -203,24 +204,39 @@ where
     pub fn render(&self, frame: &mut Frame, focused: bool) {
         let title = if self.document.mode == Mode::Flat {
             self.document.panel_action.as_deref().map_or_else(
-                || format!(" {} ", terminal_safe_text(&self.document.title)),
-                |action| {
-                    format!(
-                        " {} {} ",
-                        terminal_safe_text(&self.document.title),
-                        terminal_safe_text(action)
+                || {
+                    Line::styled(
+                        format!(" {} ", terminal_safe_text(&self.document.title)),
+                        Style::default().fg(theme::TEXT),
                     )
+                },
+                |action| {
+                    Line::from(vec![
+                        Span::styled(
+                            format!(" {} ", terminal_safe_text(&self.document.title)),
+                            Style::default().fg(theme::TEXT),
+                        ),
+                        Span::styled(
+                            format!("{} ", terminal_safe_text(action)),
+                            enabled_control_style(),
+                        ),
+                    ])
                 },
             )
         } else {
-            format!(" {} ", terminal_safe_text(&self.document.title))
+            Line::styled(
+                format!(" {} ", terminal_safe_text(&self.document.title)),
+                Style::default().fg(theme::TEXT),
+            )
         };
         let mut block = Block::default()
             .borders(Borders::ALL)
             .border_style(self.document.border_style)
             .title(title);
         if self.document.mode == Mode::Tree && self.area.width >= design::TREE_HEADER_MIN_WIDTH {
-            block = block.title(Line::from("[-] [+]").alignment(Alignment::Right));
+            block = block.title(
+                Line::styled("[-] [+]", enabled_control_style()).alignment(Alignment::Right),
+            );
         }
         frame.render_widget(block, self.area);
 
@@ -232,12 +248,6 @@ where
             return;
         }
 
-        let items = self
-            .visible
-            .iter()
-            .skip(self.metrics.offset)
-            .take(usize::from(self.metrics.list_area.height))
-            .map(|index| self.list_item(&self.document.rows[*index]));
         let selected = focused
             .then(|| self.selected_visible_index())
             .flatten()
@@ -246,14 +256,17 @@ where
                     .checked_sub(self.metrics.offset)
                     .filter(|index| *index < usize::from(self.metrics.list_area.height))
             });
-        let list = List::new(items)
-            .highlight_style(
-                Style::default()
-                    .bg(theme::SELECTION_BACKGROUND)
-                    .add_modifier(Modifier::BOLD),
-            )
-            .highlight_symbol("› ")
-            .highlight_spacing(HighlightSpacing::Always);
+        let items = self
+            .visible
+            .iter()
+            .skip(self.metrics.offset)
+            .take(usize::from(self.metrics.list_area.height))
+            .map(|index| self.list_item(&self.document.rows[*index]));
+        let list = List::new(items).highlight_style(
+            Style::default()
+                .bg(theme::SELECTION_BACKGROUND)
+                .add_modifier(Modifier::BOLD),
+        );
         let mut state = ListState::default().with_selected(selected);
         frame.render_stateful_widget(list, self.metrics.list_area, &mut state);
         if self.metrics.maximum_offset > 0 && !self.metrics.scrollbar_area.is_empty() {
@@ -495,7 +508,14 @@ where
     }
 
     fn list_item(&self, row: &Row<K>) -> ListItem<'static> {
-        let mut spans = Vec::new();
+        let mut spans = vec![Span::styled(
+            if self.document.mode == Mode::Flat {
+                interaction::FLAT_ROW
+            } else {
+                "  "
+            },
+            enabled_control_style(),
+        )];
         if self.document.mode == Mode::Tree {
             spans.push(Span::raw("  ".repeat(row.depth)));
             spans.push(Span::raw(if row.branch {
@@ -509,13 +529,18 @@ where
             }));
         }
         spans.extend(row.label.spans.clone());
-        if let Some((action, style)) = &row.action {
+        if let Some(action) = &row.action {
+            let available = usize::from(self.metrics.list_area.width);
+            let action_width = Span::raw(action.clone()).width();
+            let leading_width = available.saturating_sub(action_width);
+            let gap = usize::from(leading_width > 0);
+            spans = truncate_spans(&spans, leading_width.saturating_sub(gap));
             let used = Line::from(spans.clone()).width();
-            let available = usize::from(self.metrics.list_area.width)
-                .saturating_sub(usize::from(design::PICKER_SELECTION_PREFIX_WIDTH));
-            let spacing = available.saturating_sub(used.saturating_add(action.chars().count()));
+            let spacing = available.saturating_sub(used.saturating_add(action_width));
             spans.push(Span::raw(" ".repeat(spacing)));
-            spans.push(Span::styled(action.clone(), *style));
+            spans.push(Span::styled(action.clone(), enabled_control_style()));
+        } else {
+            spans = truncate_spans(&spans, usize::from(self.metrics.list_area.width));
         }
         ListItem::new(Line::from(spans).style(row.label.style))
     }
@@ -566,7 +591,7 @@ where
     }
 
     fn row_action_contains(&self, row: &Row<K>, column: u16) -> bool {
-        row.action.as_ref().is_some_and(|(action, _)| {
+        row.action.as_ref().is_some_and(|action| {
             let width = u16::try_from(action.chars().count()).unwrap_or(u16::MAX);
             column >= self.metrics.list_area.right().saturating_sub(width)
         })
@@ -647,9 +672,17 @@ where
         };
         frame.render_widget(Clear, area);
         frame.render_widget(
-            List::new(["Copy absolute path", "Copy relative path"]).block(
+            List::new([
+                ListItem::new("Copy absolute path").style(enabled_control_style()),
+                ListItem::new("Copy relative path").style(enabled_control_style()),
+            ])
+            .block(
                 Block::default()
                     .title(" Path ")
+                    .title(
+                        Line::styled(interaction::DISMISS, enabled_control_style())
+                            .alignment(Alignment::Right),
+                    )
                     .borders(Borders::ALL)
                     .border_style(Style::default().fg(theme::CHROME)),
             ),
@@ -691,6 +724,43 @@ where
     fn row(&self, id: &K) -> Option<&Row<K>> {
         self.document.rows.iter().find(|row| &row.id == id)
     }
+}
+
+fn truncate_spans(spans: &[Span<'static>], width: usize) -> Vec<Span<'static>> {
+    if Line::from(spans.to_vec()).width() <= width {
+        return spans.to_vec();
+    }
+    if width == 0 {
+        return Vec::new();
+    }
+
+    let ellipsis_width = width.min(3);
+    let content_width = width.saturating_sub(ellipsis_width);
+    let mut truncated = Vec::new();
+    let mut used = 0_usize;
+    let mut ellipsis_style = Style::default();
+
+    'spans: for span in spans {
+        let mut content = String::new();
+        for character in span.content.chars() {
+            let character_width = Span::raw(character.to_string()).width();
+            if used.saturating_add(character_width) > content_width {
+                ellipsis_style = span.style;
+                if !content.is_empty() {
+                    truncated.push(Span::styled(content, span.style));
+                }
+                break 'spans;
+            }
+            content.push(character);
+            used = used.saturating_add(character_width);
+        }
+        if !content.is_empty() {
+            truncated.push(Span::styled(content, span.style));
+        }
+        ellipsis_style = span.style;
+    }
+    truncated.push(Span::styled(".".repeat(ellipsis_width), ellipsis_style));
+    truncated
 }
 
 #[must_use]
@@ -737,6 +807,18 @@ mod tests {
         (0..count)
             .map(|id| Row::flat(id, Line::raw(format!("file-{id}"))))
             .collect()
+    }
+
+    fn rendered_row(buffer: &ratatui::buffer::Buffer, area: Rect) -> String {
+        (area.x..area.right())
+            .map(|column| buffer[(column, area.y)].symbol())
+            .collect()
+    }
+
+    fn assert_enabled_control(cell: &ratatui::buffer::Cell) {
+        assert_eq!(cell.fg, theme::TEXT);
+        assert_ne!(cell.fg, theme::CHROME);
+        assert!(cell.modifier.contains(Modifier::BOLD));
     }
 
     #[test]
@@ -830,20 +912,16 @@ mod tests {
     }
 
     #[test]
-    fn rendering_preserves_label_style_under_selection_and_explicit_action_style() {
+    fn rendering_preserves_label_style_and_owns_the_action_style() {
         let label_style = Style::default()
             .fg(Color::LightRed)
             .add_modifier(Modifier::CROSSED_OUT);
-        let action_style = Style::default().fg(Color::LightGreen);
         let mut picker = FilePicker::default();
         picker.prepare(
             Rect::new(0, 0, 30, 4),
             Document::flat(
                 "Files",
-                vec![
-                    Row::flat(0, Line::styled("D  deleted.txt", label_style))
-                        .with_action("[+]", action_style),
-                ],
+                vec![Row::flat(0, Line::styled("D  deleted.txt", label_style)).with_action("[+]")],
             ),
             None,
         );
@@ -865,8 +943,51 @@ mod tests {
 
         let action = &buffer[(26, 1)];
         assert_eq!(action.symbol(), "[");
-        assert_eq!(action.fg, Color::LightGreen);
+        assert_enabled_control(action);
         assert_eq!(action.bg, theme::SELECTION_BACKGROUND);
+        let selection = &buffer[(1, 1)];
+        assert_eq!(selection.symbol(), "·");
+        assert_enabled_control(selection);
+        assert_eq!(selection.bg, theme::SELECTION_BACKGROUND);
+    }
+
+    #[test]
+    fn panel_actions_are_high_contrast_and_distinct_from_borders() {
+        let mut flat_document = Document::flat("Changes", Vec::<Row<usize>>::new());
+        flat_document.panel_action = Some("[+] Stage All".to_owned());
+        let mut flat = FilePicker::default();
+        flat.prepare(Rect::new(0, 0, 30, 4), flat_document, None);
+        let backend = TestBackend::new(30, 4);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|frame| flat.render(frame, false)).unwrap();
+
+        let buffer = terminal.backend().buffer();
+        let plus = buffer
+            .content
+            .iter()
+            .find(|cell| cell.symbol() == "+")
+            .expect("flat panel action");
+        assert_enabled_control(plus);
+        assert_eq!(buffer[(0, 0)].fg, theme::CHROME);
+
+        let mut tree = FilePicker::default();
+        tree.prepare(
+            Rect::new(0, 0, 30, 4),
+            Document::tree("Explorer", Vec::<Row<usize>>::new()),
+            None,
+        );
+        terminal.draw(|frame| tree.render(frame, false)).unwrap();
+
+        let buffer = terminal.backend().buffer();
+        for symbol in ["-", "+"] {
+            let control = buffer
+                .content
+                .iter()
+                .find(|cell| cell.symbol() == symbol)
+                .unwrap_or_else(|| panic!("tree {symbol} action"));
+            assert_enabled_control(control);
+        }
+        assert_eq!(buffer[(0, 0)].fg, theme::CHROME);
     }
 
     #[test]
@@ -895,6 +1016,117 @@ mod tests {
         assert_eq!(picker.selected(), Some(&1));
         picker.expand_all();
         assert_eq!(picker.visible.len(), 4);
+    }
+
+    #[test]
+    fn every_unselected_flat_row_has_a_persistent_click_marker() {
+        let mut picker = FilePicker::default();
+        picker.prepare(
+            Rect::new(0, 0, 20, 4),
+            Document::flat("Files", rows(1)),
+            None,
+        );
+        let backend = TestBackend::new(20, 4);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|frame| picker.render(frame, false)).unwrap();
+
+        let marker = &terminal.backend().buffer()[(1, 1)];
+        assert_eq!(marker.symbol(), "·");
+        assert_enabled_control(marker);
+    }
+
+    #[test]
+    fn tree_rows_keep_their_structure_when_selected() {
+        let mut picker = FilePicker::default();
+        picker.prepare(
+            Rect::new(0, 0, 20, 5),
+            Document::tree(
+                "Explorer",
+                vec![
+                    Row::tree(0, Line::raw("src"), 0, true),
+                    Row::tree(1, Line::raw("README"), 0, false),
+                ],
+            ),
+            None,
+        );
+        let backend = TestBackend::new(20, 5);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|frame| picker.render(frame, false)).unwrap();
+
+        let buffer = terminal.backend().buffer();
+        assert_eq!(buffer[(1, 1)].symbol(), " ");
+        assert_eq!(buffer[(3, 1)].symbol(), "▸");
+        assert!(!rendered_row(buffer, Rect::new(1, 1, 18, 1)).contains('·'));
+        assert!(!rendered_row(buffer, Rect::new(1, 2, 18, 1)).contains('·'));
+
+        terminal.draw(|frame| picker.render(frame, true)).unwrap();
+
+        let buffer = terminal.backend().buffer();
+        assert_eq!(buffer[(1, 1)].symbol(), " ");
+        assert_eq!(buffer[(3, 1)].symbol(), "▸");
+        assert!(!rendered_row(buffer, Rect::new(1, 1, 18, 1)).contains('›'));
+        let selected_label = &buffer[(5, 1)];
+        assert_eq!(selected_label.symbol(), "s");
+        assert_eq!(selected_label.bg, theme::SELECTION_BACKGROUND);
+        assert!(selected_label.modifier.contains(Modifier::BOLD));
+    }
+
+    #[test]
+    fn long_labels_use_three_dots_without_hiding_row_actions() {
+        let label_style = Style::default().fg(Color::Yellow);
+        let mut flat = FilePicker::default();
+        flat.prepare(
+            Rect::new(0, 0, 18, 4),
+            Document::flat(
+                "Files",
+                vec![
+                    Row::flat(0, Line::styled("very-long-file-name.rs", label_style))
+                        .with_action("[+]"),
+                ],
+            ),
+            None,
+        );
+        let backend = TestBackend::new(18, 4);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|frame| flat.render(frame, false)).unwrap();
+
+        let row = rendered_row(terminal.backend().buffer(), flat.metrics().list_area);
+        assert!(row.contains("..."), "{row:?}");
+        assert!(row.ends_with("[+]"), "{row:?}");
+        let first_dot = terminal
+            .backend()
+            .buffer()
+            .content
+            .iter()
+            .find(|cell| cell.symbol() == ".")
+            .expect("truncation dots");
+        assert_eq!(first_dot.fg, Color::Yellow);
+        let action = &terminal.backend().buffer()[(
+            flat.metrics().list_area.right().saturating_sub(3),
+            flat.metrics().list_area.y,
+        )];
+        assert_eq!(action.symbol(), "[");
+        assert_enabled_control(action);
+
+        let mut tree = FilePicker::default();
+        tree.prepare(
+            Rect::new(0, 0, 18, 4),
+            Document::tree(
+                "Explorer",
+                vec![Row::tree(
+                    0,
+                    Line::raw("very-long-tree-file-name.rs"),
+                    0,
+                    false,
+                )],
+            ),
+            None,
+        );
+        terminal.draw(|frame| tree.render(frame, false)).unwrap();
+
+        let row = rendered_row(terminal.backend().buffer(), tree.metrics().list_area);
+        assert!(row.contains("..."), "{row:?}");
+        assert!(!row.starts_with('·'), "{row:?}");
     }
 
     #[test]
@@ -943,6 +1175,23 @@ mod tests {
                 picker.render_menu(frame);
             })
             .unwrap();
+
+        let copy_action = terminal
+            .backend()
+            .buffer()
+            .content
+            .iter()
+            .find(|cell| cell.symbol() == "C")
+            .expect("copy action");
+        assert_enabled_control(copy_action);
+        let dismiss = terminal
+            .backend()
+            .buffer()
+            .content
+            .iter()
+            .find(|cell| cell.symbol() == interaction::DISMISS)
+            .expect("menu dismiss control");
+        assert_enabled_control(dismiss);
 
         assert_eq!(
             picker.handle_event(

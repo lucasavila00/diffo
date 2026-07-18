@@ -5,15 +5,13 @@ use super::{
     terminal_safe_text,
 };
 use diffo_text_view::{Viewport, ViewportMetrics, render_lines, render_scrollbars};
-use diffo_ui::{design, theme};
+use diffo_ui::{design, enabled_control_style, theme};
 
 pub(super) fn render_hunk_button(frame: &mut Frame, area: Rect, label: &str) {
     frame.render_widget(
-        Paragraph::new(label).alignment(Alignment::Center).style(
-            Style::default()
-                .fg(theme::TEXT)
-                .bg(theme::SELECTION_BACKGROUND),
-        ),
+        Paragraph::new(label)
+            .alignment(Alignment::Center)
+            .style(enabled_control_style().bg(theme::SELECTION_BACKGROUND)),
         area,
     );
 }

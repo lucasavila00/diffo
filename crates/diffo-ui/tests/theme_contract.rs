@@ -1,8 +1,8 @@
 use std::{fs, path::Path};
 
-use diffo_ui::{design, theme};
+use diffo_ui::{design, disabled_control_style, enabled_control_style, interaction, theme};
 use ratatui::layout::Margin;
-use ratatui::style::Color;
+use ratatui::style::{Color, Modifier};
 
 #[test]
 fn semantic_palette_is_fixed() {
@@ -15,6 +15,19 @@ fn semantic_palette_is_fixed() {
     assert_eq!(theme::DANGER, Color::LightRed);
     assert_eq!(theme::CONFLICT_FOREGROUND, Color::LightYellow);
     assert_eq!(theme::CONFLICT_BACKGROUND, Color::Indexed(58));
+}
+
+#[test]
+fn enabled_controls_are_distinct_from_chrome() {
+    let style = enabled_control_style();
+    assert_eq!(style.fg, Some(theme::TEXT));
+    assert_ne!(style.fg, Some(theme::CHROME));
+    assert!(style.add_modifier.contains(Modifier::BOLD));
+    assert_eq!(disabled_control_style().fg, Some(theme::CHROME));
+    assert_eq!(interaction::FLAT_ROW, "· ");
+    assert_eq!(interaction::EDIT, "✎");
+    assert_eq!(interaction::DISMISS, "×");
+    assert_eq!(interaction::PANE_DRAG, "↔");
 }
 
 #[test]

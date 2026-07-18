@@ -27,6 +27,14 @@ pub mod theme {
     pub const CONFLICT_BACKGROUND: Color = Color::Indexed(58);
 }
 
+/// Fixed markers for mouse-interactive surfaces.
+pub mod interaction {
+    pub const FLAT_ROW: &str = "· ";
+    pub const EDIT: &str = "✎";
+    pub const DISMISS: &str = "×";
+    pub const PANE_DRAG: &str = "↔";
+}
+
 /// Fixed layout tokens for Diffo's structural chrome.
 pub mod design {
     use ratatui::layout::Margin;
@@ -106,7 +114,6 @@ pub mod design {
     pub const TREE_HEADER_ACTION_GAP: u16 = 1;
     pub const TREE_HEADER_ACTIONS_WIDTH: u16 =
         TREE_HEADER_ACTION_WIDTH * 2 + TREE_HEADER_ACTION_GAP + BORDER_WIDTH;
-    pub const PICKER_SELECTION_PREFIX_WIDTH: u16 = 2;
     pub const PATH_MENU_FIRST_ACTION_ROW: u16 = 1;
     pub const PATH_MENU_SECOND_ACTION_ROW: u16 = 2;
     pub const SIDE_BY_SIDE_DIVIDER_WIDTH: u16 = 3;
@@ -218,6 +225,23 @@ impl PaneSplit {
         column.abs_diff(self.areas(area).trailing.x) <= 1
     }
 
+    #[must_use]
+    pub fn seam_marker_area(self, area: Rect) -> Rect {
+        let height = area.height.saturating_sub(design::PANE_DRAG_BOTTOM_GUARD);
+        if area.width == 0 || height == 0 {
+            return Rect::default();
+        }
+        Rect::new(
+            self.areas(area)
+                .trailing
+                .x
+                .min(area.right().saturating_sub(design::BORDER_WIDTH)),
+            area.y.saturating_add(height / 2),
+            design::BORDER_WIDTH,
+            design::SINGLE_LINE_HEIGHT,
+        )
+    }
+
     pub fn begin_drag(&mut self) {
         self.dragging = true;
     }
@@ -302,6 +326,20 @@ pub fn change_kind_style(kind: ChangeKind, selected: bool) -> Style {
     }
 }
 
+/// Returns the fixed style for an enabled interactive control.
+#[must_use]
+pub fn enabled_control_style() -> Style {
+    Style::default()
+        .fg(theme::TEXT)
+        .add_modifier(Modifier::BOLD)
+}
+
+/// Returns the fixed style for a visible control that cannot currently activate.
+#[must_use]
+pub fn disabled_control_style() -> Style {
+    Style::default().fg(theme::CHROME)
+}
+
 #[must_use]
 pub fn plain_syntax_spans(line: &HighlightedLine) -> Vec<Span<'static>> {
     line.spans
@@ -362,6 +400,9 @@ mod tests {
         let area = Rect::new(5, 2, 100, 20);
         let mut split = PaneSplit::default();
         assert_eq!(split.areas(area).trailing.x, 30);
+        assert_eq!(split.seam_marker_area(area), Rect::new(30, 11, 1, 1));
+        let marker = split.seam_marker_area(area);
+        assert!(split.contains_seam(area, marker.x, marker.y));
         assert!(split.contains_seam(area, 29, 10));
         assert!(!split.contains_seam(area, 28, 10));
         assert!(!split.contains_seam(area, 30, area.bottom().saturating_sub(2)));
@@ -389,6 +430,7 @@ mod tests {
         split.drag_to(area, u16::MAX);
         assert_eq!(split.percent(), 25);
         assert!(!split.contains_seam(area, 7, 9));
+        assert!(split.seam_marker_area(area).is_empty());
     }
 
     #[test]

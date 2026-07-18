@@ -71,17 +71,17 @@ fn mouse_wheel_scrolls_diff_file_panels_independently() -> Result<()> {
     let mut screen = repository.screen()?;
 
     screen
-        .wait_for_text("staged-00.txt")?
-        .wait_for_text("change-00.txt")?
-        .scroll_many_at(&Selector::text("staged-00.txt"), ScrollDirection::Down, 4)?
-        .wait_for_text_gone("staged-00.txt")?;
-    assert!(screen.contents().contains("change-00.txt"));
+        .wait_for_text("staged-00...")?
+        .wait_for_text("change-00...")?
+        .scroll_many_at(&Selector::text("staged-00..."), ScrollDirection::Down, 4)?
+        .wait_for_text_gone("staged-00...")?;
+    assert!(screen.contents().contains("change-00..."));
 
     screen
-        .scroll_many_at(&Selector::text("change-00.txt"), ScrollDirection::Down, 4)?
-        .wait_for_text_gone("change-00.txt")?
+        .scroll_many_at(&Selector::text("change-00..."), ScrollDirection::Down, 4)?
+        .wait_for_text_gone("change-00...")?
         .scroll_many_at(&Selector::text("Changes"), ScrollDirection::Up, 4)?
-        .wait_for_text("change-00.txt")?;
+        .wait_for_text("change-00...")?;
     Ok(())
 }
 

@@ -102,16 +102,9 @@ pub(crate) fn tree_document(
 }
 
 fn entry_style(entry: &TreeEntry) -> Style {
-    entry.status.map_or_else(
-        || {
-            Style::default().fg(if entry.directory {
-                theme::CHROME
-            } else {
-                theme::TEXT
-            })
-        },
-        status_style,
-    )
+    entry
+        .status
+        .map_or_else(|| Style::default().fg(theme::TEXT), status_style)
 }
 
 fn status_style(kind: ChangeKind) -> Style {
@@ -263,7 +256,7 @@ mod tests {
     use std::collections::HashMap;
 
     #[test]
-    fn tree_statuses_reuse_diff_colors_and_unchanged_entries_are_neutral() {
+    fn tree_statuses_reuse_diff_colors_and_unchanged_labels_use_primary_text() {
         assert_eq!(status_style(ChangeKind::Added).fg, Some(Color::LightGreen));
         assert_eq!(status_style(ChangeKind::Modified).fg, Some(Color::Yellow));
         assert_eq!(status_style(ChangeKind::Deleted).fg, Some(Color::LightRed));
@@ -282,7 +275,7 @@ mod tests {
             directory: true,
             status: None,
         };
-        assert_eq!(entry_style(&directory).fg, Some(theme::CHROME));
+        assert_eq!(entry_style(&directory).fg, Some(theme::TEXT));
     }
 
     #[test]

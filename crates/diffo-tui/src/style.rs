@@ -1,17 +1,8 @@
 use super::{
-    ChangeArea, Color, HighlightedDiff, HighlightedLine, Line, Modifier, RenderLine, Rgb, RowKind,
+    Color, HighlightedDiff, HighlightedLine, Line, Modifier, RenderLine, Rgb, RowKind,
     SideBySideRow, Span, Style, StyledSpan, terminal_safe_text,
 };
 use diffo_ui::theme;
-
-#[must_use]
-pub(super) fn file_action_style(change_area: ChangeArea) -> Style {
-    let color = match change_area {
-        ChangeArea::Staged => theme::DANGER,
-        ChangeArea::Unstaged => theme::SUCCESS,
-    };
-    Style::default().fg(color).add_modifier(Modifier::BOLD)
-}
 
 pub(super) fn inline_line(
     row: &RenderLine,

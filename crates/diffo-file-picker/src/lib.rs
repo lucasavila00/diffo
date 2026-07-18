@@ -519,7 +519,7 @@ where
             spans.push(Span::raw(" ".repeat(spacing)));
             spans.push(Span::styled(action.clone(), *style));
         }
-        ListItem::new(Line::from(spans))
+        ListItem::new(Line::from(spans).style(row.label.style))
     }
 
     fn select_visible(&mut self, index: usize) -> Option<Outcome<K>> {
@@ -820,6 +820,46 @@ mod tests {
         );
         assert_eq!(flat.metrics().offset, 3);
         assert_eq!(tree.metrics().offset, 3);
+    }
+
+    #[test]
+    fn rendering_preserves_label_style_under_selection_and_explicit_action_style() {
+        let label_style = Style::default()
+            .fg(Color::LightRed)
+            .add_modifier(Modifier::CROSSED_OUT);
+        let action_style = Style::default().fg(Color::LightGreen);
+        let mut picker = FilePicker::default();
+        picker.prepare(
+            Rect::new(0, 0, 30, 4),
+            Document::flat(
+                "Files",
+                vec![
+                    Row::flat(0, Line::styled("D  deleted.txt", label_style))
+                        .with_action("[+]", action_style),
+                ],
+            ),
+            None,
+        );
+        let backend = TestBackend::new(30, 4);
+        let mut terminal = Terminal::new(backend).unwrap();
+
+        terminal.draw(|frame| picker.render(frame, true)).unwrap();
+
+        let buffer = terminal.backend().buffer();
+        let marker = &buffer[(3, 1)];
+        assert_eq!(marker.symbol(), "D");
+        assert_eq!(marker.fg, Color::LightRed);
+        let filename = &buffer[(6, 1)];
+        assert_eq!(filename.symbol(), "d");
+        assert_eq!(filename.fg, Color::LightRed);
+        assert_eq!(filename.bg, Color::DarkGray);
+        assert!(filename.modifier.contains(Modifier::CROSSED_OUT));
+        assert!(filename.modifier.contains(Modifier::BOLD));
+
+        let action = &buffer[(26, 1)];
+        assert_eq!(action.symbol(), "[");
+        assert_eq!(action.fg, Color::LightGreen);
+        assert_eq!(action.bg, Color::DarkGray);
     }
 
     #[test]

@@ -18,13 +18,13 @@ use ratatui::{
     Terminal,
     backend::TestBackend,
     layout::Rect,
-    style::{Color, Modifier},
+    style::{Color, Modifier, Style},
 };
 
 use super::{
     Renderer, RendererEvent, contrast_ratio, contrasting_foreground, diff_background,
-    diff_background_rgb, diff_file_lines, file_kind_style, overview_position, row_style,
-    scrollbar_position_count, should_syntax_highlight, status_line,
+    diff_background_rgb, diff_file_lines, file_kind_style, overview_position, picker_document,
+    row_style, scrollbar_position_count, should_syntax_highlight, status_line,
 };
 
 #[test]
@@ -52,6 +52,56 @@ fn file_list_styles_show_git_change_kinds() {
             .add_modifier
             .contains(Modifier::BOLD)
     );
+}
+
+#[test]
+fn file_picker_renders_every_git_change_kind_with_its_status_color() {
+    let kinds = [
+        (ChangeKind::Added, Color::LightGreen),
+        (ChangeKind::Modified, Color::Yellow),
+        (ChangeKind::Deleted, Color::LightRed),
+        (ChangeKind::Renamed, Color::LightCyan),
+        (ChangeKind::Copied, Color::LightCyan),
+        (ChangeKind::Untracked, Color::LightGreen),
+        (ChangeKind::Conflicted, Color::LightRed),
+    ];
+    let files = kinds
+        .iter()
+        .enumerate()
+        .map(|(index, (kind, _))| FileState {
+            path: PathBuf::from(format!("file-{index}.rs")),
+            old_path: None,
+            kind: *kind,
+            staged: None,
+            unstaged: Some(FileDiff {
+                text: String::new(),
+            }),
+        })
+        .collect::<Vec<_>>();
+    let mut picker = diffo_file_picker::FilePicker::default();
+    picker.prepare(
+        Rect::new(0, 0, 40, 10),
+        picker_document(
+            "Changes",
+            "[+] Stage All",
+            files.iter(),
+            ChangeArea::Unstaged,
+            Style::default(),
+        ),
+        None,
+    );
+    let backend = TestBackend::new(40, 10);
+    let mut terminal = Terminal::new(backend).unwrap();
+
+    terminal.draw(|frame| picker.render(frame, false)).unwrap();
+
+    let buffer = terminal.backend().buffer();
+    for (index, (kind, color)) in kinds.iter().enumerate() {
+        let marker = &buffer[(3, u16::try_from(index).unwrap() + 1)];
+        assert_eq!(marker.fg, *color, "wrong foreground for {kind:?}");
+    }
+    assert!(buffer[(3, 3)].modifier.contains(Modifier::CROSSED_OUT));
+    assert!(buffer[(3, 7)].modifier.contains(Modifier::BOLD));
 }
 
 #[test]

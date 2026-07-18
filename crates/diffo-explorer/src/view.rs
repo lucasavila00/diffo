@@ -257,6 +257,7 @@ fn marker_style(marker: Option<GutterMarker>) -> Style {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use diffo_core::{FileDiff, FileState, RepositorySnapshot};
     use ratatui::{Terminal, backend::TestBackend};
     use std::collections::HashMap;
 
@@ -281,6 +282,37 @@ mod tests {
             status: None,
         };
         assert_eq!(entry_style(&directory).fg, Some(Color::Gray));
+    }
+
+    #[test]
+    fn tree_picker_renders_the_file_status_color() {
+        let mut model = ExplorerModel::new(RepositorySnapshot {
+            files: vec![FileState {
+                path: "changed.rs".into(),
+                old_path: None,
+                kind: ChangeKind::Modified,
+                staged: None,
+                unstaged: Some(FileDiff {
+                    text: String::new(),
+                }),
+            }],
+            ..RepositorySnapshot::default()
+        });
+        model.install_paths(Vec::new());
+        let mut picker = FilePicker::default();
+        picker.prepare(
+            Rect::new(0, 0, 30, 4),
+            tree_document(&model, Style::default(), false),
+            None,
+        );
+        let backend = TestBackend::new(30, 4);
+        let mut terminal = Terminal::new(backend).unwrap();
+
+        terminal.draw(|frame| picker.render(frame, false)).unwrap();
+
+        let marker = &terminal.backend().buffer()[(5, 1)];
+        assert_eq!(marker.symbol(), "M");
+        assert_eq!(marker.fg, Color::Yellow);
     }
 
     #[test]

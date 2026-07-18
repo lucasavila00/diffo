@@ -1,0 +1,1 @@
+show something when we lost a frame like the line numbers to make scrolling smoother

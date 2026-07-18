@@ -217,7 +217,7 @@ fn expire_toasts(model: &mut Model, deadlines: &mut HashMap<u64, Instant>) {
         if toast.kind != ToastKind::Error {
             deadlines
                 .entry(toast.id)
-                .or_insert_with(|| now + Duration::from_secs(4));
+                .or_insert_with(|| now + Duration::from_secs(3));
         }
     }
     let expired = deadlines

@@ -109,7 +109,7 @@ ToastKind = Success | Info | Error
 Keep at most three toasts. New toasts go on top. Duplicate messages replace the
 older copy.
 
-The runtime owns time. It sends `DismissToast(id)` after four seconds. The pure
+The runtime owns time. It sends `DismissToast(id)` after three seconds. The pure
 model does not read the clock. Errors and blocked-action toasts stay until dismissed
 or replaced.
 

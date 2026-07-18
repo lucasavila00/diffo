@@ -223,10 +223,38 @@ fn local_helpers_complete_sequential_username_and_secret_prompts() -> Result<()>
     Ok(())
 }
 
+#[test]
+fn local_ssh_helper_completes_a_masked_key_passphrase_prompt() -> Result<()> {
+    let repository = TestRepository::new()?;
+    let remote_commit = repository.commit_remote("remote.txt", "remote\n", "Remote commit")?;
+    let known_hosts = repository.root.path().join("known_hosts");
+    let ssh = local_ssh_transport(&repository, SshPrompt::Passphrase)?;
+    let secret = "passphrase-sentinel";
+    let mut screen = ssh_screen(&repository, &ssh, &known_hosts, Some(secret))?;
+
+    screen
+        .press(Key::Char('1'))?
+        .type_text("fetch")?
+        .press(Key::Enter)?
+        .wait_for_text("Passphrase for /keys/id_ed25519")?;
+    for character in secret.chars() {
+        screen.press(Key::Char(character))?;
+    }
+    assert!(!screen.contents().contains(secret));
+    screen.press(Key::Enter)?;
+
+    wait_for("passphrase SSH helper fetch to update origin", || {
+        Ok(git_output(&repository.worktree, &["rev-parse", "origin/HEAD"])? == remote_commit)
+    })?;
+    screen.wait_for_text("Fetched 1 ref")?;
+    Ok(())
+}
+
 #[derive(Clone, Copy)]
 enum SshPrompt {
     ConfirmHost,
     Credentials,
+    Passphrase,
 }
 
 fn local_ssh_transport(repository: &TestRepository, prompt: SshPrompt) -> Result<PathBuf> {
@@ -252,6 +280,10 @@ fn local_ssh_transport(repository: &TestRepository, prompt: SshPrompt) -> Result
             "username=$(\"$GIT_ASKPASS\" \"Username for 'https://person@example.com': \" ) || exit 1\n",
             "test \"$username\" = alice || exit 1\n",
             "secret=$(\"$GIT_ASKPASS\" \"Password for 'https://person:credential@example.com/repo': \" ) || exit 1\n",
+            "test \"$secret\" = \"$DIFFO_TEST_SECRET\" || exit 1\n",
+        ),
+        SshPrompt::Passphrase => concat!(
+            "secret=$(SSH_ASKPASS_PROMPT=none \"$SSH_ASKPASS\" \"Enter passphrase for key '/keys/id_ed25519': \" ) || exit 1\n",
             "test \"$secret\" = \"$DIFFO_TEST_SECRET\" || exit 1\n",
         ),
     };

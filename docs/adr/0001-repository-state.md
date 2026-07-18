@@ -1,6 +1,6 @@
 # ADR 0001: Git state snapshots
 
-Status: Proposed
+Status: Accepted
 
 ## State
 

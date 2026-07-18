@@ -1,6 +1,6 @@
 # ADR 0021: Full-file diffs
 
-Status: Proposed
+Status: Accepted
 
 ## Problem
 

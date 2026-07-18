@@ -1,6 +1,6 @@
 # ADR 0036: Show the current Git branch and state
 
-Status: Proposed
+Status: Accepted
 
 ## Problem
 
@@ -106,4 +106,3 @@ label. Keep all clipping inside the footer; it must not change the pane layout.
   layouts, and clicking it requests the checkout picker.
 - Renderer tests cover Unicode width, long branch truncation, the minimum supported
   terminal width, and xterm-256 styling.
-

@@ -56,6 +56,24 @@ pub struct FileContextMenu {
     pub row: u16,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct StageFileAction {
+    path: PathBuf,
+    next_unstaged: Option<FileKey>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct UnstageFileAction {
+    path: PathBuf,
+    next_staged: Option<FileKey>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum PendingFileAction {
+    StageFile(StageFileAction),
+    UnstageFile(UnstageFileAction),
+}
+
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum DiffViewMode {
     #[default]
@@ -161,13 +179,18 @@ pub struct Model {
     expanded_file_pane_percent: u16,
     cursor: usize,
     next_toast_id: u64,
-    selection_after_action: Option<FileKey>,
+    pending_file_action: Option<PendingFileAction>,
 }
 
 impl Model {
     #[must_use]
     pub fn new(snapshot: RepositorySnapshot) -> Self {
-        let selected = file_keys(&snapshot).into_iter().next();
+        let keys = file_keys(&snapshot);
+        let cursor = keys
+            .iter()
+            .position(|key| key.area == ChangeArea::Unstaged)
+            .unwrap_or(0);
+        let selected = keys.get(cursor).cloned();
         Self {
             snapshot,
             selected,
@@ -188,9 +211,9 @@ impl Model {
             commit_message_cursor: 0,
             pending_operation: None,
             expanded_file_pane_percent: 25,
-            cursor: 0,
+            cursor,
             next_toast_id: 1,
-            selection_after_action: None,
+            pending_file_action: None,
         }
     }
 }

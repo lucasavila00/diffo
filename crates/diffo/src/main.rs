@@ -368,11 +368,12 @@ fn drain_refresh(refresh: &RefreshService, model: &mut Model, generation: &mut u
             }
             RefreshResult::ActionCompleted {
                 generation: next,
+                action,
                 result,
                 snapshot,
             } if next > *generation => {
                 *generation = next;
-                Some(Message::OperationCompleted(result, snapshot))
+                Some(Message::OperationCompleted(action, result, snapshot))
             }
             RefreshResult::ActionFailed {
                 generation: next,
@@ -398,7 +399,7 @@ fn execute_effect(repository: &dyn Repository, model: &mut Model, effect: Effect
     };
     let message = match repository.apply(&action) {
         Ok(result) => match repository.snapshot() {
-            Ok(snapshot) => Message::OperationCompleted(result, snapshot),
+            Ok(snapshot) => Message::OperationCompleted(action, result, snapshot),
             Err(error) => Message::OperationFailed(error.to_string()),
         },
         Err(failure) => Message::ActionFailed(failure),

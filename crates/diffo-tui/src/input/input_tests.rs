@@ -45,6 +45,7 @@ fn maps_fixed_key_bindings() {
         (KeyCode::Right, Message::ScrollDiffRight),
         (KeyCode::Char('r'), Message::ToggleDiffView),
         (KeyCode::Char('n'), Message::JumpToNextChange),
+        (KeyCode::Char('p'), Message::JumpToPreviousChange),
         (KeyCode::Char('e'), Message::ToggleFilePane),
         (KeyCode::Home, Message::SelectFirstFile),
         (KeyCode::End, Message::SelectLastFile),
@@ -87,6 +88,8 @@ fn bindings_are_unique_and_generate_help() {
     assert!(rows.contains(&("Space".to_owned(), "Stage / unstage selected file")));
     assert!(rows.contains(&("j / w".to_owned(), "Previous file")));
     assert!(rows.contains(&("k / l / s".to_owned(), "Next file")));
+    assert!(rows.contains(&("n".to_owned(), "Next change")));
+    assert!(rows.contains(&("p".to_owned(), "Previous change")));
     assert!(rows.contains(&("q / Esc / Ctrl+c".to_owned(), "Quit")));
 }
 

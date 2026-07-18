@@ -1,6 +1,20 @@
 use super::support::*;
 
 #[test]
+fn opens_the_first_unstaged_file_when_staged_files_exist() -> Result<()> {
+    let repository = TestRepository::new()?;
+    fs::write(repository.worktree.join("tracked.txt"), "staged\n")?;
+    git(&repository.worktree, &["add", "tracked.txt"])?;
+    fs::write(repository.worktree.join("review.txt"), "review me\n")?;
+    let mut screen = repository.screen()?;
+
+    screen
+        .wait_for(&Selector::selected_row("review.txt"))?
+        .wait_for_text("review me")?;
+    Ok(())
+}
+
+#[test]
 fn space_stages_selected_file() -> Result<()> {
     let repository = TestRepository::new()?;
     fs::write(repository.worktree.join("tracked.txt"), "changed\n")?;

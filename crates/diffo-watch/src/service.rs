@@ -28,6 +28,7 @@ pub enum RefreshResult {
     },
     ActionCompleted {
         generation: u64,
+        action: RepositoryAction,
         result: OperationResult,
         snapshot: RepositorySnapshot,
     },

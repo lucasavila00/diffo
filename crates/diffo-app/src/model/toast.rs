@@ -15,11 +15,17 @@ impl Model {
         {
             return;
         }
+        let pending_file_action_failed = self
+            .pending_file_action
+            .as_ref()
+            .is_some_and(|pending| pending.matches_repository_action(&failure.action));
         if matches!(self.pending_operation, Some(RepositoryAction::Commit(_))) {
             self.commit_composer_state = CommitComposerState::Focused;
         }
         self.pending_operation = None;
-        self.selection_after_action = None;
+        if pending_file_action_failed {
+            self.pending_file_action = None;
+        }
         self.error = None;
         self.push_toast(ToastKind::Error, operation_failure_title(failure), None);
     }

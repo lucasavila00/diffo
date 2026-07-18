@@ -98,6 +98,7 @@ fn collect(
             Ok(result) => match repository.snapshot() {
                 Ok(snapshot) => RefreshResult::ActionCompleted {
                     generation: *generation,
+                    action: action.clone(),
                     result,
                     snapshot,
                 },

@@ -122,7 +122,7 @@ impl Renderer {
             render_hunk_button(
                 frame,
                 button,
-                "↑ Previous change",
+                "↑ Previous change (p)",
                 self.hovered_hunk_button == Some(HunkDirection::Previous),
             );
         }
@@ -130,7 +130,7 @@ impl Renderer {
             render_hunk_button(
                 frame,
                 button,
-                "↓ Next change",
+                "↓ Next change (n)",
                 self.hovered_hunk_button == Some(HunkDirection::Next),
             );
         }

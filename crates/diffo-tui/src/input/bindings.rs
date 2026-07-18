@@ -116,6 +116,11 @@ pub(super) static KEY_BINDINGS: &[KeyBinding] = &[
         description: "Next change",
     },
     KeyBinding {
+        keys: &[KeyChord::plain(KeyCode::Char('p'))],
+        message: Message::JumpToPreviousChange,
+        description: "Previous change",
+    },
+    KeyBinding {
         keys: &[KeyChord::plain(KeyCode::Char('e'))],
         message: Message::ToggleFilePane,
         description: "Show / hide file list",

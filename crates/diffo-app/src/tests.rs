@@ -72,6 +72,7 @@ fn primary_action_chooses_commit_push_pull_or_blocked_sync() {
     update(
         &mut model,
         Message::OperationCompleted(
+            RepositoryAction::Commit("ship it".to_owned()),
             OperationResult::Commit {
                 hash: "abc1234".to_owned(),
             },
@@ -101,6 +102,7 @@ fn primary_action_chooses_commit_push_pull_or_blocked_sync() {
     update(
         &mut model,
         Message::OperationCompleted(
+            RepositoryAction::Push,
             OperationResult::Push {
                 hash: "abc1234".to_owned(),
                 upstream: "origin/main".to_owned(),
@@ -157,7 +159,11 @@ fn passive_and_unrelated_results_cannot_finish_a_push() {
     );
     update(
         &mut model,
-        Message::OperationCompleted(OperationResult::Fetch { updated_refs: 1 }, changed),
+        Message::OperationCompleted(
+            RepositoryAction::Fetch,
+            OperationResult::Fetch { updated_refs: 1 },
+            changed,
+        ),
     );
     update(
         &mut model,
@@ -223,7 +229,11 @@ fn executes_fetch_and_pull_from_the_palette() {
     assert_eq!(model.network_operation(), Some(NetworkOperation::Fetch));
     update(
         &mut model,
-        Message::OperationCompleted(OperationResult::Fetch { updated_refs: 0 }, refreshed),
+        Message::OperationCompleted(
+            RepositoryAction::Fetch,
+            OperationResult::Fetch { updated_refs: 0 },
+            refreshed,
+        ),
     );
     update(&mut model, Message::OpenCommandPalette);
     update(&mut model, Message::CommandPaletteSelectNext);
@@ -344,17 +354,26 @@ fn returns_contextual_stage_effect() {
 
     assert_eq!(
         update(&mut model, Message::ToggleStageSelected),
-        Some(Effect::Repository(RepositoryAction::Unstage(
-            PathBuf::from("file.txt")
-        )))
-    );
-    update(&mut model, Message::SelectNextFile);
-
-    assert_eq!(
-        update(&mut model, Message::ToggleStageSelected),
         Some(Effect::Repository(RepositoryAction::Stage(PathBuf::from(
             "file.txt"
         ))))
+    );
+    let mut refreshed = model.snapshot.clone();
+    refreshed.files[0].unstaged = None;
+    update(
+        &mut model,
+        Message::OperationCompleted(
+            RepositoryAction::Stage(PathBuf::from("file.txt")),
+            OperationResult::Stage,
+            refreshed,
+        ),
+    );
+
+    assert_eq!(
+        update(&mut model, Message::ToggleStageSelected),
+        Some(Effect::Repository(RepositoryAction::Unstage(
+            PathBuf::from("file.txt")
+        )))
     );
 }
 

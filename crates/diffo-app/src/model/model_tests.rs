@@ -1,7 +1,8 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use diffo_core::{
-    ChangeKind, FileDiff, FileState, OperationResult, RepositoryAction, RepositorySnapshot,
+    ChangeKind, FailureKind, FileDiff, FileState, OperationFailure, OperationResult,
+    RepositoryAction, RepositorySnapshot,
 };
 
 use super::{ChangeArea, FileKey, Model};
@@ -42,13 +43,18 @@ fn navigates_both_groups() {
 
     assert_eq!(
         app.selected.as_ref().expect("selection").area,
-        ChangeArea::Staged
+        ChangeArea::Unstaged
     );
-    app.select_next();
+    app.select_previous();
     assert_eq!(
         app.selected.as_ref().expect("selection").path,
         PathBuf::from("both.txt")
     );
+    assert_eq!(
+        app.selected.as_ref().expect("selection").area,
+        ChangeArea::Staged
+    );
+    app.select_next();
     assert_eq!(
         app.selected.as_ref().expect("selection").area,
         ChangeArea::Unstaged
@@ -63,24 +69,23 @@ fn navigates_both_groups() {
 #[test]
 fn creates_actions_for_the_selected_group() {
     let mut app = Model::new(snapshot());
-    assert_eq!(app.stage_selected(), None);
-    assert_eq!(
-        app.unstage_selected(),
-        Some(RepositoryAction::Unstage(PathBuf::from("both.txt")))
-    );
-
-    app.select_next();
     assert_eq!(app.unstage_selected(), None);
     assert_eq!(
         app.stage_selected(),
         Some(RepositoryAction::Stage(PathBuf::from("both.txt")))
     );
+
+    app.select_previous();
+    assert_eq!(app.stage_selected(), None);
+    assert_eq!(
+        app.unstage_selected(),
+        Some(RepositoryAction::Unstage(PathBuf::from("both.txt")))
+    );
 }
 
 #[test]
-fn staging_for_review_selects_the_next_unstaged_file_after_refresh() {
+fn stage_file_action_continues_until_no_unstaged_files_remain() {
     let mut app = Model::new(snapshot());
-    app.select_next();
     assert_eq!(
         app.selected,
         Some(FileKey {
@@ -93,9 +98,14 @@ fn staging_for_review_selects_the_next_unstaged_file_after_refresh() {
         app.toggle_stage_selected(),
         Some(RepositoryAction::Stage(PathBuf::from("both.txt")))
     );
+    assert_eq!(app.toggle_stage_selected(), None, "stage action is pending");
     let mut refreshed = snapshot();
     refreshed.files[0].unstaged = None;
-    app.complete_operation(&OperationResult::Stage, refreshed);
+    app.complete_operation(
+        &RepositoryAction::Stage(PathBuf::from("both.txt")),
+        &OperationResult::Stage,
+        refreshed,
+    );
 
     assert_eq!(
         app.selected,
@@ -104,11 +114,94 @@ fn staging_for_review_selects_the_next_unstaged_file_after_refresh() {
             area: ChangeArea::Unstaged,
         })
     );
+
+    assert_eq!(
+        app.toggle_stage_selected(),
+        Some(RepositoryAction::Stage(PathBuf::from("new.txt")))
+    );
+    let mut finished = app.snapshot.clone();
+    let new_file = finished
+        .files
+        .iter_mut()
+        .find(|file| file.path == Path::new("new.txt"))
+        .expect("new file");
+    new_file.kind = ChangeKind::Added;
+    new_file.staged = Some(FileDiff {
+        text: String::new(),
+    });
+    app.complete_operation(
+        &RepositoryAction::Stage(PathBuf::from("new.txt")),
+        &OperationResult::Stage,
+        finished,
+    );
+
+    assert!(
+        app.snapshot
+            .files
+            .iter()
+            .all(|file| file.unstaged.is_none() && file.kind != ChangeKind::Untracked)
+    );
+    assert_eq!(
+        app.selected.as_ref().map(|selected| selected.area),
+        Some(ChangeArea::Staged)
+    );
+}
+
+#[test]
+fn failed_stage_file_action_keeps_the_reviewed_file_open() {
+    let mut app = Model::new(snapshot());
+    let selected = app.selected.clone();
+    let action = app.toggle_stage_selected().expect("stage action");
+
+    app.show_operation_failure(&OperationFailure {
+        action: action.clone(),
+        kind: FailureKind::Unknown,
+        detail: "stage failed".to_owned(),
+    });
+
+    assert_eq!(app.selected, selected);
+    assert_eq!(app.toggle_stage_selected(), Some(action));
+}
+
+#[test]
+fn stage_file_action_falls_back_to_an_available_unstaged_file() {
+    let mut initial = snapshot();
+    initial.files.push(FileState {
+        path: PathBuf::from("later.txt"),
+        old_path: None,
+        kind: ChangeKind::Untracked,
+        staged: None,
+        unstaged: None,
+    });
+    let mut app = Model::new(initial.clone());
+    assert_eq!(
+        app.toggle_stage_selected(),
+        Some(RepositoryAction::Stage(PathBuf::from("both.txt")))
+    );
+
+    initial.files[0].unstaged = None;
+    initial
+        .files
+        .retain(|file| file.path != Path::new("new.txt"));
+    app.complete_operation(
+        &RepositoryAction::Stage(PathBuf::from("both.txt")),
+        &OperationResult::Stage,
+        initial,
+    );
+
+    assert_eq!(
+        app.selected,
+        Some(FileKey {
+            path: PathBuf::from("later.txt"),
+            area: ChangeArea::Unstaged,
+        })
+    );
 }
 
 #[test]
 fn keeps_selection_after_refresh() {
     let mut app = Model::new(snapshot());
+    app.select_previous();
     let selected = FileKey {
         path: PathBuf::from("both.txt"),
         area: ChangeArea::Staged,
@@ -180,7 +273,11 @@ fn queues_replaces_limits_and_dismisses_toasts() {
             app.execute_selected_command(),
             Some(RepositoryAction::Fetch)
         );
-        app.complete_operation(&OperationResult::Fetch { updated_refs }, snapshot());
+        app.complete_operation(
+            &RepositoryAction::Fetch,
+            &OperationResult::Fetch { updated_refs },
+            snapshot(),
+        );
     }
     assert_eq!(app.toasts.len(), 3);
     assert_eq!(app.toasts[0].title, "Fetched 4 refs");
@@ -190,7 +287,11 @@ fn queues_replaces_limits_and_dismisses_toasts() {
         app.execute_selected_command(),
         Some(RepositoryAction::Fetch)
     );
-    app.complete_operation(&OperationResult::Fetch { updated_refs: 4 }, snapshot());
+    app.complete_operation(
+        &RepositoryAction::Fetch,
+        &OperationResult::Fetch { updated_refs: 4 },
+        snapshot(),
+    );
     assert_eq!(app.toasts.len(), 3);
     assert_eq!(
         app.toasts

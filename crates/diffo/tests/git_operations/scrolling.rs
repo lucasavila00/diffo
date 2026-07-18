@@ -75,15 +75,41 @@ fn large_hunk_buttons_click_between_changes_without_wrapping() -> Result<()> {
     let mut screen = repository.screen()?;
     screen
         .wait_for_text("FIRST_CHANGE")?
-        .click(&Selector::text("↓ Next change"))?
+        .click(&Selector::text("↓ Next change (n)"))?
         .wait_for_text("MIDDLE_CHANGE")?;
-    assert!(screen.contents().contains("↑ Previous change"));
+    assert!(screen.contents().contains("↑ Previous change (p)"));
     screen
-        .click(&Selector::text("↓ Next change"))?
+        .click(&Selector::text("↓ Next change (n)"))?
         .wait_for_text("LAST_CHANGE")?
-        .wait_for_text_gone("↓ Next change")?
-        .click(&Selector::text("↑ Previous change"))?
+        .wait_for_text_gone("↓ Next change (n)")?
+        .click(&Selector::text("↑ Previous change (p)"))?
         .wait_for_text("MIDDLE_CHANGE")?;
+    Ok(())
+}
+
+#[test]
+fn n_and_p_move_between_changes_with_the_keyboard() -> Result<()> {
+    let repository = TestRepository::new()?;
+    let path = repository.worktree.join("keyboard-navigation.rs");
+    fs::write(&path, navigation_file(false)?)?;
+    git(&repository.worktree, &["add", "keyboard-navigation.rs"])?;
+    git(
+        &repository.worktree,
+        &["commit", "-m", "Add keyboard navigation fixture"],
+    )?;
+    fs::write(&path, navigation_file(true)?)?;
+
+    let mut screen = repository.screen()?;
+    screen
+        .wait_for_text("FIRST_CHANGE")?
+        .press(Key::Char('n'))?
+        .wait_for_text("MIDDLE_CHANGE")?
+        .press(Key::Char('n'))?
+        .wait_for_text("LAST_CHANGE")?
+        .press(Key::Char('p'))?
+        .wait_for_text("MIDDLE_CHANGE")?
+        .press(Key::Char('p'))?
+        .wait_for_text("FIRST_CHANGE")?;
     Ok(())
 }
 

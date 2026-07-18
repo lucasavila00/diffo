@@ -12,11 +12,11 @@ to click.
 Put one large hunk button at each edge of the diff view:
 
 ```text
-┌────────────── ↑ Previous change ──────────────┐
+┌───────────── ↑ Previous change (p) ───────────┐
 │                                               │
 │                  full file                    │
 │                                               │
-├─────────────── ↓ Next change ─────────────────┤
+├────────────── ↓ Next change (n) ──────────────┤
 ```
 
 The whole top row jumps to the previous hunk. The whole bottom row jumps to the next
@@ -28,6 +28,8 @@ hunk.
 - Keep the buttons fixed while the file scrolls.
 - Highlight a button on mouse hover.
 - Keep keyboard next-change and previous-change actions too.
+- Show the keyboard shortcut in each button label. The buttons are wide, so use that
+  space to teach `p` and `n` during normal review.
 
 Do not wrap when clicking these buttons. A hidden button makes the start and end of
 the file clear.

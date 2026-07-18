@@ -1,4 +1,7 @@
-use super::{ChangeArea, Model, PathBuf, RepositoryAction, file_keys};
+use super::{
+    ChangeArea, Model, PathBuf, PendingFileAction, RepositoryAction, StageFileAction,
+    UnstageFileAction, file_keys,
+};
 
 impl Model {
     #[must_use]
@@ -10,6 +13,9 @@ impl Model {
 
     #[must_use]
     pub fn toggle_stage_selected(&mut self) -> Option<RepositoryAction> {
+        if self.pending_file_action.is_some() {
+            return None;
+        }
         let selected = self.selected.clone()?;
         let action = match selected.area {
             ChangeArea::Unstaged => self.stage_selected(),
@@ -20,13 +26,22 @@ impl Model {
                 .into_iter()
                 .filter(|key| key.area == selected.area)
                 .collect::<Vec<_>>();
-            self.selection_after_action =
-                peers
-                    .iter()
-                    .position(|key| key == &selected)
-                    .and_then(|index| {
-                        (peers.len() > 1).then(|| peers[(index + 1) % peers.len()].clone())
-                    });
+            let next = peers
+                .iter()
+                .position(|key| key == &selected)
+                .and_then(|index| {
+                    (peers.len() > 1).then(|| peers[(index + 1) % peers.len()].clone())
+                });
+            self.pending_file_action = Some(match selected.area {
+                ChangeArea::Unstaged => PendingFileAction::StageFile(StageFileAction {
+                    path: selected.path,
+                    next_unstaged: next,
+                }),
+                ChangeArea::Staged => PendingFileAction::UnstageFile(UnstageFileAction {
+                    path: selected.path,
+                    next_staged: next,
+                }),
+            });
         }
         action
     }

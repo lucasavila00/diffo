@@ -148,6 +148,16 @@ fn mouse_at(kind: MouseEventKind, area: Rect) -> Event {
     })
 }
 
+fn buffer_text(buffer: &ratatui::buffer::Buffer) -> String {
+    buffer
+        .content
+        .iter()
+        .fold(String::new(), |mut output, cell| {
+            output.push_str(cell.symbol());
+            output
+        })
+}
+
 #[test]
 fn file_list_scrollbars_have_independent_offsets_and_exact_hit_targets() {
     let mut model = file_list_model(30);
@@ -295,11 +305,10 @@ fn network_operations_animate_the_frame_and_name_the_operation() {
 fn renders_and_mouse_dismisses_a_bottom_right_toast() {
     let mut model = model();
     model.snapshot.files[0].staged = model.snapshot.files[0].unstaged.take();
-    assert!(matches!(
-        model.execute_primary_action(),
-        Some(RepositoryAction::Commit(_))
-    ));
+    let action = model.execute_primary_action().expect("commit action");
+    assert!(matches!(&action, RepositoryAction::Commit(_)));
     model.complete_operation(
+        &action,
         &OperationResult::Commit {
             hash: "a1b2c3d4e5".to_owned(),
         },
@@ -510,6 +519,7 @@ fn staged_and_unstaged_buffers_of_one_path_have_distinct_identities() {
         text: "@@ -1,3 +1,3 @@\n context\n context\n-old\n+unstaged\n".to_owned(),
     });
     let mut model = Model::new(snapshot);
+    model.select_previous();
     let mut renderer = Renderer::new();
     let area = Rect::new(0, 0, 100, 30);
     let staged = renderer.prepare_frame(&model, area);
@@ -798,6 +808,7 @@ fn large_hunk_buttons_are_fixed_hoverable_and_do_not_wrap() {
         .unwrap();
 
     assert!(renderer.hunk_buttons.previous.is_none());
+    assert!(buffer_text(terminal.backend().buffer()).contains("Next change (n)"));
     let (next_area, next_target) = renderer.hunk_buttons.next.expect("next button");
     assert!(renderer.scrollbars.horizontal_area.height > 0);
     assert_eq!(next_area.bottom(), renderer.scrollbars.horizontal_area.y);
@@ -816,6 +827,7 @@ fn large_hunk_buttons_are_fixed_hoverable_and_do_not_wrap() {
         .draw(|frame| renderer.render(frame, &model))
         .unwrap();
     let (previous_area, previous_target) = renderer.hunk_buttons.previous.expect("previous button");
+    assert!(buffer_text(terminal.backend().buffer()).contains("Previous change (p)"));
     assert_eq!(previous_area.y, area.y.saturating_add(1));
     assert!(renderer.hunk_buttons.next.is_some());
     assert_eq!(

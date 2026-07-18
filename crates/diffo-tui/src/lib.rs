@@ -1664,7 +1664,7 @@ mod rendering_tests {
 
     use super::{
         Renderer, command_palette_layout, contrast_ratio, contrasting_foreground, diff_background,
-        diff_background_rgb, file_kind_style, row_style,
+        diff_background_rgb, file_kind_style, row_style, scrollbar_position_count,
     };
 
     #[test]
@@ -1692,6 +1692,12 @@ mod rendering_tests {
                 .add_modifier
                 .contains(Modifier::BOLD)
         );
+    }
+
+    #[test]
+    fn scrollbar_length_is_the_number_of_legal_viewport_positions() {
+        assert_eq!(scrollbar_position_count(120, 25), 96);
+        assert_eq!(scrollbar_position_count(25, 25), 1);
     }
 
     #[test]

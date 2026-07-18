@@ -36,6 +36,7 @@ pub struct CommandPalette {
     commands: Vec<Command>,
     query: String,
     selected: usize,
+    last_executed: Option<CommandId>,
 }
 
 impl CommandPalette {
@@ -78,7 +79,17 @@ impl CommandPalette {
                 fuzzy_score(command.label, &self.query).map(|score| (command, score, order))
             })
             .collect::<Vec<_>>();
-        matches.sort_by(|left, right| right.1.cmp(&left.1).then_with(|| left.2.cmp(&right.2)));
+        matches.sort_by(|left, right| {
+            if self.query.is_empty() {
+                let left_is_last = Some(left.0.id) == self.last_executed;
+                let right_is_last = Some(right.0.id) == self.last_executed;
+                right_is_last
+                    .cmp(&left_is_last)
+                    .then_with(|| left.2.cmp(&right.2))
+            } else {
+                right.1.cmp(&left.1).then_with(|| left.2.cmp(&right.2))
+            }
+        });
         matches.into_iter().map(|(command, _, _)| command).collect()
     }
 
@@ -207,6 +218,9 @@ impl CommandPalette {
 
     fn execute_selected(&mut self) -> PaletteEvent {
         let command = self.matches().get(self.selected).map(|command| command.id);
+        if let Some(command) = command {
+            self.last_executed = Some(command);
+        }
         self.close();
         command.map_or(PaletteEvent::Consumed, PaletteEvent::Execute)
     }
@@ -309,6 +323,55 @@ mod tests {
         );
         assert_eq!(event, Some(PaletteEvent::Execute(FETCH)));
         assert!(!palette.is_open());
+    }
+
+    #[test]
+    fn last_executed_command_is_first_when_reopened_without_a_query() {
+        let mut palette = CommandPalette::default();
+        palette.open(COMMANDS);
+        let _ = palette.handle_event(
+            &Event::Key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE)),
+            Rect::default(),
+        );
+        let event = palette.handle_event(
+            &Event::Key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE)),
+            Rect::default(),
+        );
+        assert_eq!(event, Some(PaletteEvent::Execute(PULL)));
+
+        palette.open(COMMANDS);
+
+        assert_eq!(
+            palette
+                .matches()
+                .into_iter()
+                .map(|command| command.id)
+                .collect::<Vec<_>>(),
+            vec![PULL, FETCH]
+        );
+        assert_eq!(palette.selected(), 0);
+    }
+
+    #[test]
+    fn a_query_uses_fuzzy_order_instead_of_command_history() {
+        let mut palette = CommandPalette::default();
+        palette.open(COMMANDS);
+        let _ = palette.handle_event(
+            &Event::Key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE)),
+            Rect::default(),
+        );
+        let _ = palette.handle_event(
+            &Event::Key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE)),
+            Rect::default(),
+        );
+        palette.open(COMMANDS);
+
+        let _ = palette.handle_event(
+            &Event::Key(KeyEvent::new(KeyCode::Char('f'), KeyModifiers::NONE)),
+            Rect::default(),
+        );
+
+        assert_eq!(palette.matches()[0].id, FETCH);
     }
 
     #[test]

@@ -4,9 +4,9 @@ use super::{
     HunkButtonMetrics, MAX_HIGHLIGHT_BYTES_PER_SIDE, MAX_HIGHLIGHT_FILE_LINES, MAX_SYNC_BYTES,
     MAX_SYNC_LINES, PREPARED_BUFFER_CACHE_SIZE, PrepareCommit, PrepareOutcome, PrepareRequest,
     ProjectionOptions, RenderLine, Renderer, RowKind, ScrollAnchor, ScrollbarMetrics, Span,
-    SyntaxHighlighter, TrySendError, env, inline_change_starts, inline_rows_with_options,
-    parse_unified_patch, side_by_side_change_starts, side_by_side_rows_with_options, sync_channel,
-    terminal_safe_text, thread,
+    SyntaxHighlighter, TrySendError, ViewportTransition, env, inline_change_starts,
+    inline_rows_with_options, parse_unified_patch, side_by_side_change_starts,
+    side_by_side_rows_with_options, sync_channel, terminal_safe_text, thread,
 };
 use diffo_diff::SideBySideRow;
 use diffo_highlight::{HighlightWindowRequest, LineRange};
@@ -283,6 +283,36 @@ pub(super) fn preparation_delay_from_environment() -> Duration {
 }
 
 impl Renderer {
+    pub(super) fn navigation_preparation_target(
+        &self,
+        requested: Option<&DiffKey>,
+        mode: DiffViewMode,
+    ) -> Option<usize> {
+        self.requested_navigation_target.filter(|target| {
+            requested != self.displayed_key()
+                || !self.syntax_ready_for_viewport(self.displayed_mode(mode), *target)
+        })
+    }
+
+    pub(super) fn commit_ready_navigation(
+        &mut self,
+        requested: Option<&DiffKey>,
+        mode: DiffViewMode,
+        horizontal: usize,
+    ) -> Option<ViewportTransition> {
+        let target = self.requested_navigation_target?;
+        if requested != self.displayed_key()
+            || !self.syntax_ready_for_viewport(self.displayed_mode(mode), target)
+        {
+            return None;
+        }
+        self.requested_navigation_target = None;
+        Some(ViewportTransition {
+            vertical: target,
+            horizontal,
+        })
+    }
+
     pub(super) fn vertical_message(
         message: diffo_app::Message,
         model: &diffo_app::Model,
@@ -587,6 +617,7 @@ impl Renderer {
             prepare_rx,
             submitted: Vec::new(),
             requested: None,
+            requested_navigation_target: None,
             diff_viewport_rows: 1,
             failed: None,
             scrollbars: ScrollbarMetrics::default(),

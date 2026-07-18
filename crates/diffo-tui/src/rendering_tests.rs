@@ -935,15 +935,15 @@ fn hunk_markers_have_a_separate_clickable_rail_beside_the_scrollbar() {
     );
     assert_eq!(
         renderer.map_event(&click, &model, Rect::new(0, 0, 100, 30)),
-        Some(diffo_app::Message::SetDiffScroll(target))
+        Some(diffo_app::Message::JumpDiffToPosition(target))
     );
-    model.diff_scroll = target;
-    let skeleton = renderer.prepare_frame(&model, Rect::new(0, 0, 100, 30));
-    assert!(skeleton.viewport_transition.is_none());
-    if !skeleton.syntax_ready {
-        wait_for_syntax_ready(&mut renderer, &model);
-    }
-    assert_eq!(model.diff_scroll, target);
+    let old_scroll = model.diff_scroll;
+    let pending = renderer.prepare_frame(&model, Rect::new(0, 0, 100, 30));
+    let transition = pending
+        .viewport_transition
+        .unwrap_or_else(|| wait_for_viewport_transition(&mut renderer, &model));
+    assert_eq!(model.diff_scroll, old_scroll);
+    assert_eq!(transition.vertical, target);
 }
 
 #[test]
@@ -982,11 +982,16 @@ fn large_hunk_buttons_are_fixed_and_do_not_wrap() {
             &model,
             area,
         ),
-        Some(diffo_app::Message::SetDiffScroll(next_target))
+        Some(diffo_app::Message::JumpDiffToPosition(next_target))
     );
 
-    model.diff_scroll = next_target;
-    renderer.prepare_frame(&model, area);
+    let transition = renderer
+        .prepare_frame(&model, area)
+        .viewport_transition
+        .expect("button jump must commit in one frame");
+    assert_eq!(transition.vertical, next_target);
+    assert!(renderer.submitted.is_empty());
+    model.diff_scroll = transition.vertical;
     terminal
         .draw(|frame| renderer.render(frame, &model))
         .unwrap();
@@ -1000,7 +1005,7 @@ fn large_hunk_buttons_are_fixed_and_do_not_wrap() {
             &model,
             area,
         ),
-        Some(diffo_app::Message::SetDiffScroll(previous_target))
+        Some(diffo_app::Message::JumpDiffToPosition(previous_target))
     );
 
     model.diff_scroll = renderer
@@ -1024,6 +1029,26 @@ fn large_hunk_buttons_are_fixed_and_do_not_wrap() {
         renderer.hunk_button_target_at(next_area.x, next_area.y),
         None
     );
+}
+
+#[test]
+fn ready_discrete_jump_commits_in_one_frame_without_preparation() {
+    let mut model = model();
+    model.snapshot.files[0].unstaged.as_mut().unwrap().text =
+        "@@ -1,4 +1,4 @@\n-old\n+new\n context\n-old two\n+new two\n".to_owned();
+    let area = Rect::new(0, 0, 100, 30);
+    let mut renderer = Renderer::new();
+    renderer.prepare_frame(&model, area);
+    wait_for_syntax_ready(&mut renderer, &model);
+    let computations = renderer.highlight_computations;
+    let target = model.diff_scroll;
+    assert!(renderer.syntax_ready_for_viewport(model.diff_view_mode, target));
+    renderer.requested_navigation_target = Some(target);
+    let preparation = renderer.prepare_frame(&model, area);
+
+    assert_eq!(preparation.viewport_transition.unwrap().vertical, target);
+    assert_eq!(renderer.highlight_computations, computations);
+    assert!(renderer.submitted.is_empty());
 }
 
 #[test]

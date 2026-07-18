@@ -142,6 +142,10 @@ impl Renderer {
             })
         });
         self.requested.clone_from(&requested);
+        if self.requested_navigation_target.is_some() && requested.as_ref() != self.displayed_key()
+        {
+            self.requested_navigation_target = None;
+        }
         let displayed_before = self.displayed_key().cloned();
         let anchor = requested.as_ref().and_then(|requested| {
             self.highlighted
@@ -150,52 +154,65 @@ impl Renderer {
                 .map(|cache| ScrollAnchor::capture(cache, cache.key.mode, model.diff_scroll))
         });
         self.diff_viewport_rows = usize::from(diff_area.height.saturating_sub(2));
-        let target_scroll =
-            self.syntax_target(requested.as_ref(), model.diff_view_mode, model.diff_scroll);
+        let target_scroll = self
+            .navigation_preparation_target(requested.as_ref(), model.diff_view_mode)
+            .or_else(|| {
+                self.syntax_target(requested.as_ref(), model.diff_view_mode, model.diff_scroll)
+            });
         let commit = self.prepare_requested(
             requested.as_ref(),
             self.diff_viewport_rows,
             model.diff_view_mode,
             target_scroll,
         );
-        let committed = commit
+        let document_committed = commit
             .as_ref()
             .is_some_and(|commit| commit.target_scroll.is_none());
         let displayed_after = self.displayed_key().cloned();
-        let viewport_transition = committed.then(|| {
-            let same_file = displayed_before
-                .as_ref()
-                .zip(displayed_after.as_ref())
-                .is_some_and(|(before, after)| before.file == after.file);
-            let same_mode = displayed_before
-                .as_ref()
-                .zip(displayed_after.as_ref())
-                .is_some_and(|(before, after)| before.mode == after.mode);
-            let vertical = if let Some(target) = commit.and_then(|commit| commit.target_scroll) {
-                Some(target)
-            } else if same_file && same_mode {
-                self.highlighted.as_ref().and_then(|cache| {
-                    anchor
-                        .and_then(|anchor| anchor.resolve(cache, cache.key.mode))
-                        .or_else(|| first_change(cache, cache.key.mode))
-                })
-            } else if same_file {
-                Some(0)
-            } else {
-                self.highlighted
+        let navigation_transition = self.commit_ready_navigation(
+            requested.as_ref(),
+            model.diff_view_mode,
+            model.diff_horizontal_scroll,
+        );
+        let viewport_transition = if navigation_transition.is_some() {
+            navigation_transition
+        } else {
+            document_committed.then(|| {
+                let same_file = displayed_before
                     .as_ref()
-                    .and_then(|cache| first_change(cache, cache.key.mode))
-            }
-            .unwrap_or(0);
-            ViewportTransition {
-                vertical,
-                horizontal: if same_file && same_mode {
-                    model.diff_horizontal_scroll
+                    .zip(displayed_after.as_ref())
+                    .is_some_and(|(before, after)| before.file == after.file);
+                let same_mode = displayed_before
+                    .as_ref()
+                    .zip(displayed_after.as_ref())
+                    .is_some_and(|(before, after)| before.mode == after.mode);
+                let vertical = if let Some(target) = commit.and_then(|commit| commit.target_scroll)
+                {
+                    Some(target)
+                } else if same_file && same_mode {
+                    self.highlighted.as_ref().and_then(|cache| {
+                        anchor
+                            .and_then(|anchor| anchor.resolve(cache, cache.key.mode))
+                            .or_else(|| first_change(cache, cache.key.mode))
+                    })
+                } else if same_file {
+                    Some(0)
                 } else {
-                    0
-                },
-            }
-        });
+                    self.highlighted
+                        .as_ref()
+                        .and_then(|cache| first_change(cache, cache.key.mode))
+                }
+                .unwrap_or(0);
+                ViewportTransition {
+                    vertical,
+                    horizontal: if same_file && same_mode {
+                        model.diff_horizontal_scroll
+                    } else {
+                        0
+                    },
+                }
+            })
+        };
         let rendered_vertical_scroll = viewport_transition
             .map_or(model.diff_scroll, |viewport| viewport.vertical)
             .min(self.displayed_rows(self.displayed_mode(model.diff_view_mode)));
@@ -246,10 +263,8 @@ impl Renderer {
             if mouse.kind == MouseEventKind::Down(MouseButton::Left)
                 && let Some(target) = self.hunk_button_target_at(mouse.column, mouse.row)
             {
-                return Some(Self::vertical_message(
-                    diffo_app::Message::SetDiffScroll(target),
-                    model,
-                ));
+                self.requested_navigation_target = Some(target);
+                return Some(diffo_app::Message::JumpDiffToPosition(target));
             }
             if mouse.kind == MouseEventKind::Up(MouseButton::Left) {
                 self.scrollbar_drag = None;
@@ -273,10 +288,8 @@ impl Renderer {
                 if mouse.kind == MouseEventKind::Down(MouseButton::Left)
                     && let Some(change) = self.change_at_marker(mouse.column, mouse.row, model)
                 {
-                    return Some(Self::vertical_message(
-                        diffo_app::Message::SetDiffScroll(change),
-                        model,
-                    ));
+                    self.requested_navigation_target = Some(change);
+                    return Some(diffo_app::Message::JumpDiffToPosition(change));
                 }
                 let axis = if mouse.kind == MouseEventKind::Down(MouseButton::Left) {
                     self.scrollbar_at(mouse.column, mouse.row)
@@ -286,19 +299,37 @@ impl Renderer {
                 if let Some(axis) = axis {
                     self.scrollbar_drag = Some(axis);
                     let message = self.scrollbar_message(axis, mouse.column, mouse.row);
+                    self.requested_navigation_target = None;
                     return Some(Self::vertical_message(message, model));
                 }
             }
         }
         let message = match input::map_event(event, model, area) {
-            Some(diffo_app::Message::JumpToPreviousChange) => self
-                .change_jump(model, false)
-                .map(diffo_app::Message::SetDiffScroll),
-            Some(diffo_app::Message::JumpToNextChange) => self
-                .change_jump(model, true)
-                .map(diffo_app::Message::SetDiffScroll),
+            Some(diffo_app::Message::JumpToPreviousChange) => {
+                self.change_jump(model, false).map(|target| {
+                    self.requested_navigation_target = Some(target);
+                    diffo_app::Message::JumpDiffToPosition(target)
+                })
+            }
+            Some(diffo_app::Message::JumpToNextChange) => {
+                self.change_jump(model, true).map(|target| {
+                    self.requested_navigation_target = Some(target);
+                    diffo_app::Message::JumpDiffToPosition(target)
+                })
+            }
             message => message,
         }?;
+        if matches!(
+            message,
+            diffo_app::Message::ScrollDiffUp
+                | diffo_app::Message::ScrollDiffDown
+                | diffo_app::Message::ScrollDiffPageUp(_)
+                | diffo_app::Message::ScrollDiffPageDown(_)
+                | diffo_app::Message::ScrollDiffVerticalBy(_)
+                | diffo_app::Message::SetDiffScroll(_)
+        ) {
+            self.requested_navigation_target = None;
+        }
         Some(Self::vertical_message(message, model))
     }
 }

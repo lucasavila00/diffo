@@ -27,6 +27,7 @@ pub enum Message {
     ScrollDiffPageDown(usize),
     ScrollDiffVerticalBy(i64),
     SetDiffScroll(usize),
+    JumpDiffToPosition(usize),
     SetDiffHorizontalScroll(usize),
     ScrollDiffLeft,
     ScrollDiffRight,
@@ -101,7 +102,9 @@ pub fn update(model: &mut Model, message: Message) -> Option<Effect> {
         Message::ScrollDiffHorizontalBy(columns) => model.scroll_diff_horizontal_by(columns),
         Message::ScrollFileListBy(area, rows) => model.scroll_file_list_by(area, rows),
         Message::SetFileListScroll(area, position) => model.set_file_list_scroll(area, position),
-        Message::JumpToPreviousChange | Message::JumpToNextChange => {}
+        Message::JumpDiffToPosition(_)
+        | Message::JumpToPreviousChange
+        | Message::JumpToNextChange => {}
         Message::ToggleDiffView => model.toggle_diff_view(),
         Message::ToggleFilePane => model.toggle_file_pane(),
         Message::BeginFilePaneResize => model.begin_file_pane_resize(),

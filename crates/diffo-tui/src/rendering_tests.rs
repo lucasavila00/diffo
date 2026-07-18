@@ -840,7 +840,12 @@ fn uncached_scroll_uses_one_viewport_and_skeleton_until_syntax_is_ready() {
     let mut model = model();
     let mut patch = String::from("@@ -1,700 +1,700 @@\n");
     for line in 1..=700 {
-        writeln!(patch, " let value_{line} = {line};").unwrap();
+        if matches!(line, 2 | 620) {
+            writeln!(patch, "-let value_{line} = 0;").unwrap();
+            writeln!(patch, "+let value_{line} = {line};").unwrap();
+        } else {
+            writeln!(patch, " let value_{line} = {line};").unwrap();
+        }
     }
     model.snapshot.files[0].unstaged.as_mut().unwrap().text = patch;
     let mut renderer = Renderer::new();
@@ -870,6 +875,24 @@ fn uncached_scroll_uses_one_viewport_and_skeleton_until_syntax_is_ready() {
             })
         })
     }));
+    let backend = TestBackend::new(100, 30);
+    let mut terminal = Terminal::new(backend).unwrap();
+    terminal
+        .draw(|frame| renderer.render(frame, &model))
+        .unwrap();
+    let changes = &renderer.highlighted.as_ref().unwrap().inline_changes;
+    let marker_row = renderer.scrollbars.vertical_area.y
+        + overview_position(
+            changes[1],
+            renderer.scrollbars.rows,
+            renderer.scrollbars.vertical_area.height,
+        );
+    let marker_column = renderer.scrollbars.vertical_area.x.saturating_add(1);
+    assert_eq!(
+        terminal.backend().buffer()[(marker_column, marker_row)].symbol(),
+        "▪"
+    );
+    assert!(renderer.hunk_buttons.previous.is_some());
 
     model.diff_scroll = 650;
     let newest = renderer.prepare_frame(&model, area);
@@ -977,6 +1000,8 @@ fn large_hunk_buttons_are_fixed_and_do_not_wrap() {
     let mut terminal = Terminal::new(backend).unwrap();
     let top_preparation = renderer.prepare_frame(&model, area);
     wait_for_syntax_ready(&mut renderer, &model);
+    let top_viewport =
+        renderer.diff_viewport_metrics(model.diff_view_mode, area, model.diff_scroll);
     terminal
         .draw(|frame| renderer.render(frame, &model))
         .unwrap();
@@ -1002,6 +1027,8 @@ fn large_hunk_buttons_are_fixed_and_do_not_wrap() {
     assert_eq!(transition.vertical, next_target);
     assert!(renderer.submitted.is_empty());
     model.diff_scroll = transition.vertical;
+    let middle_viewport =
+        renderer.diff_viewport_metrics(model.diff_view_mode, area, model.diff_scroll);
     terminal
         .draw(|frame| renderer.render(frame, &model))
         .unwrap();
@@ -1027,6 +1054,8 @@ fn large_hunk_buttons_are_fixed_and_do_not_wrap() {
         .copied()
         .unwrap();
     let end_preparation = renderer.prepare_frame(&model, area);
+    let end_viewport =
+        renderer.diff_viewport_metrics(model.diff_view_mode, area, model.diff_scroll);
     terminal
         .draw(|frame| renderer.render(frame, &model))
         .unwrap();
@@ -1034,6 +1063,22 @@ fn large_hunk_buttons_are_fixed_and_do_not_wrap() {
     assert_eq!(
         end_preparation.maximum_vertical_scroll,
         top_preparation.maximum_vertical_scroll
+    );
+    assert_eq!(top_viewport.content_area.y, middle_viewport.content_area.y);
+    assert_eq!(middle_viewport.content_area.y, end_viewport.content_area.y);
+    let content_and_horizontal_bottom = |viewport: super::DiffViewportMetrics| {
+        viewport
+            .content_area
+            .bottom()
+            .saturating_add(viewport.horizontal_area.height)
+    };
+    assert_eq!(
+        content_and_horizontal_bottom(top_viewport),
+        content_and_horizontal_bottom(middle_viewport)
+    );
+    assert_eq!(
+        content_and_horizontal_bottom(middle_viewport),
+        content_and_horizontal_bottom(end_viewport)
     );
     assert_eq!(
         renderer.hunk_button_target_at(next_area.x, next_area.y),

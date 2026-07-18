@@ -357,15 +357,16 @@ impl Renderer {
         let rows = self.displayed_rows(mode);
         let changes = self.change_targets(mode);
         let viewport_columns = usize::from(inner.width);
+        let previous_rows = u16::from(inner.height > 0);
+        let next_rows = u16::from(inner.height > 1);
+        let control_rows = usize::from(previous_rows.saturating_add(next_rows));
         let mut previous_change = None;
         let mut next_change = None;
         let mut show_horizontal = false;
         let mut horizontal_columns = 0;
 
         for _ in 0..8 {
-            let reserved_rows = usize::from(previous_change.is_some())
-                + usize::from(next_change.is_some())
-                + usize::from(show_horizontal);
+            let reserved_rows = control_rows + usize::from(show_horizontal);
             let viewport_rows = usize::from(inner.height).saturating_sub(reserved_rows);
             let maximum_vertical_scroll = rows.saturating_sub(viewport_rows);
             let first_row = requested_scroll.min(maximum_vertical_scroll);
@@ -388,13 +389,14 @@ impl Renderer {
             show_horizontal = new_horizontal;
         }
 
-        if inner.height < 3 {
+        if previous_rows == 0 {
             previous_change = None;
+        }
+        if next_rows == 0 {
             next_change = None;
         }
-        let horizontal_rows = u16::from(show_horizontal && inner.height > 1);
-        let previous_rows = u16::from(previous_change.is_some());
-        let next_rows = u16::from(next_change.is_some());
+        let horizontal_rows =
+            u16::from(show_horizontal && inner.height > previous_rows.saturating_add(next_rows));
         let content_y = inner.y.saturating_add(previous_rows);
         let content_bottom = inner
             .bottom()

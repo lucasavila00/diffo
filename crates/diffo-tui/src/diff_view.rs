@@ -91,11 +91,7 @@ impl Renderer {
             lines,
             model.diff_horizontal_scroll,
         );
-        if skeleton {
-            self.hunk_buttons = HunkButtonMetrics::default();
-        } else {
-            self.render_hunk_buttons(frame, area, &viewport);
-        }
+        self.render_hunk_buttons(frame, area, &viewport);
         self.render_diff_scrollbars(frame, area, &viewport, model);
     }
 
@@ -171,12 +167,7 @@ impl Renderer {
             },
         );
         debug_assert_eq!(shared.vertical, self.scrollbars.vertical_area);
-        let skeleton = self.requested.as_ref() == self.displayed_key()
-            && !self.syntax_ready_for_viewport(
-                self.displayed_mode(model.diff_view_mode),
-                model.diff_scroll,
-            );
-        if viewport.maximum_vertical_scroll > 0 && !skeleton {
+        if viewport.maximum_vertical_scroll > 0 {
             let changes = self.highlighted.as_ref().map(|cache| match cache.key.mode {
                 DiffViewMode::Inline => cache.inline_changes.as_slice(),
                 DiffViewMode::SideBySide => cache.side_by_side_changes.as_slice(),

@@ -1,6 +1,6 @@
 # ADR 0053: Broker supported Git interactions through the workbench
 
-Status: Proposed
+Status: Accepted
 
 Depends on [ADR 0052](0052-terminal-safe-footer-errors.md) and refines
 [ADR 0018](0018-network-operation-feedback.md) and
@@ -54,8 +54,10 @@ For Fetch, Pull, and Push, continue to detach the child from terminal input and 
 `GIT_TERMINAL_PROMPT=0`. Set `GIT_ASKPASS`, `SSH_ASKPASS`, and
 `SSH_ASKPASS_REQUIRE=force` to the private helper for that child only. Pass a random
 operation capability and the broker endpoint in the child environment as internal
-protocol data, never as user configuration. Create the endpoint in a permission-restricted
-temporary directory and remove it when the operation ends.
+protocol data, never as user configuration. Create the Unix-domain socket endpoint in a
+mode-0700 temporary directory and remove it when the operation ends. Diffo supports Linux
+only, so this boundary uses the standard library's Unix-socket APIs instead of a
+cross-platform IPC abstraction.
 
 The helper sends one request to the broker and writes only the selected response to its
 stdout. It never renders, reads Diffo's terminal, logs a response, or mutates repository
@@ -174,5 +176,5 @@ The main loop remains the sole terminal owner, the repository worker may pause w
 blocking UI input, and SSH trust still requires an informed user choice.
 
 This adds a private helper, authenticated local IPC, cancellation, and secret-handling paths
-that need platform-specific packaging and tests. Until those pieces are implemented, current
-network operations remain deliberately non-interactive.
+that need Linux packaging and tests. Git remains the system executable rather than a Rust Git
+implementation because askpass and OpenSSH behavior are part of the required integration.

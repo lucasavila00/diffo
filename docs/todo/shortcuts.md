@@ -1,0 +1,2 @@
+- remove all uppwercase shortcuts (we'll never have them)
+- remvoe the d

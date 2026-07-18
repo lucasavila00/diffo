@@ -1,4 +1,8 @@
-use super::*;
+use super::{
+    Clear, Command, CommandId, DiffActivity, Event, ExplorerActivity, ExplorerEvent, Frame,
+    FramePreparation, PaneSplit, Rect, RendererEvent, SearchActivity, TextRenderMode,
+    TextSurfacePreparation, Tool, WorkbenchCommand, WorkbenchEffect, tool_areas,
+};
 
 impl Tool for DiffActivity {
     fn handle_event(

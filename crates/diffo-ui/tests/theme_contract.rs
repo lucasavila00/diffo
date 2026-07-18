@@ -71,8 +71,11 @@ fn chrome_renderers_use_design_system_tokens() {
         "crates/diffo-workbench/src",
     ];
     let exceptions = [
+        "crates/diffo-file-picker/src/tests.rs",
         "crates/diffo-tui/src/rendering_tests.rs",
+        "crates/diffo-tui/src/rendering_tests/diff.rs",
         "crates/diffo-tui/src/style.rs",
+        "crates/diffo-workbench/src/tests.rs",
     ];
 
     let mut sources = Vec::new();

@@ -454,4 +454,13 @@ mod tests {
         assert_eq!(safe, "before    ␛[2J␈after�");
         assert!(!safe.chars().any(char::is_control));
     }
+
+    #[test]
+    fn terminal_text_makes_newline_sequences_visible_and_inert() {
+        let safe = terminal_safe_text("first\nsecond\r\nthird");
+
+        assert_eq!(safe, "first␊second␍␊third");
+        assert_eq!(safe.lines().count(), 1);
+        assert!(!safe.chars().any(char::is_control));
+    }
 }

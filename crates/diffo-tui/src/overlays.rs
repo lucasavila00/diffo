@@ -1,6 +1,6 @@
 use super::{
     Alignment, Block, Borders, Cell, Clear, Constraint, Frame, Layout, Model, Modifier, Paragraph,
-    Rect, Row, Style, Table, Toast, ToastKind, input,
+    Rect, Row, Style, Table, Toast, ToastKind, input, terminal_safe_text,
 };
 use diffo_ui::{design, theme};
 
@@ -65,9 +65,10 @@ pub fn render_toasts(frame: &mut Frame, toasts: &[Toast], content_area: Rect) {
             ToastKind::Error => theme::DANGER,
         };
         frame.render_widget(Clear, area);
+        let title = terminal_safe_text(&toast.title);
         let text = toast.detail.as_ref().map_or_else(
-            || toast.title.clone(),
-            |detail| format!("{}\n{detail}", toast.title),
+            || title.clone(),
+            |detail| format!("{title}\n{}", terminal_safe_text(detail)),
         );
         frame.render_widget(
             Paragraph::new(text)
@@ -94,7 +95,12 @@ fn toast_areas(toasts: &[Toast], area: Rect) -> Vec<Rect> {
                 .max(usize::from(design::SINGLE_LINE_HEIGHT));
             let text_rows = std::iter::once(toast.title.as_str())
                 .chain(toast.detail.as_deref())
-                .map(|text| text.chars().count().div_ceil(inner_width))
+                .map(|text| {
+                    terminal_safe_text(text)
+                        .chars()
+                        .count()
+                        .div_ceil(inner_width)
+                })
                 .sum::<usize>();
             let height = u16::try_from(text_rows)
                 .unwrap_or(u16::MAX)

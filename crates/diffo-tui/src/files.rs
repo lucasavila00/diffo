@@ -238,7 +238,7 @@ fn transient_status(model: &Model, animation_tick: usize) -> Option<Span<'static
         ))
     } else if let Some(error) = model.error.as_deref() {
         Some(Span::styled(
-            error.to_owned(),
+            terminal_safe_text(error),
             Style::default().fg(theme::DANGER),
         ))
     } else if model.resizing_file_pane {

@@ -7,7 +7,7 @@ use std::time::Instant;
 use crossterm::event::{
     Event, KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
 };
-use diffo_app::{ChangeArea, DiffViewMode, Message, Model, ToastKind, ToastQueue};
+use diffo_app::{ChangeArea, DiffViewMode, Message, Model, Toast, ToastKind, ToastQueue};
 use diffo_core::{
     ChangeKind, FileDiff, FileState, HeadState, RepositoryAction, RepositorySnapshot, UpstreamState,
 };
@@ -321,6 +321,58 @@ fn status_line_keeps_the_head_visible_with_transient_errors() {
 }
 
 #[test]
+fn status_line_makes_error_control_characters_inert() {
+    let mut model = Model::new(RepositorySnapshot {
+        head: HeadState::Named {
+            name: "main".to_owned(),
+            commit: "123456789abcdef".to_owned(),
+        },
+        ..RepositorySnapshot::default()
+    });
+    model.error = Some("Pull failed\ncontinue?\r\x1b[2J\t\x08".to_owned());
+
+    let line = status_line(&model, 0, 80);
+    let text = line_text(&line);
+
+    assert_eq!(line.width(), 80);
+    assert!(text.contains("Pull failed␊continue?␍␛[2J    ␈"));
+    assert!(!text.chars().any(char::is_control));
+}
+
+#[test]
+fn rendered_footer_keeps_newline_errors_on_the_footer_row() {
+    let mut model = Model::new(RepositorySnapshot {
+        head: HeadState::Named {
+            name: "main".to_owned(),
+            commit: "123456789abcdef".to_owned(),
+        },
+        ..RepositorySnapshot::default()
+    });
+    model.error = Some("Fetch failed\nSSH host is unknown".to_owned());
+    let area = Rect::new(0, 0, 80, 12);
+    let mut renderer = Renderer::new();
+    renderer.prepare_frame(&model, area);
+    let backend = TestBackend::new(area.width, area.height);
+    let mut terminal = Terminal::new(backend).unwrap();
+
+    terminal
+        .draw(|frame| renderer.render(frame, &model))
+        .unwrap();
+
+    let buffer = terminal.backend().buffer();
+    let footer = (0..area.width)
+        .map(|column| buffer[(column, area.height - 1)].symbol())
+        .collect::<String>();
+    assert!(footer.contains("Fetch failed␊SSH host is unknown"));
+    for row in 0..area.height - 1 {
+        let content = (0..area.width)
+            .map(|column| buffer[(column, row)].symbol())
+            .collect::<String>();
+        assert!(!content.contains("SSH host is unknown"));
+    }
+}
+
+#[test]
 fn file_list_scrollbars_have_independent_offsets_and_exact_hit_targets() {
     let model = file_list_model(30);
     let area = Rect::new(0, 0, 100, 30);
@@ -601,6 +653,29 @@ fn renders_and_hit_tests_a_bottom_right_toast() {
         super::toast_at_position(toasts.as_slice(), Rect::new(0, 0, 100, 30), 70, 26),
         Some(id)
     );
+}
+
+#[test]
+fn error_toasts_render_embedded_newlines_as_inert_text() {
+    let toasts = [Toast {
+        id: 1,
+        kind: ToastKind::Error,
+        title: "Push failed\naccept remote output?".to_owned(),
+        detail: Some("detail\nnext line".to_owned()),
+    }];
+    let area = Rect::new(0, 0, 100, 30);
+    let backend = TestBackend::new(area.width, area.height);
+    let mut terminal = Terminal::new(backend).unwrap();
+
+    terminal
+        .draw(|frame| super::render_toasts(frame, &toasts, frame.area()))
+        .unwrap();
+
+    let screen = buffer_text(terminal.backend().buffer());
+    assert!(screen.contains("Push failed␊accept remote output?"));
+    assert!(screen.contains("detail␊next line"));
+    assert!(!screen.chars().any(char::is_control));
+    assert_eq!(super::toast_at_position(&toasts, area, 70, 26), Some(1));
 }
 
 fn diff_lines(

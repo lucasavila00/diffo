@@ -497,7 +497,33 @@ mod tests {
     use super::model::Viewer;
     use super::*;
     use crossterm::event::MouseEvent;
+    use ratatui::{Terminal, backend::TestBackend};
     use std::collections::HashMap;
+
+    #[test]
+    fn explorer_errors_render_embedded_newlines_as_inert_text() {
+        let mut explorer = ExplorerActivity::new(RepositorySnapshot::default());
+        explorer.model.error = Some("File load failed\ntry another file".to_owned());
+        let area = Rect::new(0, 0, 80, 12);
+        let split = PaneSplit::default();
+        explorer.prepare_frame(area, split);
+        let backend = TestBackend::new(area.width, area.height);
+        let mut terminal = Terminal::new(backend).unwrap();
+
+        terminal
+            .draw(|frame| explorer.render(frame, area, split))
+            .unwrap();
+
+        let screen = terminal
+            .backend()
+            .buffer()
+            .content
+            .iter()
+            .map(ratatui::buffer::Cell::symbol)
+            .collect::<String>();
+        assert!(screen.contains("File load failed␊try another file"));
+        assert!(!screen.chars().any(char::is_control));
+    }
 
     #[test]
     fn stale_file_results_do_not_commit() {

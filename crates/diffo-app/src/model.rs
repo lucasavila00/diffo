@@ -32,6 +32,14 @@ pub enum PrimaryAction {
     Disabled,
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+enum CommitComposerState {
+    #[default]
+    Idle,
+    Focused,
+    Pending,
+}
+
 impl PrimaryAction {
     #[must_use]
     pub const fn label(self) -> &'static str {
@@ -73,8 +81,7 @@ pub struct Model {
     pub command_palette: Option<CommandPalette>,
     pub help_open: bool,
     pub commit_message: String,
-    pub commit_input_focused: bool,
-    commit_pending: bool,
+    commit_composer_state: CommitComposerState,
     expanded_file_pane_percent: u16,
     cursor: usize,
 }
@@ -97,8 +104,7 @@ impl Model {
             command_palette: None,
             help_open: false,
             commit_message: String::new(),
-            commit_input_focused: false,
-            commit_pending: false,
+            commit_composer_state: CommitComposerState::Idle,
             expanded_file_pane_percent: 25,
             cursor: 0,
         }
@@ -124,22 +130,27 @@ impl Model {
 
     pub fn focus_commit_input(&mut self) {
         if self.access_mode == AccessMode::ReadWrite {
-            self.commit_input_focused = true;
+            self.commit_composer_state = CommitComposerState::Focused;
         }
     }
 
     pub fn blur_commit_input(&mut self) {
-        self.commit_input_focused = false;
+        self.commit_composer_state = CommitComposerState::Idle;
+    }
+
+    #[must_use]
+    pub fn commit_input_focused(&self) -> bool {
+        self.commit_composer_state == CommitComposerState::Focused
     }
 
     pub fn commit_message_input(&mut self, character: char) {
-        if self.commit_input_focused && !character.is_control() {
+        if self.commit_input_focused() && !character.is_control() {
             self.commit_message.push(character);
         }
     }
 
     pub fn commit_message_backspace(&mut self) {
-        if self.commit_input_focused {
+        if self.commit_input_focused() {
             self.commit_message.pop();
         }
     }
@@ -149,7 +160,7 @@ impl Model {
         if self.access_mode == AccessMode::ReadOnly {
             return PrimaryAction::Disabled;
         }
-        if self.commit_pending {
+        if self.commit_composer_state == CommitComposerState::Pending {
             return PrimaryAction::Disabled;
         }
         let has_staged = self.snapshot.files.iter().any(|file| file.staged.is_some());
@@ -170,14 +181,16 @@ impl Model {
         let action = match self.primary_action() {
             PrimaryAction::Commit => {
                 let message = self.commit_message.trim().to_owned();
-                self.commit_pending = true;
+                self.commit_composer_state = CommitComposerState::Pending;
                 RepositoryAction::Commit(message)
             }
             PrimaryAction::Push => RepositoryAction::Push,
             PrimaryAction::Pull => RepositoryAction::Pull,
             PrimaryAction::PushAndPull | PrimaryAction::Disabled => return None,
         };
-        self.commit_input_focused = false;
+        if self.commit_composer_state != CommitComposerState::Pending {
+            self.commit_composer_state = CommitComposerState::Idle;
+        }
         Some(action)
     }
 
@@ -435,9 +448,9 @@ impl Model {
     }
 
     pub fn refresh(&mut self, snapshot: RepositorySnapshot) {
-        if self.commit_pending {
+        if self.commit_composer_state == CommitComposerState::Pending {
             self.commit_message.clear();
-            self.commit_pending = false;
+            self.commit_composer_state = CommitComposerState::Idle;
         }
         let old_selected = self.selected.clone();
         let old_cursor = self.cursor;
@@ -459,7 +472,9 @@ impl Model {
     }
 
     pub fn show_error(&mut self, error: impl Into<String>) {
-        self.commit_pending = false;
+        if self.commit_composer_state == CommitComposerState::Pending {
+            self.commit_composer_state = CommitComposerState::Focused;
+        }
         self.error = Some(error.into());
     }
 

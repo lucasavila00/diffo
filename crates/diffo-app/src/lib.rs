@@ -194,6 +194,8 @@ mod tests {
         assert_eq!(model.primary_action(), PrimaryAction::Pull);
         model.snapshot.upstream.as_mut().unwrap().ahead = 1;
         assert_eq!(model.primary_action(), PrimaryAction::PushAndPull);
+        assert_eq!(model.primary_action().label(), "Push + Pull");
+        assert!(!model.primary_action().enabled());
         assert_eq!(update(&mut model, Message::ExecutePrimaryAction), None);
     }
 

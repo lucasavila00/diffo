@@ -820,9 +820,9 @@ pub(crate) fn file_at_position(
         .direction(Direction::Vertical)
         .constraints([Constraint::Min(3), Constraint::Length(1)])
         .split(area);
-    let panes = horizontal_panes(vertical[0], model.file_pane_percent);
-    let panels = file_panel_areas(panes[0]);
-    let groups = file_group_areas(panels[1]);
+    let columns = horizontal_panes(vertical[0], model.file_pane_percent);
+    let file_areas = file_panel_areas(columns[0]);
+    let groups = file_group_areas(file_areas[1]);
     file_in_group_at(
         staged_files(&model.snapshot),
         ChangeArea::Staged,
@@ -850,9 +850,9 @@ pub(crate) fn file_action_at_position(
     if model.access_mode == AccessMode::ReadOnly {
         return None;
     }
-    let panes = horizontal_panes(main_area(area), model.file_pane_percent);
-    let panels = file_panel_areas(panes[0]);
-    let groups = file_group_areas(panels[1]);
+    let columns = horizontal_panes(main_area(area), model.file_pane_percent);
+    let file_areas = file_panel_areas(columns[0]);
+    let groups = file_group_areas(file_areas[1]);
     if header_action_contains(groups[0], " Staged [", column, row) {
         return Some(diffo_app::Message::UnstageAll);
     }
@@ -1026,7 +1026,7 @@ fn render_commit_composer(frame: &mut Frame, area: Rect, model: &Model) {
                 Block::default()
                     .borders(Borders::ALL)
                     .title(" Commit message ")
-                    .border_style(if model.commit_input_focused {
+                    .border_style(if model.commit_input_focused() {
                         Style::default().fg(Color::Cyan)
                     } else {
                         Style::default()
@@ -1055,9 +1055,9 @@ pub(crate) fn commit_action_at_position(
     column: u16,
     row: u16,
 ) -> Option<diffo_app::Message> {
-    let panes = horizontal_panes(main_area(area), model.file_pane_percent);
-    let panels = file_panel_areas(panes[0]);
-    let sections = commit_composer_areas(panels[0]);
+    let columns = horizontal_panes(main_area(area), model.file_pane_percent);
+    let file_areas = file_panel_areas(columns[0]);
+    let sections = commit_composer_areas(file_areas[0]);
     if sections[0].contains((column, row).into()) {
         return Some(diffo_app::Message::FocusCommitInput);
     }

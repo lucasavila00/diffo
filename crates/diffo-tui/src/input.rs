@@ -239,7 +239,7 @@ pub fn map_event(event: &Event, model: &Model, area: Rect) -> Option<Message> {
     if model.command_palette.is_some() {
         return map_command_palette_event(event);
     }
-    if model.commit_input_focused
+    if model.commit_input_focused()
         && let Event::Key(key) = event
         && key.kind == KeyEventKind::Press
     {
@@ -721,6 +721,9 @@ mod tests {
             Some(Message::FocusCommitInput)
         );
         assert_eq!(map_event(&click(2, 3), &model, area), None);
+        model.snapshot.files[0].staged = Some(FileDiff {
+            text: String::new(),
+        });
         model.focus_commit_input();
         model.commit_message_input('x');
         assert_eq!(

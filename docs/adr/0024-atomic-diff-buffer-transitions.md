@@ -19,6 +19,11 @@ change-navigation targets.
 
 Treat the rendered diff buffer and its viewport as one committed unit.
 
+This is an architectural invariant, not a best-effort rendering optimization. There
+must never be a frame containing new-buffer content with an old or provisional
+viewport, nor a frame containing an uncommitted buffer's navigation targets or scroll
+metrics.
+
 - Keep the last committed buffer visible while a replacement is prepared. On startup,
   keep the pane empty until the first buffer is ready.
 - Identify requests by path, staged or unstaged area, patch contents, and conflict
@@ -58,3 +63,5 @@ transaction in ADR 0014.
 - Staged and unstaged buffers for one path have distinct identities.
 - Stale and out-of-order results never become displayed buffers.
 - Same-buffer refresh preserves the visible row.
+- Any future change to preparation or rendering retains a delayed PTY test that proves
+  the displayed identity and viewport transition change in the same frame.

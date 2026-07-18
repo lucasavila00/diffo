@@ -31,3 +31,16 @@ application behavior.
 
 For debugging, `DIFFO_DUMP_PATH=state.ron make diffo` writes one repository snapshot
 and exits without opening the TUI. Diffo has no command-line arguments.
+
+## TUI architecture invariants
+
+Diff-buffer changes are atomic. While a selected file is being prepared, Diffo keeps
+the last committed buffer and viewport unchanged. It commits the replacement's
+content, projections, hunk targets, scroll bounds, and initial position together
+before one draw. Rendering must never poll or install background preparation results,
+and stale results must never become visible. See
+[`ADR 0024`](docs/adr/0024-atomic-diff-buffer-transitions.md).
+
+The vertical scrollbar and hunk overview are separate controls. The scrollbar owns
+the inner track; hunk markers own the adjacent right-border rail. Neither control may
+paint over or capture clicks intended for the other.

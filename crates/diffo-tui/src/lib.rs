@@ -375,7 +375,8 @@ impl Renderer {
     }
 
     fn change_at_marker(&self, column: u16, row: u16, model: &Model) -> Option<usize> {
-        if column.abs_diff(self.scrollbars.vertical_area.x) > 1 {
+        let marker_column = self.scrollbars.vertical_area.x.saturating_add(1);
+        if column != marker_column {
             return None;
         }
         let cache = self.highlighted.as_ref()?;
@@ -394,11 +395,6 @@ impl Renderer {
                     self.scrollbars.vertical_area.height,
                 ));
             marker_row == row
-                && (*change < model.diff_scroll
-                    || *change
-                        >= model
-                            .diff_scroll
-                            .saturating_add(self.scrollbars.viewport_rows))
         })
     }
 
@@ -695,18 +691,21 @@ fn render_change_markers(
     viewport_rows: usize,
 ) {
     for &change in changes {
-        if change >= first_visible && change < first_visible.saturating_add(viewport_rows) {
-            continue;
-        }
+        let visible =
+            change >= first_visible && change < first_visible.saturating_add(viewport_rows);
         let marker = Rect::new(
-            area.x,
+            area.x.saturating_add(1),
             area.y
                 .saturating_add(overview_position(change, rows, area.height)),
             1,
             1,
         );
         frame.render_widget(
-            Paragraph::new("▪").style(Style::default().fg(Color::Yellow)),
+            Paragraph::new("▪").style(Style::default().fg(if visible {
+                Color::Cyan
+            } else {
+                Color::Yellow
+            })),
             marker,
         );
     }
@@ -2490,7 +2489,7 @@ mod rendering_tests {
     }
 
     #[test]
-    fn clicking_an_overview_marker_jumps_to_its_change() {
+    fn hunk_markers_have_a_separate_clickable_rail_beside_the_scrollbar() {
         let mut model = model();
         let mut patch = String::from("@@ -1,100 +1,100 @@\n");
         for line in 1..=100 {
@@ -2510,7 +2509,9 @@ mod rendering_tests {
             .draw(|frame| renderer.render(frame, &model))
             .unwrap();
 
-        let target = renderer.highlighted.as_ref().unwrap().inline_changes[1];
+        let changes = &renderer.highlighted.as_ref().unwrap().inline_changes;
+        let target = changes[1];
+        let marker_column = renderer.scrollbars.vertical_area.x.saturating_add(1);
         let marker_row = renderer.scrollbars.vertical_area.y
             + overview_position(
                 target,
@@ -2519,12 +2520,37 @@ mod rendering_tests {
             );
         let click = Event::Mouse(MouseEvent {
             kind: MouseEventKind::Down(MouseButton::Left),
-            // The pane border beside the marker is part of its click target.
-            column: renderer.scrollbars.vertical_area.x.saturating_add(1),
+            column: marker_column,
             row: marker_row,
             modifiers: KeyModifiers::NONE,
         });
 
+        assert_eq!(
+            terminal.backend().buffer()[(marker_column, marker_row)].symbol(),
+            "▪"
+        );
+        assert_ne!(
+            terminal.backend().buffer()[(renderer.scrollbars.vertical_area.x, marker_row)].symbol(),
+            "▪"
+        );
+        let visible_marker_row = renderer.scrollbars.vertical_area.y
+            + overview_position(
+                changes[0],
+                renderer.scrollbars.rows,
+                renderer.scrollbars.vertical_area.height,
+            );
+        assert_eq!(
+            terminal.backend().buffer()[(marker_column, visible_marker_row)].symbol(),
+            "▪"
+        );
+        assert_eq!(
+            renderer.change_at_marker(renderer.scrollbars.vertical_area.x, marker_row, &model),
+            None
+        );
+        assert_eq!(
+            renderer.scrollbar_at(renderer.scrollbars.vertical_area.x, marker_row),
+            Some(super::ScrollbarAxis::Vertical)
+        );
         assert_eq!(
             renderer.map_event(&click, &model, Rect::new(0, 0, 100, 30)),
             Some(diffo_app::Message::SetDiffScroll(target))

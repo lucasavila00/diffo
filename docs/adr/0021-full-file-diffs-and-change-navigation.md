@@ -17,7 +17,8 @@ Show the full old and new files, like VS Code.
 Keep hunks as navigation targets:
 
 - Add next-change and previous-change actions.
-- Mark every change on the vertical scrollbar.
+- Mark every change on a dedicated rail adjacent to the vertical scrollbar. Never
+  paint markers over the scrollbar thumb or make the two controls share a click cell.
 - Keep the viewport visible on the same scrollbar.
 - Let users click a change marker to jump to it.
 

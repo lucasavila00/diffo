@@ -30,6 +30,10 @@ This repository is a Rust workspace containing small command-line utilities. Eac
 - Keep terminal rendering, input handling, application state, and external commands in separate modules.
 - Document key bindings in the interface and update them when controls change.
 - Avoid blocking work in the rendering and input loop.
+- Treat the displayed diff buffer and its viewport as one atomic commit. Keep the previous buffer unchanged until the replacement content, projections, hunk targets, scroll bounds, and initial position are ready to draw together.
+- Drain and install background diff results only during frame preparation. Rendering must consume committed state only, and stale results must never supply content, navigation targets, or scroll metrics.
+- Keep the vertical scrollbar and hunk-marker rail visually and interactively separate; neither control may overwrite or capture the other control's cells.
+- Add deterministic state-transition tests and a delayed PTY regression whenever changing asynchronous diff preparation, buffer opening, first-hunk navigation, or scrollbar markers.
 - Keep mock repository states in `crates/diffo-core/fixtures/`; do not add mock-only behavior to the real Git data path.
 
 ## Validation

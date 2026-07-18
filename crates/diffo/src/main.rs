@@ -1,6 +1,7 @@
 use std::{
     collections::HashMap,
-    env, fs, io,
+    env, fs,
+    io::{self, Write as _},
     path::Path,
     sync::{
         Arc,
@@ -10,6 +11,7 @@ use std::{
 };
 
 use anyhow::{Context, Result};
+use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture},
     execute,
@@ -283,11 +285,25 @@ fn dispatch_message(
     refresh: Option<&RefreshService>,
 ) {
     if let Some(effect) = update(model, message) {
-        if let Some(refresh) = refresh {
-            let Effect::Repository(action) = effect;
-            refresh.apply(action);
-        } else {
-            execute_effect(repository, model, effect);
+        match effect {
+            Effect::Repository(action) if refresh.is_some() => {
+                refresh.expect("checked above").apply(action);
+            }
+            Effect::CopyPath { path, absolute } => match copy_path_to_clipboard(&path, absolute) {
+                Ok(copied) => {
+                    model.show_toast(
+                        ToastKind::Success,
+                        format!(
+                            "Copied {} path: {copied}",
+                            if absolute { "absolute" } else { "relative" }
+                        ),
+                    );
+                }
+                Err(error) => {
+                    model.show_toast(ToastKind::Error, format!("Could not copy path: {error}"));
+                }
+            },
+            effect @ Effect::Repository(_) => execute_effect(repository, model, effect),
         }
     }
 }
@@ -381,7 +397,9 @@ fn drain_refresh(refresh: &RefreshService, model: &mut Model, generation: &mut u
 }
 
 fn execute_effect(repository: &dyn Repository, model: &mut Model, effect: Effect) {
-    let Effect::Repository(action) = effect;
+    let Effect::Repository(action) = effect else {
+        return;
+    };
     let message = match repository.apply(&action) {
         Ok(result) => match repository.snapshot() {
             Ok(snapshot) => Message::OperationCompleted(result, snapshot),
@@ -390,6 +408,63 @@ fn execute_effect(repository: &dyn Repository, model: &mut Model, effect: Effect
         Err(failure) => Message::ActionFailed(failure),
     };
     let _ = update(model, message);
+}
+
+fn copy_path_to_clipboard(path: &Path, absolute: bool) -> Result<String> {
+    let value = if absolute {
+        let output = std::process::Command::new("git")
+            .args(["rev-parse", "--show-toplevel"])
+            .output()
+            .context("failed to find repository root")?;
+        if !output.status.success() {
+            anyhow::bail!("Git repository root is unavailable");
+        }
+        let root = String::from_utf8(output.stdout).context("repository root is not UTF-8")?;
+        Path::new(root.trim()).join(path).display().to_string()
+    } else {
+        path.display().to_string()
+    };
+    if env::var_os("TMUX").is_some() && copy_with_tmux(&value).is_ok() {
+        return Ok(value);
+    }
+    let encoded = BASE64.encode(value.as_bytes());
+    let osc52 = format!("\x1b]52;c;{encoded}\x07");
+    let mut stdout = io::stdout().lock();
+    stdout
+        .write_all(osc52.as_bytes())
+        .context("failed to write OSC 52 clipboard escape")?;
+    if env::var("TERM").is_ok_and(|term| term.starts_with("screen")) {
+        // Across SSH only TERM survives. Byobu may use GNU Screen or tmux, so
+        // send both passthrough forms; unsupported DCS forms are ignored.
+        write!(stdout, "\x1bP{osc52}\x1b\\")
+            .context("failed to write GNU Screen clipboard passthrough")?;
+        let tmux_payload = osc52.replace('\x1b', "\x1b\x1b");
+        write!(stdout, "\x1bPtmux;{tmux_payload}\x1b\\")
+            .context("failed to write tmux clipboard passthrough")?;
+    }
+    stdout.flush().context("failed to flush clipboard escape")?;
+    Ok(value)
+}
+
+fn copy_with_tmux(value: &str) -> Result<()> {
+    let mut child = std::process::Command::new("tmux")
+        .args(["load-buffer", "-w", "-"])
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .context("failed to start tmux clipboard command")?;
+    child
+        .stdin
+        .take()
+        .context("tmux clipboard stdin is unavailable")?
+        .write_all(value.as_bytes())
+        .context("failed to send path to tmux")?;
+    let status = child.wait().context("failed to wait for tmux clipboard")?;
+    if !status.success() {
+        anyhow::bail!("tmux clipboard command failed");
+    }
+    Ok(())
 }
 
 #[cfg(test)]

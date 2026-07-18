@@ -5,7 +5,8 @@ use diffo_core::{OperationFailure, OperationResult, RepositoryAction, Repository
 
 pub use command_palette::{Command, CommandId, CommandPalette};
 pub use model::{
-    ChangeArea, DiffViewMode, FileKey, Model, NetworkOperation, PrimaryAction, Toast, ToastKind,
+    ChangeArea, DiffViewMode, FileContextMenu, FileKey, Model, NetworkOperation, PrimaryAction,
+    Toast, ToastKind,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -27,6 +28,10 @@ pub enum Message {
     SelectFirstFile,
     SelectLastFile,
     SelectFile(FileKey),
+    OpenFileContextMenu(FileKey, u16, u16),
+    CloseFileContextMenu,
+    CopyRelativePath,
+    CopyAbsolutePath,
     ScrollDiffUp,
     ScrollDiffDown,
     ScrollDiffPageUp(usize),
@@ -67,6 +72,10 @@ pub enum Message {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Effect {
     Repository(RepositoryAction),
+    CopyPath {
+        path: std::path::PathBuf,
+        absolute: bool,
+    },
 }
 
 pub fn update(model: &mut Model, message: Message) -> Option<Effect> {
@@ -93,6 +102,16 @@ pub fn update(model: &mut Model, message: Message) -> Option<Effect> {
         Message::SelectFirstFile => model.select_first(),
         Message::SelectLastFile => model.select_last(),
         Message::SelectFile(file) => model.select_file(&file),
+        Message::OpenFileContextMenu(file, column, row) => {
+            model.open_file_context_menu(file, column, row);
+        }
+        Message::CloseFileContextMenu => model.close_file_context_menu(),
+        Message::CopyRelativePath => {
+            return model.copy_context_path(false);
+        }
+        Message::CopyAbsolutePath => {
+            return model.copy_context_path(true);
+        }
         Message::ScrollDiffUp => model.scroll_diff_up(),
         Message::ScrollDiffDown => model.scroll_diff_down(),
         Message::ScrollDiffPageUp(lines) => model.scroll_diff_up_by(lines),
@@ -529,6 +548,29 @@ mod tests {
         update(&mut model, Message::SelectFile(staged.clone()));
 
         assert_eq!(model.selected, Some(staged));
+    }
+
+    #[test]
+    fn file_context_menu_returns_copy_effects_and_closes() {
+        let mut model = model(AccessMode::ReadWrite);
+        let file = FileKey {
+            path: PathBuf::from("file.txt"),
+            area: ChangeArea::Unstaged,
+        };
+
+        update(
+            &mut model,
+            Message::OpenFileContextMenu(file.clone(), 10, 12),
+        );
+        assert_eq!(model.selected, Some(file));
+        assert_eq!(
+            update(&mut model, Message::CopyAbsolutePath),
+            Some(Effect::CopyPath {
+                path: PathBuf::from("file.txt"),
+                absolute: true,
+            })
+        );
+        assert!(model.file_context_menu.is_none());
     }
 
     #[test]

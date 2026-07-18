@@ -183,6 +183,7 @@ impl Renderer {
         render_command_palette(frame, model);
         render_help(frame, model);
         render_commit_editor(frame, model);
+        render_file_context_menu(frame, model);
         if model.network_operation().is_some() {
             frame.render_widget(
                 Block::default()
@@ -273,6 +274,9 @@ impl Renderer {
         model: &Model,
         area: Rect,
     ) -> Option<diffo_app::Message> {
+        if model.file_context_menu.is_some() {
+            return map_file_context_menu_event(event, model, area);
+        }
         if !model.commit_input_focused()
             && model.command_palette.is_none()
             && !model.help_open
@@ -694,6 +698,66 @@ fn render_change_markers(
             marker,
         );
     }
+}
+
+fn file_context_menu_area(model: &Model, area: Rect) -> Option<Rect> {
+    let menu = model.file_context_menu.as_ref()?;
+    let width = 24_u16.min(area.width);
+    let height = 4_u16.min(area.height);
+    Some(Rect::new(
+        menu.column.min(area.right().saturating_sub(width)),
+        menu.row.min(area.bottom().saturating_sub(height)),
+        width,
+        height,
+    ))
+}
+
+fn map_file_context_menu_event(
+    event: &Event,
+    model: &Model,
+    area: Rect,
+) -> Option<diffo_app::Message> {
+    match event {
+        Event::Key(key)
+            if key.kind == crossterm::event::KeyEventKind::Press
+                && key.code == crossterm::event::KeyCode::Esc =>
+        {
+            Some(diffo_app::Message::CloseFileContextMenu)
+        }
+        Event::Mouse(mouse) if mouse.kind == MouseEventKind::Down(MouseButton::Left) => {
+            let menu = file_context_menu_area(model, area)?;
+            if mouse.column > menu.x && mouse.column < menu.right().saturating_sub(1) {
+                match mouse.row.saturating_sub(menu.y) {
+                    1 => Some(diffo_app::Message::CopyAbsolutePath),
+                    2 => Some(diffo_app::Message::CopyRelativePath),
+                    _ => Some(diffo_app::Message::CloseFileContextMenu),
+                }
+            } else {
+                Some(diffo_app::Message::CloseFileContextMenu)
+            }
+        }
+        Event::Mouse(mouse) if mouse.kind == MouseEventKind::Down(MouseButton::Right) => {
+            file_at_position(model, area, mouse.column, mouse.row)
+                .map(|file| diffo_app::Message::OpenFileContextMenu(file, mouse.column, mouse.row))
+        }
+        _ => None,
+    }
+}
+
+fn render_file_context_menu(frame: &mut Frame, model: &Model) {
+    let Some(area) = file_context_menu_area(model, frame.area()) else {
+        return;
+    };
+    frame.render_widget(Clear, area);
+    frame.render_widget(
+        List::new(["Copy absolute path", "Copy relative path"]).block(
+            Block::default()
+                .title(" Path ")
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(Color::Cyan)),
+        ),
+        area,
+    );
 }
 
 impl ScrollAnchor {

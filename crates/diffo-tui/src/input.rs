@@ -305,6 +305,10 @@ pub fn map_event(event: &Event, model: &Model, area: Rect) -> Option<Message> {
                 file_at_position(model, area, mouse.column, mouse.row).map(Message::SelectFile)
             }
         }
+        Event::Mouse(mouse) if mouse.kind == MouseEventKind::Down(MouseButton::Right) => {
+            file_at_position(model, area, mouse.column, mouse.row)
+                .map(|file| Message::OpenFileContextMenu(file, mouse.column, mouse.row))
+        }
         Event::Mouse(mouse)
             if mouse.kind == MouseEventKind::Drag(MouseButton::Left)
                 && model.resizing_file_pane =>
@@ -523,6 +527,26 @@ mod tests {
                 path: PathBuf::from("file.txt"),
                 area: ChangeArea::Unstaged,
             }))
+        );
+        assert_eq!(
+            map_event(
+                &Event::Mouse(MouseEvent {
+                    kind: MouseEventKind::Down(MouseButton::Right),
+                    column: 4,
+                    row: 19,
+                    modifiers: KeyModifiers::NONE,
+                }),
+                &model,
+                Rect::new(0, 0, 100, 30),
+            ),
+            Some(Message::OpenFileContextMenu(
+                FileKey {
+                    path: PathBuf::from("file.txt"),
+                    area: ChangeArea::Unstaged,
+                },
+                4,
+                19,
+            ))
         );
     }
 

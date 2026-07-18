@@ -8,6 +8,7 @@ version.workspace = true
 
 [dependencies]
 anyhow.workspace = true
+base64.workspace = true
 crossterm.workspace = true
 diffo-app.workspace = true
 diffo-core.workspace = true

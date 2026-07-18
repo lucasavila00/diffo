@@ -19,6 +19,13 @@ pub struct FileKey {
     pub area: ChangeArea,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct FileContextMenu {
+    pub file: FileKey,
+    pub column: u16,
+    pub row: u16,
+}
+
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum DiffViewMode {
     #[default]
@@ -115,6 +122,7 @@ pub struct Model {
     pub resizing_file_pane: bool,
     pub command_palette: Option<CommandPalette>,
     pub help_open: bool,
+    pub file_context_menu: Option<FileContextMenu>,
     pub commit_message: String,
     pub toasts: Vec<Toast>,
     commit_composer_state: CommitComposerState,
@@ -143,6 +151,7 @@ impl Model {
             resizing_file_pane: false,
             command_palette: None,
             help_open: false,
+            file_context_menu: None,
             commit_message: String::new(),
             toasts: Vec::new(),
             commit_composer_state: CommitComposerState::Idle,
@@ -405,6 +414,20 @@ impl Model {
             self.reset_diff_scroll();
             self.error = None;
         }
+    }
+
+    pub fn open_file_context_menu(&mut self, file: FileKey, column: u16, row: u16) {
+        self.select_file(&file);
+        self.file_context_menu = Some(FileContextMenu { file, column, row });
+    }
+
+    pub fn close_file_context_menu(&mut self) {
+        self.file_context_menu = None;
+    }
+
+    pub fn copy_context_path(&mut self, absolute: bool) -> Option<crate::Effect> {
+        let path = self.file_context_menu.take()?.file.path;
+        Some(crate::Effect::CopyPath { path, absolute })
     }
 
     pub fn scroll_diff_down(&mut self) {
@@ -683,6 +706,10 @@ impl Model {
 
     pub fn dismiss_toast(&mut self, id: u64) {
         self.toasts.retain(|toast| toast.id != id);
+    }
+
+    pub fn show_toast(&mut self, kind: ToastKind, title: impl Into<String>) {
+        self.push_toast(kind, title.into(), None);
     }
 
     fn push_toast(&mut self, kind: ToastKind, title: String, detail: Option<String>) {

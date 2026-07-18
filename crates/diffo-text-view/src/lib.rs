@@ -6,6 +6,34 @@ use ratatui::{
     widgets::{Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState},
 };
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum TextSurface {
+    Diff,
+    Explorer,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum TextRenderMode {
+    Full,
+    SyntaxSkeleton,
+    TextSkeleton,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TextSurfacePreparation {
+    pub surface: TextSurface,
+    pub document_revision: u64,
+    pub viewport: (usize, usize),
+    pub requested_range: (usize, usize),
+    pub mode: TextRenderMode,
+    pub coverage_before: Option<(u32, u32)>,
+    pub coverage_after: Option<(u32, u32)>,
+    pub request_id: Option<u64>,
+    pub cache_hit: bool,
+    pub coalesced_request: bool,
+    pub stale_discarded: bool,
+}
+
 pub const LINE_SCROLL_ROWS: i64 = 4;
 pub const WHEEL_SCROLL_ROWS: i64 = 1;
 

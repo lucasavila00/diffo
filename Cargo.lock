@@ -396,6 +396,7 @@ dependencies = [
  "diffo-command",
  "diffo-core",
  "diffo-explorer",
+ "diffo-text-view",
  "diffo-tui",
  "diffo-ui",
  "ratatui",

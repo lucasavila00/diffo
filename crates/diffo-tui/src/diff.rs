@@ -170,10 +170,14 @@ pub(super) fn prepare_diff(
         syntax_highlighted,
         highlighted_old_coverage: highlighted_window
             .as_ref()
-            .and_then(|window| window.old_coverage),
+            .and_then(|window| window.old_coverage)
+            .into_iter()
+            .collect(),
         highlighted_new_coverage: highlighted_window
             .as_ref()
-            .and_then(|window| window.new_coverage),
+            .and_then(|window| window.new_coverage)
+            .into_iter()
+            .collect(),
         #[cfg(test)]
         highlighted_lines_processed: highlighted_window.as_ref().map_or(0, |window| {
             window
@@ -405,8 +409,8 @@ impl Renderer {
                 prefetch_viewports: 1,
             },
         );
-        range_is_covered(cache.highlighted_old_coverage, old)
-            && range_is_covered(cache.highlighted_new_coverage, new)
+        range_is_covered(&cache.highlighted_old_coverage, old)
+            && range_is_covered(&cache.highlighted_new_coverage, new)
     }
 
     pub(super) fn prepare_requested(
@@ -508,7 +512,25 @@ impl Renderer {
         }
     }
 
-    pub(super) fn install_cache(&mut self, cache: HighlightCache) {
+    pub(super) fn install_cache(&mut self, mut cache: HighlightCache) {
+        if let Some(current) = self
+            .highlighted
+            .as_mut()
+            .filter(|current| current.key == cache.key)
+        {
+            current.highlighted.old.append(&mut cache.highlighted.old);
+            current.highlighted.new.append(&mut cache.highlighted.new);
+            merge_coverage(
+                &mut current.highlighted_old_coverage,
+                cache.highlighted_old_coverage,
+            );
+            merge_coverage(
+                &mut current.highlighted_new_coverage,
+                cache.highlighted_new_coverage,
+            );
+            retain_covered_styles(current);
+            return;
+        }
         let changed = self
             .highlighted
             .as_ref()
@@ -598,11 +620,46 @@ impl Renderer {
     }
 }
 
-fn range_is_covered(coverage: Option<LineRange>, needed: Option<LineRange>) -> bool {
+const MAX_COVERAGE_WINDOWS: usize = 8;
+
+fn range_is_covered(coverage: &[LineRange], needed: Option<LineRange>) -> bool {
     needed.is_none_or(|needed| {
         coverage
-            .is_some_and(|coverage| coverage.start <= needed.start && coverage.end >= needed.end)
+            .iter()
+            .any(|coverage| coverage.start <= needed.start && coverage.end >= needed.end)
     })
+}
+
+fn merge_coverage(coverage: &mut Vec<LineRange>, incoming: Vec<LineRange>) {
+    for range in incoming {
+        if let Some(existing) = coverage.iter_mut().find(|existing| {
+            existing.start <= range.end.saturating_add(1)
+                && range.start <= existing.end.saturating_add(1)
+        }) {
+            existing.start = existing.start.min(range.start);
+            existing.end = existing.end.max(range.end);
+        } else {
+            coverage.push(range);
+        }
+    }
+    if coverage.len() > MAX_COVERAGE_WINDOWS {
+        coverage.drain(..coverage.len() - MAX_COVERAGE_WINDOWS);
+    }
+}
+
+fn retain_covered_styles(cache: &mut HighlightCache) {
+    cache.highlighted.old.retain(|line, _| {
+        cache
+            .highlighted_old_coverage
+            .iter()
+            .any(|range| range.contains(*line))
+    });
+    cache.highlighted.new.retain(|line, _| {
+        cache
+            .highlighted_new_coverage
+            .iter()
+            .any(|range| range.contains(*line))
+    });
 }
 
 impl Default for Renderer {

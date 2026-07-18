@@ -1,4 +1,4 @@
-.PHONY: diffo install diffo-mock e2e e2e-review measure-cpu
+.PHONY: diffo install diffo-mock e2e e2e-review measure-cpu measure-text-readiness
 
 # Build and run the diff viewer using Cargo's debug profile.
 diffo:
@@ -22,3 +22,8 @@ e2e-review:
 measure-cpu:
 	cargo build --release --package diffo
 	cargo run --release --package diffo-measure
+
+# Measure deterministic 100x30 Diff and Explorer text-readiness workloads.
+measure-text-readiness:
+	cargo build --release --package diffo
+	cargo run --release --package diffo-measure -- --text-readiness

@@ -6,6 +6,7 @@ use std::sync::{
 use diffo_app::{ChangeArea, FileKey, FileListScroll};
 use diffo_diff::{DiffDocument, RenderLine, RowKind, SideBySideRow};
 use diffo_highlight::{HighlightedDiff, LineRange, SyntaxHighlighter};
+use diffo_text_view::TextSurfacePreparation;
 use ratatui::layout::Rect;
 
 use crate::files::FileListMetrics;
@@ -41,8 +42,8 @@ pub(super) struct HighlightCache {
     pub(super) side_by_side_changes: Vec<usize>,
     pub(super) highlighted: HighlightedDiff,
     pub(super) syntax_highlighted: bool,
-    pub(super) highlighted_old_coverage: Option<LineRange>,
-    pub(super) highlighted_new_coverage: Option<LineRange>,
+    pub(super) highlighted_old_coverage: Vec<LineRange>,
+    pub(super) highlighted_new_coverage: Vec<LineRange>,
     #[cfg(test)]
     pub(super) highlighted_lines_processed: usize,
 }
@@ -58,6 +59,7 @@ pub struct FramePreparation {
     pub requested_file: Option<FileKey>,
     pub displayed_file: Option<FileKey>,
     pub file_list_scroll: FileListScroll,
+    pub text_surface: Option<TextSurfacePreparation>,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]

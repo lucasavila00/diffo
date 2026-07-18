@@ -900,6 +900,12 @@ fn uncached_scroll_uses_one_viewport_and_skeleton_until_syntax_is_ready() {
     wait_for_syntax_ready(&mut renderer, &model);
     assert_eq!(model.diff_scroll, 650);
     assert!(renderer.syntax_ready_for_viewport(DiffViewMode::Inline, 650));
+
+    let computations = renderer.highlight_computations;
+    model.diff_scroll = 2;
+    let revisited = renderer.prepare_frame(&model, area);
+    assert!(revisited.syntax_ready);
+    assert_eq!(renderer.highlight_computations, computations);
 }
 
 #[test]
@@ -1289,12 +1295,14 @@ fn initial_highlighting_is_bounded_around_the_first_change() {
     assert!(
         cache
             .highlighted_old_coverage
-            .is_some_and(|range| range.contains(9_000))
+            .iter()
+            .any(|range| range.contains(9_000))
     );
     assert!(
         cache
             .highlighted_new_coverage
-            .is_some_and(|range| range.contains(9_000))
+            .iter()
+            .any(|range| range.contains(9_000))
     );
     assert!(cache.highlighted_lines_processed < 800);
     assert!(!cache.highlighted.new.contains_key(&1));

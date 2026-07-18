@@ -5,6 +5,7 @@ use diffo_app::{Effect, Message, Model, ToastKind, update};
 use diffo_command::{Command, CommandId, CommandPalette, PaletteEvent};
 use diffo_core::{OperationFailure, OperationResult, RepositoryAction, RepositorySnapshot};
 use diffo_tui::{FramePreparation, Renderer};
+use diffo_ui::{PaneSplit, tool_areas};
 use ratatui::{Frame, layout::Rect, widgets::Clear};
 
 use diffo_explorer::{ExplorerActivity, ExplorerOutcome, ExplorerRequest};
@@ -71,6 +72,7 @@ pub struct Workbench {
     explorer: ExplorerActivity,
     search: SearchActivity,
     palettes: ActivityPalettes,
+    pane_split: PaneSplit,
     should_quit: bool,
 }
 
@@ -104,9 +106,14 @@ const SHARED_COMMANDS: [Command; 2] = [
 ];
 
 trait Tool {
-    fn handle_event(&mut self, event: &Event, area: Rect) -> Option<WorkbenchCommand>;
-    fn prepare_frame(&mut self, area: Rect) -> FramePreparation;
-    fn render(&mut self, frame: &mut Frame, area: Rect);
+    fn handle_event(
+        &mut self,
+        event: &Event,
+        area: Rect,
+        split: PaneSplit,
+    ) -> Option<WorkbenchCommand>;
+    fn prepare_frame(&mut self, area: Rect, split: PaneSplit) -> FramePreparation;
+    fn render(&mut self, frame: &mut Frame, area: Rect, split: PaneSplit);
     fn is_preparing(&self) -> bool;
     fn commands(&self) -> &'static [Command] {
         &[]
@@ -129,6 +136,7 @@ impl Workbench {
             explorer: ExplorerActivity::new(snapshot),
             search: SearchActivity,
             palettes: ActivityPalettes::default(),
+            pane_split: PaneSplit::default(),
             should_quit: false,
         }
     }
@@ -167,10 +175,14 @@ impl Workbench {
 
     pub fn prepare_frame(&mut self, area: Rect) -> FramePreparation {
         let content = workbench_areas(area).content;
+        self.sync_diff_pane_state();
         match self.active {
-            Activity::Diff => self.diff.prepare_frame(content),
-            Activity::Explorer => Tool::prepare_frame(&mut self.explorer, content),
-            Activity::Search => self.search.prepare_frame(content),
+            Activity::Diff => self.diff.prepare_frame(content, self.pane_split),
+            Activity::Explorer => {
+                self.explorer.prepare_frame(content, self.pane_split);
+                FramePreparation::default()
+            }
+            Activity::Search => self.search.prepare_frame(content, self.pane_split),
         }
     }
 
@@ -178,9 +190,9 @@ impl Workbench {
         let area = frame.area();
         let content = workbench_areas(area).content;
         match self.active {
-            Activity::Diff => self.diff.render(frame, content),
-            Activity::Explorer => self.explorer.render(frame, content),
-            Activity::Search => self.search.render(frame, content),
+            Activity::Diff => self.diff.render(frame, content, self.pane_split),
+            Activity::Explorer => self.explorer.render(frame, content, self.pane_split),
+            Activity::Search => self.search.render(frame, content, self.pane_split),
         }
         self.active_palette().render(frame, content);
         render_activity_bar(frame, area, self.active);
@@ -195,6 +207,11 @@ impl Workbench {
             };
             match command {
                 WorkbenchCommand::Diff(message) if scroll.push(&message) => {}
+                WorkbenchCommand::Diff(Message::ToggleFilePane) => {
+                    scroll.flush(self);
+                    self.pane_split.toggle();
+                    self.sync_diff_pane_state();
+                }
                 WorkbenchCommand::Diff(message) => {
                     scroll.flush(self);
                     if let Some(effect) = self.update_diff(message) {
@@ -241,6 +258,45 @@ impl Workbench {
                 Some(PaletteEvent::Consumed) | None => None,
             };
         }
+        let diff_overlay_captures_input = self.active == Activity::Diff
+            && (self.diff.model.commit_input_focused()
+                || self.diff.model.help_open
+                || self.diff.model.file_context_menu.is_some());
+        if !diff_overlay_captures_input
+            && let Event::Key(key) = event
+            && key.kind == KeyEventKind::Press
+            && key.code == KeyCode::Char('e')
+            && key.modifiers == KeyModifiers::NONE
+        {
+            self.pane_split.toggle();
+            self.sync_diff_pane_state();
+            return None;
+        }
+        let pane_area = tool_areas(content).content;
+        if !diff_overlay_captures_input && let Event::Mouse(mouse) = event {
+            match mouse.kind {
+                MouseEventKind::Down(MouseButton::Left)
+                    if self
+                        .pane_split
+                        .contains_seam(pane_area, mouse.column, mouse.row) =>
+                {
+                    self.pane_split.begin_drag();
+                    self.sync_diff_pane_state();
+                    return None;
+                }
+                MouseEventKind::Drag(MouseButton::Left) if self.pane_split.is_dragging() => {
+                    self.pane_split.drag_to(pane_area, mouse.column);
+                    self.sync_diff_pane_state();
+                    return None;
+                }
+                MouseEventKind::Up(MouseButton::Left) if self.pane_split.is_dragging() => {
+                    self.pane_split.end_drag();
+                    self.sync_diff_pane_state();
+                    return None;
+                }
+                _ => {}
+            }
+        }
         if let Event::Key(key) = event
             && key.kind == KeyEventKind::Press
             && matches!(key.code, KeyCode::Char('1') | KeyCode::F(1))
@@ -261,10 +317,18 @@ impl Workbench {
             return None;
         }
         match self.active {
-            Activity::Diff => self.diff.handle_event(event, content),
-            Activity::Explorer => Tool::handle_event(&mut self.explorer, event, content),
-            Activity::Search => self.search.handle_event(event, content),
+            Activity::Diff => self.diff.handle_event(event, content, self.pane_split),
+            Activity::Explorer => {
+                self.explorer.handle_event(event, content, self.pane_split);
+                None
+            }
+            Activity::Search => self.search.handle_event(event, content, self.pane_split),
         }
+    }
+
+    fn sync_diff_pane_state(&mut self) {
+        self.diff.model.file_pane_percent = self.pane_split.percent();
+        self.diff.model.resizing_file_pane = self.pane_split.is_dragging();
     }
 
     pub fn take_task(&mut self) -> Option<WorkbenchTask> {
@@ -418,13 +482,18 @@ impl PendingScroll {
 }
 
 impl Tool for DiffActivity {
-    fn handle_event(&mut self, event: &Event, area: Rect) -> Option<WorkbenchCommand> {
+    fn handle_event(
+        &mut self,
+        event: &Event,
+        area: Rect,
+        _split: PaneSplit,
+    ) -> Option<WorkbenchCommand> {
         self.renderer
             .map_event(event, &self.model, area)
             .map(WorkbenchCommand::Diff)
     }
 
-    fn prepare_frame(&mut self, area: Rect) -> FramePreparation {
+    fn prepare_frame(&mut self, area: Rect, _split: PaneSplit) -> FramePreparation {
         let preparation = self.renderer.prepare_frame(&self.model, area);
         if let Some(viewport) = preparation.viewport_transition {
             self.model
@@ -439,7 +508,7 @@ impl Tool for DiffActivity {
         preparation
     }
 
-    fn render(&mut self, frame: &mut Frame, area: Rect) {
+    fn render(&mut self, frame: &mut Frame, area: Rect, _split: PaneSplit) {
         self.renderer.render_in(frame, &self.model, area);
     }
 
@@ -473,18 +542,23 @@ impl DiffActivity {
 }
 
 impl Tool for ExplorerActivity {
-    fn handle_event(&mut self, event: &Event, area: Rect) -> Option<WorkbenchCommand> {
-        ExplorerActivity::handle_event(self, event, area);
+    fn handle_event(
+        &mut self,
+        event: &Event,
+        area: Rect,
+        split: PaneSplit,
+    ) -> Option<WorkbenchCommand> {
+        ExplorerActivity::handle_event(self, event, area, split);
         None
     }
 
-    fn prepare_frame(&mut self, area: Rect) -> FramePreparation {
-        ExplorerActivity::prepare_frame(self, area);
+    fn prepare_frame(&mut self, area: Rect, split: PaneSplit) -> FramePreparation {
+        ExplorerActivity::prepare_frame(self, area, split);
         FramePreparation::default()
     }
 
-    fn render(&mut self, frame: &mut Frame, area: Rect) {
-        ExplorerActivity::render(self, frame, area);
+    fn render(&mut self, frame: &mut Frame, area: Rect, split: PaneSplit) {
+        ExplorerActivity::render(self, frame, area, split);
     }
 
     fn is_preparing(&self) -> bool {
@@ -501,16 +575,35 @@ impl Tool for ExplorerActivity {
 }
 
 impl Tool for SearchActivity {
-    fn handle_event(&mut self, _event: &Event, _area: Rect) -> Option<WorkbenchCommand> {
+    fn handle_event(
+        &mut self,
+        _event: &Event,
+        _area: Rect,
+        _split: PaneSplit,
+    ) -> Option<WorkbenchCommand> {
         None
     }
 
-    fn prepare_frame(&mut self, _area: Rect) -> FramePreparation {
+    fn prepare_frame(&mut self, _area: Rect, _split: PaneSplit) -> FramePreparation {
         FramePreparation::default()
     }
 
-    fn render(&mut self, frame: &mut Frame, area: Rect) {
+    fn render(&mut self, frame: &mut Frame, area: Rect, split: PaneSplit) {
         frame.render_widget(Clear, area);
+        let content = tool_areas(area).content;
+        let panes = split.areas(content);
+        frame.render_widget(
+            ratatui::widgets::Block::default()
+                .borders(ratatui::widgets::Borders::ALL)
+                .border_style(split.border_style()),
+            panes.leading,
+        );
+        frame.render_widget(
+            ratatui::widgets::Block::default()
+                .borders(ratatui::widgets::Borders::ALL)
+                .border_style(split.border_style()),
+            panes.trailing,
+        );
     }
 
     fn is_preparing(&self) -> bool {
@@ -561,6 +654,52 @@ mod tests {
     }
 
     #[test]
+    fn pane_drag_is_shared_across_activities() {
+        let mut workbench = Workbench::new(RepositorySnapshot::default());
+        let area = Rect::new(0, 0, 100, 30);
+        let pane_area = tool_areas(workbench_areas(area).content).content;
+        let seam = workbench.pane_split.areas(pane_area).trailing.x;
+        let mouse = |kind, column| {
+            Event::Mouse(MouseEvent {
+                kind,
+                column,
+                row: pane_area.y.saturating_add(2),
+                modifiers: KeyModifiers::NONE,
+            })
+        };
+
+        let _ = workbench.handle_event(&mouse(MouseEventKind::Down(MouseButton::Left), seam), area);
+        let _ = workbench.handle_event(&mouse(MouseEventKind::Drag(MouseButton::Left), 62), area);
+        let _ = workbench.handle_event(&mouse(MouseEventKind::Up(MouseButton::Left), 62), area);
+
+        assert_eq!(workbench.pane_split.percent(), 60);
+        assert_eq!(workbench.diff.model.file_pane_percent, 60);
+        let _ = workbench.handle_event(&key(KeyCode::Tab), area);
+        assert_eq!(workbench.active, Activity::Explorer);
+        assert_eq!(workbench.pane_split.areas(pane_area).trailing.x, 62);
+        let _ = workbench.handle_event(&key(KeyCode::Tab), area);
+        assert_eq!(workbench.active, Activity::Search);
+        assert_eq!(workbench.pane_split.areas(pane_area).trailing.x, 62);
+    }
+
+    #[test]
+    fn pane_toggle_is_global_and_diff_overlays_capture_input() {
+        let mut workbench = Workbench::new(RepositorySnapshot::default());
+        let area = Rect::new(0, 0, 100, 30);
+
+        let _ = workbench.handle_event(&key(KeyCode::Tab), area);
+        let _ = workbench.handle_event(&key(KeyCode::Char('e')), area);
+        assert_eq!(workbench.pane_split.percent(), 0);
+        let _ = workbench.handle_event(&key(KeyCode::Char('e')), area);
+        assert_eq!(workbench.pane_split.percent(), 25);
+
+        workbench.active = Activity::Diff;
+        workbench.diff.model.help_open = true;
+        let _ = workbench.handle_event(&key(KeyCode::Char('e')), area);
+        assert_eq!(workbench.pane_split.percent(), 25);
+    }
+
+    #[test]
     fn tab_requires_an_unmodified_key_press() {
         let mut workbench = Workbench::new(RepositorySnapshot::default());
         let repeat = Event::Key(crossterm::event::KeyEvent {
@@ -587,7 +726,7 @@ mod tests {
     }
 
     #[test]
-    fn empty_search_draws_only_the_activity_bar() {
+    fn empty_search_draws_the_shared_page_panes() {
         let mut workbench = Workbench::new(RepositorySnapshot::default());
         workbench.active = Activity::Search;
         let backend = TestBackend::new(20, 12);
@@ -595,17 +734,11 @@ mod tests {
 
         terminal.draw(|frame| workbench.render(frame)).unwrap();
 
-        assert!(
-            terminal
-                .backend()
-                .buffer()
-                .content
-                .iter()
-                .enumerate()
-                .all(|(index, cell)| {
-                    let column = index % 20;
-                    column < usize::from(ACTIVITY_BAR_WIDTH) || cell.symbol() == " "
-                })
+        let pane_area = tool_areas(workbench_areas(Rect::new(0, 0, 20, 12)).content).content;
+        let seam = workbench.pane_split.areas(pane_area).trailing.x;
+        assert_eq!(
+            terminal.backend().buffer()[(seam, pane_area.y)].symbol(),
+            "┌"
         );
     }
 

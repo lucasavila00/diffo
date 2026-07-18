@@ -1,8 +1,8 @@
 use diffo_core::ChangeKind;
-use diffo_ui::{change_kind_style, plain_syntax_spans, terminal_safe_text, tool_areas};
+use diffo_ui::{PaneSplit, change_kind_style, plain_syntax_spans, terminal_safe_text, tool_areas};
 use ratatui::{
     Frame,
-    layout::{Alignment, Constraint, Direction, Layout, Rect},
+    layout::{Alignment, Constraint, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Clear, HighlightSpacing, List, ListItem, ListState, Paragraph},
@@ -24,15 +24,12 @@ pub(crate) struct ExplorerAreas {
     pub(crate) status: Rect,
 }
 
-pub(crate) fn explorer_areas(area: Rect) -> ExplorerAreas {
+pub(crate) fn explorer_areas(area: Rect, split: PaneSplit) -> ExplorerAreas {
     let vertical = tool_areas(area);
-    let horizontal = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(32), Constraint::Percentage(68)])
-        .split(vertical.content);
+    let horizontal = split.areas(vertical.content);
     ExplorerAreas {
-        tree: horizontal[0],
-        viewer: horizontal[1],
+        tree: horizontal.leading,
+        viewer: horizontal.trailing,
         status: vertical.status,
     }
 }
@@ -51,11 +48,12 @@ pub(crate) fn tree_action_at(area: Rect, column: u16, row: u16) -> Option<TreeAc
     }
 }
 
-pub(crate) fn render(frame: &mut Frame, area: Rect, model: &ExplorerModel) {
+pub(crate) fn render(frame: &mut Frame, area: Rect, split: PaneSplit, model: &ExplorerModel) {
     frame.render_widget(Clear, area);
-    let areas = explorer_areas(area);
-    render_tree(frame, areas.tree, model);
-    render_viewer(frame, areas.viewer, model);
+    let areas = explorer_areas(area, split);
+    let border_style = split.border_style();
+    render_tree(frame, areas.tree, model, border_style);
+    render_viewer(frame, areas.viewer, model, border_style);
     frame.render_widget(
         Paragraph::new(
             " j/k: select  enter/click: expand  [-]/[+]: fold all  1/f1: commands  ↑/↓: scroll ",
@@ -64,7 +62,7 @@ pub(crate) fn render(frame: &mut Frame, area: Rect, model: &ExplorerModel) {
     );
 }
 
-fn render_tree(frame: &mut Frame, area: Rect, model: &ExplorerModel) {
+fn render_tree(frame: &mut Frame, area: Rect, model: &ExplorerModel, border_style: Style) {
     let inner = area.inner(ratatui::layout::Margin {
         vertical: 1,
         horizontal: 1,
@@ -85,7 +83,10 @@ fn render_tree(frame: &mut Frame, area: Rect, model: &ExplorerModel) {
         .selected
         .checked_sub(model.tree_scroll)
         .filter(|index| *index < usize::from(inner.height));
-    let mut block = Block::default().borders(Borders::ALL).title(" Explorer ");
+    let mut block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(border_style)
+        .title(" Explorer ");
     if area.width >= 12 {
         block = block.title(Line::from("[-] [+]").alignment(Alignment::Right));
     }
@@ -147,12 +148,18 @@ fn status_style(kind: ChangeKind) -> Style {
     change_kind_style(kind, false)
 }
 
-fn render_viewer(frame: &mut Frame, area: Rect, model: &ExplorerModel) {
+fn render_viewer(frame: &mut Frame, area: Rect, model: &ExplorerModel, border_style: Style) {
     let title = model.viewer.as_ref().map_or_else(
         || " File Viewer ".to_owned(),
         |viewer| terminal_safe_text(&format!(" {} ", viewer.path.display())),
     );
-    frame.render_widget(Block::default().borders(Borders::ALL).title(title), area);
+    frame.render_widget(
+        Block::default()
+            .borders(Borders::ALL)
+            .border_style(border_style)
+            .title(title),
+        area,
+    );
     let inner = area.inner(ratatui::layout::Margin {
         vertical: 1,
         horizontal: 1,
@@ -306,7 +313,7 @@ mod tests {
         let mut terminal = Terminal::new(backend).unwrap();
 
         terminal
-            .draw(|frame| render_viewer(frame, frame.area(), &model))
+            .draw(|frame| render_viewer(frame, frame.area(), &model, Style::default()))
             .unwrap();
 
         let screen = terminal

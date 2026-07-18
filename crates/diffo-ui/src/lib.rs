@@ -6,6 +6,108 @@ use ratatui::{
     text::Span,
 };
 
+const DEFAULT_PANE_PERCENT: u16 = 25;
+const MAX_PANE_PERCENT: u16 = 80;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct PaneAreas {
+    pub leading: Rect,
+    pub trailing: Rect,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct PaneSplit {
+    percent: u16,
+    expanded_percent: u16,
+    dragging: bool,
+}
+
+impl Default for PaneSplit {
+    fn default() -> Self {
+        Self {
+            percent: DEFAULT_PANE_PERCENT,
+            expanded_percent: DEFAULT_PANE_PERCENT,
+            dragging: false,
+        }
+    }
+}
+
+impl PaneSplit {
+    #[must_use]
+    pub const fn percent(self) -> u16 {
+        self.percent
+    }
+
+    #[must_use]
+    pub const fn is_dragging(self) -> bool {
+        self.dragging
+    }
+
+    #[must_use]
+    pub fn areas(self, area: Rect) -> PaneAreas {
+        let columns = Layout::horizontal([
+            Constraint::Percentage(self.percent),
+            Constraint::Percentage(100_u16.saturating_sub(self.percent)),
+        ])
+        .split(area);
+        PaneAreas {
+            leading: columns[0],
+            trailing: columns[1],
+        }
+    }
+
+    #[must_use]
+    pub fn contains_seam(self, area: Rect, column: u16, row: u16) -> bool {
+        if row < area.y || row >= area.bottom().saturating_sub(2) {
+            return false;
+        }
+        column.abs_diff(self.areas(area).trailing.x) <= 1
+    }
+
+    pub fn begin_drag(&mut self) {
+        self.dragging = true;
+    }
+
+    pub fn drag_to(&mut self, area: Rect, column: u16) {
+        if !self.dragging || area.width == 0 {
+            return;
+        }
+        let offset = column.saturating_sub(area.x).min(area.width);
+        let percent = u16::try_from(u32::from(offset) * 100 / u32::from(area.width))
+            .unwrap_or(100)
+            .min(MAX_PANE_PERCENT);
+        self.percent = percent;
+        if percent > 0 {
+            self.expanded_percent = percent;
+        }
+    }
+
+    pub fn end_drag(&mut self) {
+        self.dragging = false;
+    }
+
+    pub fn toggle(&mut self) {
+        if self.percent == 0 {
+            self.percent = self.expanded_percent;
+        } else {
+            self.expanded_percent = self.percent;
+            self.percent = 0;
+        }
+        self.dragging = false;
+    }
+
+    #[must_use]
+    pub fn border_style(self) -> Style {
+        if self.dragging {
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default()
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ToolAreas {
     pub content: Rect,
@@ -94,6 +196,40 @@ pub fn terminal_safe_text(text: &str) -> String {
 mod tests {
     use super::*;
     use diffo_highlight::{HighlightedLine, Rgb, StyledSpan};
+
+    #[test]
+    fn pane_split_drags_collapses_restores_and_bounds_width() {
+        let area = Rect::new(5, 2, 100, 20);
+        let mut split = PaneSplit::default();
+        assert_eq!(split.areas(area).trailing.x, 30);
+        assert!(split.contains_seam(area, 29, 10));
+        assert!(!split.contains_seam(area, 28, 10));
+        assert!(!split.contains_seam(area, 30, area.bottom().saturating_sub(2)));
+
+        split.drag_to(area, 65);
+        assert_eq!(split.percent(), 25);
+        split.begin_drag();
+        split.drag_to(area, 65);
+        split.end_drag();
+        assert_eq!(split.percent(), 60);
+        split.toggle();
+        assert_eq!(split.percent(), 0);
+        split.toggle();
+        assert_eq!(split.percent(), 60);
+        split.begin_drag();
+        split.drag_to(area, area.right());
+        assert_eq!(split.percent(), 80);
+    }
+
+    #[test]
+    fn pane_split_handles_narrow_and_offset_areas() {
+        let area = Rect::new(7, 9, 0, 0);
+        let mut split = PaneSplit::default();
+        split.begin_drag();
+        split.drag_to(area, u16::MAX);
+        assert_eq!(split.percent(), 25);
+        assert!(!split.contains_seam(area, 7, 9));
+    }
 
     #[test]
     fn shared_change_styles_cover_neutral_selection_and_git_status() {

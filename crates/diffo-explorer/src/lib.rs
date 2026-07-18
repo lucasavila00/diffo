@@ -7,6 +7,7 @@ use std::{collections::VecDeque, path::PathBuf};
 use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind};
 use diffo_command::{Command, CommandId};
 use diffo_core::RepositorySnapshot;
+use diffo_ui::PaneSplit;
 use ratatui::{Frame, layout::Rect};
 
 use model::ExplorerModel;
@@ -99,8 +100,8 @@ impl ExplorerActivity {
         }
     }
 
-    pub fn prepare_frame(&mut self, area: Rect) {
-        let areas = explorer_areas(area);
+    pub fn prepare_frame(&mut self, area: Rect, split: PaneSplit) {
+        let areas = explorer_areas(area, split);
         let tree_rows = usize::from(areas.tree.height.saturating_sub(2));
         self.viewport_rows = usize::from(areas.viewer.height.saturating_sub(2)).max(1);
         self.viewport_columns = usize::from(
@@ -127,8 +128,8 @@ impl ExplorerActivity {
         }
     }
 
-    pub fn render(&self, frame: &mut Frame, area: Rect) {
-        view::render(frame, area, &self.model);
+    pub fn render(&self, frame: &mut Frame, area: Rect, split: PaneSplit) {
+        view::render(frame, area, split, &self.model);
     }
 
     #[must_use]
@@ -148,11 +149,11 @@ impl ExplorerActivity {
         true
     }
 
-    pub fn handle_event(&mut self, event: &Event, area: Rect) -> bool {
+    pub fn handle_event(&mut self, event: &Event, area: Rect, split: PaneSplit) -> bool {
         if let Event::Mouse(mouse) = event
             && mouse.kind == MouseEventKind::Down(MouseButton::Left)
         {
-            let tree_area = explorer_areas(area).tree;
+            let tree_area = explorer_areas(area, split).tree;
             if let Some(action) = tree_action_at(tree_area, mouse.column, mouse.row) {
                 match action {
                     TreeAction::CollapseAll => self.model.collapse_all(),
@@ -340,7 +341,7 @@ mod tests {
             KeyCode::Char('J'),
             KeyModifiers::SHIFT,
         ));
-        assert!(!explorer.handle_event(&event, Rect::default()));
+        assert!(!explorer.handle_event(&event, Rect::default(), PaneSplit::default()));
     }
 
     #[test]
@@ -357,9 +358,9 @@ mod tests {
             modifiers: KeyModifiers::NONE,
         });
 
-        assert!(explorer.handle_event(&click, Rect::new(0, 0, 100, 30)));
+        assert!(explorer.handle_event(&click, Rect::new(0, 0, 100, 30), PaneSplit::default()));
         assert_eq!(explorer.model.visible.len(), 2);
-        assert!(explorer.handle_event(&click, Rect::new(0, 0, 100, 30)));
+        assert!(explorer.handle_event(&click, Rect::new(0, 0, 100, 30), PaneSplit::default()));
         assert_eq!(explorer.model.visible.len(), 1);
     }
 
@@ -371,7 +372,8 @@ mod tests {
             result: Ok(vec![PathBuf::from("src/nested/main.rs")]),
         });
         let area = Rect::new(0, 0, 100, 30);
-        let tree = explorer_areas(area).tree;
+        let split = PaneSplit::default();
+        let tree = explorer_areas(area, split).tree;
         let click = |column| {
             Event::Mouse(MouseEvent {
                 kind: MouseEventKind::Down(MouseButton::Left),
@@ -381,9 +383,9 @@ mod tests {
             })
         };
 
-        assert!(explorer.handle_event(&click(tree.right() - 4), area));
+        assert!(explorer.handle_event(&click(tree.right() - 4), area, split));
         assert_eq!(explorer.model.visible.len(), 3);
-        assert!(explorer.handle_event(&click(tree.right() - 8), area));
+        assert!(explorer.handle_event(&click(tree.right() - 8), area, split));
         assert_eq!(explorer.model.visible.len(), 1);
     }
 
@@ -416,7 +418,7 @@ mod tests {
             maximum_width: 100,
         });
         let area = Rect::new(0, 0, 100, 30);
-        explorer.prepare_frame(area);
+        explorer.prepare_frame(area, PaneSplit::default());
         let right = Event::Key(crossterm::event::KeyEvent::new(
             KeyCode::Right,
             KeyModifiers::NONE,
@@ -427,14 +429,14 @@ mod tests {
         ));
 
         for _ in 0..100 {
-            assert!(explorer.handle_event(&right, area));
+            assert!(explorer.handle_event(&right, area, PaneSplit::default()));
         }
         assert_eq!(
             explorer.model.viewer_horizontal_scroll,
             100_usize.saturating_sub(explorer.viewport_columns)
         );
         for _ in 0..100 {
-            assert!(explorer.handle_event(&left, area));
+            assert!(explorer.handle_event(&left, area, PaneSplit::default()));
         }
         assert_eq!(explorer.model.viewer_horizontal_scroll, 0);
     }

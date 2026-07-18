@@ -3,6 +3,7 @@ name = "diffo-workbench"
 description = "Activity composition and global input routing for Diffo"
 edition.workspace = true
 license.workspace = true
+readme = "README.md"
 rust-version.workspace = true
 version.workspace = true
 

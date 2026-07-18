@@ -3,6 +3,7 @@ name = "diffo-git"
 description = "Git repository state collector for Diffo"
 edition.workspace = true
 license.workspace = true
+readme = "README.md"
 rust-version.workspace = true
 version.workspace = true
 

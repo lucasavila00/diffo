@@ -3,6 +3,7 @@ name = "diffo-explorer"
 description = "Repository tree and file viewer tool for Diffo"
 edition.workspace = true
 license.workspace = true
+readme = "README.md"
 rust-version.workspace = true
 version.workspace = true
 

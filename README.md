@@ -30,6 +30,23 @@ application behavior.
 For debugging, `DIFFO_DUMP_PATH=state.ron make diffo` writes one repository snapshot
 and exits without opening the TUI. Diffo has no command-line arguments.
 
+## Crate documentation
+
+Every package under `crates/` has its own `README.md`. That file is the source of
+truth for the package overview and is included verbatim as the crate-level rustdoc,
+so the repository and generated API documentation cannot drift. API-specific details
+remain on the Rust items they describe.
+
+Build the workspace documentation with:
+
+```sh
+cargo doc --workspace --no-deps
+```
+
+When a crate's purpose or boundaries change, update its README rather than adding a
+duplicate crate overview to `lib.rs` or `main.rs`. See
+[`ADR 0051`](docs/adr/0051-crate-documentation.md) for the decision and tradeoffs.
+
 ## Keyboard controls
 
 Diffo's keyboard shortcuts are fixed and always use lowercase characters. Uppercase

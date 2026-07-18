@@ -92,6 +92,19 @@ This repository is a Rust workspace containing small command-line utilities. Eac
 - Do not panic for expected user or environment errors.
 - Add unit tests for state transitions and non-trivial application logic.
 
+## Crate documentation
+
+- Every package under `crates/` must have a checked-in `README.md` declared by its
+  `Cargo.toml` `readme` field.
+- Treat the crate README as the source of truth for crate-level documentation. Include
+  it from the crate root with `#![doc = include_str!("../README.md")]`; do not maintain
+  a second copy in `//!` comments.
+- Keep crate READMEs focused on purpose, responsibilities, and boundaries. Put API
+  details on the Rust items they describe.
+- Update the crate README when a change alters the crate's documented role or
+  boundaries.
+- Run `cargo doc --workspace --no-deps` after changing crate-level documentation.
+
 ## TUI conventions
 
 - Always restore the terminal before returning from the application.

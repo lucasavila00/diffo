@@ -1,3 +1,5 @@
+#![doc = include_str!("../README.md")]
+
 mod model;
 mod view;
 mod worker;

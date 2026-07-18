@@ -3,6 +3,7 @@ name = "diffo-app"
 description = "Pure application state and updates for Diffo"
 edition.workspace = true
 license.workspace = true
+readme = "README.md"
 rust-version.workspace = true
 version.workspace = true
 

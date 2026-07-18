@@ -1,3 +1,5 @@
+#![doc = include_str!("../README.md")]
+
 use crossterm::event::MouseEventKind;
 use diffo_core::ChangeKind;
 use diffo_highlight::HighlightedLine;

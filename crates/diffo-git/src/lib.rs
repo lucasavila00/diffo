@@ -1,3 +1,5 @@
+#![doc = include_str!("../README.md")]
+
 use std::path::PathBuf;
 
 const NO_CHANGE: char = '.';

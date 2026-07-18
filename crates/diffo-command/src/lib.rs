@@ -1,3 +1,5 @@
+#![doc = include_str!("../README.md")]
+
 use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind};
 use ratatui::{
     Frame,

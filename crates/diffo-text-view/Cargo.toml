@@ -3,6 +3,7 @@ name = "diffo-text-view"
 description = "Shared read-only text-buffer surface for Diffo"
 edition.workspace = true
 license.workspace = true
+readme = "README.md"
 rust-version.workspace = true
 version.workspace = true
 

@@ -3,6 +3,7 @@ name = "diffo-command"
 description = "Reusable command palette model, input, and view for Diffo tools"
 edition.workspace = true
 license.workspace = true
+readme = "README.md"
 rust-version.workspace = true
 version.workspace = true
 

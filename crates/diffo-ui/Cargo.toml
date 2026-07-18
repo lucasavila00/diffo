@@ -3,6 +3,7 @@ name = "diffo-ui"
 description = "Shared terminal UI primitives for Diffo tools"
 edition.workspace = true
 license.workspace = true
+readme = "README.md"
 rust-version.workspace = true
 version.workspace = true
 

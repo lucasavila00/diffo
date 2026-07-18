@@ -1,3 +1,5 @@
+#![doc = include_str!("../README.md")]
+
 use std::{collections::HashMap, time::Instant};
 
 use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind};

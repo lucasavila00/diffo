@@ -1,3 +1,5 @@
+#![doc = include_str!("../README.md")]
+
 mod model;
 
 use diffo_core::{OperationFailure, OperationResult, RepositoryAction, RepositorySnapshot};

@@ -3,6 +3,7 @@ name = "diffo-file-picker"
 description = "Shared file-picker panel for Diffo"
 edition.workspace = true
 license.workspace = true
+readme = "README.md"
 rust-version.workspace = true
 version.workspace = true
 

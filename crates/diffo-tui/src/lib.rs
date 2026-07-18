@@ -1,3 +1,5 @@
+#![doc = include_str!("../README.md")]
+
 use diffo_app::{ChangeArea, DiffViewMode, FileKey, Model, ToastKind};
 use std::{
     env,

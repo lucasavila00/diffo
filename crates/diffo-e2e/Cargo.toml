@@ -4,6 +4,7 @@ description = "End-to-end tests for Diffo"
 edition.workspace = true
 license.workspace = true
 publish = false
+readme = "README.md"
 rust-version.workspace = true
 version.workspace = true
 

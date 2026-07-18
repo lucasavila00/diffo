@@ -514,8 +514,10 @@ where
         let mut spans = vec![Span::styled(
             if selected {
                 interaction::SELECTED_ROW
+            } else if self.document.mode == Mode::Flat {
+                interaction::FLAT_ROW
             } else {
-                interaction::ROW
+                "  "
             },
             enabled_control_style(),
         )];
@@ -533,11 +535,17 @@ where
         }
         spans.extend(row.label.spans.clone());
         if let Some(action) = &row.action {
-            let used = Line::from(spans.clone()).width();
             let available = usize::from(self.metrics.list_area.width);
-            let spacing = available.saturating_sub(used.saturating_add(action.chars().count()));
+            let action_width = Span::raw(action.clone()).width();
+            let leading_width = available.saturating_sub(action_width);
+            let gap = usize::from(leading_width > 0);
+            spans = truncate_spans(&spans, leading_width.saturating_sub(gap));
+            let used = Line::from(spans.clone()).width();
+            let spacing = available.saturating_sub(used.saturating_add(action_width));
             spans.push(Span::raw(" ".repeat(spacing)));
             spans.push(Span::styled(action.clone(), enabled_control_style()));
+        } else {
+            spans = truncate_spans(&spans, usize::from(self.metrics.list_area.width));
         }
         ListItem::new(Line::from(spans).style(row.label.style))
     }
@@ -723,6 +731,43 @@ where
     }
 }
 
+fn truncate_spans(spans: &[Span<'static>], width: usize) -> Vec<Span<'static>> {
+    if Line::from(spans.to_vec()).width() <= width {
+        return spans.to_vec();
+    }
+    if width == 0 {
+        return Vec::new();
+    }
+
+    let ellipsis_width = width.min(3);
+    let content_width = width.saturating_sub(ellipsis_width);
+    let mut truncated = Vec::new();
+    let mut used = 0_usize;
+    let mut ellipsis_style = Style::default();
+
+    'spans: for span in spans {
+        let mut content = String::new();
+        for character in span.content.chars() {
+            let character_width = Span::raw(character.to_string()).width();
+            if used.saturating_add(character_width) > content_width {
+                ellipsis_style = span.style;
+                if !content.is_empty() {
+                    truncated.push(Span::styled(content, span.style));
+                }
+                break 'spans;
+            }
+            content.push(character);
+            used = used.saturating_add(character_width);
+        }
+        if !content.is_empty() {
+            truncated.push(Span::styled(content, span.style));
+        }
+        ellipsis_style = span.style;
+    }
+    truncated.push(Span::styled(".".repeat(ellipsis_width), ellipsis_style));
+    truncated
+}
+
 #[must_use]
 pub fn navigation(key: &KeyEvent) -> Option<Navigation> {
     if key.kind != KeyEventKind::Press || key.modifiers != KeyModifiers::NONE {
@@ -766,6 +811,12 @@ mod tests {
     fn rows(count: usize) -> Vec<Row<usize>> {
         (0..count)
             .map(|id| Row::flat(id, Line::raw(format!("file-{id}"))))
+            .collect()
+    }
+
+    fn rendered_row(buffer: &ratatui::buffer::Buffer, area: Rect) -> String {
+        (area.x..area.right())
+            .map(|column| buffer[(column, area.y)].symbol())
             .collect()
     }
 
@@ -973,7 +1024,7 @@ mod tests {
     }
 
     #[test]
-    fn every_unselected_row_has_a_persistent_click_marker() {
+    fn every_unselected_flat_row_has_a_persistent_click_marker() {
         let mut picker = FilePicker::default();
         picker.prepare(
             Rect::new(0, 0, 20, 4),
@@ -987,6 +1038,89 @@ mod tests {
         let marker = &terminal.backend().buffer()[(1, 1)];
         assert_eq!(marker.symbol(), "·");
         assert_enabled_control(marker);
+    }
+
+    #[test]
+    fn tree_rows_omit_the_flat_dot_but_keep_tree_structure() {
+        let mut picker = FilePicker::default();
+        picker.prepare(
+            Rect::new(0, 0, 20, 5),
+            Document::tree(
+                "Explorer",
+                vec![
+                    Row::tree(0, Line::raw("src"), 0, true),
+                    Row::tree(1, Line::raw("README"), 0, false),
+                ],
+            ),
+            None,
+        );
+        let backend = TestBackend::new(20, 5);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|frame| picker.render(frame, false)).unwrap();
+
+        let buffer = terminal.backend().buffer();
+        assert_eq!(buffer[(1, 1)].symbol(), " ");
+        assert_eq!(buffer[(3, 1)].symbol(), "▸");
+        assert!(!rendered_row(buffer, Rect::new(1, 1, 18, 1)).contains('·'));
+        assert!(!rendered_row(buffer, Rect::new(1, 2, 18, 1)).contains('·'));
+    }
+
+    #[test]
+    fn long_labels_use_three_dots_without_hiding_row_actions() {
+        let label_style = Style::default().fg(Color::Yellow);
+        let mut flat = FilePicker::default();
+        flat.prepare(
+            Rect::new(0, 0, 18, 4),
+            Document::flat(
+                "Files",
+                vec![
+                    Row::flat(0, Line::styled("very-long-file-name.rs", label_style))
+                        .with_action("[+]"),
+                ],
+            ),
+            None,
+        );
+        let backend = TestBackend::new(18, 4);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|frame| flat.render(frame, false)).unwrap();
+
+        let row = rendered_row(terminal.backend().buffer(), flat.metrics().list_area);
+        assert!(row.contains("..."), "{row:?}");
+        assert!(row.ends_with("[+]"), "{row:?}");
+        let first_dot = terminal
+            .backend()
+            .buffer()
+            .content
+            .iter()
+            .find(|cell| cell.symbol() == ".")
+            .expect("truncation dots");
+        assert_eq!(first_dot.fg, Color::Yellow);
+        let action = &terminal.backend().buffer()[(
+            flat.metrics().list_area.right().saturating_sub(3),
+            flat.metrics().list_area.y,
+        )];
+        assert_eq!(action.symbol(), "[");
+        assert_enabled_control(action);
+
+        let mut tree = FilePicker::default();
+        tree.prepare(
+            Rect::new(0, 0, 18, 4),
+            Document::tree(
+                "Explorer",
+                vec![Row::tree(
+                    0,
+                    Line::raw("very-long-tree-file-name.rs"),
+                    0,
+                    false,
+                )],
+            ),
+            None,
+        );
+        terminal.draw(|frame| tree.render(frame, false)).unwrap();
+
+        let row = rendered_row(terminal.backend().buffer(), tree.metrics().list_area);
+        assert!(row.contains("..."), "{row:?}");
+        assert!(!row.starts_with('·'), "{row:?}");
     }
 
     #[test]

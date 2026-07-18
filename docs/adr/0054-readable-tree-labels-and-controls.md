@@ -54,8 +54,9 @@ because it is not focused, selected, or hovered.
 Every mouse hit target that performs a discrete action must contain a persistent
 visible affordance:
 
-- selectable rows use a high-contrast leading marker, with a distinct marker for
-  the selected row;
+- selectable flat rows use a high-contrast leading marker, with a distinct marker
+  for the selected row; tree rows rely on their disclosure/indentation structure
+  and show the selection marker only for the selected row;
 - draggable pane seams use a high-contrast resize marker while retaining their
   structural border;
 - dismissible toasts and menus show a high-contrast close marker, while modal
@@ -75,6 +76,11 @@ The shared file picker owns row-action styling. Activities supply the action lab
 and behavior, not an arbitrary action style. This replaces ADR 0050's allowance for
 caller-styled row actions; Git-status styling remains caller-supplied content and is
 still preserved independently from the control marker and action.
+
+File labels truncate with literal `...` when a row is narrower than its content.
+Row layout reserves a visible right-side action such as `[+]` or `[-]` before
+allocating width to the label, so truncation can never push an available action out
+of view. Tree rows do not show the generic flat-list dot.
 
 The style is constant while the pointer moves. This decision does not add hover
 state, passive mouse handling, redraws, new key bindings, configuration, or an
@@ -109,8 +115,10 @@ layout space no longer aliases the nearest rendered action.
   foreground differs from the surrounding border and is bold.
 - Render other enabled navigation and dialog actions with the same control contract.
 - Verify disabled controls may use chrome styling but cannot be activated.
-- Verify every selectable row renders an interaction marker before and after
-  selection.
+- Verify flat rows render an interaction marker before and after selection, while
+  tree rows omit the generic dot and retain their disclosure structure.
+- Verify long flat and tree labels render `...`, and that a right-side row action
+  remains fully visible after truncation.
 - Verify the pane resize marker lies inside the seam hit target.
 - Verify every dismissible toast renders a close marker inside its hit target.
 - Verify blank command-palette rows do not execute a command.

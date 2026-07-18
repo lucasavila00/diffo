@@ -1,10 +1,11 @@
 #![doc = include_str!("../README.md")]
 
 use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind};
+use diffo_ui::{design, theme};
 use ratatui::{
     Frame,
     layout::{Constraint, Layout, Rect},
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::Line,
     widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph},
 };
@@ -165,30 +166,27 @@ impl CommandPalette {
         frame.render_widget(
             Block::default()
                 .borders(Borders::ALL)
-                .border_style(Style::default().fg(Color::Cyan))
+                .border_style(Style::default().fg(theme::CHROME))
                 .title(" Command Palette "),
             area,
         );
-        let inner = area.inner(ratatui::layout::Margin {
-            vertical: 1,
-            horizontal: 2,
-        });
+        let inner = area.inner(design::DIALOG_INSET);
         let sections = command_palette_sections(inner);
         frame.render_widget(
             Paragraph::new(format!("> {}█", self.query)).style(
                 Style::default()
-                    .fg(Color::White)
+                    .fg(theme::TEXT)
                     .add_modifier(Modifier::BOLD),
             ),
             sections[0],
         );
         frame.render_widget(
             Paragraph::new("─".repeat(usize::from(sections[1].width)))
-                .style(Style::default().fg(Color::DarkGray)),
+                .style(Style::default().fg(theme::CHROME)),
             sections[1],
         );
         let items = if commands.is_empty() {
-            vec![ListItem::new("No matching commands").style(Style::default().fg(Color::DarkGray))]
+            vec![ListItem::new("No matching commands").style(Style::default().fg(theme::CHROME))]
         } else {
             commands
                 .iter()
@@ -197,8 +195,8 @@ impl CommandPalette {
         };
         let list = List::new(items).highlight_symbol("› ").highlight_style(
             Style::default()
-                .bg(Color::Indexed(24))
-                .fg(Color::White)
+                .bg(theme::SELECTION_BACKGROUND)
+                .fg(theme::TEXT)
                 .add_modifier(Modifier::BOLD),
         );
         let mut state = ListState::default().with_selected(
@@ -208,7 +206,7 @@ impl CommandPalette {
         frame.render_widget(
             Paragraph::new(Line::styled(
                 "↑/↓ select · Enter run · Esc close",
-                Style::default().fg(Color::DarkGray),
+                Style::default().fg(theme::CHROME),
             )),
             sections[3],
         );
@@ -230,29 +228,30 @@ impl CommandPalette {
 
 #[must_use]
 pub fn command_palette_layout(area: Rect) -> (Rect, Rect) {
-    let width = (area.width.saturating_mul(7) / 10).clamp(30.min(area.width), 80.min(area.width));
-    let top = area.y.saturating_add(area.height.saturating_mul(20) / 100);
-    let height = 18.min(area.bottom().saturating_sub(top));
+    let width = design::COMMAND_PALETTE_WIDTH.resolve(area.width);
+    let top = area.y.saturating_add(
+        area.height
+            .saturating_mul(design::COMMAND_PALETTE_TOP_PERCENT)
+            / 100,
+    );
+    let height = design::COMMAND_PALETTE_MAX_HEIGHT.min(area.bottom().saturating_sub(top));
     let palette = Rect::new(
         area.x + area.width.saturating_sub(width) / 2,
         top,
         width,
         height,
     );
-    let inner = palette.inner(ratatui::layout::Margin {
-        vertical: 1,
-        horizontal: 2,
-    });
+    let inner = palette.inner(design::DIALOG_INSET);
     let sections = command_palette_sections(inner);
     (palette, sections[2])
 }
 
 fn command_palette_sections(area: Rect) -> std::rc::Rc<[Rect]> {
     Layout::vertical([
-        Constraint::Length(1),
-        Constraint::Length(1),
-        Constraint::Min(1),
-        Constraint::Length(1),
+        Constraint::Length(design::SINGLE_LINE_HEIGHT),
+        Constraint::Length(design::SINGLE_LINE_HEIGHT),
+        Constraint::Min(design::SINGLE_LINE_HEIGHT),
+        Constraint::Length(design::SINGLE_LINE_HEIGHT),
     ])
     .split(area)
 }

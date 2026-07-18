@@ -56,6 +56,15 @@ used where they fit the interaction.
 
 ## TUI architecture invariants
 
+Structural application chrome uses one fixed dark gray from `diffo-ui`; individual
+renderers do not choose raw terminal colors. Every box border, divider, scrollbar,
+and selection background shares that gray, while emphasis and markers show focus or
+activity without changing hue. Widths, heights, panel/dialog insets, gaps, and overlay
+bounds also use semantic tokens from `diffo-ui` instead of renderer-local literals.
+Semantic content, diff rows, and syntax highlighting retain their meaning-specific
+colors. See
+[`ADR 0052`](docs/adr/0052-semantic-chrome-colors.md).
+
 Diffo is designed for use over SSH, so terminal input and output must always be
 treated as network traffic. Buttons and other controls keep a stable appearance as
 the pointer moves over them: hover-only state and redraws consume network and CPU

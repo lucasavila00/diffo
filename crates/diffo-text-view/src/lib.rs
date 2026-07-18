@@ -3,12 +3,14 @@
 use ratatui::{
     Frame,
     layout::Rect,
-    style::{Color, Style},
+    style::Style,
     text::Line,
     widgets::{Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState},
 };
 
-use diffo_ui::{maximum_scroll, scroll_offset, scrollbar_position, scrollbar_position_count};
+use diffo_ui::{
+    design, maximum_scroll, scroll_offset, scrollbar_position, scrollbar_position_count, theme,
+};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum TextSurface {
@@ -85,9 +87,9 @@ pub enum ScrollbarAxis {
 pub fn scrollbar_areas(outer: Rect, metrics: ViewportMetrics) -> ScrollbarAreas {
     ScrollbarAreas {
         vertical: Rect::new(
-            outer.right().saturating_sub(1),
+            outer.right().saturating_sub(design::BORDER_WIDTH),
             metrics.area.y,
-            u16::from(outer.width > 0),
+            design::BORDER_WIDTH.min(outer.width),
             metrics.area.height,
         ),
         horizontal: metrics.horizontal_scrollbar,
@@ -139,11 +141,12 @@ pub fn render_scrollbars(
     viewport: Viewport,
 ) -> ScrollbarAreas {
     let areas = scrollbar_areas(outer, metrics);
-    let style = Style::default().fg(Color::Cyan);
+    let style = Style::default().fg(theme::CHROME);
     if metrics.maximum_vertical > 0 {
         let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
             .begin_symbol(None)
             .end_symbol(None)
+            .track_style(style)
             .thumb_style(style);
         let mut state = ScrollbarState::new(metrics.maximum_vertical.saturating_add(1))
             .viewport_content_length(metrics.viewport_rows)
@@ -154,6 +157,7 @@ pub fn render_scrollbars(
         let scrollbar = Scrollbar::new(ScrollbarOrientation::HorizontalBottom)
             .begin_symbol(None)
             .end_symbol(None)
+            .track_style(style)
             .thumb_style(style);
         let mut state = ScrollbarState::new(scrollbar_position_count(
             metrics.columns,
@@ -248,7 +252,12 @@ pub fn viewport_metrics(
     ViewportMetrics {
         area: content,
         horizontal_scrollbar: if horizontal {
-            Rect::new(area.x, area.bottom().saturating_sub(1), area.width, 1)
+            Rect::new(
+                area.x,
+                area.bottom().saturating_sub(design::BORDER_WIDTH),
+                area.width,
+                design::BORDER_WIDTH,
+            )
         } else {
             Rect::default()
         },

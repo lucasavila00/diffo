@@ -2,11 +2,13 @@ use diffo_core::ChangeKind;
 use diffo_file_picker::{Document as PickerDocument, FilePicker, Row as PickerRow};
 use diffo_text_view::render_lines;
 use diffo_text_view::{Viewport, ViewportMetrics, render_scrollbars, viewport_metrics};
-use diffo_ui::{PaneSplit, change_kind_style, plain_syntax_spans, terminal_safe_text, tool_areas};
+use diffo_ui::{
+    PaneSplit, change_kind_style, design, plain_syntax_spans, terminal_safe_text, theme, tool_areas,
+};
 use ratatui::{
     Frame,
     layout::{Constraint, Layout, Rect},
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Clear, Paragraph},
 };
@@ -103,9 +105,9 @@ fn entry_style(entry: &TreeEntry) -> Style {
     entry.status.map_or_else(
         || {
             Style::default().fg(if entry.directory {
-                Color::Gray
+                theme::CHROME
             } else {
-                Color::White
+                theme::TEXT
             })
         },
         status_style,
@@ -134,13 +136,10 @@ fn render_viewer(
             .title(title),
         area,
     );
-    let inner = area.inner(ratatui::layout::Margin {
-        vertical: 1,
-        horizontal: 1,
-    });
+    let inner = area.inner(design::PANEL_INSET);
     if let Some(error) = model.error.as_deref() {
         frame.render_widget(
-            Paragraph::new(terminal_safe_text(error)).style(Style::default().fg(Color::Red)),
+            Paragraph::new(terminal_safe_text(error)).style(Style::default().fg(theme::DANGER)),
             inner,
         );
     } else if let Some(viewer) = model.viewer.as_ref() {
@@ -169,7 +168,12 @@ pub(crate) fn viewer_metrics(
     model: &ExplorerModel,
     viewer: &super::model::Viewer,
 ) -> ViewportMetrics {
-    let text_area = Rect::new(area.x, area.y, area.width.saturating_sub(1), area.height);
+    let text_area = Rect::new(
+        area.x,
+        area.y,
+        area.width.saturating_sub(design::BORDER_WIDTH),
+        area.height,
+    );
     let widths = viewer
         .lines
         .iter()
@@ -223,10 +227,7 @@ fn viewer_gutter(number: usize, viewer: &super::model::Viewer, skeleton: bool) -
         .flatten();
     let marker_text = if marker.is_some() { "▌" } else { " " };
     Line::from(vec![
-        Span::styled(
-            format!("{number:>4} "),
-            Style::default().fg(Color::DarkGray),
-        ),
+        Span::styled(format!("{number:>4} "), Style::default().fg(theme::CHROME)),
         Span::styled(marker_text, marker_style(marker)),
         Span::raw(" "),
     ])
@@ -243,12 +244,12 @@ fn viewer_code(number: usize, text: &str, viewer: &super::model::Viewer) -> Line
 
 fn marker_style(marker: Option<GutterMarker>) -> Style {
     match marker {
-        Some(GutterMarker::Added) => Style::default().fg(Color::LightGreen),
-        Some(GutterMarker::Modified) => Style::default().fg(Color::Yellow),
-        Some(GutterMarker::Deleted) => Style::default().fg(Color::LightRed),
+        Some(GutterMarker::Added) => Style::default().fg(theme::SUCCESS),
+        Some(GutterMarker::Modified) => Style::default().fg(theme::WARNING),
+        Some(GutterMarker::Deleted) => Style::default().fg(theme::DANGER),
         Some(GutterMarker::Conflict) => Style::default()
-            .fg(Color::LightYellow)
-            .bg(Color::Indexed(58))
+            .fg(theme::CONFLICT_FOREGROUND)
+            .bg(theme::CONFLICT_BACKGROUND)
             .add_modifier(Modifier::BOLD),
         None => Style::default(),
     }
@@ -258,7 +259,7 @@ fn marker_style(marker: Option<GutterMarker>) -> Style {
 mod tests {
     use super::*;
     use diffo_core::{FileDiff, FileState, RepositorySnapshot};
-    use ratatui::{Terminal, backend::TestBackend};
+    use ratatui::{Terminal, backend::TestBackend, style::Color};
     use std::collections::HashMap;
 
     #[test]
@@ -281,7 +282,7 @@ mod tests {
             directory: true,
             status: None,
         };
-        assert_eq!(entry_style(&directory).fg, Some(Color::Gray));
+        assert_eq!(entry_style(&directory).fg, Some(theme::CHROME));
     }
 
     #[test]

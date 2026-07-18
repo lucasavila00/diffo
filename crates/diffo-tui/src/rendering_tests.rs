@@ -13,6 +13,7 @@ use diffo_core::{
 };
 use diffo_diff::RowKind;
 use diffo_highlight::Rgb;
+use diffo_ui::theme;
 use ratatui::{
     Terminal,
     backend::TestBackend,
@@ -22,8 +23,9 @@ use ratatui::{
 
 use super::{
     Renderer, RendererEvent, contrast_ratio, contrasting_foreground, diff_background,
-    diff_background_rgb, diff_file_lines, file_kind_style, overview_position, picker_document,
-    row_style, scrollbar_position_count, should_syntax_highlight, status_line,
+    diff_background_rgb, diff_file_lines, file_kind_style, horizontal_panes, main_area,
+    overview_position, picker_document, row_style, scrollbar_position_count,
+    should_syntax_highlight, status_line,
 };
 
 #[test]
@@ -233,7 +235,7 @@ fn status_line_shows_named_head_state_and_divergence() {
 
     let line = status_line(&model, 0, 80);
     assert!(line_text(&line).contains(" branch main · clean · ↓1 ↑2"));
-    assert_eq!(line.spans[0].style.fg, Some(Color::Cyan));
+    assert_eq!(line.spans[0].style.fg, Some(theme::TEXT));
     assert!(line.spans[0].style.add_modifier.contains(Modifier::BOLD));
 
     model.snapshot.files.push(FileState {
@@ -525,7 +527,6 @@ fn network_operations_animate_the_frame_and_name_the_operation() {
     terminal
         .draw(|frame| renderer.render(frame, &model))
         .unwrap();
-    let first_border = terminal.backend().buffer()[(0, 0)].fg;
     let screen =
         terminal
             .backend()
@@ -543,7 +544,38 @@ fn network_operations_animate_the_frame_and_name_the_operation() {
             .draw(|frame| renderer.render(frame, &model))
             .unwrap();
     }
-    assert_ne!(terminal.backend().buffer()[(0, 0)].fg, first_border);
+    let later_screen =
+        terminal
+            .backend()
+            .buffer()
+            .content
+            .iter()
+            .fold(String::new(), |mut output, cell| {
+                output.push_str(cell.symbol());
+                output
+            });
+    assert_ne!(later_screen, screen);
+    assert_eq!(terminal.backend().buffer()[(0, 0)].fg, theme::CHROME);
+}
+
+#[test]
+fn commit_message_and_file_diff_boxes_share_the_chrome_border() {
+    let model = model();
+    let area = Rect::new(0, 0, 80, 24);
+    let panes = horizontal_panes(main_area(area), model.file_pane_percent);
+    let mut renderer = Renderer::new();
+    renderer.prepare_frame(&model, area);
+    let backend = TestBackend::new(area.width, area.height);
+    let mut terminal = Terminal::new(backend).unwrap();
+    terminal
+        .draw(|frame| renderer.render(frame, &model))
+        .unwrap();
+
+    let buffer = terminal.backend().buffer();
+    let commit_border = buffer[(panes[0].x, panes[0].y)].fg;
+    let diff_border = buffer[(panes[1].x, panes[1].y)].fg;
+    assert_eq!(commit_border, theme::CHROME);
+    assert_eq!(diff_border, theme::CHROME);
 }
 
 #[test]

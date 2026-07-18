@@ -2,12 +2,13 @@ use super::{
     ChangeArea, Color, HighlightedDiff, HighlightedLine, Line, Modifier, RenderLine, Rgb, RowKind,
     SideBySideRow, Span, Style, StyledSpan, terminal_safe_text,
 };
+use diffo_ui::theme;
 
 #[must_use]
 pub(super) fn file_action_style(change_area: ChangeArea) -> Style {
     let color = match change_area {
-        ChangeArea::Staged => Color::LightRed,
-        ChangeArea::Unstaged => Color::LightGreen,
+        ChangeArea::Staged => theme::DANGER,
+        ChangeArea::Unstaged => theme::SUCCESS,
     };
     Style::default().fg(color).add_modifier(Modifier::BOLD)
 }
@@ -66,7 +67,7 @@ pub(super) fn side_by_side_skeleton_line(
     Line::from(vec![
         number(row.old.as_ref()),
         Span::raw(" ".repeat(column_width.saturating_sub(4))),
-        Span::raw(" │ "),
+        Span::styled(" │ ", Style::default().fg(theme::CHROME)),
         number(row.new.as_ref()),
     ])
 }
@@ -77,7 +78,7 @@ pub(super) fn side_by_side_line(
     highlighted: &HighlightedDiff,
 ) -> Line<'static> {
     let mut spans = format_cell(row.old.as_ref(), column_width, highlighted);
-    spans.push(Span::raw(" │ "));
+    spans.push(Span::styled(" │ ", Style::default().fg(theme::CHROME)));
     spans.extend(format_cell(row.new.as_ref(), column_width, highlighted));
     Line::from(spans)
 }
@@ -234,10 +235,10 @@ pub(super) fn pad_to_width(spans: &mut Vec<Span<'static>>, width: usize, padding
 
 pub(super) fn gutter_style(kind: RowKind) -> Style {
     let foreground = match kind {
-        RowKind::Removed => Color::LightRed,
-        RowKind::Added => Color::LightGreen,
-        RowKind::Conflict => Color::LightYellow,
-        RowKind::Header | RowKind::Context | RowKind::Changed | RowKind::Meta => Color::DarkGray,
+        RowKind::Removed => theme::DANGER,
+        RowKind::Added => theme::SUCCESS,
+        RowKind::Conflict => theme::CONFLICT_FOREGROUND,
+        RowKind::Header | RowKind::Context | RowKind::Changed | RowKind::Meta => theme::CHROME,
     };
     Style::default().fg(foreground).patch(diff_background(kind))
 }
@@ -248,7 +249,7 @@ pub(super) fn diff_background(kind: RowKind) -> Style {
         // multiplexers that advertise `xterm-256color` but filter true-color backgrounds.
         RowKind::Removed => Style::default().bg(Color::Indexed(52)),
         RowKind::Added => Style::default().bg(Color::Indexed(22)),
-        RowKind::Conflict => Style::default().bg(Color::Indexed(58)),
+        RowKind::Conflict => Style::default().bg(theme::CONFLICT_BACKGROUND),
         RowKind::Header | RowKind::Context | RowKind::Changed | RowKind::Meta => Style::default(),
     }
 }
@@ -276,21 +277,20 @@ pub(super) fn diff_background_rgb(kind: RowKind) -> Option<Rgb> {
 
 pub(super) fn row_style(kind: RowKind) -> Style {
     match kind {
-        RowKind::Header => Style::default().fg(Color::Cyan),
+        RowKind::Header => Style::default().fg(theme::TEXT),
         RowKind::Removed => Style::default().fg(Color::Red),
         RowKind::Added => Style::default().fg(Color::Green),
         RowKind::Conflict => Style::default()
-            .fg(Color::LightYellow)
-            .bg(Color::Indexed(58))
+            .fg(theme::CONFLICT_FOREGROUND)
+            .bg(theme::CONFLICT_BACKGROUND)
             .add_modifier(Modifier::BOLD),
-        RowKind::Meta => Style::default().fg(Color::Yellow),
+        RowKind::Meta => Style::default().fg(theme::WARNING),
         RowKind::Context | RowKind::Changed => Style::default(),
     }
 }
 
-pub(super) fn network_animation_style(tick: usize) -> Style {
-    const GRADIENT: [u8; 12] = [24, 25, 31, 37, 43, 42, 36, 30, 24, 60, 54, 53];
+pub(super) fn network_animation_style(_tick: usize) -> Style {
     Style::default()
-        .fg(Color::Indexed(GRADIENT[(tick / 4) % GRADIENT.len()]))
+        .fg(theme::CHROME)
         .add_modifier(Modifier::BOLD)
 }

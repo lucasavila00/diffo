@@ -9,8 +9,117 @@ use ratatui::{
     text::Span,
 };
 
-const DEFAULT_PANE_PERCENT: u16 = 25;
-const MAX_PANE_PERCENT: u16 = 80;
+/// Fixed semantic colors for Diffo's application chrome.
+///
+/// Renderers use these roles instead of choosing terminal colors locally. Diff
+/// content and syntax highlighting keep their separate, content-specific palettes.
+pub mod theme {
+    use ratatui::style::Color;
+
+    pub const TEXT: Color = Color::White;
+    pub const CHROME: Color = Color::DarkGray;
+    pub const INFORMATION: Color = Color::LightCyan;
+    pub const SELECTION_BACKGROUND: Color = CHROME;
+    pub const SUCCESS: Color = Color::LightGreen;
+    pub const WARNING: Color = Color::Yellow;
+    pub const DANGER: Color = Color::LightRed;
+    pub const CONFLICT_FOREGROUND: Color = Color::LightYellow;
+    pub const CONFLICT_BACKGROUND: Color = Color::Indexed(58);
+}
+
+/// Fixed layout tokens for Diffo's structural chrome.
+pub mod design {
+    use ratatui::layout::Margin;
+
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+    pub struct ResponsiveWidth {
+        percent: u16,
+        minimum: u16,
+        maximum: u16,
+    }
+
+    impl ResponsiveWidth {
+        #[must_use]
+        pub const fn new(percent: u16, minimum: u16, maximum: u16) -> Self {
+            Self {
+                percent,
+                minimum,
+                maximum,
+            }
+        }
+
+        #[must_use]
+        pub fn resolve(self, available: u16) -> u16 {
+            (available.saturating_mul(self.percent) / FULL_PERCENT)
+                .clamp(self.minimum.min(available), self.maximum.min(available))
+        }
+    }
+
+    pub const BORDER_WIDTH: u16 = 1;
+    pub const PANEL_BORDER_OVERHEAD: u16 = BORDER_WIDTH * 2;
+    pub const SINGLE_LINE_HEIGHT: u16 = 1;
+    pub const PANEL_INSET: Margin = Margin {
+        horizontal: 1,
+        vertical: 1,
+    };
+    pub const DIALOG_INSET: Margin = Margin {
+        horizontal: 2,
+        vertical: 1,
+    };
+    pub const INLINE_GAP: u16 = 2;
+    pub const FULL_PERCENT: u16 = 100;
+    pub const EQUAL_SPLIT_PERCENT: u16 = 50;
+    pub const STATUS_HEIGHT: u16 = 1;
+    pub const MIN_TOOL_CONTENT_HEIGHT: u16 = 3;
+    pub const DEFAULT_PANE_PERCENT: u16 = 25;
+    pub const MAX_PANE_PERCENT: u16 = 80;
+    pub const PANE_DRAG_BOTTOM_GUARD: u16 = PANEL_BORDER_OVERHEAD;
+
+    pub const ACTIVITY_RAIL_WIDTH: u16 = 5;
+    pub const ACTIVITY_CONTROL_HEIGHT: u16 = 3;
+    pub const ACTIVITY_CONTROL_CONTENT_OFFSET: u16 = 1;
+    pub const FILE_COMPOSER_HEIGHT: u16 = 6;
+    pub const MIN_FILE_GROUP_HEIGHT: u16 = 2;
+    pub const COMMIT_FIELD_HEIGHT: u16 = 3;
+    pub const PRIMARY_ACTION_HEIGHT: u16 = 2;
+
+    pub const COMMAND_PALETTE_WIDTH: ResponsiveWidth = ResponsiveWidth::new(70, 30, 80);
+    pub const COMMAND_PALETTE_TOP_PERCENT: u16 = 20;
+    pub const COMMAND_PALETTE_MAX_HEIGHT: u16 = 18;
+    pub const HELP_WIDTH: ResponsiveWidth = ResponsiveWidth::new(80, 40, 90);
+    pub const HELP_TOP_PERCENT: u16 = 10;
+    pub const HELP_MAX_HEIGHT: u16 = 26;
+    pub const HELP_SHORTCUT_COLUMN_WIDTH: u16 = 22;
+    pub const HELP_ACTION_MIN_WIDTH: u16 = 24;
+    pub const HELP_COLUMN_GAP: u16 = 2;
+    pub const COMMIT_EDITOR_WIDTH: ResponsiveWidth = ResponsiveWidth::new(70, 34, 84);
+    pub const COMMIT_EDITOR_MAX_HEIGHT: u16 = 11;
+
+    pub const TOAST_MAX_WIDTH: u16 = 44;
+    pub const TOAST_MIN_WIDTH: u16 = 4;
+    pub const TOAST_MIN_HEIGHT: u16 = 3;
+    pub const TOAST_MAX_HEIGHT: u16 = 6;
+    pub const PATH_MENU_WIDTH: u16 = 24;
+    pub const PATH_MENU_HEIGHT: u16 = 4;
+    pub const TREE_HEADER_MIN_WIDTH: u16 = 12;
+    pub const TREE_HEADER_ACTION_WIDTH: u16 = 3;
+    pub const TREE_HEADER_ACTION_GAP: u16 = 1;
+    pub const TREE_HEADER_ACTIONS_WIDTH: u16 =
+        TREE_HEADER_ACTION_WIDTH * 2 + TREE_HEADER_ACTION_GAP + BORDER_WIDTH;
+    pub const PICKER_SELECTION_PREFIX_WIDTH: u16 = 2;
+    pub const PATH_MENU_FIRST_ACTION_ROW: u16 = 1;
+    pub const PATH_MENU_SECOND_ACTION_ROW: u16 = 2;
+    pub const SIDE_BY_SIDE_DIVIDER_WIDTH: u16 = 3;
+    pub const SIDE_BY_SIDE_COLUMN_COUNT: u16 = 2;
+    pub const DIFF_RIGHT_RAIL_WIDTH: u16 = BORDER_WIDTH * 2;
+    pub const DIFF_PAGE_NON_CONTENT_ROWS: u16 = 3;
+
+    #[must_use]
+    pub const fn panel_content_extent(outer: u16) -> u16 {
+        outer.saturating_sub(PANEL_BORDER_OVERHEAD)
+    }
+}
+
 const WHEEL_SCROLL_ROWS: i64 = 1;
 
 #[must_use]
@@ -70,8 +179,8 @@ pub struct PaneSplit {
 impl Default for PaneSplit {
     fn default() -> Self {
         Self {
-            percent: DEFAULT_PANE_PERCENT,
-            expanded_percent: DEFAULT_PANE_PERCENT,
+            percent: design::DEFAULT_PANE_PERCENT,
+            expanded_percent: design::DEFAULT_PANE_PERCENT,
             dragging: false,
         }
     }
@@ -92,7 +201,7 @@ impl PaneSplit {
     pub fn areas(self, area: Rect) -> PaneAreas {
         let columns = Layout::horizontal([
             Constraint::Percentage(self.percent),
-            Constraint::Percentage(100_u16.saturating_sub(self.percent)),
+            Constraint::Percentage(design::FULL_PERCENT.saturating_sub(self.percent)),
         ])
         .split(area);
         PaneAreas {
@@ -103,7 +212,7 @@ impl PaneSplit {
 
     #[must_use]
     pub fn contains_seam(self, area: Rect, column: u16, row: u16) -> bool {
-        if row < area.y || row >= area.bottom().saturating_sub(2) {
+        if row < area.y || row >= area.bottom().saturating_sub(design::PANE_DRAG_BOTTOM_GUARD) {
             return false;
         }
         column.abs_diff(self.areas(area).trailing.x) <= 1
@@ -118,9 +227,11 @@ impl PaneSplit {
             return;
         }
         let offset = column.saturating_sub(area.x).min(area.width);
-        let percent = u16::try_from(u32::from(offset) * 100 / u32::from(area.width))
-            .unwrap_or(100)
-            .min(MAX_PANE_PERCENT);
+        let percent = u16::try_from(
+            u32::from(offset) * u32::from(design::FULL_PERCENT) / u32::from(area.width),
+        )
+        .unwrap_or(design::FULL_PERCENT)
+        .min(design::MAX_PANE_PERCENT);
         self.percent = percent;
         if percent > 0 {
             self.expanded_percent = percent;
@@ -143,12 +254,11 @@ impl PaneSplit {
 
     #[must_use]
     pub fn border_style(self) -> Style {
+        let style = Style::default().fg(theme::CHROME);
         if self.dragging {
-            Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD)
+            style.add_modifier(Modifier::BOLD)
         } else {
-            Style::default()
+            style
         }
     }
 }
@@ -161,7 +271,11 @@ pub struct ToolAreas {
 
 #[must_use]
 pub fn tool_areas(area: Rect) -> ToolAreas {
-    let rows = Layout::vertical([Constraint::Min(3), Constraint::Length(1)]).split(area);
+    let rows = Layout::vertical([
+        Constraint::Min(design::MIN_TOOL_CONTENT_HEIGHT),
+        Constraint::Length(design::STATUS_HEIGHT),
+    ])
+    .split(area);
     ToolAreas {
         content: rows[0],
         status: rows[1],
@@ -171,14 +285,14 @@ pub fn tool_areas(area: Rect) -> ToolAreas {
 #[must_use]
 pub fn change_kind_style(kind: ChangeKind, selected: bool) -> Style {
     let style = match kind {
-        ChangeKind::Added | ChangeKind::Untracked => Style::default().fg(Color::LightGreen),
-        ChangeKind::Modified => Style::default().fg(Color::Yellow),
+        ChangeKind::Added | ChangeKind::Untracked => Style::default().fg(theme::SUCCESS),
+        ChangeKind::Modified => Style::default().fg(theme::WARNING),
         ChangeKind::Deleted => Style::default()
-            .fg(Color::LightRed)
+            .fg(theme::DANGER)
             .add_modifier(Modifier::CROSSED_OUT),
-        ChangeKind::Renamed | ChangeKind::Copied => Style::default().fg(Color::LightCyan),
+        ChangeKind::Renamed | ChangeKind::Copied => Style::default().fg(theme::INFORMATION),
         ChangeKind::Conflicted => Style::default()
-            .fg(Color::LightRed)
+            .fg(theme::DANGER)
             .add_modifier(Modifier::BOLD),
     };
     if selected {

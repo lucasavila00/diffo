@@ -1,6 +1,6 @@
 use super::{
     Constraint, DiffViewMode, DiffViewportMetrics, Direction, Layout, Model, Rect, Renderer,
-    ScrollbarAxis,
+    ScrollbarAxis, design,
 };
 #[cfg(test)]
 pub(super) use diffo_ui::scrollbar_position_count;
@@ -21,7 +21,10 @@ pub(super) fn overview_position(content_row: usize, content_rows: usize, track_h
 pub(super) fn main_area(area: ratatui::layout::Rect) -> ratatui::layout::Rect {
     Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Min(3), Constraint::Length(1)])
+        .constraints([
+            Constraint::Min(design::MIN_TOOL_CONTENT_HEIGHT),
+            Constraint::Length(design::STATUS_HEIGHT),
+        ])
         .split(area)[0]
 }
 
@@ -32,8 +35,8 @@ pub(super) fn horizontal_panes(
     Layout::default()
         .direction(Direction::Horizontal)
         .constraints([
-            Constraint::Percentage(file_pane_percent.min(100)),
-            Constraint::Percentage(100_u16.saturating_sub(file_pane_percent)),
+            Constraint::Percentage(file_pane_percent.min(design::FULL_PERCENT)),
+            Constraint::Percentage(design::FULL_PERCENT.saturating_sub(file_pane_percent)),
         ])
         .split(area)
 }
@@ -148,10 +151,7 @@ impl Renderer {
         area: Rect,
         requested_scroll: usize,
     ) -> DiffViewportMetrics {
-        let inner = area.inner(ratatui::layout::Margin {
-            vertical: 1,
-            horizontal: 1,
-        });
+        let inner = area.inner(design::PANEL_INSET);
         let rows = self.displayed_rows(mode);
         let changes = self.change_targets(mode);
         let viewport_columns = usize::from(inner.width);
@@ -206,8 +206,13 @@ impl Renderer {
             inner.width,
             content_bottom.saturating_sub(content_y),
         );
-        let horizontal_area = if horizontal_rows == 1 {
-            Rect::new(inner.x, inner.bottom().saturating_sub(1), inner.width, 1)
+        let horizontal_area = if horizontal_rows == design::SINGLE_LINE_HEIGHT {
+            Rect::new(
+                inner.x,
+                inner.bottom().saturating_sub(design::SINGLE_LINE_HEIGHT),
+                inner.width,
+                design::SINGLE_LINE_HEIGHT,
+            )
         } else {
             Rect::default()
         };

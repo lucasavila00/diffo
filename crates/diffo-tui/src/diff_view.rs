@@ -1,16 +1,19 @@
 use super::{
-    Alignment, Block, Borders, Color, DiffViewMode, DiffViewportMetrics, Frame, HunkButtonMetrics,
-    Line, Model, Paragraph, Rect, Renderer, ScrollbarMetrics, Style, inline_line,
-    inline_skeleton_line, overview_position, resize_border_style, side_by_side_line,
-    side_by_side_skeleton_line, terminal_safe_text,
+    Alignment, Block, Borders, DiffViewMode, DiffViewportMetrics, Frame, HunkButtonMetrics, Line,
+    Model, Paragraph, Rect, Renderer, ScrollbarMetrics, Style, inline_line, inline_skeleton_line,
+    overview_position, resize_border_style, side_by_side_line, side_by_side_skeleton_line,
+    terminal_safe_text,
 };
 use diffo_text_view::{Viewport, ViewportMetrics, render_lines, render_scrollbars};
+use diffo_ui::{design, theme};
 
 pub(super) fn render_hunk_button(frame: &mut Frame, area: Rect, label: &str) {
     frame.render_widget(
-        Paragraph::new(label)
-            .alignment(Alignment::Center)
-            .style(Style::default().fg(Color::Yellow).bg(Color::Indexed(235))),
+        Paragraph::new(label).alignment(Alignment::Center).style(
+            Style::default()
+                .fg(theme::TEXT)
+                .bg(theme::SELECTION_BACKGROUND),
+        ),
         area,
     );
 }
@@ -27,7 +30,7 @@ pub(super) fn render_change_markers(
         let visible =
             change >= first_visible && change < first_visible.saturating_add(viewport_rows);
         let marker = Rect::new(
-            area.x.saturating_add(1),
+            area.x.saturating_add(design::BORDER_WIDTH),
             area.y
                 .saturating_add(overview_position(change, rows, area.height)),
             1,
@@ -35,9 +38,9 @@ pub(super) fn render_change_markers(
         );
         frame.render_widget(
             Paragraph::new("▪").style(Style::default().fg(if visible {
-                Color::Cyan
+                theme::TEXT
             } else {
-                Color::Yellow
+                theme::CHROME
             })),
             marker,
         );
@@ -101,21 +104,26 @@ impl Renderer {
         area: Rect,
         viewport: &DiffViewportMetrics,
     ) {
-        let inner = area.inner(ratatui::layout::Margin {
-            vertical: 1,
-            horizontal: 1,
-        });
+        let inner = area.inner(design::PANEL_INSET);
         let previous_area = viewport.previous_change.map(|_| {
             Rect::new(
                 inner.x,
-                viewport.content_area.y.saturating_sub(1),
+                viewport
+                    .content_area
+                    .y
+                    .saturating_sub(design::SINGLE_LINE_HEIGHT),
                 inner.width,
-                1,
+                design::SINGLE_LINE_HEIGHT,
             )
         });
-        let next_area = viewport
-            .next_change
-            .map(|_| Rect::new(inner.x, viewport.content_area.bottom(), inner.width, 1));
+        let next_area = viewport.next_change.map(|_| {
+            Rect::new(
+                inner.x,
+                viewport.content_area.bottom(),
+                inner.width,
+                design::SINGLE_LINE_HEIGHT,
+            )
+        });
         self.hunk_buttons = HunkButtonMetrics {
             previous: previous_area.zip(viewport.previous_change),
             next: next_area.zip(viewport.next_change),
@@ -137,7 +145,7 @@ impl Renderer {
     ) {
         self.scrollbars = ScrollbarMetrics {
             vertical_area: Rect::new(
-                area.right().saturating_sub(2),
+                area.right().saturating_sub(design::DIFF_RIGHT_RAIL_WIDTH),
                 viewport.content_area.y,
                 u16::from(area.width > 2),
                 viewport.content_area.height,
@@ -150,7 +158,12 @@ impl Renderer {
         };
         let shared = render_scrollbars(
             frame,
-            Rect::new(area.x, area.y, area.width.saturating_sub(1), area.height),
+            Rect::new(
+                area.x,
+                area.y,
+                area.width.saturating_sub(design::BORDER_WIDTH),
+                area.height,
+            ),
             ViewportMetrics {
                 area: viewport.content_area,
                 horizontal_scrollbar: viewport.horizontal_area,
@@ -223,7 +236,10 @@ impl Renderer {
                 .map(|row| inline_line(row, &cache.highlighted, usize::from(width)))
                 .collect(),
             DiffViewMode::SideBySide => {
-                let column_width = usize::from(width.saturating_sub(3) / 2);
+                let column_width = usize::from(
+                    width.saturating_sub(design::SIDE_BY_SIDE_DIVIDER_WIDTH)
+                        / design::SIDE_BY_SIDE_COLUMN_COUNT,
+                );
                 cache
                     .side_by_side
                     .iter()
@@ -253,7 +269,10 @@ impl Renderer {
                 .map(inline_skeleton_line)
                 .collect(),
             DiffViewMode::SideBySide => {
-                let column_width = usize::from(width.saturating_sub(3) / 2);
+                let column_width = usize::from(
+                    width.saturating_sub(design::SIDE_BY_SIDE_DIVIDER_WIDTH)
+                        / design::SIDE_BY_SIDE_COLUMN_COUNT,
+                );
                 cache
                     .side_by_side
                     .iter()

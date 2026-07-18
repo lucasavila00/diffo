@@ -15,7 +15,7 @@ use diffo_text_view::{
     TextSurfacePreparation, Viewport, ViewportMetrics, scrollbar_areas, scrollbar_axis_at,
     scrollbar_command,
 };
-use diffo_ui::{PaneSplit, maximum_scroll, scroll_offset, wheel_scroll_delta};
+use diffo_ui::{PaneSplit, design, maximum_scroll, scroll_offset, wheel_scroll_delta};
 use ratatui::{Frame, layout::Rect};
 
 use model::ExplorerModel;
@@ -120,18 +120,12 @@ impl ExplorerActivity {
 
     pub fn prepare_frame(&mut self, area: Rect, split: PaneSplit) -> TextSurfacePreparation {
         let areas = explorer_areas(area, split);
-        self.viewport_rows = usize::from(areas.viewer.height.saturating_sub(2)).max(1);
+        self.viewport_rows = usize::from(design::panel_content_extent(areas.viewer.height))
+            .max(usize::from(design::SINGLE_LINE_HEIGHT));
         self.viewport_columns = usize::from(
-            areas
-                .viewer
-                .width
-                .saturating_sub(2)
-                .saturating_sub(VIEWER_GUTTER_WIDTH),
+            design::panel_content_extent(areas.viewer.width).saturating_sub(VIEWER_GUTTER_WIDTH),
         );
-        let viewer_inner = areas.viewer.inner(ratatui::layout::Margin {
-            vertical: 1,
-            horizontal: 1,
-        });
+        let viewer_inner = areas.viewer.inner(design::PANEL_INSET);
         let metrics = self
             .model
             .viewer
@@ -282,10 +276,7 @@ impl ExplorerActivity {
     fn handle_viewer_mouse(&mut self, event: &Event, area: Rect, split: PaneSplit) -> bool {
         let viewer_area = explorer_areas(area, split)
             .viewer
-            .inner(ratatui::layout::Margin {
-                vertical: 1,
-                horizontal: 1,
-            });
+            .inner(design::PANEL_INSET);
         let viewer_metrics = self
             .model
             .viewer

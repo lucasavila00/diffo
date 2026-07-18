@@ -9,6 +9,7 @@ version.workspace = true
 
 [dependencies]
 crossterm.workspace = true
+diffo-ui.workspace = true
 ratatui.workspace = true
 
 [lints]

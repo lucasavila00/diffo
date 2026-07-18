@@ -20,7 +20,7 @@ use diffo_diff::{
 };
 use diffo_file_picker::{Navigation as PickerNavigation, Outcome as PickerOutcome};
 use diffo_highlight::{HighlightedDiff, HighlightedLine, Rgb, StyledSpan, SyntaxHighlighter};
-use diffo_ui::{maximum_scroll, tool_areas};
+use diffo_ui::{design, maximum_scroll, tool_areas};
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
@@ -179,7 +179,7 @@ impl Renderer {
                 .filter(|cache| cache.key.file == requested.file)
                 .map(|cache| ScrollAnchor::capture(cache, cache.key.mode, model.diff_scroll))
         });
-        self.diff_viewport_rows = usize::from(diff_area.height.saturating_sub(2));
+        self.diff_viewport_rows = usize::from(design::panel_content_extent(diff_area.height));
         let prefetch_viewports = self.update_prefetch(model.diff_scroll);
         let target_scroll = self
             .navigation_preparation_target(requested.as_ref(), model.diff_view_mode)

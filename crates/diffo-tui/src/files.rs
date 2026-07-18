@@ -1,20 +1,25 @@
 use super::{
-    Alignment, Block, Borders, ChangeArea, ChangeKind, Color, Constraint, Direction, FileKey,
-    FileState, Frame, HeadState, Layout, Line, Model, Modifier, Paragraph, Rect,
-    RepositorySnapshot, Span, Style, change_kind_style, file_action_style, horizontal_panes,
-    main_area, network_animation_style, terminal_safe_text,
+    Alignment, Block, Borders, ChangeArea, ChangeKind, Constraint, Direction, FileKey, FileState,
+    Frame, HeadState, Layout, Line, Model, Modifier, Paragraph, Rect, RepositorySnapshot, Span,
+    Style, change_kind_style, file_action_style, horizontal_panes, main_area,
+    network_animation_style, terminal_safe_text,
 };
 use diffo_file_picker::{Document, Row as PickerRow};
+use diffo_ui::{design, theme};
 
 pub(super) fn file_panel_areas(area: Rect) -> std::rc::Rc<[Rect]> {
-    Layout::vertical([Constraint::Length(6), Constraint::Min(2)]).split(area)
+    Layout::vertical([
+        Constraint::Length(design::FILE_COMPOSER_HEIGHT),
+        Constraint::Min(design::MIN_FILE_GROUP_HEIGHT),
+    ])
+    .split(area)
 }
 
 pub(super) fn commit_composer_areas(area: Rect) -> std::rc::Rc<[Rect]> {
     Layout::vertical([
-        Constraint::Length(3),
-        Constraint::Length(2),
-        Constraint::Length(1),
+        Constraint::Length(design::COMMIT_FIELD_HEIGHT),
+        Constraint::Length(design::PRIMARY_ACTION_HEIGHT),
+        Constraint::Length(design::STATUS_HEIGHT),
     ])
     .split(area)
 }
@@ -32,13 +37,14 @@ pub(super) fn render_commit_composer(frame: &mut Frame, area: Rect, model: &Mode
     frame.render_widget(
         Paragraph::new(message)
             .style(if empty {
-                Style::default().fg(Color::DarkGray)
+                Style::default().fg(theme::CHROME)
             } else {
-                Style::default().fg(Color::White)
+                Style::default().fg(theme::TEXT)
             })
             .block(
                 Block::default()
                     .borders(Borders::ALL)
+                    .border_style(resize_border_style(model))
                     .title(" Commit message · click to edit "),
             ),
         sections[0],
@@ -46,11 +52,11 @@ pub(super) fn render_commit_composer(frame: &mut Frame, area: Rect, model: &Mode
     let action = model.primary_action();
     let style = if model.primary_action_enabled() {
         Style::default()
-            .bg(Color::Indexed(24))
-            .fg(Color::White)
+            .bg(theme::SELECTION_BACKGROUND)
+            .fg(theme::TEXT)
             .add_modifier(Modifier::BOLD)
     } else {
-        Style::default().fg(Color::DarkGray)
+        Style::default().fg(theme::CHROME)
     };
     frame.render_widget(
         Paragraph::new(format!("[ {} ]", action.label()))
@@ -86,7 +92,10 @@ pub(super) fn file_group_areas(
 ) -> std::rc::Rc<[ratatui::layout::Rect]> {
     Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+        .constraints([
+            Constraint::Percentage(design::EQUAL_SPLIT_PERCENT),
+            Constraint::Percentage(design::EQUAL_SPLIT_PERCENT),
+        ])
         .split(area)
 }
 
@@ -151,7 +160,7 @@ pub(super) fn status_line(model: &Model, animation_tick: usize, width: usize) ->
         (upstream.ahead != 0 || upstream.behind != 0).then(|| {
             Span::styled(
                 format!(" · ↓{} ↑{}", upstream.behind, upstream.ahead),
-                Style::default().fg(Color::Cyan),
+                Style::default().fg(theme::TEXT),
             )
         })
     });
@@ -176,7 +185,8 @@ pub(super) fn status_line(model: &Model, animation_tick: usize, width: usize) ->
             continue;
         }
         if let Some(message) = transient.as_mut() {
-            let available = width.saturating_sub(head.width().saturating_add(2));
+            let available =
+                width.saturating_sub(head.width().saturating_add(usize::from(design::INLINE_GAP)));
             if available == 0 {
                 transient = None;
             } else {
@@ -196,12 +206,16 @@ pub(super) fn status_line(model: &Model, animation_tick: usize, width: usize) ->
     let help_width = help.as_ref().map_or(0, Span::width);
 
     if let Some(transient) = transient {
-        spans.push(Span::raw("  "));
+        spans.push(Span::raw(" ".repeat(usize::from(design::INLINE_GAP))));
         spans.push(transient);
     }
     if let Some(help) = help {
         let used = left_width
-            .saturating_add(if transient_width == 0 { 0 } else { 2 })
+            .saturating_add(if transient_width == 0 {
+                0
+            } else {
+                usize::from(design::INLINE_GAP)
+            })
             .saturating_add(transient_width);
         spans.push(Span::raw(
             " ".repeat(width.saturating_sub(used.saturating_add(help_width))),
@@ -225,7 +239,7 @@ fn transient_status(model: &Model, animation_tick: usize) -> Option<Span<'static
     } else if let Some(error) = model.error.as_deref() {
         Some(Span::styled(
             error.to_owned(),
-            Style::default().fg(Color::Red),
+            Style::default().fg(theme::DANGER),
         ))
     } else if model.resizing_file_pane {
         Some(Span::styled(
@@ -234,7 +248,7 @@ fn transient_status(model: &Model, animation_tick: usize) -> Option<Span<'static
                 model.file_pane_percent
             ),
             Style::default()
-                .fg(Color::Cyan)
+                .fg(theme::TEXT)
                 .add_modifier(Modifier::BOLD),
         ))
     } else {
@@ -263,13 +277,13 @@ impl RepositoryStatus {
     fn style(self) -> Style {
         match self {
             Self::Conflicts => Style::default()
-                .fg(Color::LightRed)
+                .fg(theme::DANGER)
                 .add_modifier(Modifier::BOLD),
             Self::Staged => Style::default()
-                .fg(Color::LightGreen)
+                .fg(theme::SUCCESS)
                 .add_modifier(Modifier::BOLD),
-            Self::Changes => Style::default().fg(Color::Yellow),
-            Self::Clean => Style::default().fg(Color::DarkGray),
+            Self::Changes => Style::default().fg(theme::WARNING),
+            Self::Clean => Style::default().fg(theme::CHROME),
         }
     }
 }
@@ -308,7 +322,7 @@ fn short_commit(commit: &str) -> String {
 
 fn head_style() -> Style {
     Style::default()
-        .fg(Color::Cyan)
+        .fg(theme::TEXT)
         .add_modifier(Modifier::BOLD)
 }
 
@@ -322,7 +336,9 @@ fn status_width(
     head.width()
         .saturating_add(status.map_or(0, Span::width))
         .saturating_add(divergence.map_or(0, Span::width))
-        .saturating_add(transient.map_or(0, |span| span.width().saturating_add(2)))
+        .saturating_add(transient.map_or(0, |span| {
+            span.width().saturating_add(usize::from(design::INLINE_GAP))
+        }))
         .saturating_add(help.map_or(0, Span::width))
 }
 
@@ -349,12 +365,11 @@ fn truncate_width(value: &str, width: usize) -> String {
 }
 
 pub(super) fn resize_border_style(model: &Model) -> Style {
+    let style = Style::default().fg(theme::CHROME);
     if model.resizing_file_pane {
-        Style::default()
-            .fg(Color::Cyan)
-            .add_modifier(Modifier::BOLD)
+        style.add_modifier(Modifier::BOLD)
     } else {
-        Style::default()
+        style
     }
 }
 

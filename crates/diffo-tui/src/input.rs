@@ -40,7 +40,11 @@ pub fn map_event(event: &Event, model: &Model, area: Rect) -> Option<Message> {
     match event {
         Event::Key(key) if key.kind == KeyEventKind::Press => {
             keyboard::map_key(key.code, key.modifiers).map(|message| {
-                let page_lines = usize::from(area.height.saturating_sub(3)).max(1);
+                let page_lines = usize::from(
+                    area.height
+                        .saturating_sub(super::design::DIFF_PAGE_NON_CONTENT_ROWS),
+                )
+                .max(usize::from(super::design::SINGLE_LINE_HEIGHT));
                 match message {
                     Message::ScrollDiffPageUp(_) => Message::ScrollDiffPageUp(page_lines),
                     Message::ScrollDiffPageDown(_) => Message::ScrollDiffPageDown(page_lines),

@@ -7,22 +7,19 @@ use crossterm::event::{
     Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind,
 };
 use diffo_ui::{
-    maximum_scroll, scroll_offset, scrollbar_position, scrollbar_position_count,
-    terminal_safe_text, wheel_scroll_delta,
+    design, maximum_scroll, scroll_offset, scrollbar_position, scrollbar_position_count,
+    terminal_safe_text, theme, wheel_scroll_delta,
 };
 use ratatui::{
     Frame,
     layout::{Alignment, Rect},
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::{
         Block, Borders, Clear, HighlightSpacing, List, ListItem, ListState, Paragraph, Scrollbar,
         ScrollbarOrientation, ScrollbarState,
     },
 };
-
-const MENU_WIDTH: u16 = 24;
-const MENU_HEIGHT: u16 = 4;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Mode {
@@ -97,7 +94,7 @@ impl<K> Document<K> {
             rows,
             panel_action: None,
             empty_message: "No files.".to_owned(),
-            border_style: Style::default(),
+            border_style: Style::default().fg(theme::CHROME),
         }
     }
 
@@ -108,7 +105,7 @@ impl<K> Document<K> {
             rows,
             panel_action: None,
             empty_message: "No files.".to_owned(),
-            border_style: Style::default(),
+            border_style: Style::default().fg(theme::CHROME),
         }
     }
 }
@@ -222,7 +219,7 @@ where
             .borders(Borders::ALL)
             .border_style(self.document.border_style)
             .title(title);
-        if self.document.mode == Mode::Tree && self.area.width >= 12 {
+        if self.document.mode == Mode::Tree && self.area.width >= design::TREE_HEADER_MIN_WIDTH {
             block = block.title(Line::from("[-] [+]").alignment(Alignment::Right));
         }
         frame.render_widget(block, self.area);
@@ -252,7 +249,7 @@ where
         let list = List::new(items)
             .highlight_style(
                 Style::default()
-                    .bg(Color::DarkGray)
+                    .bg(theme::SELECTION_BACKGROUND)
                     .add_modifier(Modifier::BOLD),
             )
             .highlight_symbol("› ")
@@ -263,7 +260,8 @@ where
             let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
                 .begin_symbol(None)
                 .end_symbol(None)
-                .thumb_style(Style::default().fg(Color::Cyan));
+                .track_style(Style::default().fg(theme::CHROME))
+                .thumb_style(Style::default().fg(theme::CHROME));
             let mut state = ScrollbarState::new(scrollbar_position_count(
                 self.visible.len(),
                 usize::from(self.metrics.list_area.height),
@@ -453,10 +451,7 @@ where
     }
 
     fn recalculate_metrics(&mut self) {
-        let content = self.area.inner(ratatui::layout::Margin {
-            vertical: 1,
-            horizontal: 1,
-        });
+        let content = self.area.inner(design::PANEL_INSET);
         let viewport_rows = usize::from(content.height);
         let maximum_offset = maximum_scroll(self.visible.len(), viewport_rows);
         self.offset = self.offset.min(maximum_offset);
@@ -470,9 +465,9 @@ where
             ),
             scrollbar_area: if has_scrollbar {
                 Rect::new(
-                    content.right().saturating_sub(1),
+                    content.right().saturating_sub(design::BORDER_WIDTH),
                     content.y,
-                    1,
+                    design::BORDER_WIDTH,
                     content.height,
                 )
             } else {
@@ -516,7 +511,8 @@ where
         spans.extend(row.label.spans.clone());
         if let Some((action, style)) = &row.action {
             let used = Line::from(spans.clone()).width();
-            let available = usize::from(self.metrics.list_area.width).saturating_sub(2);
+            let available = usize::from(self.metrics.list_area.width)
+                .saturating_sub(usize::from(design::PICKER_SELECTION_PREFIX_WIDTH));
             let spacing = available.saturating_sub(used.saturating_add(action.chars().count()));
             spans.push(Span::raw(" ".repeat(spacing)));
             spans.push(Span::styled(action.clone(), *style));
@@ -580,13 +576,21 @@ where
         if row != self.area.y {
             return None;
         }
-        if self.document.mode == Mode::Tree && self.area.width >= 12 {
-            let start = self.area.right().saturating_sub(8);
-            if column >= start && column < start.saturating_add(3) {
+        if self.document.mode == Mode::Tree && self.area.width >= design::TREE_HEADER_MIN_WIDTH {
+            let start = self
+                .area
+                .right()
+                .saturating_sub(design::TREE_HEADER_ACTIONS_WIDTH);
+            if column >= start && column < start.saturating_add(design::TREE_HEADER_ACTION_WIDTH) {
                 self.collapse_all();
                 return Some(Outcome::Consumed);
             }
-            if column >= start.saturating_add(4) && column < start.saturating_add(7) {
+            let expand_start = start
+                .saturating_add(design::TREE_HEADER_ACTION_WIDTH)
+                .saturating_add(design::TREE_HEADER_ACTION_GAP);
+            if column >= expand_start
+                && column < expand_start.saturating_add(design::TREE_HEADER_ACTION_WIDTH)
+            {
                 self.expand_all();
                 return Some(Outcome::Consumed);
             }
@@ -615,14 +619,15 @@ where
             Event::Mouse(mouse) if mouse.kind == MouseEventKind::Down(MouseButton::Left) => {
                 let menu_area = self.context_menu_area(overlay_area)?;
                 let menu = self.context_menu.take()?;
-                if mouse.column > menu_area.x && mouse.column < menu_area.right().saturating_sub(1)
+                if mouse.column > menu_area.x
+                    && mouse.column < menu_area.right().saturating_sub(design::BORDER_WIDTH)
                 {
                     match mouse.row.saturating_sub(menu_area.y) {
-                        1 => Some(Outcome::CopyPath {
+                        design::PATH_MENU_FIRST_ACTION_ROW => Some(Outcome::CopyPath {
                             id: menu.id,
                             absolute: true,
                         }),
-                        2 => Some(Outcome::CopyPath {
+                        design::PATH_MENU_SECOND_ACTION_ROW => Some(Outcome::CopyPath {
                             id: menu.id,
                             absolute: false,
                         }),
@@ -646,7 +651,7 @@ where
                 Block::default()
                     .title(" Path ")
                     .borders(Borders::ALL)
-                    .border_style(Style::default().fg(Color::Cyan)),
+                    .border_style(Style::default().fg(theme::CHROME)),
             ),
             area,
         );
@@ -654,8 +659,8 @@ where
 
     fn context_menu_area(&self, area: Rect) -> Option<Rect> {
         let menu = self.context_menu.as_ref()?;
-        let width = MENU_WIDTH.min(area.width);
-        let height = MENU_HEIGHT.min(area.height);
+        let width = design::PATH_MENU_WIDTH.min(area.width);
+        let height = design::PATH_MENU_HEIGHT.min(area.height);
         Some(Rect::new(
             menu.column.min(area.right().saturating_sub(width)),
             menu.row.min(area.bottom().saturating_sub(height)),
@@ -717,7 +722,7 @@ pub fn help_rows() -> Vec<(String, &'static str)> {
 mod tests {
     use super::*;
     use crossterm::event::{MouseEvent, MouseEventKind};
-    use ratatui::{Terminal, backend::TestBackend};
+    use ratatui::{Terminal, backend::TestBackend, style::Color};
 
     fn mouse(kind: MouseEventKind, column: u16, row: u16) -> Event {
         Event::Mouse(MouseEvent {
@@ -854,14 +859,14 @@ mod tests {
         let filename = &buffer[(6, 1)];
         assert_eq!(filename.symbol(), "d");
         assert_eq!(filename.fg, Color::LightRed);
-        assert_eq!(filename.bg, Color::DarkGray);
+        assert_eq!(filename.bg, theme::SELECTION_BACKGROUND);
         assert!(filename.modifier.contains(Modifier::CROSSED_OUT));
         assert!(filename.modifier.contains(Modifier::BOLD));
 
         let action = &buffer[(26, 1)];
         assert_eq!(action.symbol(), "[");
         assert_eq!(action.fg, Color::LightGreen);
-        assert_eq!(action.bg, Color::DarkGray);
+        assert_eq!(action.bg, theme::SELECTION_BACKGROUND);
     }
 
     #[test]

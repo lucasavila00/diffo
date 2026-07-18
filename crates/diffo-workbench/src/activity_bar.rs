@@ -1,13 +1,13 @@
 use crate::Activity;
+use diffo_ui::{design, theme};
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Layout, Rect},
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     widgets::{Block, Borders, Paragraph},
 };
 
-pub const ACTIVITY_BAR_WIDTH: u16 = 5;
-const ACTIVITY_BUTTON_HEIGHT: u16 = 3;
+pub use design::ACTIVITY_RAIL_WIDTH as ACTIVITY_BAR_WIDTH;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct WorkbenchAreas {
@@ -29,13 +29,13 @@ pub fn workbench_areas(area: Rect) -> WorkbenchAreas {
 pub fn activity_at_position(area: Rect, column: u16, row: u16) -> Option<Activity> {
     let bar = workbench_areas(area).activity_bar;
     if column < bar.x
-        || column >= bar.right().saturating_sub(1)
+        || column >= bar.right().saturating_sub(design::BORDER_WIDTH)
         || row < bar.y
         || row >= bar.bottom()
     {
         return None;
     }
-    match row.saturating_sub(bar.y) / ACTIVITY_BUTTON_HEIGHT {
+    match row.saturating_sub(bar.y) / design::ACTIVITY_CONTROL_HEIGHT {
         0 => Some(Activity::Explorer),
         1 => Some(Activity::Search),
         2 => Some(Activity::Diff),
@@ -48,7 +48,7 @@ pub fn render_activity_bar(frame: &mut Frame, area: Rect, active: Activity) {
     frame.render_widget(
         Block::default()
             .borders(Borders::RIGHT)
-            .border_style(Style::default().fg(Color::DarkGray)),
+            .border_style(Style::default().fg(theme::CHROME)),
         bar,
     );
     for (index, (activity, icon)) in [
@@ -62,7 +62,7 @@ pub fn render_activity_bar(frame: &mut Frame, area: Rect, active: Activity) {
         let y = bar.y.saturating_add(
             u16::try_from(index)
                 .unwrap_or(u16::MAX)
-                .saturating_mul(ACTIVITY_BUTTON_HEIGHT),
+                .saturating_mul(design::ACTIVITY_CONTROL_HEIGHT),
         );
         if y >= bar.bottom() {
             break;
@@ -70,27 +70,41 @@ pub fn render_activity_bar(frame: &mut Frame, area: Rect, active: Activity) {
         let button = Rect::new(
             bar.x,
             y,
-            bar.width.saturating_sub(1),
-            ACTIVITY_BUTTON_HEIGHT.min(bar.bottom().saturating_sub(y)),
+            bar.width.saturating_sub(design::BORDER_WIDTH),
+            design::ACTIVITY_CONTROL_HEIGHT.min(bar.bottom().saturating_sub(y)),
         );
         let selected = activity == active;
         let style = if selected {
             Style::default()
-                .fg(Color::LightCyan)
+                .fg(theme::TEXT)
                 .add_modifier(Modifier::BOLD)
         } else {
-            Style::default().fg(Color::Gray)
+            Style::default().fg(theme::CHROME)
         };
         frame.render_widget(
             Paragraph::new(icon)
                 .alignment(Alignment::Center)
                 .style(style),
-            Rect::new(button.x, button.y.saturating_add(1), button.width, 1),
+            Rect::new(
+                button.x,
+                button
+                    .y
+                    .saturating_add(design::ACTIVITY_CONTROL_CONTENT_OFFSET),
+                button.width,
+                design::SINGLE_LINE_HEIGHT,
+            ),
         );
         if selected && button.width > 0 && button.height > 1 {
             frame.render_widget(
                 Paragraph::new("▌").style(style),
-                Rect::new(button.x, button.y.saturating_add(1), 1, 1),
+                Rect::new(
+                    button.x,
+                    button
+                        .y
+                        .saturating_add(design::ACTIVITY_CONTROL_CONTENT_OFFSET),
+                    design::BORDER_WIDTH,
+                    design::SINGLE_LINE_HEIGHT,
+                ),
             );
         }
     }
@@ -137,11 +151,11 @@ mod tests {
                 .unwrap()
         };
 
-        assert_eq!(cell("▤").fg, Color::Gray);
-        assert_eq!(cell("≠").fg, Color::Gray);
-        assert_eq!(cell("▌").fg, Color::LightCyan);
-        assert_eq!(cell("⌕").fg, Color::LightCyan);
+        assert_eq!(cell("▤").fg, theme::CHROME);
+        assert_eq!(cell("≠").fg, theme::CHROME);
+        assert_eq!(cell("▌").fg, theme::TEXT);
+        assert_eq!(cell("⌕").fg, theme::TEXT);
         assert!(cell("⌕").modifier.contains(Modifier::BOLD));
-        assert_eq!(buffer[(4, 0)].fg, Color::DarkGray);
+        assert_eq!(buffer[(4, 0)].fg, theme::CHROME);
     }
 }

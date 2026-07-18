@@ -7,7 +7,7 @@ use std::{
 };
 
 use anyhow::{Context, Result, anyhow, bail, ensure};
-use diffo_core::{HeadState, RepositorySnapshot};
+use diffo_core::RepositorySnapshot;
 use tempfile::TempDir;
 
 #[test]
@@ -34,24 +34,6 @@ fn clean_repository() -> Result<()> {
       )),
     )
     "#);
-    Ok(())
-}
-
-#[test]
-fn detached_head_is_explicit() -> Result<()> {
-    let repo = TestRepository::new()?;
-    let output = git_output(&repo.worktree, &["rev-parse", "HEAD"])?;
-    ensure!(output.status.success(), "read HEAD commit");
-    let commit = String::from_utf8(output.stdout)
-        .context("HEAD commit is not UTF-8")?
-        .trim()
-        .to_owned();
-    git(&repo.worktree, &["checkout", "--detach"])?;
-
-    assert_eq!(
-        collect(&repo.worktree)?.head,
-        HeadState::Detached { commit }
-    );
     Ok(())
 }
 

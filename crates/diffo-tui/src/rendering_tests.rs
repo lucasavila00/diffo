@@ -249,6 +249,25 @@ fn status_line_preserves_head_and_respects_unicode_width() {
 }
 
 #[test]
+fn status_line_keeps_the_head_visible_with_transient_errors() {
+    let mut model = Model::new(RepositorySnapshot {
+        head: HeadState::Named {
+            name: "main".to_owned(),
+            commit: "123456789abcdef".to_owned(),
+        },
+        ..RepositorySnapshot::default()
+    });
+    model.error = Some("Checkout failed: local changes".to_owned());
+
+    let line = status_line(&model, 0, 40);
+    let text = line_text(&line);
+    assert_eq!(line.width(), 40);
+    assert!(text.starts_with(" branch main  Checkout"));
+    assert!(text.ends_with('…'));
+    assert!(!text.contains("1/f1"));
+}
+
+#[test]
 fn file_list_scrollbars_have_independent_offsets_and_exact_hit_targets() {
     let mut model = file_list_model(30);
     model.file_list_scroll = FileListScroll {

@@ -7,15 +7,25 @@ pub mod fixture_source;
 
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 pub struct RepositorySnapshot {
-    pub branch: BranchState,
+    pub head: HeadState,
     pub files: Vec<FileState>,
     pub recent_commits: Vec<Commit>,
     pub upstream: Option<UpstreamState>,
 }
 
-#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
-pub struct BranchState {
-    pub name: Option<String>,
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub enum HeadState {
+    Named { name: String, commit: String },
+    Unborn { name: String },
+    Detached { commit: String },
+}
+
+impl Default for HeadState {
+    fn default() -> Self {
+        Self::Unborn {
+            name: "HEAD".to_owned(),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]

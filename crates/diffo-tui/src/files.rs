@@ -1,9 +1,9 @@
 use super::{
     Alignment, Block, Borders, ChangeArea, ChangeKind, Color, Constraint, Direction,
-    FileListScroll, FileState, Frame, HighlightSpacing, Layout, Line, List, ListItem, ListState,
-    Model, Modifier, Paragraph, Rect, RepositorySnapshot, Scrollbar, ScrollbarOrientation,
-    ScrollbarState, Span, Style, change_kind_style, file_action_style, horizontal_panes, main_area,
-    network_animation_style,
+    FileListScroll, FileState, Frame, HeadState, HighlightSpacing, Layout, Line, List, ListItem,
+    ListState, Model, Modifier, Paragraph, Rect, RepositorySnapshot, Scrollbar,
+    ScrollbarOrientation, ScrollbarState, Span, Style, change_kind_style, file_action_style,
+    horizontal_panes, main_area, network_animation_style,
 };
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -295,35 +295,218 @@ pub(super) fn render_status(
     model: &Model,
     animation_tick: usize,
 ) {
-    let text = if let Some(operation) = model.network_operation() {
+    frame.render_widget(
+        Paragraph::new(status_line(model, animation_tick, usize::from(area.width))),
+        area,
+    );
+}
+
+pub(super) fn status_line(model: &Model, animation_tick: usize, width: usize) -> Line<'static> {
+    let mut head = Span::styled(head_label(&model.snapshot.head), head_style());
+    let status = repository_status(&model.snapshot);
+    let mut status = Some(Span::styled(
+        format!(" · {}", status.label()),
+        status.style(),
+    ));
+    let mut divergence = model.snapshot.upstream.as_ref().and_then(|upstream| {
+        (upstream.ahead != 0 || upstream.behind != 0).then(|| {
+            Span::styled(
+                format!(" · ↓{} ↑{}", upstream.behind, upstream.ahead),
+                Style::default().fg(Color::Cyan),
+            )
+        })
+    });
+    let mut transient = transient_status(model, animation_tick);
+    let mut help = Some(Span::raw("1/f1: commands  2/f2: help "));
+
+    while status_width(
+        &head,
+        status.as_ref(),
+        divergence.as_ref(),
+        transient.as_ref(),
+        help.as_ref(),
+    ) > width
+    {
+        if divergence.take().is_some() {
+            continue;
+        }
+        if status.take().is_some() {
+            continue;
+        }
+        if help.take().is_some() {
+            continue;
+        }
+        if let Some(message) = transient.as_mut() {
+            let available = width.saturating_sub(head.width().saturating_add(2));
+            if available == 0 {
+                transient = None;
+            } else {
+                message.content = truncate_width(message.content.as_ref(), available).into();
+            }
+            continue;
+        }
+        head.content = truncate_width(head.content.as_ref(), width).into();
+        break;
+    }
+
+    let mut spans = vec![head];
+    spans.extend(status);
+    spans.extend(divergence);
+    let left_width = spans.iter().map(Span::width).sum::<usize>();
+    let transient_width = transient.as_ref().map_or(0, Span::width);
+    let help_width = help.as_ref().map_or(0, Span::width);
+
+    if let Some(transient) = transient {
+        spans.push(Span::raw("  "));
+        spans.push(transient);
+    }
+    if let Some(help) = help {
+        let used = left_width
+            .saturating_add((transient_width != 0).then_some(2).unwrap_or(0))
+            .saturating_add(transient_width);
+        spans.push(Span::raw(
+            " ".repeat(width.saturating_sub(used.saturating_add(help_width))),
+        ));
+        spans.push(help);
+    }
+    Line::from(spans)
+}
+
+fn transient_status(model: &Model, animation_tick: usize) -> Option<Span<'static>> {
+    if let Some(operation) = model.network_operation() {
         const SPINNER: [&str; 4] = ["◐", "◓", "◑", "◒"];
-        format!(
-            " {} {}… · Ctrl+C to exit ",
-            SPINNER[(animation_tick / 2) % SPINNER.len()],
-            operation.label()
-        )
+        Some(Span::styled(
+            format!(
+                "{} {}… · Ctrl+C to exit",
+                SPINNER[(animation_tick / 2) % SPINNER.len()],
+                operation.label()
+            ),
+            network_animation_style(animation_tick),
+        ))
     } else if let Some(error) = model.error.as_deref() {
-        error.to_owned()
+        Some(Span::styled(
+            error.to_owned(),
+            Style::default().fg(Color::Red),
+        ))
     } else if model.resizing_file_pane {
-        format!(
-            " Resizing file pane: {}% · release mouse to finish ",
-            model.file_pane_percent
-        )
+        Some(Span::styled(
+            format!(
+                "Resizing file pane: {}% · release mouse to finish",
+                model.file_pane_percent
+            ),
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        ))
     } else {
-        " 1/f1: commands  2/f2: help ".to_owned()
-    };
-    let style = if model.network_operation().is_some() {
-        network_animation_style(animation_tick)
-    } else if model.error.is_some() {
-        Style::default().fg(Color::Red)
-    } else if model.resizing_file_pane {
-        Style::default()
-            .fg(Color::Cyan)
-            .add_modifier(Modifier::BOLD)
+        None
+    }
+}
+
+#[derive(Clone, Copy)]
+enum RepositoryStatus {
+    Conflicts,
+    Staged,
+    Changes,
+    Clean,
+}
+
+impl RepositoryStatus {
+    const fn label(self) -> &'static str {
+        match self {
+            Self::Conflicts => "conflicts",
+            Self::Staged => "staged",
+            Self::Changes => "changes",
+            Self::Clean => "clean",
+        }
+    }
+
+    fn style(self) -> Style {
+        match self {
+            Self::Conflicts => Style::default()
+                .fg(Color::LightRed)
+                .add_modifier(Modifier::BOLD),
+            Self::Staged => Style::default()
+                .fg(Color::LightGreen)
+                .add_modifier(Modifier::BOLD),
+            Self::Changes => Style::default().fg(Color::Yellow),
+            Self::Clean => Style::default().fg(Color::DarkGray),
+        }
+    }
+}
+
+fn repository_status(snapshot: &RepositorySnapshot) -> RepositoryStatus {
+    if snapshot
+        .files
+        .iter()
+        .any(|file| file.kind == ChangeKind::Conflicted)
+    {
+        RepositoryStatus::Conflicts
+    } else if snapshot.files.iter().any(|file| file.staged.is_some()) {
+        RepositoryStatus::Staged
+    } else if snapshot
+        .files
+        .iter()
+        .any(|file| file.unstaged.is_some() || file.kind == ChangeKind::Untracked)
+    {
+        RepositoryStatus::Changes
     } else {
-        Style::default()
-    };
-    frame.render_widget(Paragraph::new(text).style(style), area);
+        RepositoryStatus::Clean
+    }
+}
+
+fn head_label(head: &HeadState) -> String {
+    match head {
+        HeadState::Named { name, .. } => format!(" branch {name}"),
+        HeadState::Unborn { name } => format!(" branch {name} (unborn)"),
+        HeadState::Detached { commit } => format!(" detached {}", short_commit(commit)),
+    }
+}
+
+fn short_commit(commit: &str) -> String {
+    commit.chars().take(7).collect()
+}
+
+fn head_style() -> Style {
+    Style::default()
+        .fg(Color::Cyan)
+        .add_modifier(Modifier::BOLD)
+}
+
+fn status_width(
+    head: &Span<'_>,
+    status: Option<&Span<'_>>,
+    divergence: Option<&Span<'_>>,
+    transient: Option<&Span<'_>>,
+    help: Option<&Span<'_>>,
+) -> usize {
+    head.width()
+        .saturating_add(status.map_or(0, Span::width))
+        .saturating_add(divergence.map_or(0, Span::width))
+        .saturating_add(transient.map_or(0, |span| span.width().saturating_add(2)))
+        .saturating_add(help.map_or(0, Span::width))
+}
+
+fn truncate_width(value: &str, width: usize) -> String {
+    if Span::raw(value).width() <= width {
+        return value.to_owned();
+    }
+    if width == 0 {
+        return String::new();
+    }
+    let content_width = width - 1;
+    let mut result = String::new();
+    let mut used = 0_usize;
+    for character in value.chars() {
+        let character_width = Span::raw(character.to_string()).width();
+        if used.saturating_add(character_width) > content_width {
+            break;
+        }
+        result.push(character);
+        used = used.saturating_add(character_width);
+    }
+    result.push('…');
+    result
 }
 
 pub(super) fn resize_border_style(model: &Model) -> Style {

@@ -7,17 +7,23 @@ use std::{
 
 use super::{operation::classify_failure, status::parse_status};
 use diffo_core::{
-    ChangeKind, ExplorerFileContent, FailureKind, OperationResult, Repository, RepositoryAction,
-    RepositorySource,
+    ChangeKind, ExplorerFileContent, FailureKind, HeadState, OperationResult, Repository,
+    RepositoryAction, RepositorySource,
 };
 
 #[test]
 fn parses_branch_files_and_upstream() {
-    let status = b"# branch.head feature\0# branch.upstream origin/feature\0# branch.ab +2 -1\x001 M. N... 100644 100644 100644 abc def file.txt\0? notes.txt\0";
+    let status = b"# branch.oid abcdef0123456789\0# branch.head feature\0# branch.upstream origin/feature\0# branch.ab +2 -1\x001 M. N... 100644 100644 100644 abc def file.txt\0? notes.txt\0";
 
     let parsed = parse_status(status).expect("status should parse");
 
-    assert_eq!(parsed.branch.name.as_deref(), Some("feature"));
+    assert_eq!(
+        parsed.head,
+        HeadState::Named {
+            name: "feature".to_owned(),
+            commit: "abcdef0123456789".to_owned(),
+        }
+    );
     assert_eq!(parsed.upstream.expect("upstream should exist").ahead, 2);
     assert_eq!(parsed.files.len(), 2);
     assert_eq!(parsed.files[0].state.path, PathBuf::from("file.txt"));
@@ -26,7 +32,7 @@ fn parses_branch_files_and_upstream() {
 
 #[test]
 fn parses_rename_with_old_path() {
-    let status = b"2 R. N... 100644 100644 100644 abc def R100 new.txt\0old.txt\0";
+    let status = b"# branch.oid abcdef\0# branch.head main\x002 R. N... 100644 100644 100644 abc def R100 new.txt\0old.txt\0";
 
     let parsed = parse_status(status).expect("status should parse");
 
@@ -34,6 +40,27 @@ fn parses_rename_with_old_path() {
     assert_eq!(
         parsed.files[0].state.old_path,
         Some(PathBuf::from("old.txt"))
+    );
+}
+
+#[test]
+fn distinguishes_unborn_and_detached_head() {
+    let unborn = parse_status(b"# branch.oid (initial)\0# branch.head main\0")
+        .expect("unborn status should parse");
+    assert_eq!(
+        unborn.head,
+        HeadState::Unborn {
+            name: "main".to_owned(),
+        }
+    );
+
+    let detached = parse_status(b"# branch.oid 123456789abcdef\0# branch.head (detached)\0")
+        .expect("detached status should parse");
+    assert_eq!(
+        detached.head,
+        HeadState::Detached {
+            commit: "123456789abcdef".to_owned(),
+        }
     );
 }
 

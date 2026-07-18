@@ -1,12 +1,12 @@
 use std::path::PathBuf;
 
 use anyhow::{Context, Result, bail};
-use diffo_core::{BranchState, ChangeKind, FileState, UpstreamState};
+use diffo_core::{ChangeKind, FileState, HeadState, UpstreamState};
 
 use super::NO_CHANGE;
 
 pub(super) struct ParsedStatus {
-    pub(super) branch: BranchState,
+    pub(super) head: HeadState,
     pub(super) files: Vec<ParsedFile>,
     pub(super) upstream: Option<UpstreamState>,
 }
@@ -19,7 +19,8 @@ pub(super) struct ParsedFile {
 
 pub(super) fn parse_status(output: &[u8]) -> Result<ParsedStatus> {
     let records = output.split(|byte| *byte == 0).collect::<Vec<_>>();
-    let mut branch = BranchState::default();
+    let mut branch_name = None;
+    let mut branch_oid = None;
     let mut upstream_name = None;
     let mut ahead = 0;
     let mut behind = 0;
@@ -33,8 +34,10 @@ pub(super) fn parse_status(output: &[u8]) -> Result<ParsedStatus> {
             continue;
         }
 
-        if let Some(name) = record.strip_prefix("# branch.head ") {
-            branch.name = (name != "(detached)").then(|| name.to_owned());
+        if let Some(oid) = record.strip_prefix("# branch.oid ") {
+            branch_oid = Some(oid.to_owned());
+        } else if let Some(name) = record.strip_prefix("# branch.head ") {
+            branch_name = Some(name.to_owned());
         } else if let Some(name) = record.strip_prefix("# branch.upstream ") {
             upstream_name = Some(name.to_owned());
         } else if let Some(counts) = record.strip_prefix("# branch.ab ") {
@@ -75,16 +78,39 @@ pub(super) fn parse_status(output: &[u8]) -> Result<ParsedStatus> {
         }
     }
 
+    let head = parse_head(branch_name.as_deref(), branch_oid.as_deref())?;
     let upstream = upstream_name.map(|name| UpstreamState {
         name,
         ahead,
         behind,
     });
     Ok(ParsedStatus {
-        branch,
+        head,
         files,
         upstream,
     })
+}
+
+fn parse_head(name: Option<&str>, oid: Option<&str>) -> Result<HeadState> {
+    let name = name.context("Git status is missing branch.head")?;
+    let oid = oid.context("Git status is missing branch.oid")?;
+    if name == "(detached)" {
+        if oid == "(initial)" {
+            bail!("detached Git status has no commit");
+        }
+        Ok(HeadState::Detached {
+            commit: oid.to_owned(),
+        })
+    } else if oid == "(initial)" {
+        Ok(HeadState::Unborn {
+            name: name.to_owned(),
+        })
+    } else {
+        Ok(HeadState::Named {
+            name: name.to_owned(),
+            commit: oid.to_owned(),
+        })
+    }
 }
 
 fn parse_count(value: Option<&str>, prefix: char) -> Result<usize> {

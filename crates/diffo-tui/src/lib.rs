@@ -10,7 +10,7 @@ use std::{
 };
 
 use crossterm::event::{Event, MouseButton, MouseEventKind};
-use diffo_core::{ChangeKind, FileState, RepositorySnapshot};
+use diffo_core::{ChangeKind, FileState, HeadState, RepositorySnapshot};
 use diffo_diff::{
     DiffBlock, DiffDocument, ProjectionOptions, RenderLine, RowKind, SideBySideRow,
     inline_change_starts, inline_rows_with_options, parse_unified_patch,

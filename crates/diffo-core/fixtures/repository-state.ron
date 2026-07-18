@@ -1,5 +1,5 @@
 (
-    branch: (name: Some("feature/syntax-highlighting")),
+    head: Named(name: "feature/syntax-highlighting", commit: "7bd31d2"),
     files: [
         (
             path: "src/main.rs",

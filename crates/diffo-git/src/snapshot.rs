@@ -193,7 +193,7 @@ impl RepositorySource for GitRepositorySource {
         }
 
         Ok(RepositorySnapshot {
-            branch: parsed.branch,
+            head: parsed.head,
             files,
             recent_commits: self.recent_commits()?,
             upstream: parsed.upstream,

@@ -344,7 +344,7 @@ impl Repository for MutableFixtureRepository {
 mod tests {
     use std::{collections::HashSet, path::Path};
 
-    use crate::{ChangeKind, Repository, RepositoryAction, RepositorySource};
+    use crate::{ChangeKind, HeadState, Repository, RepositoryAction, RepositorySource};
 
     use super::{FixtureRepositorySource, MutableFixtureRepository};
 
@@ -358,10 +358,10 @@ mod tests {
             .snapshot()
             .expect("fixture should load");
 
-        assert_eq!(
-            snapshot.branch.name.as_deref(),
-            Some("feature/syntax-highlighting")
-        );
+        assert!(matches!(
+            snapshot.head,
+            HeadState::Named { ref name, .. } if name == "feature/syntax-highlighting"
+        ));
         assert!(snapshot.files.iter().any(|file| file.staged.is_some()));
         assert!(snapshot.files.iter().any(|file| file.unstaged.is_some()));
         assert!(

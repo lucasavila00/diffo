@@ -80,6 +80,28 @@ fn real_merge_conflict_renders_as_a_highlighted_worktree_file() -> Result<()> {
 }
 
 #[test]
+fn source_code_containing_git_binary_marker_renders_as_text() -> Result<()> {
+    let repository = TestRepository::new()?;
+    let path = repository.worktree.join("crates/diffo-diff/src/lib.rs");
+    fs::create_dir_all(path.parent().context("source parent")?)?;
+    fs::write(
+        &path,
+        "fn is_binary(patch: &str) -> bool {\n    patch.contains(\"GIT binary patch\")\n}\n",
+    )?;
+    git(&repository.worktree, &["add", "."])?;
+    git(&repository.worktree, &["commit", "-m", "Add diff parser"])?;
+    fs::write(
+        &path,
+        "fn is_binary(patch: &str) -> bool {\n    patch.lines().any(|line| line == \"GIT binary patch\")\n}\n",
+    )?;
+
+    let mut screen = repository.screen()?;
+    screen.wait_for_text("GIT binary patch")?;
+    assert!(!screen.contents().contains("Binary file changed."));
+    Ok(())
+}
+
+#[test]
 fn space_stages_selected_file() -> Result<()> {
     let repository = TestRepository::new()?;
     fs::write(repository.worktree.join("tracked.txt"), "changed\n")?;
@@ -716,8 +738,8 @@ fn live_content_change_keeps_the_visible_line_anchored() -> Result<()> {
     screen
         .wait_for_text("line 000")?
         .press_many(Key::Down, 10)?
-        .wait_for_text("line 038")?;
-    let anchor = Selector::text("line 038");
+        .wait_for_text("line 040")?;
+    let anchor = Selector::text("line 040");
     let before = screen
         .position(&anchor)?
         .context("anchor line is not visible before refresh")?;

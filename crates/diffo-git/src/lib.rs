@@ -74,7 +74,14 @@ impl GitRepositorySource {
     }
 
     fn diff(&self, paths: &[&str], staged: bool) -> Result<Option<FileDiff>> {
-        let mut args = vec!["diff", "--no-ext-diff", "--no-color"];
+        // Ask Git for the complete file, not only its usual three lines of
+        // context. The diff layer still keeps each change block separate.
+        let mut args = vec![
+            "diff",
+            "--no-ext-diff",
+            "--no-color",
+            "--unified=2147483647",
+        ];
         if staged {
             args.push("--cached");
         }
@@ -625,6 +632,7 @@ fn change_kind(status: char) -> Result<ChangeKind> {
 #[cfg(test)]
 mod tests {
     use std::{
+        fmt::Write as _,
         fs,
         path::{Path, PathBuf},
         process::Command,
@@ -741,6 +749,33 @@ mod tests {
             diff.text,
             "@@ -0,0 +1,2 @@\n+first\n+second\n\\ No newline at end of file\n"
         );
+    }
+
+    #[test]
+    fn snapshots_the_whole_modified_file_as_diff_context() {
+        let repo = test_repository();
+        let mut original = String::new();
+        for line in 1..=20 {
+            writeln!(original, "line {line}").expect("write test contents");
+        }
+        fs::write(repo.path().join("long.txt"), &original).expect("write original file");
+        git(repo.path(), &["add", "long.txt"]);
+        git(repo.path(), &["commit", "-m", "Add long file"]);
+        let changed = original.replace("line 10\n", "changed 10\n");
+        fs::write(repo.path().join("long.txt"), changed).expect("change file");
+
+        let diff = super::GitRepositorySource::new(repo.path())
+            .snapshot()
+            .expect("snapshot")
+            .files
+            .into_iter()
+            .find(|file| file.path == Path::new("long.txt"))
+            .and_then(|file| file.unstaged)
+            .expect("modified diff");
+
+        assert!(diff.text.contains(" line 1\n"));
+        assert!(diff.text.contains(" line 20\n"));
+        assert!(diff.text.contains("-line 10\n+changed 10\n"));
     }
 
     #[test]

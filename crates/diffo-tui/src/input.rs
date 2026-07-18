@@ -141,6 +141,18 @@ static KEY_BINDINGS: &[KeyBinding] = &[
         availability: Availability::Always,
     },
     KeyBinding {
+        keys: &[KeyChord::plain(KeyCode::Char('N'))],
+        message: Message::JumpToPreviousChange,
+        description: "Previous change",
+        availability: Availability::Always,
+    },
+    KeyBinding {
+        keys: &[KeyChord::plain(KeyCode::Char('n'))],
+        message: Message::JumpToNextChange,
+        description: "Next change",
+        availability: Availability::Always,
+    },
+    KeyBinding {
         keys: &[KeyChord::plain(KeyCode::Char('e'))],
         message: Message::ToggleFilePane,
         description: "Show / hide file list",
@@ -416,6 +428,8 @@ mod tests {
             (KeyCode::Right, Message::ScrollDiffRight),
             (KeyCode::Char('d'), Message::ScrollDiffRight),
             (KeyCode::Char('r'), Message::ToggleDiffView),
+            (KeyCode::Char('n'), Message::JumpToNextChange),
+            (KeyCode::Char('N'), Message::JumpToPreviousChange),
             (KeyCode::Char('e'), Message::ToggleFilePane),
             (KeyCode::Home, Message::SelectFirstFile),
             (KeyCode::End, Message::SelectLastFile),

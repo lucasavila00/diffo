@@ -70,8 +70,9 @@ pub struct SideBySideRow {
 ///
 /// Returns an error when a hunk header is malformed.
 pub fn parse_unified_patch(patch: &str) -> Result<DiffDocument> {
-    if patch.contains("GIT binary patch")
-        || patch.lines().any(|line| line.starts_with("Binary files "))
+    if patch
+        .lines()
+        .any(|line| line == "GIT binary patch" || line.starts_with("Binary files "))
     {
         return Ok(DiffDocument {
             binary: true,
@@ -197,6 +198,32 @@ pub fn side_by_side_rows(document: &DiffDocument) -> Vec<SideBySideRow> {
         }
     }
     rows
+}
+
+#[must_use]
+pub fn inline_change_starts(rows: &[RenderLine]) -> Vec<usize> {
+    change_starts(rows.iter().map(|row| row.kind))
+}
+
+#[must_use]
+pub fn side_by_side_change_starts(rows: &[SideBySideRow]) -> Vec<usize> {
+    change_starts(rows.iter().map(|row| row.kind))
+}
+
+fn change_starts(kinds: impl Iterator<Item = RowKind>) -> Vec<usize> {
+    let mut inside_change = false;
+    let mut starts = Vec::new();
+    for (index, kind) in kinds.enumerate() {
+        let changed = matches!(
+            kind,
+            RowKind::Removed | RowKind::Added | RowKind::Changed | RowKind::Conflict
+        );
+        if changed && !inside_change {
+            starts.push(index);
+        }
+        inside_change = changed;
+    }
+    starts
 }
 
 fn line_kind(text: &str, fallback: RowKind) -> RowKind {
@@ -381,7 +408,10 @@ fn extend_pairs(
 
 #[cfg(test)]
 mod tests {
-    use super::{DiffBlock, RowKind, inline_rows, parse_unified_patch, side_by_side_rows};
+    use super::{
+        DiffBlock, RowKind, inline_change_starts, inline_rows, parse_unified_patch,
+        side_by_side_change_starts, side_by_side_rows,
+    };
 
     const PATCH: &str = "diff --git a/file.txt b/file.txt\n--- a/file.txt\n+++ b/file.txt\n@@ -1,4 +1,4 @@\n same\n-old one\n-old two\n+new one\n+new two\n end\n";
 
@@ -433,6 +463,17 @@ mod tests {
     }
 
     #[test]
+    fn keeps_separate_change_blocks_as_navigation_targets() {
+        let patch = "@@ -1,7 +1,7 @@\n one\n-old two\n+new two\n three\n four\n-old five\n+new five\n six\n seven\n";
+        let document = parse_unified_patch(patch).expect("patch should parse");
+        let inline = inline_rows(&document);
+        let side = side_by_side_rows(&document);
+
+        assert_eq!(inline_change_starts(&inline).len(), 2);
+        assert_eq!(side_by_side_change_starts(&side).len(), 2);
+    }
+
+    #[test]
     fn detects_binary_and_rejects_combined_diff() {
         assert!(
             parse_unified_patch("Binary files a/x and b/x differ")
@@ -440,6 +481,16 @@ mod tests {
                 .binary
         );
         assert!(parse_unified_patch("diff --cc file\n@@@ -1 -1 +1 @@@").is_err());
+    }
+
+    #[test]
+    fn binary_markers_inside_source_code_are_not_binary_metadata() {
+        let patch = "@@ -1 +1 @@\n-if patch.contains(\"GIT binary patch\") {}\n+if line == \"GIT binary patch\" {}\n";
+
+        let document = parse_unified_patch(patch).expect("text patch should parse");
+
+        assert!(!document.binary);
+        assert_eq!(document.hunks.len(), 1);
     }
 
     #[test]

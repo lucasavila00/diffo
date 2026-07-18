@@ -11,8 +11,8 @@ use std::{
 use crossterm::event::{Event, MouseButton, MouseEventKind};
 use diffo_core::{AccessMode, ChangeKind, FileState, RepositorySnapshot};
 use diffo_diff::{
-    DiffDocument, RenderLine, RowKind, SideBySideRow, inline_rows, parse_unified_patch,
-    side_by_side_rows,
+    DiffDocument, RenderLine, RowKind, SideBySideRow, inline_change_starts, inline_rows,
+    parse_unified_patch, side_by_side_change_starts, side_by_side_rows,
 };
 use diffo_highlight::{HighlightedDiff, HighlightedLine, Rgb, StyledSpan, SyntaxHighlighter};
 use ratatui::{
@@ -52,6 +52,8 @@ struct HighlightCache {
     inline: Vec<RenderLine>,
     side_by_side: Vec<SideBySideRow>,
     inline_width: usize,
+    inline_changes: Vec<usize>,
+    side_by_side_changes: Vec<usize>,
     highlighted: HighlightedDiff,
     #[cfg(test)]
     syntax_highlighted: bool,
@@ -213,10 +215,10 @@ impl Renderer {
         }
         let anchored_vertical_scroll = (self.content_revision != previous_revision)
             .then(|| {
-                anchor.and_then(|anchor| {
-                    self.highlighted
-                        .as_ref()
-                        .and_then(|cache| anchor.resolve(cache, model.diff_view_mode))
+                self.highlighted.as_ref().and_then(|cache| {
+                    anchor
+                        .and_then(|anchor| anchor.resolve(cache, model.diff_view_mode))
+                        .or_else(|| first_change(cache, model.diff_view_mode))
                 })
             })
             .flatten();
@@ -291,6 +293,11 @@ impl Renderer {
                 mouse.kind,
                 MouseEventKind::Down(MouseButton::Left) | MouseEventKind::Drag(MouseButton::Left)
             ) {
+                if mouse.kind == MouseEventKind::Down(MouseButton::Left)
+                    && let Some(change) = self.change_at_marker(mouse.column, mouse.row, model)
+                {
+                    return Some(diffo_app::Message::SetDiffScroll(change));
+                }
                 let axis = if mouse.kind == MouseEventKind::Down(MouseButton::Left) {
                     self.scrollbar_at(mouse.column, mouse.row)
                 } else {
@@ -302,7 +309,65 @@ impl Renderer {
                 }
             }
         }
-        input::map_event(event, model, area)
+        match input::map_event(event, model, area) {
+            Some(diffo_app::Message::JumpToPreviousChange) => self
+                .change_jump(model, false)
+                .map(diffo_app::Message::SetDiffScroll),
+            Some(diffo_app::Message::JumpToNextChange) => self
+                .change_jump(model, true)
+                .map(diffo_app::Message::SetDiffScroll),
+            message => message,
+        }
+    }
+
+    fn change_jump(&self, model: &Model, next: bool) -> Option<usize> {
+        let cache = self.highlighted.as_ref()?;
+        let changes = match model.diff_view_mode {
+            DiffViewMode::Inline => &cache.inline_changes,
+            DiffViewMode::SideBySide => &cache.side_by_side_changes,
+        };
+        if next {
+            changes
+                .iter()
+                .copied()
+                .find(|row| *row > model.diff_scroll)
+                .or_else(|| changes.first().copied())
+        } else {
+            changes
+                .iter()
+                .rev()
+                .copied()
+                .find(|row| *row < model.diff_scroll)
+                .or_else(|| changes.last().copied())
+        }
+    }
+
+    fn change_at_marker(&self, column: u16, row: u16, model: &Model) -> Option<usize> {
+        if column.abs_diff(self.scrollbars.vertical_area.x) > 1 {
+            return None;
+        }
+        let cache = self.highlighted.as_ref()?;
+        let changes = match model.diff_view_mode {
+            DiffViewMode::Inline => &cache.inline_changes,
+            DiffViewMode::SideBySide => &cache.side_by_side_changes,
+        };
+        changes.iter().copied().find(|change| {
+            let marker_row = self
+                .scrollbars
+                .vertical_area
+                .y
+                .saturating_add(overview_position(
+                    *change,
+                    self.scrollbars.rows,
+                    self.scrollbars.vertical_area.height,
+                ));
+            marker_row == row
+                && (*change < model.diff_scroll
+                    || *change
+                        >= model
+                            .diff_scroll
+                            .saturating_add(self.scrollbars.viewport_rows))
+        })
     }
 
     fn scrollbar_at(&self, column: u16, row: u16) -> Option<ScrollbarAxis> {
@@ -484,6 +549,23 @@ impl Renderer {
                 .viewport_content_length(viewport_rows)
                 .position(model.diff_scroll);
             frame.render_stateful_widget(scrollbar, self.scrollbars.vertical_area, &mut state);
+            let changes = self
+                .highlighted
+                .as_ref()
+                .map(|cache| match model.diff_view_mode {
+                    DiffViewMode::Inline => cache.inline_changes.as_slice(),
+                    DiffViewMode::SideBySide => cache.side_by_side_changes.as_slice(),
+                });
+            if let Some(changes) = changes {
+                render_change_markers(
+                    frame,
+                    self.scrollbars.vertical_area,
+                    changes,
+                    rows,
+                    model.diff_scroll,
+                    viewport_rows,
+                );
+            }
         }
         if columns > viewport_columns {
             let scrollbar = Scrollbar::new(ScrollbarOrientation::HorizontalBottom)
@@ -567,6 +649,32 @@ impl Renderer {
     }
 }
 
+fn render_change_markers(
+    frame: &mut Frame,
+    area: Rect,
+    changes: &[usize],
+    rows: usize,
+    first_visible: usize,
+    viewport_rows: usize,
+) {
+    for &change in changes {
+        if change >= first_visible && change < first_visible.saturating_add(viewport_rows) {
+            continue;
+        }
+        let marker = Rect::new(
+            area.x,
+            area.y
+                .saturating_add(overview_position(change, rows, area.height)),
+            1,
+            1,
+        );
+        frame.render_widget(
+            Paragraph::new("▪").style(Style::default().fg(Color::Yellow)),
+            marker,
+        );
+    }
+}
+
 impl ScrollAnchor {
     fn capture(cache: &HighlightCache, mode: DiffViewMode, first_row: usize) -> Self {
         let row_count = projection_len(cache, mode);
@@ -623,6 +731,13 @@ fn projection_len(cache: &HighlightCache, mode: DiffViewMode) -> usize {
     match mode {
         DiffViewMode::Inline => cache.inline.len(),
         DiffViewMode::SideBySide => cache.side_by_side.len(),
+    }
+}
+
+fn first_change(cache: &HighlightCache, mode: DiffViewMode) -> Option<usize> {
+    match mode {
+        DiffViewMode::Inline => cache.inline_changes.first().copied(),
+        DiffViewMode::SideBySide => cache.side_by_side_changes.first().copied(),
     }
 }
 
@@ -951,7 +1066,7 @@ pub(crate) fn commit_editor_action_at_position(
 fn help_layout(area: Rect) -> Rect {
     let width = (area.width.saturating_mul(4) / 5).clamp(40.min(area.width), 90.min(area.width));
     let top = area.y.saturating_add(area.height.saturating_mul(10) / 100);
-    let height = 24.min(area.bottom().saturating_sub(top));
+    let height = 26.min(area.bottom().saturating_sub(top));
     Rect::new(
         area.x + area.width.saturating_sub(width) / 2,
         top,
@@ -1001,12 +1116,14 @@ fn prepare_diff(
         HighlightedDiff::default()
     };
     let inline = inline_rows(&document);
+    let inline_changes = inline_change_starts(&inline);
     let inline_width = inline
         .iter()
         .map(|row| row.text.chars().count().saturating_add(7))
         .max()
         .unwrap_or(0);
     let side_by_side = side_by_side_rows(&document);
+    let side_by_side_changes = side_by_side_change_starts(&side_by_side);
     Some(HighlightCache {
         path: request.path,
         patch: request.patch,
@@ -1014,10 +1131,24 @@ fn prepare_diff(
         inline,
         side_by_side,
         inline_width,
+        inline_changes,
+        side_by_side_changes,
         highlighted: syntax_styles,
         #[cfg(test)]
         syntax_highlighted,
     })
+}
+
+fn overview_position(content_row: usize, content_rows: usize, track_height: u16) -> u16 {
+    if track_height <= 1 || content_rows <= 1 {
+        return 0;
+    }
+    let last_track_row = usize::from(track_height - 1);
+    let position = content_row
+        .min(content_rows - 1)
+        .saturating_mul(last_track_row)
+        / (content_rows - 1);
+    u16::try_from(position).unwrap_or(track_height - 1)
 }
 
 fn scrollbar_position(
@@ -1738,7 +1869,8 @@ mod rendering_tests {
 
     use super::{
         Renderer, command_palette_layout, contrast_ratio, contrasting_foreground, diff_background,
-        diff_background_rgb, file_kind_style, row_style, scrollbar_position_count,
+        diff_background_rgb, file_kind_style, overview_position, row_style,
+        scrollbar_position_count,
     };
 
     #[test]
@@ -1775,6 +1907,13 @@ mod rendering_tests {
     }
 
     #[test]
+    fn maps_change_rows_across_the_overview_track() {
+        assert_eq!(overview_position(0, 101, 11), 0);
+        assert_eq!(overview_position(50, 101, 11), 5);
+        assert_eq!(overview_position(100, 101, 11), 10);
+    }
+
+    #[test]
     fn conflict_markers_have_a_dedicated_high_contrast_style() {
         let marker = row_style(RowKind::Conflict);
         assert_eq!(marker.fg, Some(Color::LightYellow));
@@ -1799,6 +1938,24 @@ mod rendering_tests {
             },
             AccessMode::ReadWrite,
         )
+    }
+
+    #[test]
+    fn jumps_between_change_blocks_and_wraps() {
+        let mut model = model();
+        model.snapshot.files[0].unstaged.as_mut().unwrap().text =
+            "@@ -1,7 +1,7 @@\n one\n-old two\n+new two\n three\n four\n-old five\n+new five\n six\n seven\n"
+                .to_owned();
+        let mut renderer = Renderer::new();
+        renderer.diff_lines(&model, 80, 0, 100);
+
+        let first = renderer.change_jump(&model, true).expect("first change");
+        model.diff_scroll = first;
+        let second = renderer.change_jump(&model, true).expect("second change");
+        assert!(second > first);
+        model.diff_scroll = second;
+        assert_eq!(renderer.change_jump(&model, true), Some(first));
+        assert_eq!(renderer.change_jump(&model, false), Some(first));
     }
 
     #[test]
@@ -1991,7 +2148,7 @@ mod rendering_tests {
         let mut renderer = Renderer::new();
         let area = Rect::new(0, 0, 100, 30);
         let initial = renderer.prepare_frame(&inline_model, area);
-        assert_eq!(initial.anchored_vertical_scroll, None);
+        assert_eq!(initial.anchored_vertical_scroll, Some(1));
 
         inline_model.snapshot.files[0]
             .unstaged
@@ -2098,6 +2255,47 @@ mod rendering_tests {
             Some(diffo_app::Message::SetDiffHorizontalScroll(position))
                 if position == horizontal_maximum
         ));
+    }
+
+    #[test]
+    fn clicking_an_overview_marker_jumps_to_its_change() {
+        let mut model = model();
+        let mut patch = String::from("@@ -1,100 +1,100 @@\n");
+        for line in 1..=100 {
+            if matches!(line, 2 | 90) {
+                writeln!(patch, "-old {line}").unwrap();
+                writeln!(patch, "+new {line}").unwrap();
+            } else {
+                writeln!(patch, " line {line}").unwrap();
+            }
+        }
+        model.snapshot.files[0].unstaged.as_mut().unwrap().text = patch;
+        let mut renderer = Renderer::new();
+        let backend = TestBackend::new(100, 30);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal
+            .draw(|frame| renderer.render(frame, &model))
+            .unwrap();
+
+        let target = renderer.highlighted.as_ref().unwrap().inline_changes[1];
+        let marker_row = renderer.scrollbars.vertical_area.y
+            + overview_position(
+                target,
+                renderer.scrollbars.rows,
+                renderer.scrollbars.vertical_area.height,
+            );
+        let click = Event::Mouse(MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            // The pane border beside the marker is part of its click target.
+            column: renderer.scrollbars.vertical_area.x.saturating_add(1),
+            row: marker_row,
+            modifiers: KeyModifiers::NONE,
+        });
+
+        assert_eq!(
+            renderer.map_event(&click, &model, Rect::new(0, 0, 100, 30)),
+            Some(diffo_app::Message::SetDiffScroll(target))
+        );
     }
 
     #[test]

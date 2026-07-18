@@ -47,18 +47,9 @@ impl Renderer {
             DiffViewMode::SideBySide => &cache.side_by_side_changes,
         };
         if next {
-            changes
-                .iter()
-                .copied()
-                .find(|row| *row > scroll)
-                .or_else(|| changes.first().copied())
+            changes.iter().copied().find(|row| *row > scroll)
         } else {
-            changes
-                .iter()
-                .rev()
-                .copied()
-                .find(|row| *row < scroll)
-                .or_else(|| changes.last().copied())
+            changes.iter().rev().copied().find(|row| *row < scroll)
         }
     }
 

@@ -43,10 +43,11 @@ pub(super) fn inline_line(
 }
 
 pub(super) fn inline_skeleton_line(row: &RenderLine) -> Line<'static> {
-    Line::raw(
+    Line::from(Span::styled(
         row.number
             .map_or_else(|| "       ".to_owned(), |number| format!("{number:>4}   ")),
-    )
+        gutter_style(row.kind),
+    ))
 }
 
 pub(super) fn side_by_side_skeleton_line(
@@ -54,15 +55,20 @@ pub(super) fn side_by_side_skeleton_line(
     column_width: usize,
 ) -> Line<'static> {
     let number = |line: Option<&RenderLine>| {
-        line.and_then(|line| line.number)
-            .map_or_else(|| "    ".to_owned(), |number| format!("{number:>4}"))
+        let text = line
+            .and_then(|line| line.number)
+            .map_or_else(|| "    ".to_owned(), |number| format!("{number:>4}"));
+        match line {
+            Some(line) => Span::styled(text, gutter_style(line.kind)),
+            None => Span::raw(text),
+        }
     };
-    Line::raw(format!(
-        "{}{} │ {}",
+    Line::from(vec![
         number(row.old.as_ref()),
-        " ".repeat(column_width.saturating_sub(4)),
-        number(row.new.as_ref())
-    ))
+        Span::raw(" ".repeat(column_width.saturating_sub(4))),
+        Span::raw(" │ "),
+        number(row.new.as_ref()),
+    ])
 }
 
 pub(super) fn side_by_side_line(

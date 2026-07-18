@@ -2,11 +2,12 @@ use super::{
     AnchorRow, Arc, DiffBlock, DiffDocument, DiffKey, DiffViewMode, Duration,
     HIGHLIGHT_LOOKBEHIND_LINES, HIGHLIGHT_PREFETCH_VIEWPORTS, HighlightCache, HighlightedDiff,
     HunkButtonMetrics, MAX_HIGHLIGHT_BYTES_PER_SIDE, MAX_HIGHLIGHT_FILE_LINES, MAX_SYNC_BYTES,
-    MAX_SYNC_LINES, PREPARED_BUFFER_CACHE_SIZE, PrepareCommit, PrepareOutcome, PrepareRequest,
-    ProjectionOptions, RenderLine, Renderer, RowKind, ScrollAnchor, ScrollbarMetrics, Span,
-    SyntaxHighlighter, TrySendError, ViewportTransition, env, inline_change_starts,
-    inline_rows_with_options, parse_unified_patch, side_by_side_change_starts,
-    side_by_side_rows_with_options, sync_channel, terminal_safe_text, thread,
+    MAX_SYNC_LINES, Model, PREPARED_BUFFER_CACHE_SIZE, PrepareCommit, PrepareOutcome,
+    PrepareRequest, ProjectionOptions, RenderLine, Renderer, RowKind, ScrollAnchor,
+    ScrollbarMetrics, Span, SyntaxHighlighter, TrySendError, ViewportTransition, env,
+    inline_change_starts, inline_rows_with_options, parse_unified_patch,
+    side_by_side_change_starts, side_by_side_rows_with_options, sync_channel, terminal_safe_text,
+    thread,
 };
 use diffo_diff::SideBySideRow;
 use diffo_highlight::{HighlightWindowRequest, LineRange};
@@ -311,6 +312,43 @@ impl Renderer {
             vertical: target,
             horizontal,
         })
+    }
+
+    pub(super) fn document_viewport_transition(
+        &self,
+        before: Option<&DiffKey>,
+        after: Option<&DiffKey>,
+        anchor: Option<&ScrollAnchor>,
+        model: &Model,
+    ) -> ViewportTransition {
+        let same_file = before
+            .zip(after)
+            .is_some_and(|(before, after)| before.file == after.file);
+        let same_mode = before
+            .zip(after)
+            .is_some_and(|(before, after)| before.mode == after.mode);
+        let vertical = if same_file && same_mode {
+            self.highlighted.as_ref().and_then(|cache| {
+                anchor
+                    .and_then(|anchor| anchor.resolve(cache, cache.key.mode))
+                    .or_else(|| first_change(cache, cache.key.mode))
+            })
+        } else if same_file {
+            Some(0)
+        } else {
+            self.highlighted
+                .as_ref()
+                .and_then(|cache| first_change(cache, cache.key.mode))
+        }
+        .unwrap_or(0);
+        ViewportTransition {
+            vertical,
+            horizontal: if same_file && same_mode {
+                model.diff_horizontal_scroll
+            } else {
+                0
+            },
+        }
     }
 
     pub(super) fn vertical_message(

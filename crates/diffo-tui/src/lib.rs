@@ -38,7 +38,6 @@ mod overlays;
 mod state;
 mod style;
 
-use diff::first_change;
 #[cfg(test)]
 use diff::{diff_file_lines, should_syntax_highlight};
 #[cfg(test)]
@@ -178,39 +177,12 @@ impl Renderer {
             navigation_transition
         } else {
             document_committed.then(|| {
-                let same_file = displayed_before
-                    .as_ref()
-                    .zip(displayed_after.as_ref())
-                    .is_some_and(|(before, after)| before.file == after.file);
-                let same_mode = displayed_before
-                    .as_ref()
-                    .zip(displayed_after.as_ref())
-                    .is_some_and(|(before, after)| before.mode == after.mode);
-                let vertical = if let Some(target) = commit.and_then(|commit| commit.target_scroll)
-                {
-                    Some(target)
-                } else if same_file && same_mode {
-                    self.highlighted.as_ref().and_then(|cache| {
-                        anchor
-                            .and_then(|anchor| anchor.resolve(cache, cache.key.mode))
-                            .or_else(|| first_change(cache, cache.key.mode))
-                    })
-                } else if same_file {
-                    Some(0)
-                } else {
-                    self.highlighted
-                        .as_ref()
-                        .and_then(|cache| first_change(cache, cache.key.mode))
-                }
-                .unwrap_or(0);
-                ViewportTransition {
-                    vertical,
-                    horizontal: if same_file && same_mode {
-                        model.diff_horizontal_scroll
-                    } else {
-                        0
-                    },
-                }
+                self.document_viewport_transition(
+                    displayed_before.as_ref(),
+                    displayed_after.as_ref(),
+                    anchor.as_ref(),
+                    model,
+                )
             })
         };
         let rendered_vertical_scroll = viewport_transition

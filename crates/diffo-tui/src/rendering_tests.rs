@@ -853,6 +853,16 @@ fn uncached_scroll_uses_one_viewport_and_skeleton_until_syntax_is_ready() {
     assert!(first.viewport_transition.is_none());
     let skeleton = renderer.diff_skeleton_lines(80, model.diff_scroll, 20);
     assert!(!skeleton.is_empty());
+    let rows = renderer
+        .highlighted
+        .as_ref()
+        .unwrap()
+        .inline
+        .iter()
+        .skip(model.diff_scroll);
+    for (line, row) in skeleton.iter().zip(rows) {
+        assert_eq!(line.spans[0].style, super::style::gutter_style(row.kind));
+    }
     assert!(skeleton.iter().all(|line| {
         line.spans.iter().all(|span| {
             span.content.chars().all(|character| {

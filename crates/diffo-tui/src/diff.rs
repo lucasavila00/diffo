@@ -1,4 +1,10 @@
-use super::*;
+use super::{
+    AnchorRow, DiffBlock, DiffDocument, DiffKey, DiffViewMode, Duration, HighlightCache,
+    HighlightedDiff, MAX_HIGHLIGHT_FILE_LINES, MAX_SYNC_BYTES, MAX_SYNC_LINES, PrepareOutcome,
+    PrepareRequest, ProjectionOptions, RenderLine, Renderer, RowKind, ScrollAnchor,
+    SyntaxHighlighter, TrySendError, env, inline_change_starts, inline_rows_with_options,
+    parse_unified_patch, side_by_side_change_starts, side_by_side_rows_with_options,
+};
 
 impl ScrollAnchor {
     pub(super) fn capture(cache: &HighlightCache, mode: DiffViewMode, first_row: usize) -> Self {

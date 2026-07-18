@@ -1,4 +1,9 @@
-use super::*;
+use std::path::PathBuf;
+
+use anyhow::{Context, Result, bail};
+use diffo_core::{BranchState, ChangeKind, FileState, UpstreamState};
+
+use super::NO_CHANGE;
 
 pub(super) struct ParsedStatus {
     pub(super) branch: BranchState,

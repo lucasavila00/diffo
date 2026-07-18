@@ -1,4 +1,4 @@
-use super::*;
+use super::{ChangeArea, FileContextMenu, FileKey, Model, Path, RepositorySnapshot};
 
 impl Model {
     pub fn select_next(&mut self) {

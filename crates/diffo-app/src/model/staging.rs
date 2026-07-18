@@ -1,6 +1,7 @@
-use super::*;
+use super::{AccessMode, ChangeArea, Model, PathBuf, RepositoryAction, file_keys};
 
 impl Model {
+    #[must_use]
     pub fn stage_selected(&self) -> Option<RepositoryAction> {
         if self.access_mode == AccessMode::ReadOnly {
             return None;

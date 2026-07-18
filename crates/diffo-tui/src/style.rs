@@ -1,4 +1,7 @@
-use super::*;
+use super::{
+    ChangeArea, ChangeKind, Color, HighlightedDiff, HighlightedLine, Line, Modifier, RenderLine,
+    Rgb, RowKind, SideBySideRow, Span, Style, StyledSpan,
+};
 
 pub(super) fn file_kind_style(kind: ChangeKind, selected: bool) -> Style {
     let style = match kind {

@@ -1,5 +1,5 @@
 use super::bindings::KEY_BINDINGS;
-use super::*;
+use super::{AccessMode, Event, KeyCode, KeyEventKind, KeyModifiers, Message};
 
 pub(super) fn map_help_event(event: &Event) -> Option<Message> {
     let Event::Key(key) = event else {

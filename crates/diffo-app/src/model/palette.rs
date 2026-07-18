@@ -1,4 +1,4 @@
-use super::*;
+use super::{AccessMode, CommandId, CommandPalette, Model, RepositoryAction};
 
 impl Model {
     pub fn open_command_palette(&mut self) {

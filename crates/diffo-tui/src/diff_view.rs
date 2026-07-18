@@ -1,4 +1,9 @@
-use super::*;
+use super::{
+    Alignment, Block, Borders, Color, DiffViewMode, DiffViewportMetrics, Frame, HunkButtonMetrics,
+    HunkDirection, Line, Model, Modifier, Paragraph, Rect, Renderer, Scrollbar, ScrollbarMetrics,
+    ScrollbarOrientation, ScrollbarState, Style, inline_line, overview_position,
+    resize_border_style, scrollbar_position_count, side_by_side_line,
+};
 
 pub(super) fn render_hunk_button(frame: &mut Frame, area: Rect, label: &str, hovered: bool) {
     let style = if hovered {

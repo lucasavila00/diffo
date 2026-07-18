@@ -36,11 +36,29 @@ mod input;
 mod overlays;
 mod style;
 
-use diff::*;
-use files::*;
-use geometry::*;
-use overlays::*;
-use style::*;
+#[cfg(test)]
+use diff::{diff_file_lines, should_syntax_highlight};
+use diff::{first_change, preparation_delay_from_environment, prepare_diff};
+use files::{
+    commit_action_at_position, file_group_areas, file_panel_areas, render_files, render_status,
+    resize_border_style, staged_files, unstaged_files,
+};
+use geometry::{
+    file_action_at_position, file_at_position, file_pane_percent_at, horizontal_panes,
+    is_file_pane_splitter_at, main_area, overview_position, scrollbar_position_count,
+};
+use overlays::{
+    command_palette_layout, commit_editor_action_at_position, map_file_context_menu_event,
+    render_command_palette, render_commit_editor, render_file_context_menu, render_help,
+    render_toasts, toast_at_position,
+};
+#[cfg(test)]
+use style::{
+    contrast_ratio, contrasting_foreground, diff_background, diff_background_rgb, row_style,
+};
+use style::{
+    file_action_style, file_kind_style, inline_line, network_animation_style, side_by_side_line,
+};
 
 pub use input::map_event;
 

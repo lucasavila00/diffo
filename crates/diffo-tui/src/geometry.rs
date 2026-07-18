@@ -1,4 +1,8 @@
-use super::*;
+use super::{
+    AccessMode, ChangeArea, Constraint, DiffViewMode, DiffViewportMetrics, Direction, FileKey,
+    FileState, HunkDirection, Layout, Model, Rect, Renderer, ScrollbarAxis, file_group_areas,
+    file_panel_areas, staged_files, unstaged_files,
+};
 
 pub(super) fn overview_position(content_row: usize, content_rows: usize, track_height: u16) -> u16 {
     if track_height <= 1 || content_rows <= 1 {

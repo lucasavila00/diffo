@@ -1,7 +1,22 @@
-use super::status::parse_status;
-use super::*;
+use std::{
+    collections::BTreeSet,
+    fmt::Write as _,
+    fs,
+    path::{Path, PathBuf},
+    process::Command,
+};
+
+use anyhow::{Context, Result};
+use diffo_core::{ChangeKind, Commit, FileDiff, FileState, RepositorySnapshot, RepositorySource};
+
+use super::{GitRepositorySource, NO_CHANGE, status::parse_status};
 
 impl GitRepositorySource {
+    /// Return the worktree and external Git metadata paths that affect snapshots.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when Git cannot resolve repository paths.
     pub fn watch_paths(&self) -> Result<Vec<PathBuf>> {
         let mut paths = BTreeSet::new();
         for args in [

@@ -1,5 +1,8 @@
 use super::repository::same_repository_operation;
-use super::*;
+use super::{
+    CommitComposerState, FailureKind, Model, OperationFailure, OperationResult, RepositoryAction,
+    Toast, ToastKind,
+};
 
 impl Model {
     pub fn show_error(&mut self, error: impl Into<String>) {

@@ -1,4 +1,7 @@
-use super::*;
+use super::{
+    AccessMode, CommitComposerState, FailureKind, Model, NetworkOperation, OperationFailure,
+    PrimaryAction, RepositoryAction,
+};
 
 impl Model {
     pub fn focus_commit_input(&mut self) {

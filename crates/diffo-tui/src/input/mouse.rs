@@ -1,4 +1,8 @@
-use super::*;
+use super::{
+    Event, Message, Model, MouseButton, MouseEventKind, Rect, commit_action_at_position,
+    commit_editor_action_at_position, file_action_at_position, file_at_position,
+    file_pane_percent_at, is_file_pane_splitter_at,
+};
 
 pub(super) fn map_commit_event(event: &Event, model: &Model, area: Rect) -> Option<Message> {
     match event {

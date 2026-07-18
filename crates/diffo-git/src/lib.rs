@@ -1,21 +1,6 @@
-use std::{
-    collections::BTreeSet,
-    env,
-    fmt::Write as _,
-    fs,
-    path::{Path, PathBuf},
-    process::Command,
-    thread,
-    time::Duration,
-};
+use std::path::PathBuf;
 
-use anyhow::{Context, Result, bail};
-
-use diffo_core::{
-    AccessMode, BranchState, ChangeKind, Commit, FailureKind, FileDiff, FileState,
-    OperationFailure, OperationResult, Repository, RepositoryAction, RepositorySnapshot,
-    RepositorySource, UpstreamState,
-};
+use diffo_core::AccessMode;
 
 const NO_CHANGE: char = '.';
 

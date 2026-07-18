@@ -1,4 +1,8 @@
-use super::*;
+use std::process::Command;
+
+use anyhow::{Context, Result, bail};
+
+use super::GitRepositorySource;
 
 impl GitRepositorySource {
     pub(super) fn git(&self, args: &[&str]) -> Result<Vec<u8>> {

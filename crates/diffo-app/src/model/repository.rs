@@ -1,5 +1,5 @@
 use super::toast::operation_result_toast;
-use super::*;
+use super::{Model, OperationResult, RepositoryAction, RepositorySnapshot, file_keys};
 
 impl Model {
     pub fn repository_changed(&mut self, snapshot: RepositorySnapshot) {

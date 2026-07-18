@@ -1,4 +1,11 @@
-use super::*;
+use std::{env, process::Command, thread, time::Duration};
+
+use diffo_core::{
+    AccessMode, FailureKind, OperationFailure, OperationResult, Repository, RepositoryAction,
+    RepositorySource, UpstreamState,
+};
+
+use super::GitRepositorySource;
 
 impl Repository for GitRepositorySource {
     fn access_mode(&self) -> AccessMode {

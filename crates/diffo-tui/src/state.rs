@@ -6,6 +6,7 @@ use std::sync::{
 use diffo_app::{ChangeArea, FileKey, FileListScroll};
 use diffo_diff::{DiffDocument, RenderLine, RowKind, SideBySideRow};
 use diffo_highlight::{HighlightedDiff, LineRange, SyntaxHighlighter};
+use diffo_text_view::TextSurfacePreparation;
 use ratatui::layout::Rect;
 
 use crate::files::FileListMetrics;
@@ -58,6 +59,7 @@ pub struct FramePreparation {
     pub requested_file: Option<FileKey>,
     pub displayed_file: Option<FileKey>,
     pub file_list_scroll: FileListScroll,
+    pub text_surface: Option<TextSurfacePreparation>,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]

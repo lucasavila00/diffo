@@ -38,6 +38,33 @@ pub struct FrameRecord {
     update_start_us: u64,
     draw_start_us: u64,
     draw_end_us: u64,
+    text_surface: Option<TextSurfaceRecord>,
+}
+
+#[derive(Debug, Serialize)]
+struct TextSurfaceRecord {
+    surface: String,
+    document_revision: u64,
+    viewport: (usize, usize),
+    requested_range: (usize, usize),
+    render_mode: String,
+    coverage_before: Option<(u32, u32)>,
+    coverage_after: Option<(u32, u32)>,
+    request_id: Option<u64>,
+    queue_wait_us: u64,
+    worker_us: u64,
+    install_us: u64,
+    parsed_lines: usize,
+    parsed_bytes: usize,
+    projected_lines: usize,
+    projected_bytes: usize,
+    highlighted_lines: usize,
+    highlighted_bytes: usize,
+    rendered_lines: usize,
+    rendered_bytes: usize,
+    cache_hit: bool,
+    coalesced_request: bool,
+    stale_discarded: bool,
 }
 
 impl FrameRecord {
@@ -82,6 +109,36 @@ impl FrameRecord {
             update_start_us,
             draw_start_us,
             draw_end_us,
+            text_surface: preparation
+                .text_surface
+                .as_ref()
+                .map(|surface| TextSurfaceRecord {
+                    surface: format!("{:?}", surface.surface),
+                    document_revision: surface.document_revision,
+                    viewport: surface.viewport,
+                    requested_range: surface.requested_range,
+                    render_mode: format!("{:?}", surface.mode),
+                    coverage_before: surface.coverage_before,
+                    coverage_after: surface.coverage_after,
+                    request_id: surface.request_id,
+                    queue_wait_us: 0,
+                    worker_us: 0,
+                    install_us: 0,
+                    parsed_lines: 0,
+                    parsed_bytes: 0,
+                    projected_lines: 0,
+                    projected_bytes: 0,
+                    highlighted_lines: 0,
+                    highlighted_bytes: 0,
+                    rendered_lines: surface
+                        .requested_range
+                        .1
+                        .saturating_sub(surface.requested_range.0),
+                    rendered_bytes: 0,
+                    cache_hit: surface.cache_hit,
+                    coalesced_request: surface.coalesced_request,
+                    stale_discarded: surface.stale_discarded,
+                }),
         }
     }
 }

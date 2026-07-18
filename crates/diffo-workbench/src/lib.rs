@@ -4,6 +4,7 @@ use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, 
 use diffo_app::{Effect, Message, Model, ToastKind, update};
 use diffo_command::{Command, CommandId, CommandPalette, PaletteEvent};
 use diffo_core::{OperationFailure, OperationResult, RepositoryAction, RepositorySnapshot};
+use diffo_text_view::{TextRenderMode, TextSurfacePreparation};
 use diffo_tui::{FramePreparation, Renderer};
 use diffo_ui::{PaneSplit, tool_areas};
 use ratatui::{Frame, layout::Rect, widgets::Clear};
@@ -179,8 +180,7 @@ impl Workbench {
         match self.active {
             Activity::Diff => self.diff.prepare_frame(content, self.pane_split),
             Activity::Explorer => {
-                self.explorer.prepare_frame(content, self.pane_split);
-                FramePreparation::default()
+                explorer_preparation(self.explorer.prepare_frame(content, self.pane_split))
             }
             Activity::Search => self.search.prepare_frame(content, self.pane_split),
         }
@@ -553,8 +553,7 @@ impl Tool for ExplorerActivity {
     }
 
     fn prepare_frame(&mut self, area: Rect, split: PaneSplit) -> FramePreparation {
-        ExplorerActivity::prepare_frame(self, area, split);
-        FramePreparation::default()
+        explorer_preparation(ExplorerActivity::prepare_frame(self, area, split))
     }
 
     fn render(&mut self, frame: &mut Frame, area: Rect, split: PaneSplit) {
@@ -571,6 +570,16 @@ impl Tool for ExplorerActivity {
 
     fn execute_command(&mut self, command: CommandId) -> bool {
         ExplorerActivity::execute_command(self, command)
+    }
+}
+
+fn explorer_preparation(text_surface: TextSurfacePreparation) -> FramePreparation {
+    FramePreparation {
+        content_revision: text_surface.document_revision,
+        preparing: text_surface.mode == TextRenderMode::TextSkeleton,
+        syntax_ready: text_surface.mode == TextRenderMode::Full,
+        text_surface: Some(text_surface),
+        ..FramePreparation::default()
     }
 }
 

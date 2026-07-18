@@ -52,6 +52,13 @@ struct FrameRecord {
     input_events: Vec<String>,
     draw_start_us: u64,
     draw_end_us: u64,
+    text_surface: Option<TextSurfaceRecord>,
+}
+
+#[derive(Deserialize)]
+struct TextSurfaceRecord {
+    render_mode: String,
+    stale_discarded: bool,
 }
 
 fn main() -> Result<()> {
@@ -67,6 +74,10 @@ fn main() -> Result<()> {
         "release binary is missing: {}",
         binary.display()
     );
+
+    if std::env::args().any(|argument| argument == "--text-readiness") {
+        return measure_text_readiness(&binary, &fixture);
+    }
 
     let ticks_per_second = clock_ticks_per_second()?;
     println!("Diffo release CPU measurement: 3 warmups, 5 samples, 5 seconds/sample");
@@ -84,6 +95,151 @@ fn main() -> Result<()> {
         print_measurement(scenario.name(), "median", &median(&measurements));
     }
     Ok(())
+}
+
+fn measure_text_readiness(binary: &Path, fixture: &Path) -> Result<()> {
+    println!("Diffo text readiness: release, 100x30 PTY, deterministic input");
+    println!("surface workload total skeleton episodes p50_us p95_us longest_us discarded");
+    for surface in ["diff", "explorer"] {
+        for (workload, input) in [
+            ("slow-wheel", b"\x1b[<65;75;10M".as_slice()),
+            (
+                "fast-wheel",
+                b"\x1b[<65;75;10M\x1b[<65;75;10M\x1b[<65;75;10M".as_slice(),
+            ),
+            ("page", b"\x1b[6~".as_slice()),
+            (
+                "scrollbar-drag",
+                b"\x1b[<0;99;10M\x1b[<32;99;25M\x1b[<0;99;25m".as_slice(),
+            ),
+            ("hunk-jump", b"]".as_slice()),
+        ] {
+            let report = readiness_once(surface, input, binary, fixture)?;
+            println!(
+                "{surface:<8} {workload:<14} {:>5} {:>8} {:>8} {:>6} {:>6} {:>10} {:>9}",
+                report.total,
+                report.skeleton,
+                report.episodes,
+                percentile(&report.episode_us, 50),
+                percentile(&report.episode_us, 95),
+                report.episode_us.iter().copied().max().unwrap_or(0),
+                report.discarded,
+            );
+        }
+    }
+    Ok(())
+}
+
+struct ReadinessReport {
+    total: usize,
+    skeleton: usize,
+    episodes: usize,
+    episode_us: Vec<u64>,
+    discarded: usize,
+}
+
+fn readiness_once(
+    surface: &str,
+    input: &[u8],
+    binary: &Path,
+    fixture: &Path,
+) -> Result<ReadinessReport> {
+    let temporary = tempfile::tempdir().context("create readiness directory")?;
+    let trace = temporary.path().join("frames.ron");
+    let pair = native_pty_system()
+        .openpty(PtySize {
+            rows: 30,
+            cols: 100,
+            pixel_width: 0,
+            pixel_height: 0,
+        })
+        .context("open readiness PTY")?;
+    let mut reader = pair
+        .master
+        .try_clone_reader()
+        .context("clone readiness reader")?;
+    let mut writer = pair.master.take_writer().context("open readiness writer")?;
+    let reader_thread = thread::spawn(move || {
+        let mut buffer = [0_u8; 8192];
+        while reader.read(&mut buffer).unwrap_or(0) != 0 {}
+    });
+    let mut command = CommandBuilder::new(binary.as_os_str());
+    command.cwd(temporary.path().as_os_str());
+    command.env("TERM", "xterm-256color");
+    command.env("DIFFO_MOCK_FILE", fixture.as_os_str());
+    command.env("DIFFO_TRACE_FRAMES", trace.as_os_str());
+    let mut child = pair
+        .slave
+        .spawn_command(command)
+        .context("launch readiness Diffo")?;
+    drop(pair.slave);
+    thread::sleep(SETTLE_TIME);
+    if surface == "explorer" {
+        writer.write_all(b"\t").context("open Explorer")?;
+        thread::sleep(Duration::from_millis(250));
+    }
+    for _ in 0..12 {
+        writer.write_all(input).context("send readiness input")?;
+        writer.flush().context("flush readiness input")?;
+        thread::sleep(Duration::from_millis(40));
+    }
+    thread::sleep(Duration::from_millis(500));
+    writer.write_all(b"q").context("quit readiness Diffo")?;
+    writer.flush().context("flush readiness quit")?;
+    let status = child.wait().context("wait for readiness Diffo")?;
+    ensure!(status.success(), "readiness Diffo failed: {status:?}");
+    drop(writer);
+    reader_thread
+        .join()
+        .map_err(|_| anyhow::anyhow!("readiness PTY reader panicked"))?;
+    readiness_report(&trace)
+}
+
+fn readiness_report(path: &Path) -> Result<ReadinessReport> {
+    let contents = fs::read_to_string(path).context("read readiness trace")?;
+    let frames: Vec<FrameRecord> = contents
+        .lines()
+        .map(ron::from_str)
+        .collect::<std::result::Result<_, _>>()
+        .context("parse readiness trace")?;
+    let mut starts = None;
+    let mut episode_us = Vec::new();
+    let mut skeleton = 0;
+    let mut discarded = 0;
+    for frame in &frames {
+        let Some(surface) = &frame.text_surface else {
+            continue;
+        };
+        discarded += usize::from(surface.stale_discarded);
+        if surface.render_mode != "Full" {
+            skeleton += 1;
+            starts.get_or_insert(frame.draw_start_us);
+        } else if let Some(start) = starts.take() {
+            episode_us.push(frame.draw_end_us.saturating_sub(start));
+        }
+    }
+    if let (Some(start), Some(last)) = (starts, frames.last()) {
+        episode_us.push(last.draw_end_us.saturating_sub(start));
+    }
+    Ok(ReadinessReport {
+        total: frames
+            .iter()
+            .filter(|frame| frame.text_surface.is_some())
+            .count(),
+        skeleton,
+        episodes: episode_us.len(),
+        episode_us,
+        discarded,
+    })
+}
+
+fn percentile(values: &[u64], percentile: usize) -> u64 {
+    if values.is_empty() {
+        return 0;
+    }
+    let mut values = values.to_vec();
+    values.sort_unstable();
+    values[(values.len().saturating_sub(1)).saturating_mul(percentile) / 100]
 }
 
 #[allow(clippy::cast_precision_loss)]

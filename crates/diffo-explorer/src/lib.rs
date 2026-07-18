@@ -8,8 +8,9 @@ use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, 
 use diffo_command::{Command, CommandId};
 use diffo_core::RepositorySnapshot;
 use diffo_text_view::{
-    LINE_SCROLL_ROWS, ScrollCommand, ScrollbarAxis, Viewport, ViewportMetrics, WHEEL_SCROLL_ROWS,
-    scrollbar_areas, scrollbar_axis_at, scrollbar_command,
+    LINE_SCROLL_ROWS, ScrollCommand, ScrollbarAxis, TextRenderMode, TextSurface,
+    TextSurfacePreparation, Viewport, ViewportMetrics, WHEEL_SCROLL_ROWS, scrollbar_areas,
+    scrollbar_axis_at, scrollbar_command,
 };
 use diffo_ui::PaneSplit;
 use ratatui::{Frame, layout::Rect};
@@ -44,6 +45,7 @@ pub struct ExplorerActivity {
     viewport_columns: usize,
     maximum_horizontal_scroll: usize,
     scrollbar_drag: Option<ScrollbarAxis>,
+    content_revision: u64,
 }
 
 impl ExplorerActivity {
@@ -61,6 +63,7 @@ impl ExplorerActivity {
             viewport_columns: 1,
             maximum_horizontal_scroll: 0,
             scrollbar_drag: None,
+            content_revision: 0,
         };
         activity.request_paths();
         activity
@@ -106,7 +109,7 @@ impl ExplorerActivity {
         }
     }
 
-    pub fn prepare_frame(&mut self, area: Rect, split: PaneSplit) {
+    pub fn prepare_frame(&mut self, area: Rect, split: PaneSplit) -> TextSurfacePreparation {
         let areas = explorer_areas(area, split);
         let tree_rows = usize::from(areas.tree.height.saturating_sub(2));
         self.viewport_rows = usize::from(areas.viewer.height.saturating_sub(2)).max(1);
@@ -140,11 +143,40 @@ impl ExplorerActivity {
             .min(maximum_horizontal_scroll);
         self.model.ensure_tree_selection_visible(tree_rows);
         let selected = self.model.selected_file().map(PathBuf::from);
-        let displayed = self.model.viewer.as_ref().map(|viewer| &viewer.path);
-        if selected.as_ref() != displayed && selected.as_ref() != self.pending_path.as_ref() {
-            if let Some(path) = selected {
-                self.request_file(path, 0);
+        let displayed = self.model.viewer.as_ref().map(|viewer| viewer.path.clone());
+        let text_missing = selected != displayed;
+        if text_missing && selected.as_ref() != self.pending_path.as_ref() {
+            if let Some(path) = selected.as_ref() {
+                self.request_file(path.clone(), 0);
             }
+        }
+        let syntax_ready = self.viewer_syntax_ready();
+        let coverage = self
+            .model
+            .viewer
+            .as_ref()
+            .and_then(|viewer| viewer.coverage.map(|range| (range.start, range.end)));
+        TextSurfacePreparation {
+            surface: TextSurface::Explorer,
+            document_revision: self.content_revision,
+            viewport: (self.model.viewer_scroll, self.viewport_rows),
+            requested_range: (
+                self.model.viewer_scroll,
+                self.model.viewer_scroll.saturating_add(self.viewport_rows),
+            ),
+            mode: if text_missing {
+                TextRenderMode::TextSkeleton
+            } else if syntax_ready {
+                TextRenderMode::Full
+            } else {
+                TextRenderMode::SyntaxSkeleton
+            },
+            coverage_before: coverage,
+            coverage_after: coverage,
+            request_id: self.pending_path.as_ref().map(|_| self.latest_file),
+            cache_hit: !text_missing && syntax_ready,
+            coalesced_request: false,
+            stale_discarded: false,
         }
     }
 
@@ -392,6 +424,7 @@ impl ExplorerActivity {
                             self.model.viewer_horizontal_scroll = 0;
                         }
                         self.model.viewer = Some(viewer);
+                        self.content_revision = self.content_revision.saturating_add(1);
                         self.model.error = None;
                     }
                     Err(error) => self.model.error = Some(error),

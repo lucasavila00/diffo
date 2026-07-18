@@ -77,6 +77,7 @@ use state::{
 pub use diffo_highlight::{
     HIGHLIGHT_LOOKBEHIND_LINES, MAX_HIGHLIGHT_BYTES_PER_SIDE, MAX_HIGHLIGHT_FILE_LINES,
 };
+use diffo_text_view::{TextRenderMode, TextSurface, TextSurfacePreparation};
 pub use diffo_ui::{change_kind_style, plain_syntax_spans, terminal_safe_text};
 pub use state::{FramePreparation, Renderer, ViewportTransition};
 
@@ -203,6 +204,45 @@ impl Renderer {
             requested_file: self.requested.as_ref().map(|key| key.file.clone()),
             displayed_file: self.displayed_key().map(|key| key.file.clone()),
             file_list_scroll: prepared_file_list_scroll(model, area),
+            text_surface: Some(self.text_surface_preparation(
+                rendered_vertical_scroll,
+                syntax_ready,
+                target_scroll,
+                requested.as_ref(),
+            )),
+        }
+    }
+
+    fn text_surface_preparation(
+        &self,
+        scroll: usize,
+        syntax_ready: bool,
+        target_scroll: Option<usize>,
+        requested: Option<&DiffKey>,
+    ) -> TextSurfacePreparation {
+        let coverage = self.highlighted.as_ref().and_then(|cache| {
+            cache
+                .highlighted_new_coverage
+                .map(|range| (range.start, range.end))
+        });
+        TextSurfacePreparation {
+            surface: TextSurface::Diff,
+            document_revision: self.content_revision,
+            viewport: (scroll, self.diff_viewport_rows),
+            requested_range: (scroll, scroll.saturating_add(self.diff_viewport_rows)),
+            mode: if self.requested.as_ref() != self.displayed_key() {
+                TextRenderMode::TextSkeleton
+            } else if syntax_ready {
+                TextRenderMode::Full
+            } else {
+                TextRenderMode::SyntaxSkeleton
+            },
+            coverage_before: coverage,
+            coverage_after: coverage,
+            request_id: None,
+            cache_hit: target_scroll.is_none() && requested == self.displayed_key(),
+            coalesced_request: false,
+            stale_discarded: false,
         }
     }
 

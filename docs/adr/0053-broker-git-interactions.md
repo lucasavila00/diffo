@@ -1,180 +1,161 @@
-# ADR 0053: Broker supported Git interactions through the workbench
+# ADR 0053: Show Git prompts inside Diffo
 
-Status: Accepted
+Status: Proposed
 
 Depends on [ADR 0052](0052-terminal-safe-footer-errors.md) and refines
 [ADR 0018](0018-network-operation-feedback.md) and
 [ADR 0020](0020-operation-toasts.md).
 
-## Context
+## Problem
 
-Network operations currently run Git with captured output, no interactive stdin, and
-`GIT_TERMINAL_PROMPT=0`. This keeps the TUI responsive and prevents Git from taking over
-Diffo's terminal, but it also turns every interaction into a final failure. On first
-contact with an SSH server, for example, OpenSSH may ask whether to trust a host key and
-offers affirmative and negative responses. HTTPS credentials and SSH key passphrases
-have the same missing route back to the user.
+Fetch, Pull, and Push run without terminal input. This keeps Git from taking over
+Diffo's terminal. It also means these normal questions fail:
 
-Stderr is not a prompt protocol. It can contain progress, remote-controlled text,
-localized wording, hooks, and multiple lines. Rendering it in the footer cannot safely
-or reliably identify choices, and writing TUI keystrokes to a Git subprocess would let
-the child compete with Diffo for terminal ownership.
+- HTTPS username or secret;
+- SSH key passphrase; and
+- whether to trust a new SSH host key.
 
-VS Code solves the same boundary with `GIT_ASKPASS` and `SSH_ASKPASS` helpers connected
-back to the application. Its Git integration presents credential and passphrase input
-boxes and a two-option picker for SSH host authenticity instead of exposing the child
-process terminal. Diffo will follow that interaction model, not VS Code's configuration
-surface. See the upstream
-[`askpass.ts`](https://github.com/microsoft/vscode/blob/main/extensions/git/src/askpass.ts)
-implementation.
+Do not give Git the terminal. Do not guess questions from stderr. Stderr also contains
+progress, hooks, remote text, and errors.
 
-## Scope
-
-Support only prompts delivered through the standard Git and SSH askpass mechanisms:
-
-- HTTPS username and secret input after configured credential helpers do not answer;
-- SSH private-key passphrases; and
-- SSH host-authenticity confirmation with the host and fingerprint.
-
-Do not implement a generic terminal emulator, parse arbitrary stderr questions, answer
-hook prompts, launch an editor, perform browser authentication, configure remotes, or
-store credentials. Unsupported prompts fail closed with a safe, actionable operation
-failure.
+Git and OpenSSH already provide the right hook: askpass. They start a program, give it a
+prompt, and read its answer from stdout. Diffo can serve as that program. Askpass still
+starts a short-lived process, but we do not need to ship another binary.
 
 ## Decision
 
-### Askpass boundary
+### Re-enter the Diffo binary
 
-Add a private askpass companion executable and a per-operation, local IPC broker. The
-companion is implementation infrastructure, not a user-facing Diffo command. Git and SSH
-invoke it using their required askpass argument protocol; this does not add arguments,
-configuration files, or configurable behavior to the Diffo application.
+Ship one binary. When Git or SSH invokes that binary through askpass, an internal
+environment marker makes startup enter a small askpass path instead of the TUI. This is
+not a command or user setting. Normal Diffo startup still accepts no arguments.
 
-For Fetch, Pull, and Push, continue to detach the child from terminal input and keep
-`GIT_TERMINAL_PROMPT=0`. Set `GIT_ASKPASS`, `SSH_ASKPASS`, and
-`SSH_ASKPASS_REQUIRE=force` to the private helper for that child only. Pass a random
-operation capability and the broker endpoint in the child environment as internal
-protocol data, never as user configuration. Create the Unix-domain socket endpoint in a
-mode-0700 temporary directory and remove it when the operation ends. Diffo supports Linux
-only, so this boundary uses the standard library's Unix-socket APIs instead of a
-cross-platform IPC abstraction.
+For each Fetch, Pull, or Push:
 
-The helper sends one request to the broker and writes only the selected response to its
-stdout. It never renders, reads Diffo's terminal, logs a response, or mutates repository
-state. The broker recognizes the bounded askpass forms and converts them into typed data:
+- keep stdin closed and `GIT_TERMINAL_PROMPT=0`;
+- point `GIT_ASKPASS` and `SSH_ASKPASS` at Diffo's absolute executable path;
+- set `SSH_ASKPASS_REQUIRE=force`; and
+- pass the internal askpass marker and a fresh Unix-socket path in the child environment.
+
+The socket server runs inside Diffo. There is no broker daemon and no second long-lived
+process.
 
 ```text
-GitInteractionRequest { operation_id, prompt_id, kind }
-
-GitInteractionKind
-  Username { host }
-  Secret { purpose: Password | SshPassphrase, context }
-  ConfirmSshHost { host, fingerprint }
-
-GitInteractionResponse
-  Text(value)
-  Choice(Continue | Cancel)
-  Cancel
+Git or SSH -> Diffo askpass mode -> Unix socket -> running Diffo UI
+             Diffo askpass mode <- Unix socket <- user's answer
+Git or SSH <- askpass stdout
 ```
 
-Parse protocol fields only inside the askpass adapter. Do not expose raw argv, raw stderr,
-credential-bearing URLs, or arbitrary response strings to the UI. Remove URL userinfo from
-displayed hosts. Apply the terminal-safe text boundary from ADR 0052 to the bounded host,
-key, and fingerprint labels before rendering them.
+Create the socket in a fresh mode-0700 temporary directory. Remove it when the operation
+ends. The directory separates operations and blocks other users. Processes running as
+the same OS user are trusted; a token in the environment would not protect against them.
 
-### Worker protocol
+The askpass path handles one prompt, writes at most one answer, and exits. It never reads
+the terminal, renders UI, logs data, or changes the repository.
 
-Extend the repository-operation boundary with an interaction handler. A real Git source
-may synchronously request one of the typed interactions while `apply` is running; fixture
-sources continue without requesting one. The refresh service publishes the request with
-the operation identifier but does not mark the operation complete.
+On success:
 
-Prompt responses use a dedicated broker channel, separate from the refresh worker command
-queue. This is required because the worker is waiting for the Git child, which is waiting
-for askpass, while the response is produced by the main input loop. A response must not be
-queued behind the blocked operation. Allow one outstanding prompt per operation and reject
-unknown, duplicate, stale, or concurrent prompt identifiers.
+- text answers go to stdout with exit status 0; and
+- SSH host approval writes `yes` with exit status 0.
 
-The lifecycle is:
+On cancel, bad input, lost IPC, or an unsupported prompt, write no answer and exit
+nonzero.
+
+### Parse only known askpass prompts
+
+Askpass identifies a prompt, but its argument is still plain text. The adapter may parse
+that argument. It must never parse stderr.
+
+Use exact prompt forms and `SSH_ASKPASS_PROMPT` when it is present. Accept only tested
+forms for:
 
 ```text
-repository action starts
-  -> Git/SSH invokes private askpass helper
-  -> broker emits a typed interaction request
-  -> workbench commits and renders the prompt modal
-  -> user response returns on the broker channel
-  -> helper returns the protocol response and Git resumes
-  -> operation result and complete snapshot commit atomically, or failure is reported
+Username { host }
+Secret { kind: HttpsSecret | SshKeyPassphrase, context }
+ConfirmSshHost { host, fingerprint }
 ```
 
-An interaction request does not advance repository snapshot generations and cannot install
-content, navigation targets, or scroll metrics. The final successful result retains the
-existing atomic snapshot rules. Closing Diffo, pressing Ctrl+C, or choosing Cancel cancels
-the broker request and terminates the child operation. Add a structured cancellation
-failure so cancellation is not mislabeled as authentication failure.
+OpenSSH does not provide a reliable machine-readable tag for its first-contact host-key
+question. Match the complete supported prompt shape and validate the host and fingerprint
+fields. Do not classify a prompt from one word such as `yes`, `no`, or `authenticity`.
+If the shape changes or a field is missing, cancel the prompt.
 
-### Workbench interaction
+Remove URL userinfo from hosts. Convert displayed host, context, and fingerprint text
+with the terminal-safe boundary from ADR 0052. Raw prompt text must not reach the UI,
+errors, traces, or logs.
 
-Make the prompt a workbench-owned modal so it remains visible over Diff, Explorer, and
-Search. Modal input takes priority over activity, palette, toast, and ordinary global
-input. While it is open, keep the network operation pending and keep other repository
-actions disabled.
+Do not support arbitrary SSH password or keyboard-interactive questions. Do not turn an
+unknown prompt into a generic secret box. Fail closed with a safe operation error.
 
-Render SSH authenticity as a fixed two-row choice list containing `Continue` and `Cancel`,
-with `Cancel` selected initially. Show the sanitized host and fingerprint. Arrow keys,
-Enter, Esc, and mouse selection use the established picker behavior. Do not add `y`, `n`,
-uppercase, or configurable character shortcuts.
+### Let the worker wait without blocking the UI
 
-Render username as ordinary text input and passwords or passphrases as masked input. Keep
-secret input only in the active modal until it is handed to the broker. Never copy it into
-application errors, toasts, frame traces, debug formatting, clipboard output, or repository
-state. Do not persist or cache credentials; existing Git credential helpers and SSH agents
-remain the persistence mechanisms.
+Git waits for the helper. The helper waits for the user. The repository worker therefore
+waits too.
 
-Cancellation closes the modal and leaves the last committed repository snapshot visible.
-Acceptance closes only the current prompt; the operation spinner remains until Git and the
-post-operation snapshot both complete.
+The in-process socket bridge sends a typed prompt event to the main loop. The main loop
+sends the answer back on a dedicated one-shot channel. Do not put the answer on the
+repository worker's command queue; that queue cannot run until Git returns.
 
-## Alternatives
+Allow one open prompt per operation. Give each prompt an ID. Reject unknown, duplicate,
+stale, or concurrent IDs. More prompts may follow one at a time if Git retries.
 
-- Attach Git to Diffo's terminal. Rejected because the child would take over input,
-  rendering, mouse modes, and terminal restoration.
-- Parse stderr and infer questions. Rejected because the format is localized, mixed with
-  progress and remote output, and not a safe request/response protocol.
-- Retry after classifying a failed stderr message. Rejected because the first process has
-  already failed and retrying can repeat remote side effects.
-- Keep all network Git non-interactive. Rejected because recoverable first-contact and
-  credential requests become dead ends.
-- Accept every new SSH host automatically. Rejected because it removes host identity
-  verification and changes OpenSSH trust state without user consent.
-- Add credential or host-key configuration to Diffo. Rejected because controls and behavior
-  are fixed, while established Git, SSH agent, and `known_hosts` mechanisms already own
-  persistence.
+A prompt does not change the repository generation or committed snapshot. On success,
+install the operation result and new snapshot using the existing atomic commit rules. On
+failure or cancel, keep the last committed snapshot.
+
+### Own the prompt in the workbench
+
+Show the prompt as a modal over every activity. While it is open:
+
+- modal input wins over all other input;
+- the network operation stays pending; and
+- other repository actions stay disabled.
+
+Use normal text input for a username. Mask secrets. Keep a secret only in the modal and
+the response being sent to the helper. Never clone, debug-print, trace, persist, or cache
+it. Git's configured credential helpers and SSH agent remain responsible for storage.
+
+For a new SSH host, show the sanitized host and fingerprint. Show `Continue` and
+`Cancel`, with `Cancel` selected first. Use the existing picker controls: arrows, Enter,
+Esc, and mouse. Add no character shortcuts.
+
+Accepting closes only that prompt. The operation remains pending until Git finishes and
+the new snapshot is ready.
+
+### Cancel the whole operation
+
+Start Git in its own process group. Cancel, Ctrl+C, and shutdown must:
+
+1. close the modal and socket;
+2. terminate and reap the operation process group; and
+3. report cancellation as cancellation, not authentication failure.
+
+This prevents Git, SSH, or an askpass process from surviving after Diffo exits.
+
+## Out of scope
+
+Do not add a terminal emulator, editor, browser login, credential store, remote setup, or
+generic prompt system. Do not answer hook prompts. Do not accept unknown SSH hosts
+automatically.
 
 ## Verification
 
-- Unit tests map each supported askpass form to typed, terminal-safe display data and reject
-  malformed, credential-bearing, unknown, and concurrent requests.
-- Worker tests prove a prompt response bypasses the blocked action queue, stale prompt IDs
-  cannot resume another operation, and cancellation terminates the child.
-- Workbench tests cover modal priority, masked secret input, cancel-by-default host choices,
-  mouse and keyboard selection, activity switching suppression, and pending-operation state.
-- Trace and error tests use sentinel credentials and prove they never appear in frames,
-  toasts, errors, debug output, or serialized test artifacts.
-- A delayed PTY regression performs Fetch against a local test SSH server with an unknown
-  host key, observes the host and fingerprint choices, accepts once, and sees the operation
-  complete without terminal corruption.
-- A second PTY regression cancels the same prompt and verifies that repository refs, the
-  committed snapshot, and the user's `known_hosts` fixture remain unchanged.
-- Credential and passphrase tests use local helpers and isolated temporary homes; they never
-  depend on a public network service or real user credentials.
+- Parser tests cover supported Git and OpenSSH forms. They reject unknown, malformed,
+  control-bearing, and credential-bearing display data.
+- IPC tests cover success, cancel, disconnect, duplicate IDs, stale IDs, and sequential
+  prompts.
+- Worker tests prove the answer bypasses the blocked command queue and cancellation reaps
+  the operation process group.
+- Workbench tests cover modal priority, masked input, cancel-first SSH choices, all stated
+  controls, and pending-operation state.
+- Secret sentinels never appear in frames, errors, traces, debug output, or test snapshots.
+- Delayed PTY tests use a local SSH server. One accepts a new host and completes. One
+  cancels and leaves refs, the committed snapshot, and the test `known_hosts` unchanged.
+- Credential and passphrase tests use local helpers, temporary homes, and no public
+  network.
 
-## Consequences
+## Cost
 
-Supported Git interactions become explicit application state instead of accidental stderr.
-The main loop remains the sole terminal owner, the repository worker may pause without
-blocking UI input, and SSH trust still requires an informed user choice.
-
-This adds a private helper, authenticated local IPC, cancellation, and secret-handling paths
-that need Linux packaging and tests. Git remains the system executable rather than a Rust Git
-implementation because askpass and OpenSSH behavior are part of the required integration.
+This adds a small private startup path, one short-lived in-process socket bridge per
+network operation, modal state, and cancellation tests. It adds no binary, daemon,
+terminal emulator, credential store, or user configuration.

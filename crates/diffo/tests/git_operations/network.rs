@@ -141,3 +141,148 @@ fn success_toast_is_automatically_dismissed() -> Result<()> {
         .wait_for_text_gone("Committed ")?;
     Ok(())
 }
+
+#[test]
+fn local_ssh_host_approval_completes_fetch() -> Result<()> {
+    let repository = TestRepository::new()?;
+    let remote_commit = repository.commit_remote("remote.txt", "remote\n", "Remote commit")?;
+    let known_hosts = repository.root.path().join("known_hosts");
+    let ssh = local_ssh_transport(&repository, SshPrompt::ConfirmHost)?;
+    let mut screen = ssh_screen(&repository, &ssh, &known_hosts, None)?;
+
+    screen
+        .press(Key::Char('1'))?
+        .type_text("fetch")?
+        .press(Key::Enter)?
+        .wait_for_text("Trust fakehost?")?
+        .wait_for_text("SHA256:abcdefghijklmnopqrstuvwxyz0123456789+/=")?;
+    assert!(!known_hosts.exists());
+    screen.press(Key::Right)?.press(Key::Enter)?;
+
+    wait_for("approved SSH fetch to update origin", || {
+        Ok(git_output(&repository.worktree, &["rev-parse", "origin/HEAD"])? == remote_commit)
+    })?;
+    screen.wait_for_text("Fetched 1 ref")?;
+    assert_eq!(fs::read_to_string(known_hosts)?, "fakehost\n");
+    Ok(())
+}
+
+#[test]
+fn cancelling_local_ssh_host_approval_preserves_refs_and_known_hosts() -> Result<()> {
+    let repository = TestRepository::new()?;
+    let before = git_output(&repository.worktree, &["rev-parse", "origin/HEAD"])?;
+    repository.commit_remote("remote.txt", "remote\n", "Remote commit")?;
+    let known_hosts = repository.root.path().join("known_hosts");
+    let ssh = local_ssh_transport(&repository, SshPrompt::ConfirmHost)?;
+    let mut screen = ssh_screen(&repository, &ssh, &known_hosts, None)?;
+
+    screen
+        .press(Key::Char('1'))?
+        .type_text("fetch")?
+        .press(Key::Enter)?
+        .wait_for_text("Trust fakehost?")?
+        .press(Key::Enter)?
+        .wait_for_text("Operation cancelled")?;
+
+    assert_eq!(
+        git_output(&repository.worktree, &["rev-parse", "origin/HEAD"])?,
+        before
+    );
+    assert!(!known_hosts.exists());
+    assert!(!repository.worktree.join("remote.txt").exists());
+    Ok(())
+}
+
+#[test]
+fn local_helpers_complete_sequential_username_and_secret_prompts() -> Result<()> {
+    let repository = TestRepository::new()?;
+    let remote_commit = repository.commit_remote("remote.txt", "remote\n", "Remote commit")?;
+    let known_hosts = repository.root.path().join("known_hosts");
+    let ssh = local_ssh_transport(&repository, SshPrompt::Credentials)?;
+    let secret = "sentinel-secret";
+    let mut screen = ssh_screen(&repository, &ssh, &known_hosts, Some(secret))?;
+
+    screen
+        .press(Key::Char('1'))?
+        .type_text("fetch")?
+        .press(Key::Enter)?
+        .wait_for_text("Username for example.com")?
+        .type_text("alice")?
+        .press(Key::Enter)?
+        .wait_for_text("Secret for example.com")?;
+    for character in secret.chars() {
+        screen.press(Key::Char(character))?;
+    }
+    assert!(!screen.contents().contains(secret));
+    screen.press(Key::Enter)?;
+
+    wait_for("credentialed SSH helper fetch to update origin", || {
+        Ok(git_output(&repository.worktree, &["rev-parse", "origin/HEAD"])? == remote_commit)
+    })?;
+    screen.wait_for_text("Fetched 1 ref")?;
+    Ok(())
+}
+
+#[derive(Clone, Copy)]
+enum SshPrompt {
+    ConfirmHost,
+    Credentials,
+}
+
+fn local_ssh_transport(repository: &TestRepository, prompt: SshPrompt) -> Result<PathBuf> {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    let remote = repository.root.path().join("remote.git");
+    let remote_url = format!("fakehost:{}", remote.display());
+    git(
+        &repository.worktree,
+        &["remote", "set-url", "origin", &remote_url],
+    )?;
+    let dialogue = match prompt {
+        SshPrompt::ConfirmHost => concat!(
+            "prompt=\"The authenticity of host 'fakehost (127.0.0.1)' can't be established.\n",
+            "ED25519 key fingerprint is SHA256:abcdefghijklmnopqrstuvwxyz0123456789+/=.\n",
+            "This key is not known by any other names.\n",
+            "Are you sure you want to continue connecting (yes/no/[fingerprint])? \"\n",
+            "answer=$(SSH_ASKPASS_PROMPT=confirm \"$SSH_ASKPASS\" \"$prompt\") || exit 1\n",
+            "test \"$answer\" = yes || exit 1\n",
+            "printf 'fakehost\\n' > \"$DIFFO_TEST_KNOWN_HOSTS\"\n",
+        ),
+        SshPrompt::Credentials => concat!(
+            "username=$(\"$GIT_ASKPASS\" \"Username for 'https://person@example.com': \" ) || exit 1\n",
+            "test \"$username\" = alice || exit 1\n",
+            "secret=$(\"$GIT_ASKPASS\" \"Password for 'https://person:credential@example.com/repo': \" ) || exit 1\n",
+            "test \"$secret\" = \"$DIFFO_TEST_SECRET\" || exit 1\n",
+        ),
+    };
+    let script = format!(
+        "#!/bin/sh\nset -eu\n{dialogue}command=\nfor argument in \"$@\"; do command=$argument; done\nexec sh -c \"$command\"\n"
+    );
+    let path = repository.root.path().join("ssh-transport");
+    fs::write(&path, script)?;
+    let mut permissions = fs::metadata(&path)?.permissions();
+    permissions.set_mode(0o700);
+    fs::set_permissions(&path, permissions)?;
+    Ok(path)
+}
+
+fn ssh_screen(
+    repository: &TestRepository,
+    ssh: &Path,
+    known_hosts: &Path,
+    secret: Option<&str>,
+) -> Result<DiffoScreen> {
+    let mut environment = vec![
+        ("GIT_SSH", ssh.as_os_str()),
+        ("GIT_SSH_VARIANT", OsStr::new("ssh")),
+        ("DIFFO_TEST_KNOWN_HOSTS", known_hosts.as_os_str()),
+    ];
+    if let Some(secret) = secret {
+        environment.push(("DIFFO_TEST_SECRET", OsStr::new(secret)));
+    }
+    DiffoScreen::launch_with_env(
+        env!("CARGO_BIN_EXE_diffo"),
+        &repository.worktree,
+        &environment,
+    )
+}

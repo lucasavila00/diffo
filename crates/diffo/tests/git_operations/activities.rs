@@ -12,9 +12,8 @@ fn tab_cycles_activities_and_restores_diff_overlay_state() -> Result<()> {
         .type_text("pull")?
         .press(Key::Tab)?
         .wait_for_text("Explorer")?
-        .wait_for_text_gone("Command Palette")?;
-    let contents = screen.contents();
-    assert!(!contents.contains("Changes"), "{contents}");
+        .wait_for_text_gone("Command Palette")?
+        .wait_for_text_gone("Changes")?;
 
     screen
         .press(Key::Tab)?

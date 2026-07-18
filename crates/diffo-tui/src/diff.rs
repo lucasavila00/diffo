@@ -361,17 +361,20 @@ impl Renderer {
         let base = model.diff_scroll;
         let target = match message {
             diffo_app::Message::SetDiffScroll(target) => target,
-            diffo_app::Message::ScrollDiffUp => base.saturating_sub(4),
-            diffo_app::Message::ScrollDiffDown => base.saturating_add(4),
-            diffo_app::Message::ScrollDiffPageUp(lines) => base.saturating_sub(lines),
-            diffo_app::Message::ScrollDiffPageDown(lines) => base.saturating_add(lines),
+            diffo_app::Message::ScrollDiffUp => {
+                diffo_ui::scroll_offset(base, -diffo_text_view::LINE_SCROLL_ROWS, usize::MAX)
+            }
+            diffo_app::Message::ScrollDiffDown => {
+                diffo_ui::scroll_offset(base, diffo_text_view::LINE_SCROLL_ROWS, usize::MAX)
+            }
+            diffo_app::Message::ScrollDiffPageUp(lines) => {
+                diffo_ui::scroll_offset(base, -i64::try_from(lines).unwrap_or(i64::MAX), usize::MAX)
+            }
+            diffo_app::Message::ScrollDiffPageDown(lines) => {
+                diffo_ui::scroll_offset(base, i64::try_from(lines).unwrap_or(i64::MAX), usize::MAX)
+            }
             diffo_app::Message::ScrollDiffVerticalBy(lines) => {
-                let magnitude = usize::try_from(lines.unsigned_abs()).unwrap_or(usize::MAX);
-                if lines >= 0 {
-                    base.saturating_add(magnitude)
-                } else {
-                    base.saturating_sub(magnitude)
-                }
+                diffo_ui::scroll_offset(base, lines, usize::MAX)
             }
             _ => return message,
         };

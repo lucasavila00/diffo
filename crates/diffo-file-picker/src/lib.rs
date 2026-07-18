@@ -4,7 +4,10 @@ use std::hash::Hash;
 use crossterm::event::{
     Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind,
 };
-use diffo_ui::terminal_safe_text;
+use diffo_ui::{
+    maximum_scroll, scroll_offset, scrollbar_position, scrollbar_position_count,
+    terminal_safe_text, wheel_scroll_delta,
+};
 use ratatui::{
     Frame,
     layout::{Alignment, Rect},
@@ -18,7 +21,6 @@ use ratatui::{
 
 const MENU_WIDTH: u16 = 24;
 const MENU_HEIGHT: u16 = 4;
-const WHEEL_ROWS: i64 = 1;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Mode {
@@ -166,12 +168,7 @@ impl<K> FilePicker<K>
 where
     K: Clone + Eq + Hash,
 {
-    pub fn prepare(
-        &mut self,
-        area: Rect,
-        document: Document<K>,
-        requested_selection: Option<&K>,
-    ) -> Option<K> {
+    pub fn prepare(&mut self, area: Rect, document: Document<K>, requested_selection: Option<&K>) {
         let old_selected_index = self.selected_visible_index();
         self.area = area;
         self.expanded
@@ -184,10 +181,12 @@ where
             .selected
             .as_ref()
             .filter(|id| self.visible_contains(id));
-        self.selected = requested
-            .or(preserved)
-            .cloned()
-            .or_else(|| self.id_at_visible(old_selected_index.unwrap_or(0)).cloned());
+        self.selected = requested.or(preserved).cloned().or_else(|| {
+            let fallback = old_selected_index
+                .unwrap_or(0)
+                .min(self.visible.len().saturating_sub(1));
+            self.id_at_visible(fallback).cloned()
+        });
         if self
             .context_menu
             .as_ref()
@@ -197,7 +196,6 @@ where
         }
         self.recalculate_metrics();
         self.ensure_selection_visible();
-        self.selected.clone()
     }
 
     pub fn render(&self, frame: &mut Frame, focused: bool) {
@@ -261,9 +259,12 @@ where
                 .begin_symbol(None)
                 .end_symbol(None)
                 .thumb_style(Style::default().fg(Color::Cyan));
-            let mut state = ScrollbarState::new(self.metrics.maximum_offset.saturating_add(1))
-                .viewport_content_length(usize::from(self.metrics.list_area.height))
-                .position(self.metrics.offset);
+            let mut state = ScrollbarState::new(scrollbar_position_count(
+                self.visible.len(),
+                usize::from(self.metrics.list_area.height),
+            ))
+            .viewport_content_length(usize::from(self.metrics.list_area.height))
+            .position(self.metrics.offset);
             frame.render_stateful_widget(scrollbar, self.metrics.scrollbar_area, &mut state);
         }
     }
@@ -275,6 +276,13 @@ where
     pub fn handle_event(&mut self, event: &Event, overlay_area: Rect) -> Option<Outcome<K>> {
         if self.context_menu.is_some() {
             return self.handle_context_menu_event(event, overlay_area);
+        }
+        if let Event::Mouse(mouse) = event
+            && self.area.contains((mouse.column, mouse.row).into())
+            && let Some(amount) = wheel_scroll_delta(mouse.kind)
+        {
+            self.scroll_by(amount);
+            return Some(Outcome::Consumed);
         }
         match event {
             Event::Mouse(mouse) => match mouse.kind {
@@ -294,18 +302,6 @@ where
                 }
                 MouseEventKind::Drag(MouseButton::Left) if self.dragging_scrollbar => {
                     self.scrollbar_to(mouse.row);
-                    Some(Outcome::Consumed)
-                }
-                MouseEventKind::ScrollUp
-                    if self.area.contains((mouse.column, mouse.row).into()) =>
-                {
-                    self.scroll_by(-WHEEL_ROWS);
-                    Some(Outcome::Consumed)
-                }
-                MouseEventKind::ScrollDown
-                    if self.area.contains((mouse.column, mouse.row).into()) =>
-                {
-                    self.scroll_by(WHEEL_ROWS);
                     Some(Outcome::Consumed)
                 }
                 MouseEventKind::Down(MouseButton::Right) => {
@@ -435,7 +431,20 @@ where
         {
             return;
         }
-        self.selected = self.id_at_visible(0).cloned();
+        let ancestor = self.selected.as_ref().and_then(|selected| {
+            let selected_index = self
+                .document
+                .rows
+                .iter()
+                .position(|row| row.id == *selected)?;
+            let selected_depth = self.document.rows[selected_index].depth;
+            (0..selected_index).rev().find_map(|index| {
+                let row = &self.document.rows[index];
+                (row.depth < selected_depth && self.visible.contains(&index))
+                    .then(|| row.id.clone())
+            })
+        });
+        self.selected = ancestor.or_else(|| self.id_at_visible(0).cloned());
     }
 
     fn recalculate_metrics(&mut self) {
@@ -444,11 +453,7 @@ where
             horizontal: 1,
         });
         let viewport_rows = usize::from(content.height);
-        let maximum_offset = if viewport_rows == 0 {
-            0
-        } else {
-            self.visible.len().saturating_sub(viewport_rows)
-        };
+        let maximum_offset = maximum_scroll(self.visible.len(), viewport_rows);
         self.offset = self.offset.min(maximum_offset);
         let has_scrollbar = maximum_offset > 0 && content.width > 0;
         self.metrics = Metrics {
@@ -531,29 +536,16 @@ where
     }
 
     fn scroll_by(&mut self, amount: i64) {
-        let magnitude = usize::try_from(amount.unsigned_abs()).unwrap_or(usize::MAX);
-        self.offset = if amount < 0 {
-            self.offset.saturating_sub(magnitude)
-        } else {
-            self.offset
-                .saturating_add(magnitude)
-                .min(self.metrics.maximum_offset)
-        };
+        self.offset = scroll_offset(self.offset, amount, self.metrics.maximum_offset);
         self.metrics.offset = self.offset;
     }
 
     fn scrollbar_to(&mut self, row: u16) {
-        let height = self.metrics.scrollbar_area.height;
-        self.offset = if height <= 1 {
-            0
-        } else {
-            usize::from(
-                row.saturating_sub(self.metrics.scrollbar_area.y)
-                    .min(height - 1),
-            )
-            .saturating_mul(self.metrics.maximum_offset)
-                / usize::from(height - 1)
-        };
+        self.offset = scrollbar_position(
+            row.saturating_sub(self.metrics.scrollbar_area.y),
+            self.metrics.scrollbar_area.height,
+            self.metrics.maximum_offset,
+        );
         self.metrics.offset = self.offset;
     }
 
@@ -751,6 +743,11 @@ mod tests {
             Some(Outcome::Selected(1))
         );
         assert_eq!(picker.metrics().maximum_offset, 4);
+        assert_eq!(
+            picker.navigate(Navigation::Last),
+            Some(Outcome::Selected(7))
+        );
+        assert_eq!(picker.metrics().offset, 4);
 
         let bar = picker.metrics().scrollbar_area;
         assert_eq!(
@@ -765,15 +762,57 @@ mod tests {
             Some(Outcome::Consumed)
         );
         assert_eq!(picker.metrics().offset, 4);
+
+        picker.prepare(
+            Rect::new(2, 3, 20, 6),
+            Document::flat("Files", rows(2)),
+            None,
+        );
+        assert_eq!(picker.selected(), Some(&1));
+        assert_eq!(picker.metrics().offset, 0);
+    }
+
+    #[test]
+    fn flat_and_tree_wheel_use_the_same_scroll_core() {
+        let area = Rect::new(2, 3, 20, 6);
+        let mut flat = FilePicker::default();
+        flat.prepare(area, Document::flat("Files", rows(8)), None);
+        let mut tree = FilePicker::default();
+        tree.prepare(
+            area,
+            Document::tree(
+                "Explorer",
+                (0..8)
+                    .map(|id| Row::tree(id, Line::raw(format!("file-{id}")), 0, false))
+                    .collect(),
+            ),
+            None,
+        );
+        let down = mouse(MouseEventKind::ScrollDown, area.x + 1, area.y + 1);
+
+        for _ in 0..3 {
+            assert_eq!(
+                flat.handle_event(&down, Rect::new(0, 0, 80, 24)),
+                Some(Outcome::Consumed)
+            );
+            assert_eq!(
+                tree.handle_event(&down, Rect::new(0, 0, 80, 24)),
+                Some(Outcome::Consumed)
+            );
+        }
+
+        assert_eq!(flat.metrics().offset, 3);
+        assert_eq!(tree.metrics().offset, flat.metrics().offset);
     }
 
     #[test]
     fn tree_expansion_is_the_only_projection_difference() {
         let mut picker = FilePicker::default();
         let rows = vec![
-            Row::tree(0, Line::raw("src"), 0, true),
-            Row::tree(1, Line::raw("main.rs"), 1, false),
-            Row::tree(2, Line::raw("README"), 0, false),
+            Row::tree(0, Line::raw("README"), 0, false),
+            Row::tree(1, Line::raw("src"), 0, true),
+            Row::tree(2, Line::raw("nested"), 1, true),
+            Row::tree(3, Line::raw("main.rs"), 2, false),
         ];
         picker.prepare(
             Rect::new(0, 0, 20, 8),
@@ -781,12 +820,38 @@ mod tests {
             None,
         );
         assert_eq!(picker.visible.len(), 2);
+        picker.navigate(Navigation::Last);
         picker.navigate(Navigation::Activate);
         assert_eq!(picker.visible.len(), 3);
+        picker.expand_all();
+        picker.navigate(Navigation::Last);
+        assert_eq!(picker.selected(), Some(&3));
         picker.collapse_all();
         assert_eq!(picker.visible.len(), 2);
+        assert_eq!(picker.selected(), Some(&1));
         picker.expand_all();
-        assert_eq!(picker.visible.len(), 3);
+        assert_eq!(picker.visible.len(), 4);
+    }
+
+    #[test]
+    fn empty_narrow_picker_has_no_phantom_target() {
+        let mut picker = FilePicker::<usize>::default();
+        picker.prepare(
+            Rect::new(0, 0, 1, 1),
+            Document::flat("Files", Vec::new()),
+            None,
+        );
+
+        assert_eq!(picker.selected(), None);
+        assert!(picker.metrics().list_area.is_empty());
+        assert_eq!(picker.navigate(Navigation::Next), None);
+        assert_eq!(
+            picker.handle_event(
+                &mouse(MouseEventKind::Down(MouseButton::Right), 0, 0),
+                Rect::new(0, 0, 1, 1),
+            ),
+            None
+        );
     }
 
     #[test]
@@ -805,6 +870,16 @@ mod tests {
             Some(Outcome::Selected(0))
         );
         assert!(picker.has_open_menu());
+
+        let backend = TestBackend::new(30, 8);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal
+            .draw(|frame| {
+                picker.render(frame, true);
+                picker.render_menu(frame);
+            })
+            .unwrap();
+
         assert_eq!(
             picker.handle_event(
                 &mouse(MouseEventKind::Down(MouseButton::Left), 3, 2),
@@ -816,9 +891,20 @@ mod tests {
             })
         );
 
-        let backend = TestBackend::new(30, 8);
-        let mut terminal = Terminal::new(backend).unwrap();
-        terminal.draw(|frame| picker.render(frame, true)).unwrap();
+        picker.handle_event(
+            &mouse(MouseEventKind::Down(MouseButton::Right), 2, 1),
+            Rect::new(0, 0, 40, 10),
+        );
+        assert_eq!(
+            picker.handle_event(
+                &mouse(MouseEventKind::Down(MouseButton::Left), 3, 3),
+                Rect::new(0, 0, 40, 10),
+            ),
+            Some(Outcome::CopyPath {
+                id: 0,
+                absolute: false,
+            })
+        );
     }
 
     #[test]

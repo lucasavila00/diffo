@@ -159,7 +159,10 @@ impl Renderer {
                 viewport_rows: viewport.viewport_rows,
                 viewport_columns: viewport.viewport_columns,
                 maximum_vertical: viewport.maximum_vertical_scroll,
-                maximum_horizontal: viewport.columns.saturating_sub(viewport.viewport_columns),
+                maximum_horizontal: diffo_ui::maximum_scroll(
+                    viewport.columns,
+                    viewport.viewport_columns,
+                ),
             },
             Viewport {
                 vertical: model.diff_scroll,

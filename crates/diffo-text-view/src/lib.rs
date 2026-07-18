@@ -6,6 +6,8 @@ use ratatui::{
     widgets::{Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState},
 };
 
+use diffo_ui::{maximum_scroll, scroll_offset, scrollbar_position, scrollbar_position_count};
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum TextSurface {
     Diff,
@@ -35,7 +37,6 @@ pub struct TextSurfacePreparation {
 }
 
 pub const LINE_SCROLL_ROWS: i64 = 4;
-pub const WHEEL_SCROLL_ROWS: i64 = 1;
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct Viewport {
@@ -174,18 +175,19 @@ impl Viewport {
     pub fn apply(&mut self, command: ScrollCommand, metrics: ViewportMetrics) {
         match command {
             ScrollCommand::Lines(pages) => {
-                self.vertical = offset(self.vertical, pages, metrics.maximum_vertical);
+                self.vertical = scroll_offset(self.vertical, pages, metrics.maximum_vertical);
             }
             ScrollCommand::Page(pages) => {
                 let rows = i64::try_from(metrics.viewport_rows).unwrap_or(i64::MAX);
-                self.vertical = offset(
+                self.vertical = scroll_offset(
                     self.vertical,
                     pages.saturating_mul(rows),
                     metrics.maximum_vertical,
                 );
             }
             ScrollCommand::Columns(columns) => {
-                self.horizontal = offset(self.horizontal, columns, metrics.maximum_horizontal);
+                self.horizontal =
+                    scroll_offset(self.horizontal, columns, metrics.maximum_horizontal);
             }
             ScrollCommand::Vertical(position) => self.vertical = position,
             ScrollCommand::Horizontal(position) => self.horizontal = position,
@@ -213,7 +215,7 @@ pub fn viewport_metrics(
     let mut columns = 0;
     for _ in 0..2 {
         let viewport_rows = usize::from(area.height).saturating_sub(usize::from(horizontal));
-        let maximum_vertical = row_widths.len().saturating_sub(viewport_rows);
+        let maximum_vertical = maximum_scroll(row_widths.len(), viewport_rows);
         let first = requested_vertical.min(maximum_vertical);
         columns = row_widths
             .iter()
@@ -232,7 +234,7 @@ pub fn viewport_metrics(
         area.height.saturating_sub(horizontal_rows),
     );
     let viewport_rows = usize::from(content.height);
-    let maximum_vertical = row_widths.len().saturating_sub(viewport_rows);
+    let maximum_vertical = maximum_scroll(row_widths.len(), viewport_rows);
     let first = requested_vertical.min(maximum_vertical);
     columns = row_widths
         .iter()
@@ -253,29 +255,7 @@ pub fn viewport_metrics(
         viewport_rows,
         viewport_columns,
         maximum_vertical,
-        maximum_horizontal: columns.saturating_sub(viewport_columns),
-    }
-}
-
-#[must_use]
-pub fn scrollbar_position(coordinate: u16, track_length: u16, maximum: usize) -> usize {
-    if track_length <= 1 {
-        return 0;
-    }
-    usize::from(coordinate.min(track_length - 1)) * maximum / usize::from(track_length - 1)
-}
-
-#[must_use]
-pub const fn scrollbar_position_count(content: usize, viewport: usize) -> usize {
-    content.saturating_sub(viewport).saturating_add(1)
-}
-
-fn offset(position: usize, amount: i64, maximum: usize) -> usize {
-    let magnitude = usize::try_from(amount.unsigned_abs()).unwrap_or(usize::MAX);
-    if amount < 0 {
-        position.saturating_sub(magnitude)
-    } else {
-        position.saturating_add(magnitude).min(maximum)
+        maximum_horizontal: maximum_scroll(columns, viewport_columns),
     }
 }
 

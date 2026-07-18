@@ -94,7 +94,7 @@ pub(crate) fn tree_document(
     let mut document = PickerDocument::tree("Explorer", rows);
     document.border_style = border_style;
     if loading {
-        document.empty_message = "Loading files…".to_owned();
+        "Loading files…".clone_into(&mut document.empty_message);
     }
     document
 }

@@ -2,7 +2,7 @@ use super::{
     Event, Message, Model, MouseButton, MouseEventKind, Rect, commit_action_at_position,
     commit_editor_action_at_position,
 };
-use diffo_text_view::WHEEL_SCROLL_ROWS;
+use diffo_ui::wheel_scroll_delta;
 
 pub(super) fn map_commit_event(event: &Event, model: &Model, area: Rect) -> Option<Message> {
     match event {
@@ -18,12 +18,7 @@ pub(super) fn map_event(event: &Event, model: &Model, area: Rect) -> Option<Mess
         Event::Mouse(mouse) if mouse.kind == MouseEventKind::Down(MouseButton::Left) => {
             commit_action_at_position(model, area, mouse.column, mouse.row)
         }
-        Event::Mouse(mouse) if mouse.kind == MouseEventKind::ScrollUp => {
-            Some(Message::ScrollDiffVerticalBy(-WHEEL_SCROLL_ROWS))
-        }
-        Event::Mouse(mouse) if mouse.kind == MouseEventKind::ScrollDown => {
-            Some(Message::ScrollDiffVerticalBy(WHEEL_SCROLL_ROWS))
-        }
+        Event::Mouse(mouse) => wheel_scroll_delta(mouse.kind).map(Message::ScrollDiffVerticalBy),
         _ => None,
     }
 }

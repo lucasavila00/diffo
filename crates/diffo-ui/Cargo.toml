@@ -7,6 +7,7 @@ rust-version.workspace = true
 version.workspace = true
 
 [dependencies]
+crossterm.workspace = true
 diffo-core.workspace = true
 diffo-highlight.workspace = true
 ratatui.workspace = true

@@ -115,6 +115,9 @@ trait Tool {
     fn prepare_frame(&mut self, area: Rect, split: PaneSplit) -> FramePreparation;
     fn render(&mut self, frame: &mut Frame, area: Rect, split: PaneSplit);
     fn is_preparing(&self) -> bool;
+    fn captures_global_input(&self) -> bool {
+        false
+    }
     fn commands(&self) -> &'static [Command] {
         &[]
     }
@@ -257,11 +260,12 @@ impl Workbench {
                 Some(PaletteEvent::Consumed) | None => None,
             };
         }
-        let diff_overlay_captures_input = self.active == Activity::Diff
-            && (self.diff.model.commit_input_focused()
-                || self.diff.model.help_open
-                || self.diff.renderer.has_open_picker_menu());
-        if !diff_overlay_captures_input
+        let tool_captures_global_input = match self.active {
+            Activity::Diff => self.diff.captures_global_input(),
+            Activity::Explorer => self.explorer.captures_global_input(),
+            Activity::Search => self.search.captures_global_input(),
+        };
+        if !tool_captures_global_input
             && let Event::Key(key) = event
             && key.kind == KeyEventKind::Press
             && key.code == KeyCode::Char('e')
@@ -272,7 +276,7 @@ impl Workbench {
             return None;
         }
         let pane_area = tool_areas(content).content;
-        if !diff_overlay_captures_input && let Event::Mouse(mouse) = event {
+        if !tool_captures_global_input && let Event::Mouse(mouse) = event {
             match mouse.kind {
                 MouseEventKind::Down(MouseButton::Left)
                     if self
@@ -300,12 +304,13 @@ impl Workbench {
             && key.kind == KeyEventKind::Press
             && matches!(key.code, KeyCode::Char('1') | KeyCode::F(1))
             && key.modifiers == KeyModifiers::NONE
-            && !(self.active == Activity::Diff && self.diff.model.commit_input_focused())
+            && !tool_captures_global_input
         {
             self.open_active_palette();
             return None;
         }
         if self.active != Activity::Diff
+            && !tool_captures_global_input
             && let Event::Key(key) = event
             && key.kind == KeyEventKind::Press
             && (matches!(key.code, KeyCode::Char('q') | KeyCode::Esc)
@@ -520,6 +525,12 @@ impl Tool for DiffActivity {
     fn is_preparing(&self) -> bool {
         self.renderer.is_preparing()
     }
+
+    fn captures_global_input(&self) -> bool {
+        self.model.commit_input_focused()
+            || self.model.help_open
+            || self.renderer.has_open_picker_menu()
+    }
 }
 
 impl DiffActivity {
@@ -574,6 +585,10 @@ impl Tool for ExplorerActivity {
 
     fn is_preparing(&self) -> bool {
         ExplorerActivity::is_preparing(self)
+    }
+
+    fn captures_global_input(&self) -> bool {
+        self.has_open_picker_menu()
     }
 
     fn commands(&self) -> &'static [Command] {
@@ -718,6 +733,41 @@ mod tests {
         workbench.diff.model.help_open = true;
         let _ = workbench.handle_event(&key(KeyCode::Char('e')), area);
         assert_eq!(workbench.pane_split.percent(), 25);
+    }
+
+    #[test]
+    fn explorer_picker_menu_captures_global_shortcuts() {
+        let mut workbench = Workbench::new(RepositorySnapshot::default());
+        let area = Rect::new(0, 0, 100, 30);
+        workbench.active = Activity::Explorer;
+        workbench.explorer.accept(ExplorerOutcome::Paths {
+            id: 1,
+            result: Ok(vec![std::path::PathBuf::from("file.txt")]),
+        });
+        workbench.prepare_frame(area);
+        let pane_area = tool_areas(workbench_areas(area).content).content;
+        let tree = workbench.pane_split.areas(pane_area).leading;
+        let right_click = Event::Mouse(MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Right),
+            column: tree.x.saturating_add(2),
+            row: tree.y.saturating_add(1),
+            modifiers: KeyModifiers::NONE,
+        });
+
+        let _ = workbench.handle_event(&right_click, area);
+        assert!(workbench.explorer.has_open_picker_menu());
+
+        for code in [KeyCode::Char('e'), KeyCode::Char('1'), KeyCode::Char('q')] {
+            let _ = workbench.handle_event(&key(code), area);
+        }
+        assert_eq!(workbench.pane_split.percent(), 25);
+        assert!(!workbench.active_palette().is_open());
+        assert!(!workbench.should_quit());
+        assert!(workbench.explorer.has_open_picker_menu());
+
+        let _ = workbench.handle_event(&key(KeyCode::Esc), area);
+        assert!(!workbench.explorer.has_open_picker_menu());
+        assert!(!workbench.should_quit());
     }
 
     #[test]

@@ -10,10 +10,10 @@ use diffo_core::RepositorySnapshot;
 use diffo_file_picker::{FilePicker, Outcome as PickerOutcome};
 use diffo_text_view::{
     LINE_SCROLL_ROWS, ScrollCommand, ScrollbarAxis, TextRenderMode, TextSurface,
-    TextSurfacePreparation, Viewport, ViewportMetrics, WHEEL_SCROLL_ROWS, scrollbar_areas,
-    scrollbar_axis_at, scrollbar_command,
+    TextSurfacePreparation, Viewport, ViewportMetrics, scrollbar_areas, scrollbar_axis_at,
+    scrollbar_command,
 };
-use diffo_ui::PaneSplit;
+use diffo_ui::{PaneSplit, maximum_scroll, scroll_offset, wheel_scroll_delta};
 use ratatui::{Frame, layout::Rect};
 
 use model::ExplorerModel;
@@ -206,6 +206,11 @@ impl ExplorerActivity {
     }
 
     #[must_use]
+    pub fn has_open_picker_menu(&self) -> bool {
+        self.picker.has_open_menu()
+    }
+
+    #[must_use]
     pub fn commands(&self) -> &'static [Command] {
         &COMMANDS
     }
@@ -243,6 +248,9 @@ impl ExplorerActivity {
                 | PickerOutcome::RowAction(_)
                 | PickerOutcome::PanelAction => Some(ExplorerEvent::Consumed),
             };
+        }
+        if self.picker.has_open_menu() {
+            return Some(ExplorerEvent::Consumed);
         }
         if self.handle_viewer_mouse(event, area, split) {
             return Some(ExplorerEvent::Consumed);
@@ -303,18 +311,11 @@ impl ExplorerActivity {
                     self.apply_viewer_command(command, metrics);
                     return true;
                 }
-                if viewer_area.contains((mouse.column, mouse.row).into()) {
-                    match mouse.kind {
-                        MouseEventKind::ScrollUp => {
-                            self.scroll_viewer(-WHEEL_SCROLL_ROWS);
-                            return true;
-                        }
-                        MouseEventKind::ScrollDown => {
-                            self.scroll_viewer(WHEEL_SCROLL_ROWS);
-                            return true;
-                        }
-                        _ => {}
-                    }
+                if viewer_area.contains((mouse.column, mouse.row).into())
+                    && let Some(amount) = wheel_scroll_delta(mouse.kind)
+                {
+                    self.scroll_viewer(amount);
+                    return true;
                 }
             }
         }
@@ -343,13 +344,11 @@ impl ExplorerActivity {
             return;
         };
         let base = self.model.viewer_scroll;
-        let magnitude = usize::try_from(amount.unsigned_abs()).unwrap_or(usize::MAX);
-        let target = if amount < 0 {
-            base.saturating_sub(magnitude)
-        } else {
-            base.saturating_add(magnitude)
-                .min(viewer.lines.len().saturating_sub(self.viewport_rows))
-        };
+        let target = scroll_offset(
+            base,
+            amount,
+            maximum_scroll(viewer.lines.len(), self.viewport_rows),
+        );
         let visible_end = target.saturating_add(self.viewport_rows);
         let covered = !viewer.syntax_eligible
             || viewer.coverage.iter().any(|range| {
@@ -604,6 +603,45 @@ mod tests {
                 .is_some()
         );
         assert_eq!(explorer.picker.visible_rows(), 1);
+    }
+
+    #[test]
+    fn explorer_uses_the_shared_path_menu() {
+        let mut explorer = ExplorerActivity::new(RepositorySnapshot::default());
+        explorer.accept(ExplorerOutcome::Paths {
+            id: 1,
+            result: Ok(vec![PathBuf::from("file.txt")]),
+        });
+        let area = Rect::new(0, 0, 100, 30);
+        let split = PaneSplit::default();
+        explorer.prepare_frame(area, split);
+        let tree = explorer_areas(area, split).tree;
+        let right_click = Event::Mouse(MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Right),
+            column: tree.x + 2,
+            row: tree.y + 1,
+            modifiers: KeyModifiers::NONE,
+        });
+
+        assert_eq!(
+            explorer.handle_event(&right_click, area, split),
+            Some(ExplorerEvent::Consumed)
+        );
+        assert!(explorer.picker.has_open_menu());
+
+        let copy_absolute = Event::Mouse(MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: tree.x + 3,
+            row: tree.y + 2,
+            modifiers: KeyModifiers::NONE,
+        });
+        assert_eq!(
+            explorer.handle_event(&copy_absolute, area, split),
+            Some(ExplorerEvent::CopyPath {
+                path: PathBuf::from("file.txt"),
+                absolute: true,
+            })
+        );
     }
 
     #[test]

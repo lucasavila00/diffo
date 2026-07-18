@@ -1,3 +1,4 @@
+use crossterm::event::MouseEventKind;
 use diffo_core::ChangeKind;
 use diffo_highlight::HighlightedLine;
 use ratatui::{
@@ -8,6 +9,48 @@ use ratatui::{
 
 const DEFAULT_PANE_PERCENT: u16 = 25;
 const MAX_PANE_PERCENT: u16 = 80;
+const WHEEL_SCROLL_ROWS: i64 = 1;
+
+#[must_use]
+pub const fn wheel_scroll_delta(kind: MouseEventKind) -> Option<i64> {
+    match kind {
+        MouseEventKind::ScrollUp => Some(-WHEEL_SCROLL_ROWS),
+        MouseEventKind::ScrollDown => Some(WHEEL_SCROLL_ROWS),
+        _ => None,
+    }
+}
+
+#[must_use]
+pub fn scroll_offset(position: usize, amount: i64, maximum: usize) -> usize {
+    let magnitude = usize::try_from(amount.unsigned_abs()).unwrap_or(usize::MAX);
+    if amount < 0 {
+        position.saturating_sub(magnitude)
+    } else {
+        position.saturating_add(magnitude).min(maximum)
+    }
+}
+
+#[must_use]
+pub const fn maximum_scroll(content: usize, viewport: usize) -> usize {
+    if viewport == 0 {
+        0
+    } else {
+        content.saturating_sub(viewport)
+    }
+}
+
+#[must_use]
+pub fn scrollbar_position(coordinate: u16, track_length: u16, maximum: usize) -> usize {
+    if track_length <= 1 {
+        return 0;
+    }
+    usize::from(coordinate.min(track_length - 1)) * maximum / usize::from(track_length - 1)
+}
+
+#[must_use]
+pub const fn scrollbar_position_count(content: usize, viewport: usize) -> usize {
+    maximum_scroll(content, viewport).saturating_add(1)
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct PaneAreas {
@@ -195,6 +238,7 @@ pub fn terminal_safe_text(text: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crossterm::event::MouseEventKind;
     use diffo_highlight::{HighlightedLine, Rgb, StyledSpan};
 
     #[test]
@@ -229,6 +273,19 @@ mod tests {
         split.drag_to(area, u16::MAX);
         assert_eq!(split.percent(), 25);
         assert!(!split.contains_seam(area, 7, 9));
+    }
+
+    #[test]
+    fn shared_scroll_core_has_fixed_wheel_distance_and_bounds() {
+        assert_eq!(wheel_scroll_delta(MouseEventKind::ScrollUp), Some(-1));
+        assert_eq!(wheel_scroll_delta(MouseEventKind::ScrollDown), Some(1));
+        assert_eq!(wheel_scroll_delta(MouseEventKind::Moved), None);
+        assert_eq!(scroll_offset(3, -10, 20), 0);
+        assert_eq!(scroll_offset(3, 10, 8), 8);
+        assert_eq!(maximum_scroll(120, 25), 95);
+        assert_eq!(maximum_scroll(120, 0), 0);
+        assert_eq!(scrollbar_position(9, 10, 37), 37);
+        assert_eq!(scrollbar_position_count(120, 25), 96);
     }
 
     #[test]

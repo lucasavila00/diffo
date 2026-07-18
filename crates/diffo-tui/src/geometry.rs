@@ -2,9 +2,9 @@ use super::{
     Constraint, DiffViewMode, DiffViewportMetrics, Direction, Layout, Model, Rect, Renderer,
     ScrollbarAxis,
 };
-pub(super) use diffo_text_view::scrollbar_position;
 #[cfg(test)]
-pub(super) use diffo_text_view::scrollbar_position_count;
+pub(super) use diffo_ui::scrollbar_position_count;
+pub(super) use diffo_ui::{maximum_scroll, scrollbar_position};
 
 pub(super) fn overview_position(content_row: usize, content_rows: usize, track_height: u16) -> u16 {
     if track_height <= 1 || content_rows <= 1 {
@@ -123,9 +123,7 @@ impl Renderer {
                 diffo_app::Message::SetDiffHorizontalScroll(scrollbar_position(
                     column.saturating_sub(self.scrollbars.horizontal_area.x),
                     self.scrollbars.horizontal_area.width,
-                    self.scrollbars
-                        .columns
-                        .saturating_sub(self.scrollbars.viewport_columns),
+                    maximum_scroll(self.scrollbars.columns, self.scrollbars.viewport_columns),
                 ))
             }
         }
@@ -168,7 +166,7 @@ impl Renderer {
         for _ in 0..8 {
             let reserved_rows = control_rows + usize::from(show_horizontal);
             let viewport_rows = usize::from(inner.height).saturating_sub(reserved_rows);
-            let maximum_vertical_scroll = rows.saturating_sub(viewport_rows);
+            let maximum_vertical_scroll = maximum_scroll(rows, viewport_rows);
             let first_row = requested_scroll.min(maximum_vertical_scroll);
             let new_previous = changes.iter().rev().copied().find(|row| *row < first_row);
             let new_next = changes
@@ -214,7 +212,7 @@ impl Renderer {
             Rect::default()
         };
         let viewport_rows = usize::from(content_area.height);
-        let maximum_vertical_scroll = rows.saturating_sub(viewport_rows);
+        let maximum_vertical_scroll = maximum_scroll(rows, viewport_rows);
         let first_row = requested_scroll.min(maximum_vertical_scroll);
         let columns = self
             .displayed_columns(mode, viewport_columns, first_row, viewport_rows)

@@ -4,7 +4,9 @@ use std::thread::sleep;
 use std::time::Duration;
 use std::time::Instant;
 
-use crossterm::event::{Event, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
+use crossterm::event::{
+    Event, KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
+};
 use diffo_app::{ChangeArea, DiffViewMode, Message, Model};
 use diffo_core::{
     ChangeKind, FileDiff, FileState, HeadState, OperationResult, RepositoryAction,
@@ -365,6 +367,76 @@ fn file_list_scrollbars_hide_without_overflow_and_offsets_clamp() {
     assert_eq!(renderer.unstaged_picker.metrics().maximum_offset, 0);
     assert!(renderer.staged_picker.metrics().scrollbar_area.is_empty());
     assert!(renderer.unstaged_picker.metrics().scrollbar_area.is_empty());
+}
+
+#[test]
+fn diff_file_picker_uses_the_shared_path_menu() {
+    let model = file_list_model(1);
+    let area = Rect::new(0, 0, 100, 30);
+    let mut renderer = Renderer::new();
+    renderer.prepare_frame(&model, area);
+    let list = renderer.unstaged_picker.metrics().list_area;
+    let right_click = mouse_at(MouseEventKind::Down(MouseButton::Right), list);
+
+    assert_eq!(
+        renderer.map_event(&right_click, &model, area),
+        Some(RendererEvent::Message(Message::SelectFile(
+            diffo_app::FileKey {
+                path: PathBuf::from("generated/file-000.rs"),
+                area: ChangeArea::Unstaged,
+            },
+        )))
+    );
+    assert!(renderer.has_open_picker_menu());
+
+    let copy_absolute = Event::Mouse(MouseEvent {
+        kind: MouseEventKind::Down(MouseButton::Left),
+        column: list.x.saturating_add(1),
+        row: list.y.saturating_add(1),
+        modifiers: KeyModifiers::NONE,
+    });
+    assert_eq!(
+        renderer.map_event(&copy_absolute, &model, area),
+        Some(RendererEvent::CopyPath {
+            path: PathBuf::from("generated/file-000.rs"),
+            absolute: true,
+        })
+    );
+}
+
+#[test]
+fn diff_navigation_hands_off_between_flat_picker_instances() {
+    let mut model = file_list_model(2);
+    let area = Rect::new(0, 0, 100, 30);
+    let mut renderer = Renderer::new();
+    renderer.prepare_frame(&model, area);
+    let previous = Event::Key(KeyEvent::new(KeyCode::Char('w'), KeyModifiers::NONE));
+
+    assert_eq!(
+        renderer.map_event(&previous, &model, area),
+        Some(RendererEvent::Message(Message::SelectFile(
+            diffo_app::FileKey {
+                path: PathBuf::from("generated/file-001.rs"),
+                area: ChangeArea::Staged,
+            },
+        )))
+    );
+
+    model.select_file(&diffo_app::FileKey {
+        path: PathBuf::from("generated/file-001.rs"),
+        area: ChangeArea::Staged,
+    });
+    renderer.prepare_frame(&model, area);
+    let next = Event::Key(KeyEvent::new(KeyCode::Char('k'), KeyModifiers::NONE));
+    assert_eq!(
+        renderer.map_event(&next, &model, area),
+        Some(RendererEvent::Message(Message::SelectFile(
+            diffo_app::FileKey {
+                path: PathBuf::from("generated/file-000.rs"),
+                area: ChangeArea::Unstaged,
+            },
+        )))
+    );
 }
 
 #[test]
@@ -1007,18 +1079,7 @@ fn hunk_markers_have_a_separate_clickable_rail_beside_the_scrollbar() {
 #[test]
 fn large_hunk_buttons_are_fixed_and_do_not_wrap() {
     let mut model = model();
-    let mut patch = String::from("@@ -1,100 +1,100 @@\n");
-    for line in 1..=100 {
-        if matches!(line, 2 | 50 | 90) {
-            writeln!(patch, "-old {line}").unwrap();
-            writeln!(patch, "+new {line}").unwrap();
-        } else if line == 10 {
-            writeln!(patch, " {}", "wide-content-".repeat(20)).unwrap();
-        } else {
-            writeln!(patch, " line {line}").unwrap();
-        }
-    }
-    model.snapshot.files[0].unstaged.as_mut().unwrap().text = patch;
+    model.snapshot.files[0].unstaged.as_mut().unwrap().text = large_hunk_patch();
     let area = Rect::new(0, 0, 100, 30);
     let mut renderer = Renderer::new();
     let backend = TestBackend::new(100, 30);
@@ -1113,6 +1174,21 @@ fn large_hunk_buttons_are_fixed_and_do_not_wrap() {
         renderer.hunk_button_target_at(next_area.x, next_area.y),
         None
     );
+}
+
+fn large_hunk_patch() -> String {
+    let mut patch = String::from("@@ -1,100 +1,100 @@\n");
+    for line in 1..=100 {
+        if matches!(line, 2 | 50 | 90) {
+            writeln!(patch, "-old {line}").unwrap();
+            writeln!(patch, "+new {line}").unwrap();
+        } else if line == 10 {
+            writeln!(patch, " {}", "wide-content-".repeat(20)).unwrap();
+        } else {
+            writeln!(patch, " line {line}").unwrap();
+        }
+    }
+    patch
 }
 
 #[test]

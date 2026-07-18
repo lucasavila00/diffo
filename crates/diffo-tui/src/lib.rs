@@ -18,7 +18,7 @@ use diffo_diff::{
 };
 use diffo_file_picker::{Navigation as PickerNavigation, Outcome as PickerOutcome};
 use diffo_highlight::{HighlightedDiff, HighlightedLine, Rgb, StyledSpan, SyntaxHighlighter};
-use diffo_ui::tool_areas;
+use diffo_ui::{maximum_scroll, tool_areas};
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
@@ -141,32 +141,7 @@ impl Renderer {
 
     pub fn prepare_frame(&mut self, model: &Model, area: Rect) -> FramePreparation {
         let panes = horizontal_panes(main_area(area), model.file_pane_percent);
-        let file_panels = file_panel_areas(panes[0]);
-        let file_groups = file_group_areas(file_panels[1]);
-        let border_style = resize_border_style(model);
-        let selected = model.selected.as_ref();
-        self.staged_picker.prepare(
-            file_groups[0],
-            picker_document(
-                "Staged",
-                "[-] Unstage All",
-                staged_files(&model.snapshot),
-                ChangeArea::Staged,
-                border_style,
-            ),
-            selected.filter(|selected| selected.area == ChangeArea::Staged),
-        );
-        self.unstaged_picker.prepare(
-            file_groups[1],
-            picker_document(
-                "Changes",
-                "[+] Stage All",
-                unstaged_files(&model.snapshot),
-                ChangeArea::Unstaged,
-                border_style,
-            ),
-            selected.filter(|selected| selected.area == ChangeArea::Unstaged),
-        );
+        self.prepare_file_pickers(model, panes[0]);
         let diff_area = panes[1];
         let requested = model.selected.as_ref().and_then(|selected| {
             let file = model
@@ -250,7 +225,7 @@ impl Renderer {
             || self.syntax_ready_for_viewport(displayed_mode, rendered_vertical_scroll);
         FramePreparation {
             maximum_vertical_scroll: viewport.maximum_vertical_scroll,
-            maximum_horizontal_scroll: viewport.columns.saturating_sub(viewport.viewport_columns),
+            maximum_horizontal_scroll: maximum_scroll(viewport.columns, viewport.viewport_columns),
             content_revision: self.content_revision,
             preparing: self.requested.as_ref() != self.displayed_key(),
             syntax_ready,
@@ -264,6 +239,35 @@ impl Renderer {
                 requested.as_ref(),
             )),
         }
+    }
+
+    fn prepare_file_pickers(&mut self, model: &Model, area: Rect) {
+        let file_panels = file_panel_areas(area);
+        let file_groups = file_group_areas(file_panels[1]);
+        let border_style = resize_border_style(model);
+        let selected = model.selected.as_ref();
+        self.staged_picker.prepare(
+            file_groups[0],
+            picker_document(
+                "Staged",
+                "[-] Unstage All",
+                staged_files(&model.snapshot),
+                ChangeArea::Staged,
+                border_style,
+            ),
+            selected.filter(|selected| selected.area == ChangeArea::Staged),
+        );
+        self.unstaged_picker.prepare(
+            file_groups[1],
+            picker_document(
+                "Changes",
+                "[+] Stage All",
+                unstaged_files(&model.snapshot),
+                ChangeArea::Unstaged,
+                border_style,
+            ),
+            selected.filter(|selected| selected.area == ChangeArea::Unstaged),
+        );
     }
 
     fn text_surface_preparation(
@@ -316,19 +320,8 @@ impl Renderer {
     }
 
     pub fn map_event(&mut self, event: &Event, model: &Model, area: Rect) -> Option<RendererEvent> {
-        if self.staged_picker.has_open_menu() {
-            return self
-                .staged_picker
-                .handle_event(event, area)
-                .map(|outcome| picker_event(outcome, ChangeArea::Staged))
-                .or(Some(RendererEvent::Consumed));
-        }
-        if self.unstaged_picker.has_open_menu() {
-            return self
-                .unstaged_picker
-                .handle_event(event, area)
-                .map(|outcome| picker_event(outcome, ChangeArea::Unstaged))
-                .or(Some(RendererEvent::Consumed));
+        if let Some(outcome) = self.map_open_picker_menu(event, area) {
+            return Some(outcome);
         }
         if !model.commit_input_focused()
             && !model.help_open
@@ -341,25 +334,8 @@ impl Renderer {
         if model.help_open {
             return input::map_event(event, model, area).map(RendererEvent::Message);
         }
-        if !model.commit_input_focused()
-            && let Event::Key(key) = event
-            && let Some(command) = diffo_file_picker::navigation(key)
-        {
-            return Some(RendererEvent::Message(match command {
-                PickerNavigation::Previous => diffo_app::Message::SelectPreviousFile,
-                PickerNavigation::Next => diffo_app::Message::SelectNextFile,
-                PickerNavigation::First => diffo_app::Message::SelectFirstFile,
-                PickerNavigation::Last => diffo_app::Message::SelectLastFile,
-                PickerNavigation::Activate => return Some(RendererEvent::Consumed),
-            }));
-        }
-        if matches!(event, Event::Mouse(_)) {
-            if let Some(outcome) = self.staged_picker.handle_event(event, area) {
-                return Some(picker_event(outcome, ChangeArea::Staged));
-            }
-            if let Some(outcome) = self.unstaged_picker.handle_event(event, area) {
-                return Some(picker_event(outcome, ChangeArea::Unstaged));
-            }
+        if let Some(outcome) = self.map_picker_input(event, model, area) {
+            return Some(outcome);
         }
         if let Event::Mouse(mouse) = event {
             if mouse.kind == MouseEventKind::Down(MouseButton::Left)
@@ -428,6 +404,111 @@ impl Renderer {
         Some(RendererEvent::Message(Self::vertical_message(
             message, model,
         )))
+    }
+
+    fn map_open_picker_menu(&mut self, event: &Event, area: Rect) -> Option<RendererEvent> {
+        if self.staged_picker.has_open_menu() {
+            return self
+                .staged_picker
+                .handle_event(event, area)
+                .map(|outcome| picker_event(outcome, ChangeArea::Staged))
+                .or(Some(RendererEvent::Consumed));
+        }
+        self.unstaged_picker.has_open_menu().then(|| {
+            self.unstaged_picker
+                .handle_event(event, area)
+                .map_or(RendererEvent::Consumed, |outcome| {
+                    picker_event(outcome, ChangeArea::Unstaged)
+                })
+        })
+    }
+
+    fn map_picker_input(
+        &mut self,
+        event: &Event,
+        model: &Model,
+        area: Rect,
+    ) -> Option<RendererEvent> {
+        if !model.commit_input_focused()
+            && let Event::Key(key) = event
+            && let Some(command) = diffo_file_picker::navigation(key)
+        {
+            return self
+                .navigate_file_pickers(command, model)
+                .or(Some(RendererEvent::Consumed));
+        }
+        let Event::Mouse(_) = event else {
+            return None;
+        };
+        self.staged_picker
+            .handle_event(event, area)
+            .map(|outcome| picker_event(outcome, ChangeArea::Staged))
+            .or_else(|| {
+                self.unstaged_picker
+                    .handle_event(event, area)
+                    .map(|outcome| picker_event(outcome, ChangeArea::Unstaged))
+            })
+    }
+
+    fn navigate_file_pickers(
+        &mut self,
+        command: PickerNavigation,
+        model: &Model,
+    ) -> Option<RendererEvent> {
+        let current_area = model.selected.as_ref().map(|selected| selected.area);
+        let (outcome, area) = match command {
+            PickerNavigation::First => self
+                .staged_picker
+                .navigate(command)
+                .map(|outcome| (outcome, ChangeArea::Staged))
+                .or_else(|| {
+                    self.unstaged_picker
+                        .navigate(command)
+                        .map(|outcome| (outcome, ChangeArea::Unstaged))
+                })?,
+            PickerNavigation::Last => self
+                .unstaged_picker
+                .navigate(command)
+                .map(|outcome| (outcome, ChangeArea::Unstaged))
+                .or_else(|| {
+                    self.staged_picker
+                        .navigate(command)
+                        .map(|outcome| (outcome, ChangeArea::Staged))
+                })?,
+            PickerNavigation::Previous if current_area == Some(ChangeArea::Unstaged) => {
+                let before = self.unstaged_picker.selected().cloned();
+                let outcome = self.unstaged_picker.navigate(command);
+                if outcome.is_none() || self.unstaged_picker.selected() == before.as_ref() {
+                    self.staged_picker
+                        .navigate(PickerNavigation::Last)
+                        .map(|outcome| (outcome, ChangeArea::Staged))
+                        .or_else(|| outcome.map(|outcome| (outcome, ChangeArea::Unstaged)))?
+                } else {
+                    (outcome?, ChangeArea::Unstaged)
+                }
+            }
+            PickerNavigation::Next if current_area == Some(ChangeArea::Staged) => {
+                let before = self.staged_picker.selected().cloned();
+                let outcome = self.staged_picker.navigate(command);
+                if outcome.is_none() || self.staged_picker.selected() == before.as_ref() {
+                    self.unstaged_picker
+                        .navigate(PickerNavigation::First)
+                        .map(|outcome| (outcome, ChangeArea::Unstaged))
+                        .or_else(|| outcome.map(|outcome| (outcome, ChangeArea::Staged)))?
+                } else {
+                    (outcome?, ChangeArea::Staged)
+                }
+            }
+            _ => {
+                let area = current_area?;
+                let outcome = match area {
+                    ChangeArea::Staged => self.staged_picker.navigate(command),
+                    ChangeArea::Unstaged => self.unstaged_picker.navigate(command),
+                }?;
+                (outcome, area)
+            }
+        };
+        Some(picker_event(outcome, area))
     }
 }
 

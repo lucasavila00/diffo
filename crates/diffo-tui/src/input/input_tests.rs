@@ -30,11 +30,6 @@ fn maps_fixed_key_bindings() {
         (KeyCode::Char('2'), Message::ToggleHelp),
         (KeyCode::F(2), Message::ToggleHelp),
         (KeyCode::Esc, Message::Quit),
-        (KeyCode::Char('j'), Message::SelectPreviousFile),
-        (KeyCode::Char('w'), Message::SelectPreviousFile),
-        (KeyCode::Char('k'), Message::SelectNextFile),
-        (KeyCode::Char('l'), Message::SelectNextFile),
-        (KeyCode::Char('s'), Message::SelectNextFile),
         (KeyCode::Up, Message::ScrollDiffVerticalBy(-4)),
         (KeyCode::Down, Message::ScrollDiffVerticalBy(4)),
         (KeyCode::PageUp, Message::ScrollDiffPageUp(1)),
@@ -45,8 +40,6 @@ fn maps_fixed_key_bindings() {
         (KeyCode::Char('n'), Message::JumpToNextChange),
         (KeyCode::Char('p'), Message::JumpToPreviousChange),
         (KeyCode::Char('e'), Message::ToggleFilePane),
-        (KeyCode::Home, Message::SelectFirstFile),
-        (KeyCode::End, Message::SelectLastFile),
         (KeyCode::Char(' '), Message::ToggleStageSelected),
         (KeyCode::Char('a'), Message::ToggleStageAll),
     ];
@@ -89,6 +82,22 @@ fn bindings_are_unique_and_generate_help() {
     assert!(rows.contains(&("n".to_owned(), "Next change")));
     assert!(rows.contains(&("p".to_owned(), "Previous change")));
     assert!(rows.contains(&("q / Esc / Ctrl+c".to_owned(), "Quit")));
+}
+
+#[test]
+fn private_diff_bindings_do_not_own_picker_navigation() {
+    for code in [
+        KeyCode::Char('j'),
+        KeyCode::Char('w'),
+        KeyCode::Char('k'),
+        KeyCode::Char('l'),
+        KeyCode::Char('s'),
+        KeyCode::Char('g'),
+        KeyCode::Home,
+        KeyCode::End,
+    ] {
+        assert_eq!(map_key(code, KeyModifiers::NONE), None);
+    }
 }
 
 #[test]
@@ -173,128 +182,6 @@ fn ignores_non_press_unknown_and_non_file_clicks() {
             Rect::new(0, 0, 100, 30),
         ),
         None
-    );
-}
-
-#[test]
-fn maps_file_pane_dragging() {
-    let mut model = model();
-    let area = Rect::new(0, 0, 100, 30);
-    let down = Event::Mouse(MouseEvent {
-        kind: MouseEventKind::Down(MouseButton::Left),
-        column: 25,
-        row: 5,
-        modifiers: KeyModifiers::NONE,
-    });
-    assert_eq!(
-        map_event(&down, &model, area),
-        Some(Message::BeginFilePaneResize)
-    );
-
-    model.resizing_file_pane = true;
-    let drag = Event::Mouse(MouseEvent {
-        kind: MouseEventKind::Drag(MouseButton::Left),
-        column: 60,
-        row: 5,
-        modifiers: KeyModifiers::NONE,
-    });
-    assert_eq!(
-        map_event(&drag, &model, area),
-        Some(Message::ResizeFilePane(60))
-    );
-    let up = Event::Mouse(MouseEvent {
-        kind: MouseEventKind::Up(MouseButton::Left),
-        column: 60,
-        row: 5,
-        modifiers: KeyModifiers::NONE,
-    });
-    assert_eq!(
-        map_event(&up, &model, area),
-        Some(Message::EndFilePaneResize)
-    );
-}
-
-#[test]
-fn maps_file_action_buttons() {
-    let mut model = model();
-    model.snapshot.files[0].kind = ChangeKind::Modified;
-    model.snapshot.files[0].staged = Some(FileDiff {
-        text: String::new(),
-    });
-    model.snapshot.files[0].unstaged = Some(FileDiff {
-        text: String::new(),
-    });
-    let area = Rect::new(0, 0, 100, 30);
-    let click = |row| {
-        Event::Mouse(MouseEvent {
-            kind: MouseEventKind::Down(MouseButton::Left),
-            column: 22,
-            row,
-            modifiers: KeyModifiers::NONE,
-        })
-    };
-
-    assert_eq!(
-        map_event(&click(7), &model, area),
-        Some(Message::UnstageFile(PathBuf::from("file.txt")))
-    );
-    assert_eq!(
-        map_event(&click(19), &model, area),
-        Some(Message::StageFile(PathBuf::from("file.txt")))
-    );
-    assert_eq!(
-        map_event(
-            &Event::Mouse(MouseEvent {
-                kind: MouseEventKind::Down(MouseButton::Left),
-                column: 11,
-                row: 18,
-                modifiers: KeyModifiers::NONE,
-            }),
-            &model,
-            area,
-        ),
-        Some(Message::StageAll)
-    );
-    assert_eq!(
-        map_event(
-            &Event::Mouse(MouseEvent {
-                kind: MouseEventKind::Down(MouseButton::Left),
-                column: 13,
-                row: 18,
-                modifiers: KeyModifiers::NONE,
-            }),
-            &model,
-            area,
-        ),
-        None,
-        "the Stage All label must not be clickable"
-    );
-    assert_eq!(
-        map_event(
-            &Event::Mouse(MouseEvent {
-                kind: MouseEventKind::Down(MouseButton::Left),
-                column: 10,
-                row: 6,
-                modifiers: KeyModifiers::NONE,
-            }),
-            &model,
-            area,
-        ),
-        Some(Message::UnstageAll)
-    );
-    assert_eq!(
-        map_event(
-            &Event::Mouse(MouseEvent {
-                kind: MouseEventKind::Down(MouseButton::Left),
-                column: 13,
-                row: 6,
-                modifiers: KeyModifiers::NONE,
-            }),
-            &model,
-            area,
-        ),
-        None,
-        "the Unstage All label must not be clickable"
     );
 }
 

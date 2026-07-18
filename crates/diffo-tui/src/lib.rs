@@ -3,7 +3,7 @@ use std::{
     env,
     sync::{
         Arc,
-        mpsc::{TrySendError, sync_channel},
+        mpsc::{channel, sync_channel},
     },
     thread,
     time::Duration,
@@ -154,6 +154,7 @@ impl Renderer {
                 .map(|cache| ScrollAnchor::capture(cache, cache.key.mode, model.diff_scroll))
         });
         self.diff_viewport_rows = usize::from(diff_area.height.saturating_sub(2));
+        let prefetch_viewports = self.update_prefetch(model.diff_scroll);
         let target_scroll = self
             .navigation_preparation_target(requested.as_ref(), model.diff_view_mode)
             .or_else(|| {
@@ -164,6 +165,7 @@ impl Renderer {
             self.diff_viewport_rows,
             model.diff_view_mode,
             target_scroll,
+            prefetch_viewports,
         );
         let document_committed = commit
             .as_ref()
@@ -245,6 +247,16 @@ impl Renderer {
             coalesced_request: false,
             stale_discarded: false,
         }
+    }
+
+    fn update_prefetch(&mut self, current_scroll: usize) -> usize {
+        let viewports = highlight_prefetch_viewports(
+            self.previous_diff_scroll,
+            current_scroll,
+            self.diff_viewport_rows,
+        );
+        self.previous_diff_scroll = current_scroll;
+        viewports
     }
 
     #[must_use]
@@ -344,6 +356,17 @@ impl Renderer {
             self.requested_navigation_target = None;
         }
         Some(Self::vertical_message(message, model))
+    }
+}
+
+fn highlight_prefetch_viewports(previous: usize, current: usize, viewport_rows: usize) -> usize {
+    if current < previous {
+        return 4;
+    }
+    match current - previous {
+        distance if distance >= viewport_rows => 12,
+        1.. => 6,
+        0 => HIGHLIGHT_PREFETCH_VIEWPORTS,
     }
 }
 

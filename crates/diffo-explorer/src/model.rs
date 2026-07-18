@@ -22,7 +22,7 @@ pub struct Viewer {
     pub(crate) lines: Vec<String>,
     pub(crate) markers: HashMap<usize, GutterMarker>,
     pub(crate) highlighted: HashMap<u32, HighlightedLine>,
-    pub(crate) coverage: Option<LineRange>,
+    pub(crate) coverage: Vec<LineRange>,
     pub(crate) syntax_eligible: bool,
     pub(crate) message: Option<String>,
 }

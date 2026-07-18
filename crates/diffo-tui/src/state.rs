@@ -1,6 +1,6 @@
 use std::sync::{
     Arc,
-    mpsc::{Receiver, SyncSender},
+    mpsc::{Receiver, Sender},
 };
 
 use diffo_app::{ChangeArea, FileKey, FileListScroll};
@@ -15,12 +15,13 @@ pub struct Renderer {
     pub(super) highlighter: Arc<SyntaxHighlighter>,
     pub(super) highlighted: Option<HighlightCache>,
     pub(super) prepared_cache: Vec<HighlightCache>,
-    pub(super) prepare_tx: SyncSender<PrepareRequest>,
+    pub(super) prepare_tx: Sender<PrepareRequest>,
     pub(super) prepare_rx: Receiver<PrepareOutcome>,
     pub(super) submitted: Vec<(DiffKey, Option<usize>)>,
     pub(super) requested: Option<DiffKey>,
     pub(super) requested_navigation_target: Option<usize>,
     pub(super) diff_viewport_rows: usize,
+    pub(super) previous_diff_scroll: usize,
     pub(super) failed: Option<DiffKey>,
     pub(super) scrollbars: ScrollbarMetrics,
     pub(super) scrollbar_drag: Option<ScrollbarAxis>,
@@ -97,6 +98,7 @@ pub(super) struct PrepareRequest {
     pub(super) viewport_rows: usize,
     pub(super) mode: diffo_app::DiffViewMode,
     pub(super) target_scroll: Option<usize>,
+    pub(super) prefetch_viewports: usize,
 }
 
 pub(super) struct PrepareOutcome {

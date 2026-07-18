@@ -90,6 +90,8 @@ impl ExplorerActivity {
             .selected_entry()
             .filter(|entry| entry.path == path)
             .and_then(|entry| entry.status);
+        self.queued
+            .retain(|request| !matches!(request, ExplorerRequest::File { .. }));
         self.queued.push_back(ExplorerRequest::File {
             id,
             path,
@@ -155,7 +157,7 @@ impl ExplorerActivity {
             .model
             .viewer
             .as_ref()
-            .and_then(|viewer| viewer.coverage.map(|range| (range.start, range.end)));
+            .and_then(|viewer| viewer.coverage.last().map(|range| (range.start, range.end)));
         TextSurfacePreparation {
             surface: TextSurface::Explorer,
             document_revision: self.content_revision,
@@ -351,7 +353,7 @@ impl ExplorerActivity {
         };
         let visible_end = target.saturating_add(self.viewport_rows);
         let covered = !viewer.syntax_eligible
-            || viewer.coverage.is_some_and(|range| {
+            || viewer.coverage.iter().any(|range| {
                 let start = u32::try_from(target.saturating_add(1)).unwrap_or(u32::MAX);
                 let end = u32::try_from(visible_end.min(viewer.lines.len())).unwrap_or(u32::MAX);
                 range.start <= start && range.end >= end
@@ -413,7 +415,7 @@ impl ExplorerActivity {
             ExplorerOutcome::File { id, result } if id == self.latest_file => {
                 self.pending_path = None;
                 match result {
-                    Ok(viewer) => {
+                    Ok(mut viewer) => {
                         let same_document = self
                             .model
                             .viewer
@@ -422,6 +424,20 @@ impl ExplorerActivity {
                         if !same_document {
                             self.model.viewer_scroll = 0;
                             self.model.viewer_horizontal_scroll = 0;
+                        }
+                        if let Some(displayed) = self
+                            .model
+                            .viewer
+                            .as_ref()
+                            .filter(|displayed| displayed.path == viewer.path)
+                        {
+                            let mut highlighted = displayed.highlighted.clone();
+                            highlighted.extend(std::mem::take(&mut viewer.highlighted));
+                            viewer.highlighted = highlighted;
+                            let incoming = std::mem::take(&mut viewer.coverage);
+                            viewer.coverage.clone_from(&displayed.coverage);
+                            viewer.coverage.extend(incoming);
+                            merge_coverage(&mut viewer);
                         }
                         self.model.viewer = Some(viewer);
                         self.content_revision = self.content_revision.saturating_add(1);
@@ -456,8 +472,33 @@ impl ExplorerActivity {
         .unwrap_or(u32::MAX);
         viewer
             .coverage
-            .is_some_and(|coverage| coverage.start <= start && coverage.end >= end)
+            .iter()
+            .any(|coverage| coverage.start <= start && coverage.end >= end)
     }
+}
+
+const MAX_COVERAGE_WINDOWS: usize = 8;
+
+fn merge_coverage(viewer: &mut model::Viewer) {
+    let mut merged = Vec::<diffo_highlight::LineRange>::new();
+    for range in viewer.coverage.drain(..) {
+        if let Some(existing) = merged.iter_mut().find(|existing| {
+            existing.start <= range.end.saturating_add(1)
+                && range.start <= existing.end.saturating_add(1)
+        }) {
+            existing.start = existing.start.min(range.start);
+            existing.end = existing.end.max(range.end);
+        } else {
+            merged.push(range);
+        }
+    }
+    if merged.len() > MAX_COVERAGE_WINDOWS {
+        merged.drain(..merged.len() - MAX_COVERAGE_WINDOWS);
+    }
+    viewer
+        .highlighted
+        .retain(|line, _| merged.iter().any(|range| range.contains(*line)));
+    viewer.coverage = merged;
 }
 
 #[cfg(test)]
@@ -479,7 +520,7 @@ mod tests {
                 lines: vec!["old".to_owned()],
                 markers: HashMap::new(),
                 highlighted: HashMap::new(),
-                coverage: None,
+                coverage: Vec::new(),
                 syntax_eligible: false,
                 message: None,
             }),
@@ -566,7 +607,7 @@ mod tests {
             lines: vec!["x".repeat(100)],
             markers: HashMap::new(),
             highlighted: HashMap::new(),
-            coverage: None,
+            coverage: Vec::new(),
             syntax_eligible: false,
             message: None,
         });
@@ -606,7 +647,7 @@ mod tests {
             lines: lines.clone(),
             markers: HashMap::new(),
             highlighted: HashMap::new(),
-            coverage: Some(diffo_highlight::LineRange { start: 1, end: 20 }),
+            coverage: vec![diffo_highlight::LineRange { start: 1, end: 20 }],
             syntax_eligible: true,
             message: None,
         });
@@ -624,7 +665,7 @@ mod tests {
                 lines,
                 markers: HashMap::new(),
                 highlighted: HashMap::new(),
-                coverage: Some(diffo_highlight::LineRange { start: 41, end: 60 }),
+                coverage: vec![diffo_highlight::LineRange { start: 41, end: 60 }],
                 syntax_eligible: true,
                 message: None,
             }),
@@ -632,5 +673,35 @@ mod tests {
 
         assert_eq!(explorer.model.viewer_scroll, 40);
         assert!(explorer.viewer_syntax_ready());
+        assert!(
+            explorer
+                .model
+                .viewer
+                .as_ref()
+                .unwrap()
+                .coverage
+                .iter()
+                .any(|range| range.contains(1))
+        );
+
+        explorer.scroll_viewer(-40);
+        assert!(explorer.viewer_syntax_ready());
+        assert!(explorer.pending_path.is_none());
+    }
+
+    #[test]
+    fn file_requests_coalesce_to_the_newest_viewport() {
+        let mut explorer = ExplorerActivity::new(RepositorySnapshot::default());
+        explorer.queued.clear();
+
+        explorer.request_file(PathBuf::from("large.rs"), 20);
+        explorer.request_file(PathBuf::from("large.rs"), 80);
+
+        let requests = explorer.queued.iter().collect::<Vec<_>>();
+        assert_eq!(requests.len(), 1);
+        assert!(matches!(
+            requests[0],
+            ExplorerRequest::File { first_line: 80, .. }
+        ));
     }
 }

@@ -1,13 +1,12 @@
 use super::{
     AnchorRow, Arc, DiffBlock, DiffDocument, DiffKey, DiffViewMode, Duration,
-    HIGHLIGHT_LOOKBEHIND_LINES, HIGHLIGHT_PREFETCH_VIEWPORTS, HighlightCache, HighlightedDiff,
-    HunkButtonMetrics, MAX_HIGHLIGHT_BYTES_PER_SIDE, MAX_HIGHLIGHT_FILE_LINES, MAX_SYNC_BYTES,
-    MAX_SYNC_LINES, Model, PREPARED_BUFFER_CACHE_SIZE, PrepareCommit, PrepareOutcome,
-    PrepareRequest, ProjectionOptions, RenderLine, Renderer, RowKind, ScrollAnchor,
-    ScrollbarMetrics, Span, SyntaxHighlighter, TrySendError, ViewportTransition, env,
-    inline_change_starts, inline_rows_with_options, parse_unified_patch,
-    side_by_side_change_starts, side_by_side_rows_with_options, sync_channel, terminal_safe_text,
-    thread,
+    HIGHLIGHT_LOOKBEHIND_LINES, HighlightCache, HighlightedDiff, HunkButtonMetrics,
+    MAX_HIGHLIGHT_BYTES_PER_SIDE, MAX_HIGHLIGHT_FILE_LINES, MAX_SYNC_BYTES, MAX_SYNC_LINES, Model,
+    PREPARED_BUFFER_CACHE_SIZE, PrepareCommit, PrepareOutcome, PrepareRequest, ProjectionOptions,
+    RenderLine, Renderer, RowKind, ScrollAnchor, ScrollbarMetrics, Span, SyntaxHighlighter,
+    ViewportTransition, channel, env, inline_change_starts, inline_rows_with_options,
+    parse_unified_patch, side_by_side_change_starts, side_by_side_rows_with_options, sync_channel,
+    terminal_safe_text, thread,
 };
 use diffo_diff::SideBySideRow;
 use diffo_highlight::{HighlightWindowRequest, LineRange};
@@ -141,7 +140,7 @@ pub(super) fn prepare_diff(
             viewport_rows: request.viewport_rows,
             mode: request.mode,
             target_scroll: request.target_scroll,
-            prefetch_viewports: HIGHLIGHT_PREFETCH_VIEWPORTS,
+            prefetch_viewports: request.prefetch_viewports,
         },
     );
     let highlighted_window = syntax_highlighted.then(|| {
@@ -419,20 +418,18 @@ impl Renderer {
         viewport_rows: usize,
         mode: DiffViewMode,
         target_scroll: Option<usize>,
+        prefetch_viewports: usize,
     ) -> Option<PrepareCommit> {
-        let mut matching_outcome = None;
+        let mut installed_target = None;
         while let Ok(outcome) = self.prepare_rx.try_recv() {
             self.submitted
                 .retain(|job| job != &(outcome.key.clone(), outcome.target_scroll));
-            let target_matches =
-                outcome.target_scroll.is_none() || target_scroll == outcome.target_scroll;
-            if requested == Some(&outcome.key) && target_matches {
-                matching_outcome = Some(outcome);
+            if requested == Some(&outcome.key) {
+                installed_target = Some(outcome.target_scroll);
+                self.install_outcome(outcome);
             }
         }
-        if let Some(outcome) = matching_outcome {
-            let target_scroll = outcome.target_scroll;
-            self.install_outcome(outcome);
+        if let Some(target_scroll) = installed_target {
             return Some(PrepareCommit { target_scroll });
         }
         let Some(requested) = requested else {
@@ -470,6 +467,7 @@ impl Renderer {
                 viewport_rows,
                 mode,
                 target_scroll,
+                prefetch_viewports,
             };
             let outcome = PrepareOutcome {
                 key: requested.clone(),
@@ -485,10 +483,11 @@ impl Renderer {
                 viewport_rows,
                 mode,
                 target_scroll,
+                prefetch_viewports,
             };
-            match self.prepare_tx.try_send(request) {
-                Ok(()) => self.submitted.push(job),
-                Err(TrySendError::Full(_) | TrySendError::Disconnected(_)) => {}
+            if self.prepare_tx.send(request).is_ok() {
+                self.submitted.clear();
+                self.submitted.push(job);
             }
         }
         None
@@ -678,13 +677,16 @@ impl Renderer {
     pub fn new() -> Self {
         let highlighter = Arc::new(SyntaxHighlighter::new());
         let worker_highlighter = Arc::clone(&highlighter);
-        let (prepare_tx, requests) = sync_channel::<PrepareRequest>(1);
+        let (prepare_tx, requests) = channel::<PrepareRequest>();
         let (results, prepare_rx) = sync_channel(1);
         let prepare_delay = preparation_delay_from_environment();
         thread::Builder::new()
             .name("diffo-diff-prepare".to_owned())
             .spawn(move || {
-                while let Ok(request) = requests.recv() {
+                while let Ok(mut request) = requests.recv() {
+                    while let Ok(newer) = requests.try_recv() {
+                        request = newer;
+                    }
                     if !prepare_delay.is_zero() {
                         thread::sleep(prepare_delay);
                     }
@@ -714,6 +716,7 @@ impl Renderer {
             requested: None,
             requested_navigation_target: None,
             diff_viewport_rows: 1,
+            previous_diff_scroll: 0,
             failed: None,
             scrollbars: ScrollbarMetrics::default(),
             scrollbar_drag: None,

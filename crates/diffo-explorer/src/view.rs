@@ -343,7 +343,7 @@ mod tests {
             lines: vec!["01234567\x1b[2JPAN_TARGET".to_owned()],
             markers: HashMap::new(),
             highlighted: HashMap::new(),
-            coverage: None,
+            coverage: Vec::new(),
             syntax_eligible: false,
             message: None,
         });
@@ -375,7 +375,7 @@ mod tests {
             lines: vec!["TEXT_MUST_BE_HIDDEN".to_owned()],
             markers: HashMap::from([(1, GutterMarker::Added)]),
             highlighted: HashMap::new(),
-            coverage: None,
+            coverage: Vec::new(),
             syntax_eligible: true,
             message: None,
         });

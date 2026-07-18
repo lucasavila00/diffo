@@ -1,3 +1,5 @@
+#[path = "git_operations/activities.rs"]
+mod activities;
 #[path = "git_operations/async_diff.rs"]
 mod async_diff;
 #[path = "git_operations/commit.rs"]

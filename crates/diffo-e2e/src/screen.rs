@@ -21,6 +21,7 @@ use crate::{
 
 const ROWS: u16 = 30;
 const COLUMNS: u16 = 100;
+const ACTIVITY_BAR_WIDTH: u16 = 5;
 const TIMEOUT: Duration = Duration::from_secs(5);
 
 pub struct DiffoScreen {
@@ -210,7 +211,8 @@ impl DiffoScreen {
         if from_percent > 100 || to_percent > 100 {
             bail!("scrollbar percentages must be between 0 and 100");
         }
-        let track_start = COLUMNS / 4 + 2;
+        let content_width = COLUMNS.saturating_sub(ACTIVITY_BAR_WIDTH);
+        let track_start = ACTIVITY_BAR_WIDTH + content_width / 4 + 3;
         let track_end = COLUMNS.saturating_sub(1);
         let track_length = track_end.saturating_sub(track_start);
         let position =

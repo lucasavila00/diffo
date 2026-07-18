@@ -48,8 +48,8 @@ pub(super) fn map_file_context_menu_event(
     }
 }
 
-pub(super) fn render_file_context_menu(frame: &mut Frame, model: &Model) {
-    let Some(area) = file_context_menu_area(model, frame.area()) else {
+pub(super) fn render_file_context_menu(frame: &mut Frame, model: &Model, content_area: Rect) {
+    let Some(area) = file_context_menu_area(model, content_area) else {
         return;
     };
     frame.render_widget(Clear, area);
@@ -64,12 +64,12 @@ pub(super) fn render_file_context_menu(frame: &mut Frame, model: &Model) {
     );
 }
 
-pub(super) fn render_command_palette(frame: &mut Frame, model: &Model) {
+pub(super) fn render_command_palette(frame: &mut Frame, model: &Model, content_area: Rect) {
     let Some(palette) = model.command_palette.as_ref() else {
         return;
     };
     let commands = palette.matches();
-    let (area, results_area) = command_palette_layout(frame.area());
+    let (area, results_area) = command_palette_layout(content_area);
     frame.render_widget(Clear, area);
     frame.render_widget(
         Block::default()
@@ -121,11 +121,11 @@ pub(super) fn render_command_palette(frame: &mut Frame, model: &Model) {
     );
 }
 
-pub(super) fn render_help(frame: &mut Frame, model: &Model) {
+pub(super) fn render_help(frame: &mut Frame, model: &Model, content_area: Rect) {
     if !model.help_open {
         return;
     }
-    let area = help_layout(frame.area());
+    let area = help_layout(content_area);
     frame.render_widget(Clear, area);
     let block = Block::default()
         .borders(Borders::ALL)
@@ -137,16 +137,18 @@ pub(super) fn render_help(frame: &mut Frame, model: &Model) {
     });
     frame.render_widget(block, area);
     let sections = Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).split(inner);
-    let rows = input::help_rows().into_iter().map(|(keys, description)| {
-        Row::new([
-            Cell::from(keys).style(
-                Style::default()
-                    .fg(Color::LightCyan)
-                    .add_modifier(Modifier::BOLD),
-            ),
-            Cell::from(description).style(Style::default().fg(Color::White)),
-        ])
-    });
+    let rows = std::iter::once(("Tab".to_owned(), "Next activity"))
+        .chain(input::help_rows())
+        .map(|(keys, description)| {
+            Row::new([
+                Cell::from(keys).style(
+                    Style::default()
+                        .fg(Color::LightCyan)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Cell::from(description).style(Style::default().fg(Color::White)),
+            ])
+        });
     let table = Table::new(rows, [Constraint::Length(22), Constraint::Min(24)])
         .header(
             Row::new(["Shortcut", "Action"])
@@ -165,8 +167,8 @@ pub(super) fn render_help(frame: &mut Frame, model: &Model) {
     );
 }
 
-pub(super) fn render_toasts(frame: &mut Frame, model: &Model) {
-    for (toast, area) in model.toasts.iter().zip(toast_areas(model, frame.area())) {
+pub(super) fn render_toasts(frame: &mut Frame, model: &Model, content_area: Rect) {
+    for (toast, area) in model.toasts.iter().zip(toast_areas(model, content_area)) {
         let color = match toast.kind {
             ToastKind::Success => Color::LightGreen,
             ToastKind::Info => Color::LightCyan,
@@ -226,11 +228,11 @@ pub(super) fn toast_at_position(model: &Model, area: Rect, column: u16, row: u16
         .find_map(|(toast, area)| area.contains((column, row).into()).then_some(toast.id))
 }
 
-pub(super) fn render_commit_editor(frame: &mut Frame, model: &Model) {
+pub(super) fn render_commit_editor(frame: &mut Frame, model: &Model, content_area: Rect) {
     if !model.commit_input_focused() {
         return;
     }
-    let (area, input, commit, cancel, footer) = commit_editor_layout(frame.area());
+    let (area, input, commit, cancel, footer) = commit_editor_layout(content_area);
     frame.render_widget(Clear, area);
     frame.render_widget(
         Block::default()

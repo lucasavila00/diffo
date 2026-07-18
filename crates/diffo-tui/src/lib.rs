@@ -28,6 +28,7 @@ use ratatui::{
     },
 };
 
+mod activity_bar;
 mod diff;
 mod diff_view;
 mod files;
@@ -71,12 +72,19 @@ use state::{
     ScrollbarAxis, ScrollbarMetrics,
 };
 
+pub use activity_bar::{
+    ACTIVITY_BAR_WIDTH, WorkbenchAreas, activity_at_position, render_activity_bar, workbench_areas,
+};
 pub use state::{FramePreparation, Renderer, ViewportTransition};
 
 pub use input::map_event;
 
 impl Renderer {
     pub fn render(&mut self, frame: &mut Frame, model: &Model) {
+        self.render_in(frame, model, frame.area());
+    }
+
+    pub fn render_in(&mut self, frame: &mut Frame, model: &Model, area: Rect) {
         if model.network_operation().is_some() {
             self.network_animation_tick = self.network_animation_tick.wrapping_add(1);
         } else {
@@ -85,23 +93,23 @@ impl Renderer {
         let vertical = Layout::default()
             .direction(Direction::Vertical)
             .constraints([Constraint::Min(3), Constraint::Length(1)])
-            .split(frame.area());
+            .split(area);
         let panes = horizontal_panes(vertical[0], model.file_pane_percent);
 
         self.file_lists = render_files(frame, panes[0], model);
         self.render_diff(frame, panes[1], model);
         render_status(frame, vertical[1], model, self.network_animation_tick);
-        render_toasts(frame, model);
-        render_command_palette(frame, model);
-        render_help(frame, model);
-        render_commit_editor(frame, model);
-        render_file_context_menu(frame, model);
+        render_toasts(frame, model, area);
+        render_command_palette(frame, model, area);
+        render_help(frame, model, area);
+        render_commit_editor(frame, model, area);
+        render_file_context_menu(frame, model, area);
         if model.network_operation().is_some() {
             frame.render_widget(
                 Block::default()
                     .borders(Borders::TOP | Borders::LEFT | Borders::RIGHT)
                     .border_style(network_animation_style(self.network_animation_tick)),
-                frame.area(),
+                area,
             );
         }
     }

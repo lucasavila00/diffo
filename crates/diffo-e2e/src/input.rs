@@ -5,6 +5,7 @@ use crate::Key;
 pub(super) fn key_bytes(key: Key) -> Result<Vec<u8>> {
     Ok(match key {
         Key::Char(character) => character.to_string().into_bytes(),
+        Key::Tab => b"\t".to_vec(),
         Key::Enter => b"\r".to_vec(),
         Key::Escape => b"\x1b".to_vec(),
         Key::Up => b"\x1b[A".to_vec(),

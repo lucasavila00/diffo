@@ -9,6 +9,25 @@ pub use model::{
     PrimaryAction, Toast, ToastKind,
 };
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum Activity {
+    #[default]
+    Diff,
+    Explorer,
+    Search,
+}
+
+impl Activity {
+    #[must_use]
+    pub const fn next(self) -> Self {
+        match self {
+            Self::Diff => Self::Explorer,
+            Self::Explorer => Self::Search,
+            Self::Search => Self::Diff,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Message {
     Quit,

@@ -17,15 +17,17 @@ use crossterm::{
     execute,
     terminal::{Clear, ClearType},
 };
-use diffo_app::{Effect, Message, Model, ToastKind, update};
+use diffo_app::{Activity, Effect, Message, Model, ToastKind, update};
 use diffo_core::{Repository, fixture_source::MutableFixtureRepository};
 use diffo_git::GitRepositorySource;
 use diffo_watch::{RefreshResult, RefreshService};
 use ratatui::{Terminal, backend::CrosstermBackend};
 
 mod frame_trace;
+mod workbench;
 
 use frame_trace::{FrameRecord, FrameTracer};
+use workbench::Workbench;
 
 fn main() -> Result<()> {
     let shutdown = install_signal_handlers()?;
@@ -59,8 +61,7 @@ fn main() -> Result<()> {
         );
     }
 
-    let mut model = Model::new(snapshot);
-    let mut renderer = diffo_tui::Renderer::new();
+    let mut workbench = Workbench::new(snapshot);
     let mut tracer = FrameTracer::from_environment();
     let mut terminal = ratatui::init();
     execute!(
@@ -71,8 +72,7 @@ fn main() -> Result<()> {
 
     let result = run(
         &mut terminal,
-        &mut renderer,
-        &mut model,
+        &mut workbench,
         &shutdown,
         repository.as_ref(),
         refresh.as_ref(),
@@ -138,8 +138,7 @@ fn run_watch_dump(
 
 fn run(
     terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
-    renderer: &mut diffo_tui::Renderer,
-    model: &mut Model,
+    workbench: &mut Workbench,
     shutdown: &AtomicBool,
     repository: &dyn Repository,
     refresh: Option<&RefreshService>,
@@ -147,13 +146,16 @@ fn run(
 ) -> Result<()> {
     let mut generation = 0;
     let mut toast_deadlines = HashMap::new();
-    let scroll = (model.diff_scroll, model.diff_horizontal_scroll);
+    let scroll = (
+        workbench.diff_model().diff_scroll,
+        workbench.diff_model().diff_horizontal_scroll,
+    );
     let update_start_us = tracer.elapsed_us();
-    let (preparation, draw_start_us, draw_end_us) = draw_frame(terminal, renderer, model, tracer)?;
+    let (preparation, draw_start_us, draw_end_us) = draw_frame(terminal, workbench, tracer)?;
     tracer.record(FrameRecord::new(
         Vec::new(),
         generation,
-        model,
+        workbench.diff_model(),
         &preparation,
         scroll,
         update_start_us,
@@ -161,11 +163,11 @@ fn run(
         draw_start_us,
         draw_end_us,
     ));
-    while !model.should_quit && !shutdown.load(Ordering::Relaxed) {
-        expire_toasts(model, &mut toast_deadlines);
-        let poll_timeout = if renderer.is_preparing()
+    while !workbench.should_quit() && !shutdown.load(Ordering::Relaxed) {
+        expire_toasts(workbench.diff_model_mut(), &mut toast_deadlines);
+        let poll_timeout = if workbench.is_preparing()
             || refresh.is_some_and(RefreshService::is_busy)
-            || model.network_operation().is_some()
+            || workbench.diff_model().network_operation().is_some()
         {
             Duration::from_millis(16)
         } else {
@@ -180,19 +182,21 @@ fn run(
                 events.push(event::read()?);
             }
         }
-        let scroll_before = (model.diff_scroll, model.diff_horizontal_scroll);
+        let scroll_before = (
+            workbench.diff_model().diff_scroll,
+            workbench.diff_model().diff_horizontal_scroll,
+        );
         let update_start_us = tracer.elapsed_us();
         if let Some(refresh) = refresh {
-            drain_refresh(refresh, model, &mut generation);
+            drain_refresh(refresh, workbench.diff_model_mut(), &mut generation);
         }
-        dispatch_events(&events, terminal, renderer, model, repository, refresh)?;
+        dispatch_events(&events, terminal, workbench, repository, refresh)?;
         let input_events = events.iter().map(|event| format!("{event:?}")).collect();
-        let (preparation, draw_start_us, draw_end_us) =
-            draw_frame(terminal, renderer, model, tracer)?;
+        let (preparation, draw_start_us, draw_end_us) = draw_frame(terminal, workbench, tracer)?;
         tracer.record(FrameRecord::new(
             input_events,
             generation,
-            model,
+            workbench.diff_model(),
             &preparation,
             scroll_before,
             update_start_us,
@@ -227,23 +231,14 @@ fn expire_toasts(model: &mut Model, deadlines: &mut HashMap<u64, Instant>) {
 
 fn draw_frame(
     terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
-    renderer: &mut diffo_tui::Renderer,
-    model: &mut Model,
+    workbench: &mut Workbench,
     tracer: &FrameTracer,
 ) -> Result<(diffo_tui::FramePreparation, u64, u64)> {
     let size = terminal.size()?;
     let area = ratatui::layout::Rect::new(0, 0, size.width, size.height);
-    let preparation = renderer.prepare_frame(model, area);
-    if let Some(viewport) = preparation.viewport_transition {
-        model.set_diff_viewport(viewport.vertical, viewport.horizontal);
-    }
-    model.set_file_list_scrolls(preparation.file_list_scroll);
-    model.clamp_diff_scroll(
-        preparation.maximum_vertical_scroll,
-        preparation.maximum_horizontal_scroll,
-    );
+    let preparation = workbench.prepare_frame(area);
     let draw_start_us = tracer.elapsed_us();
-    terminal.draw(|frame| renderer.render(frame, model))?;
+    terminal.draw(|frame| workbench.render(frame))?;
     let draw_end_us = tracer.elapsed_us();
     Ok((preparation, draw_start_us, draw_end_us))
 }
@@ -251,24 +246,31 @@ fn draw_frame(
 fn dispatch_events(
     events: &[crossterm::event::Event],
     terminal: &Terminal<CrosstermBackend<io::Stdout>>,
-    renderer: &mut diffo_tui::Renderer,
-    model: &mut Model,
+    workbench: &mut Workbench,
     repository: &dyn Repository,
     refresh: Option<&RefreshService>,
 ) -> Result<()> {
     let size = terminal.size()?;
     let area = ratatui::layout::Rect::new(0, 0, size.width, size.height);
+    let content = diffo_tui::workbench_areas(area).content;
     let mut scroll = PendingScroll::default();
     for event in events {
-        let Some(message) = renderer.map_event(event, model, area) else {
+        if workbench.handle_workbench_event(event, area) {
+            scroll.flush(workbench.diff_model_mut());
+            continue;
+        }
+        if workbench.active() != Activity::Diff {
+            continue;
+        }
+        let Some(message) = workbench.map_diff_event(event, content) else {
             continue;
         };
         if !scroll.push(&message) {
-            scroll.flush(model);
-            dispatch_message(message, model, repository, refresh);
+            scroll.flush(workbench.diff_model_mut());
+            dispatch_message(message, workbench.diff_model_mut(), repository, refresh);
         }
     }
-    scroll.flush(model);
+    scroll.flush(workbench.diff_model_mut());
     Ok(())
 }
 

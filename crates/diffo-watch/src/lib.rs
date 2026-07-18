@@ -10,7 +10,9 @@ use std::{
 };
 
 use anyhow::{Context, Result};
-use diffo_core::{OperationFailure, OperationResult, Repository, RepositoryAction, RepositorySnapshot};
+use diffo_core::{
+    OperationFailure, OperationResult, Repository, RepositoryAction, RepositorySnapshot,
+};
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 
 const DEBOUNCE: Duration = Duration::from_millis(100);

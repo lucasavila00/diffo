@@ -31,6 +31,9 @@ OperationResult
   Unstage
 ```
 
+Stage and Unstage results do not create toasts. Their effect is already immediate
+and visible in the file lists.
+
 Failures are also structured:
 
 ```text

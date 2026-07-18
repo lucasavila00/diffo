@@ -359,9 +359,9 @@ impl Repository for GitRepositorySource {
             }
         }
 
-        let output = command.output().map_err(|error| {
-            operation_failure(action, FailureKind::Unknown, &error.to_string())
-        })?;
+        let output = command
+            .output()
+            .map_err(|error| operation_failure(action, FailureKind::Unknown, &error.to_string()))?;
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             let stdout = String::from_utf8_lossy(&output.stdout);
@@ -459,7 +459,10 @@ fn classify_failure(action: &RepositoryAction, output: &str) -> OperationFailure
     {
         (FailureKind::Network, "network unavailable")
     } else if text.contains("local changes") || text.contains("would be overwritten") {
-        (FailureKind::DirtyWorktree, "local changes block the operation")
+        (
+            FailureKind::DirtyWorktree,
+            "local changes block the operation",
+        )
     } else {
         (FailureKind::Unknown, "Git operation failed")
     };

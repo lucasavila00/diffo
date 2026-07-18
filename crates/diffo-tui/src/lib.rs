@@ -780,13 +780,21 @@ fn render_toasts(frame: &mut Frame, model: &Model) {
 
 fn toast_areas(model: &Model, area: Rect) -> Vec<Rect> {
     let width = 44.min(area.width.saturating_sub(2));
-    let height = 3_u16;
     let right = area.right().saturating_sub(1);
     let mut bottom = area.bottom().saturating_sub(2);
     model
         .toasts
         .iter()
-        .filter_map(|_| {
+        .filter_map(|toast| {
+            let inner_width = usize::from(width.saturating_sub(2)).max(1);
+            let text_rows = std::iter::once(toast.title.as_str())
+                .chain(toast.detail.as_deref())
+                .map(|text| text.chars().count().div_ceil(inner_width))
+                .sum::<usize>();
+            let height = u16::try_from(text_rows)
+                .unwrap_or(u16::MAX)
+                .saturating_add(2)
+                .clamp(3, 6);
             if width < 4 || bottom < area.y.saturating_add(height) {
                 return None;
             }
@@ -797,12 +805,7 @@ fn toast_areas(model: &Model, area: Rect) -> Vec<Rect> {
         .collect()
 }
 
-fn toast_at_position(
-    model: &Model,
-    area: Rect,
-    column: u16,
-    row: u16,
-) -> Option<u64> {
+fn toast_at_position(model: &Model, area: Rect, column: u16, row: u16) -> Option<u64> {
     model
         .toasts
         .iter()
@@ -1721,8 +1724,8 @@ mod rendering_tests {
     use crossterm::event::{Event, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
     use diffo_app::{DiffViewMode, Model};
     use diffo_core::{
-        AccessMode, ChangeKind, FileDiff, FileState, RepositoryAction, RepositorySnapshot,
-        UpstreamState,
+        AccessMode, ChangeKind, FileDiff, FileState, OperationResult, RepositoryAction,
+        RepositorySnapshot, UpstreamState,
     };
     use diffo_diff::RowKind;
     use diffo_highlight::Rgb;
@@ -1834,6 +1837,40 @@ mod rendering_tests {
                 .unwrap();
         }
         assert_ne!(terminal.backend().buffer()[(0, 0)].fg, first_border);
+    }
+
+    #[test]
+    fn renders_and_mouse_dismisses_a_bottom_right_toast() {
+        let mut model = model();
+        model.complete_operation(
+            OperationResult::Commit {
+                hash: "a1b2c3d4e5".to_owned(),
+            },
+            model.snapshot.clone(),
+        );
+        let id = model.toasts[0].id;
+        let mut renderer = Renderer::new();
+        let backend = TestBackend::new(100, 30);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal
+            .draw(|frame| renderer.render(frame, &model))
+            .unwrap();
+        assert!(
+            terminal.backend().buffer().content.iter().any(|cell| {
+                cell.symbol().contains("Committed") || cell.fg == Color::LightGreen
+            })
+        );
+
+        let click = Event::Mouse(MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: 70,
+            row: 26,
+            modifiers: KeyModifiers::NONE,
+        });
+        assert_eq!(
+            renderer.map_event(&click, &model, Rect::new(0, 0, 100, 30)),
+            Some(diffo_app::Message::DismissToast(id))
+        );
     }
 
     fn diff_lines(

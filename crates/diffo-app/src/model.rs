@@ -615,18 +615,15 @@ impl Model {
 
     pub fn complete_operation(&mut self, result: OperationResult, snapshot: RepositorySnapshot) {
         self.refresh(snapshot);
-        let (kind, title) = operation_result_toast(&result);
-        self.push_toast(kind, title, None);
+        if let Some((kind, title)) = operation_result_toast(&result) {
+            self.push_toast(kind, title, None);
+        }
     }
 
     pub fn show_operation_failure(&mut self, failure: OperationFailure) {
         self.show_error(failure.detail.clone());
         self.error = None;
-        self.push_toast(
-            ToastKind::Error,
-            operation_failure_title(&failure),
-            None,
-        );
+        self.push_toast(ToastKind::Error, operation_failure_title(&failure), None);
     }
 
     pub fn dismiss_toast(&mut self, id: u64) {
@@ -666,10 +663,9 @@ fn byte_index_at_char(text: &str, character: usize) -> usize {
         .map_or(text.len(), |(index, _)| index)
 }
 
-fn operation_result_toast(result: &OperationResult) -> (ToastKind, String) {
+fn operation_result_toast(result: &OperationResult) -> Option<(ToastKind, String)> {
     let title = match result {
-        OperationResult::Stage => "Staged changes".to_owned(),
-        OperationResult::Unstage => "Unstaged changes".to_owned(),
+        OperationResult::Stage | OperationResult::Unstage => return None,
         OperationResult::Fetch { updated_refs: 0 } => "Fetch complete".to_owned(),
         OperationResult::Fetch { updated_refs: 1 } => "Fetched 1 ref".to_owned(),
         OperationResult::Fetch { updated_refs } => format!("Fetched {updated_refs} refs"),
@@ -681,7 +677,7 @@ fn operation_result_toast(result: &OperationResult) -> (ToastKind, String) {
         }
         OperationResult::Commit { hash } => format!("Committed {}", short_hash(hash)),
     };
-    (ToastKind::Success, title)
+    Some((ToastKind::Success, title))
 }
 
 fn operation_failure_title(failure: &OperationFailure) -> String {
@@ -896,10 +892,7 @@ mod tests {
     fn queues_replaces_limits_and_dismisses_toasts() {
         let mut app = Model::new(snapshot(), AccessMode::ReadWrite);
         for updated_refs in 1..=4 {
-            app.complete_operation(
-                OperationResult::Fetch { updated_refs },
-                snapshot(),
-            );
+            app.complete_operation(OperationResult::Fetch { updated_refs }, snapshot());
         }
         assert_eq!(app.toasts.len(), 3);
         assert_eq!(app.toasts[0].title, "Fetched 4 refs");

@@ -405,7 +405,7 @@ fn rejected_push_shows_a_persistent_failure_toast() -> Result<()> {
     screen
         .click(&Selector::text("[ Push ]"))?
         .wait_for_text("Pushing")?
-        .wait_for_text("Push rejected: remote changed; pull required")?;
+        .wait_for_text("Push rejected: remote changed")?;
     thread::sleep(Duration::from_millis(300));
     assert!(screen.contents().contains("Push rejected"));
     Ok(())
@@ -415,12 +415,13 @@ fn rejected_push_shows_a_persistent_failure_toast() -> Result<()> {
 fn success_toast_is_automatically_dismissed() -> Result<()> {
     let repository = TestRepository::new()?;
     fs::write(repository.worktree.join("tracked.txt"), "changed\n")?;
+    git(&repository.worktree, &["add", "tracked.txt"])?;
     let mut screen = repository.screen()?;
 
     screen
-        .press(Key::Char(' '))?
-        .wait_for_text("Staged changes")?
-        .wait_for_text_gone("Staged changes")?;
+        .click(&Selector::text("[ Commit ]"))?
+        .wait_for_text("Committed ")?
+        .wait_for_text_gone("Committed ")?;
     Ok(())
 }
 

@@ -1,7 +1,7 @@
 use super::{
-    AccessMode, Alignment, Block, Borders, Cell, Clear, Color, Constraint, Event, Frame, Layout,
-    List, ListItem, ListState, Model, Modifier, MouseButton, MouseEventKind, Paragraph, Rect, Row,
-    Style, Table, ToastKind, file_at_position, input,
+    Alignment, Block, Borders, Cell, Clear, Color, Constraint, Event, Frame, Layout, List,
+    ListItem, ListState, Model, Modifier, MouseButton, MouseEventKind, Paragraph, Rect, Row, Style,
+    Table, ToastKind, file_at_position, input,
 };
 
 pub(super) fn file_context_menu_area(model: &Model, area: Rect) -> Option<Rect> {
@@ -137,18 +137,16 @@ pub(super) fn render_help(frame: &mut Frame, model: &Model) {
     });
     frame.render_widget(block, area);
     let sections = Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).split(inner);
-    let rows = input::help_rows(model.access_mode)
-        .into_iter()
-        .map(|(keys, description)| {
-            Row::new([
-                Cell::from(keys).style(
-                    Style::default()
-                        .fg(Color::LightCyan)
-                        .add_modifier(Modifier::BOLD),
-                ),
-                Cell::from(description).style(Style::default().fg(Color::White)),
-            ])
-        });
+    let rows = input::help_rows().into_iter().map(|(keys, description)| {
+        Row::new([
+            Cell::from(keys).style(
+                Style::default()
+                    .fg(Color::LightCyan)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Cell::from(description).style(Style::default().fg(Color::White)),
+        ])
+    });
     let table = Table::new(rows, [Constraint::Length(22), Constraint::Min(24)])
         .header(
             Row::new(["Shortcut", "Action"])
@@ -161,13 +159,8 @@ pub(super) fn render_help(frame: &mut Frame, model: &Model) {
         )
         .column_spacing(2);
     frame.render_widget(table, sections[0]);
-    let footer = if model.access_mode == AccessMode::ReadOnly {
-        "Esc: close  ·  Read-only: repository actions are disabled"
-    } else {
-        "Esc: close"
-    };
     frame.render_widget(
-        Paragraph::new(footer).style(Style::default().fg(Color::DarkGray)),
+        Paragraph::new("Esc: close").style(Style::default().fg(Color::DarkGray)),
         sections[1],
     );
 }

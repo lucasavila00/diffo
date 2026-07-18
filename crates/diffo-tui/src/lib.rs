@@ -3,14 +3,14 @@ use std::{
     env,
     sync::{
         Arc,
-        mpsc::{Receiver, SyncSender, TrySendError, sync_channel},
+        mpsc::{TrySendError, sync_channel},
     },
     thread,
     time::Duration,
 };
 
 use crossterm::event::{Event, MouseButton, MouseEventKind};
-use diffo_core::{AccessMode, ChangeKind, FileState, RepositorySnapshot};
+use diffo_core::{ChangeKind, FileState, RepositorySnapshot};
 use diffo_diff::{
     DiffBlock, DiffDocument, ProjectionOptions, RenderLine, RowKind, SideBySideRow,
     inline_change_starts, inline_rows_with_options, parse_unified_patch,
@@ -34,11 +34,12 @@ mod files;
 mod geometry;
 mod input;
 mod overlays;
+mod state;
 mod style;
 
+use diff::first_change;
 #[cfg(test)]
 use diff::{diff_file_lines, should_syntax_highlight};
-use diff::{first_change, preparation_delay_from_environment, prepare_diff};
 use files::{
     commit_action_at_position, file_group_areas, file_panel_areas, render_files, render_status,
     resize_border_style, staged_files, unstaged_files,
@@ -60,182 +61,17 @@ use style::{
     file_action_style, file_kind_style, inline_line, network_animation_style, side_by_side_line,
 };
 
+use state::{
+    AnchorRow, DiffKey, DiffViewportMetrics, HighlightCache, HunkButtonMetrics, HunkDirection,
+    MAX_HIGHLIGHT_FILE_LINES, MAX_SYNC_BYTES, MAX_SYNC_LINES, PrepareOutcome, PrepareRequest,
+    ScrollAnchor, ScrollbarAxis, ScrollbarMetrics,
+};
+
+pub use state::{FramePreparation, Renderer, ViewportTransition};
+
 pub use input::map_event;
 
-pub struct Renderer {
-    highlighter: Arc<SyntaxHighlighter>,
-    highlighted: Option<HighlightCache>,
-    prepare_tx: SyncSender<PrepareRequest>,
-    prepare_rx: Receiver<PrepareOutcome>,
-    submitted: Vec<DiffKey>,
-    requested: Option<DiffKey>,
-    failed: Option<DiffKey>,
-    scrollbars: ScrollbarMetrics,
-    scrollbar_drag: Option<ScrollbarAxis>,
-    hunk_buttons: HunkButtonMetrics,
-    hovered_hunk_button: Option<HunkDirection>,
-    content_revision: u64,
-    network_animation_tick: usize,
-    #[cfg(test)]
-    highlight_computations: usize,
-}
-
-struct HighlightCache {
-    key: DiffKey,
-    document: DiffDocument,
-    inline: Vec<RenderLine>,
-    side_by_side: Vec<SideBySideRow>,
-    inline_changes: Vec<usize>,
-    side_by_side_changes: Vec<usize>,
-    highlighted: HighlightedDiff,
-    #[cfg(test)]
-    syntax_highlighted: bool,
-}
-
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub struct FramePreparation {
-    pub maximum_vertical_scroll: usize,
-    pub maximum_horizontal_scroll: usize,
-    pub content_revision: u64,
-    pub preparing: bool,
-    pub viewport_transition: Option<ViewportTransition>,
-    pub requested_file: Option<FileKey>,
-    pub displayed_file: Option<FileKey>,
-}
-
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub struct ViewportTransition {
-    pub vertical: usize,
-    pub horizontal: usize,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-enum AnchorRow {
-    Inline {
-        kind: RowKind,
-        text: String,
-    },
-    SideBySide {
-        old: Option<(RowKind, String)>,
-        new: Option<(RowKind, String)>,
-    },
-}
-
-struct ScrollAnchor {
-    rows: Vec<(usize, usize, AnchorRow)>,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-struct DiffKey {
-    file: FileKey,
-    patch: String,
-    mark_conflicts: bool,
-}
-
-struct PrepareRequest {
-    key: DiffKey,
-}
-
-#[derive(Clone, Copy, Debug, Default)]
-struct ScrollbarMetrics {
-    vertical_area: Rect,
-    horizontal_area: Rect,
-    rows: usize,
-    columns: usize,
-    viewport_columns: usize,
-    maximum_vertical_scroll: usize,
-}
-
-#[derive(Clone, Copy, Debug, Default)]
-struct HunkButtonMetrics {
-    previous: Option<(Rect, usize)>,
-    next: Option<(Rect, usize)>,
-}
-
-#[derive(Clone, Copy, Debug)]
-struct DiffViewportMetrics {
-    content_area: Rect,
-    horizontal_area: Rect,
-    viewport_rows: usize,
-    viewport_columns: usize,
-    rows: usize,
-    columns: usize,
-    maximum_vertical_scroll: usize,
-    previous_change: Option<usize>,
-    next_change: Option<usize>,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum HunkDirection {
-    Previous,
-    Next,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum ScrollbarAxis {
-    Vertical,
-    Horizontal,
-}
-
-const MAX_HIGHLIGHT_FILE_LINES: usize = 10_000;
-const MAX_SYNC_BYTES: usize = 64 * 1024;
-const MAX_SYNC_LINES: usize = 500;
-
-type PrepareOutcome = Result<HighlightCache, DiffKey>;
-
-impl Default for Renderer {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl Renderer {
-    #[must_use]
-    /// Create a renderer and its background diff worker.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the operating system cannot start the worker thread.
-    pub fn new() -> Self {
-        let highlighter = Arc::new(SyntaxHighlighter::new());
-        let worker_highlighter = Arc::clone(&highlighter);
-        let (prepare_tx, requests) = sync_channel::<PrepareRequest>(1);
-        let (results, prepare_rx) = sync_channel(1);
-        let prepare_delay = preparation_delay_from_environment();
-        thread::Builder::new()
-            .name("diffo-diff-prepare".to_owned())
-            .spawn(move || {
-                while let Ok(request) = requests.recv() {
-                    if !prepare_delay.is_zero() {
-                        thread::sleep(prepare_delay);
-                    }
-                    let key = request.key.clone();
-                    let result = prepare_diff(request, &worker_highlighter).ok_or(key);
-                    if results.send(result).is_err() {
-                        break;
-                    }
-                }
-            })
-            .expect("failed to start diff preparation worker");
-        Self {
-            highlighter,
-            highlighted: None,
-            prepare_tx,
-            prepare_rx,
-            submitted: Vec::new(),
-            requested: None,
-            failed: None,
-            scrollbars: ScrollbarMetrics::default(),
-            scrollbar_drag: None,
-            hunk_buttons: HunkButtonMetrics::default(),
-            hovered_hunk_button: None,
-            content_revision: 0,
-            network_animation_tick: 0,
-            #[cfg(test)]
-            highlight_computations: 0,
-        }
-    }
-
     pub fn render(&mut self, frame: &mut Frame, model: &Model) {
         if model.network_operation().is_some() {
             self.network_animation_tick = self.network_animation_tick.wrapping_add(1);

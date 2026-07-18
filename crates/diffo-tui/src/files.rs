@@ -1,8 +1,8 @@
 use super::{
-    AccessMode, Alignment, Block, Borders, ChangeArea, ChangeKind, Color, Constraint, Direction,
-    FileState, Frame, HighlightSpacing, Layout, Line, List, ListItem, ListState, Model, Modifier,
-    Paragraph, Rect, RepositorySnapshot, Span, Style, file_action_style, file_kind_style,
-    horizontal_panes, main_area, network_animation_style,
+    Alignment, Block, Borders, ChangeArea, ChangeKind, Color, Constraint, Direction, FileState,
+    Frame, HighlightSpacing, Layout, Line, List, ListItem, ListState, Model, Modifier, Paragraph,
+    Rect, RepositorySnapshot, Span, Style, file_action_style, file_kind_style, horizontal_panes,
+    main_area, network_animation_style,
 };
 
 pub(super) fn render_files(frame: &mut Frame, area: ratatui::layout::Rect, model: &Model) {
@@ -12,24 +12,15 @@ pub(super) fn render_files(frame: &mut Frame, area: ratatui::layout::Rect, model
     render_file_group(
         frame,
         groups[0],
-        if model.access_mode == AccessMode::ReadOnly {
-            " Staged Changes "
-        } else {
-            " Staged [-] Unstage All "
-        },
+        " Staged [-] Unstage All ",
         staged_files(&model.snapshot),
         ChangeArea::Staged,
         model,
     );
-    let changes_title = if model.access_mode == AccessMode::ReadOnly {
-        " Changes · read-only "
-    } else {
-        " Changes [+] Stage All "
-    };
     render_file_group(
         frame,
         groups[1],
-        changes_title,
+        " Changes [+] Stage All ",
         unstaged_files(&model.snapshot),
         ChangeArea::Unstaged,
         model,
@@ -138,7 +129,6 @@ pub(super) fn render_file_group<'a>(
             model.is_selected(&file.path, change_area),
             change_area,
             usize::from(area.width.saturating_sub(4)),
-            model.access_mode,
         )
     });
     let list = List::new(items)
@@ -164,7 +154,6 @@ pub(super) fn file_item(
     selected: bool,
     change_area: ChangeArea,
     width: usize,
-    access_mode: AccessMode,
 ) -> ListItem<'static> {
     let marker = match file.kind {
         ChangeKind::Added | ChangeKind::Untracked => "A",
@@ -176,7 +165,7 @@ pub(super) fn file_item(
     };
     let label = format!("{marker}  {}", file.path.display());
     let style = file_kind_style(file.kind, selected);
-    if access_mode == AccessMode::ReadOnly || width < 3 {
+    if width < 3 {
         return ListItem::new(Line::styled(label, style));
     }
     let action = match change_area {

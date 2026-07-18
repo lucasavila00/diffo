@@ -7,10 +7,7 @@ fn mock_renamed_file_renders_unchanged_content() -> Result<()> {
     let mut screen = DiffoScreen::launch_with_env(
         env!("CARGO_BIN_EXE_diffo"),
         Path::new(env!("CARGO_MANIFEST_DIR")),
-        &[
-            ("DIFFO_MOCK_FILE", fixture.as_os_str()),
-            ("DIFFO_MOCK_MUTABLE", OsStr::new("1")),
-        ],
+        &[("DIFFO_MOCK_FILE", fixture.as_os_str())],
     )?;
 
     screen

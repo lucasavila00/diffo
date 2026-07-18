@@ -18,10 +18,7 @@ use crossterm::{
     terminal::{Clear, ClearType},
 };
 use diffo_app::{Effect, Message, Model, ToastKind, update};
-use diffo_core::{
-    Repository,
-    fixture_source::{FixtureRepositorySource, MutableFixtureRepository},
-};
+use diffo_core::{Repository, fixture_source::MutableFixtureRepository};
 use diffo_git::GitRepositorySource;
 use diffo_watch::{RefreshResult, RefreshService};
 use ratatui::{Terminal, backend::CrosstermBackend};
@@ -34,14 +31,10 @@ fn main() -> Result<()> {
     let shutdown = install_signal_handlers()?;
     let (repository, watch_paths): (Arc<dyn Repository>, Option<Vec<_>>) =
         if let Some(path) = env::var_os("DIFFO_MOCK_FILE") {
-            if env::var_os("DIFFO_MOCK_MUTABLE").is_some() {
-                (
-                    Arc::new(MutableFixtureRepository::new_with_large_files(path)?),
-                    None,
-                )
-            } else {
-                (Arc::new(FixtureRepositorySource::new(path)), None)
-            }
+            (
+                Arc::new(MutableFixtureRepository::new_with_large_files(path)?),
+                None,
+            )
         } else {
             let repository = Arc::new(GitRepositorySource::default());
             let paths = repository.watch_paths()?;
@@ -66,7 +59,7 @@ fn main() -> Result<()> {
         );
     }
 
-    let mut model = Model::new(snapshot, repository.access_mode());
+    let mut model = Model::new(snapshot);
     let mut renderer = diffo_tui::Renderer::new();
     let mut tracer = FrameTracer::from_environment();
     let mut terminal = ratatui::init();
@@ -470,7 +463,7 @@ fn copy_with_tmux(value: &str) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use diffo_app::{Message, Model};
-    use diffo_core::{AccessMode, RepositorySnapshot};
+    use diffo_core::RepositorySnapshot;
 
     use super::PendingScroll;
 
@@ -480,7 +473,7 @@ mod tests {
         for _ in 0..10 {
             assert!(pending.push(&Message::ScrollDiffDown));
         }
-        let mut model = Model::new(RepositorySnapshot::default(), AccessMode::ReadWrite);
+        let mut model = Model::new(RepositorySnapshot::default());
 
         pending.flush(&mut model);
 
@@ -494,7 +487,7 @@ mod tests {
         for _ in 0..10 {
             assert!(pending.push(&Message::ScrollDiffBy(1)));
         }
-        let mut model = Model::new(RepositorySnapshot::default(), AccessMode::ReadWrite);
+        let mut model = Model::new(RepositorySnapshot::default());
 
         pending.flush(&mut model);
 
@@ -503,7 +496,7 @@ mod tests {
 
     #[test]
     fn user_scroll_is_applied_after_refresh() {
-        let mut model = Model::new(RepositorySnapshot::default(), AccessMode::ReadWrite);
+        let mut model = Model::new(RepositorySnapshot::default());
         model.diff_scroll = 40;
         let mut pending = PendingScroll::default();
         assert!(pending.push(&Message::ScrollDiffDown));

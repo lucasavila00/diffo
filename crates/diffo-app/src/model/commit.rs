@@ -1,15 +1,13 @@
 use super::{
-    AccessMode, CommitComposerState, FailureKind, Model, NetworkOperation, OperationFailure,
-    PrimaryAction, RepositoryAction,
+    CommitComposerState, FailureKind, Model, NetworkOperation, OperationFailure, PrimaryAction,
+    RepositoryAction,
 };
 
 impl Model {
     pub fn focus_commit_input(&mut self) {
-        if self.access_mode == AccessMode::ReadWrite {
-            self.command_palette = None;
-            self.help_open = false;
-            self.commit_composer_state = CommitComposerState::Focused;
-        }
+        self.command_palette = None;
+        self.help_open = false;
+        self.commit_composer_state = CommitComposerState::Focused;
     }
 
     pub fn blur_commit_input(&mut self) {
@@ -87,9 +85,6 @@ impl Model {
 
     #[must_use]
     pub fn primary_action(&self) -> PrimaryAction {
-        if self.access_mode == AccessMode::ReadOnly {
-            return PrimaryAction::Disabled;
-        }
         if let Some(action) = self.pending_operation.as_ref() {
             return match action {
                 RepositoryAction::Commit(_) => PrimaryAction::Commit,

@@ -5,25 +5,22 @@ use crossterm::event::{
     MouseEventKind,
 };
 use diffo_app::{ChangeArea, FileKey, Message, Model};
-use diffo_core::{AccessMode, ChangeKind, FileDiff, FileState, RepositorySnapshot};
+use diffo_core::{ChangeKind, FileDiff, FileState, RepositorySnapshot};
 use ratatui::layout::Rect;
 
 use super::{KEY_BINDINGS, help_rows, map_event, map_key};
 
 fn model() -> Model {
-    Model::new(
-        RepositorySnapshot {
-            files: vec![FileState {
-                path: PathBuf::from("file.txt"),
-                old_path: None,
-                kind: ChangeKind::Untracked,
-                staged: None,
-                unstaged: None,
-            }],
-            ..RepositorySnapshot::default()
-        },
-        AccessMode::ReadWrite,
-    )
+    Model::new(RepositorySnapshot {
+        files: vec![FileState {
+            path: PathBuf::from("file.txt"),
+            old_path: None,
+            kind: ChangeKind::Untracked,
+            staged: None,
+            unstaged: None,
+        }],
+        ..RepositorySnapshot::default()
+    })
 }
 
 #[test]
@@ -74,7 +71,7 @@ fn bindings_are_unique_and_generate_help() {
     for (index, binding) in KEY_BINDINGS.iter().enumerate() {
         for key in binding.keys {
             assert_eq!(
-                map_key(key.code, key.required_modifiers, AccessMode::ReadWrite),
+                map_key(key.code, key.required_modifiers),
                 Some(binding.message.clone())
             );
         }
@@ -86,35 +83,13 @@ fn bindings_are_unique_and_generate_help() {
         }
     }
 
-    let read_write = help_rows(AccessMode::ReadWrite);
-    assert!(read_write.contains(&("r".to_owned(), "Toggle inline / side-by-side view")));
-    assert!(read_write.contains(&("e".to_owned(), "Show / hide file list")));
-    assert!(read_write.contains(&("Space".to_owned(), "Stage / unstage selected file")));
-    assert!(read_write.contains(&("j / w".to_owned(), "Previous file")));
-    assert!(read_write.contains(&("k / l / s".to_owned(), "Next file")));
-    assert!(read_write.contains(&("q / Esc / Ctrl+c".to_owned(), "Quit")));
-
-    let read_only = help_rows(AccessMode::ReadOnly);
-    assert!(read_only.contains(&("r".to_owned(), "Toggle inline / side-by-side view")));
-    assert!(read_only.contains(&("e".to_owned(), "Show / hide file list")));
-    assert!(!read_only.iter().any(|(keys, _)| keys == "Space"));
-}
-
-#[test]
-fn read_only_mode_does_not_dispatch_mutations() {
-    let mut model = model();
-    model.access_mode = AccessMode::ReadOnly;
-
-    for key in [' ', 'a'] {
-        assert_eq!(
-            map_event(
-                &Event::Key(KeyEvent::new(KeyCode::Char(key), KeyModifiers::NONE)),
-                &model,
-                Rect::default(),
-            ),
-            None
-        );
-    }
+    let rows = help_rows();
+    assert!(rows.contains(&("r".to_owned(), "Toggle inline / side-by-side view")));
+    assert!(rows.contains(&("e".to_owned(), "Show / hide file list")));
+    assert!(rows.contains(&("Space".to_owned(), "Stage / unstage selected file")));
+    assert!(rows.contains(&("j / w".to_owned(), "Previous file")));
+    assert!(rows.contains(&("k / l / s".to_owned(), "Next file")));
+    assert!(rows.contains(&("q / Esc / Ctrl+c".to_owned(), "Quit")));
 }
 
 #[test]

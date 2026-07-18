@@ -11,7 +11,7 @@ use std::{
 
 use anyhow::{Context, Result, bail};
 use diffo_app::Model;
-use diffo_core::{AccessMode, Repository, RepositorySnapshot, RepositorySource};
+use diffo_core::{Repository, RepositorySnapshot, RepositorySource};
 use diffo_git::GitRepositorySource;
 use diffo_watch::{RefreshResult, RefreshService};
 
@@ -100,7 +100,7 @@ fn watcher_refresh_never_resets_scroll_for_the_same_selection() -> Result<()> {
     let snapshot = source.snapshot()?;
     let repository_source = Arc::clone(&source) as Arc<dyn Repository>;
     let refresh = RefreshService::start(repository_source, &paths)?;
-    let mut model = Model::new(snapshot, AccessMode::ReadWrite);
+    let mut model = Model::new(snapshot);
     model.diff_scroll = 40;
 
     fs::write(repository.path().join("ignored.tmp"), "ignored\n")?;

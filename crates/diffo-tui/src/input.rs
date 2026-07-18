@@ -1,6 +1,5 @@
 use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind};
 use diffo_app::{Message, Model};
-use diffo_core::AccessMode;
 use ratatui::layout::Rect;
 
 use crate::{
@@ -41,7 +40,7 @@ pub fn map_event(event: &Event, model: &Model, area: Rect) -> Option<Message> {
     }
     match event {
         Event::Key(key) if key.kind == KeyEventKind::Press => {
-            keyboard::map_key(key.code, key.modifiers, model.access_mode).map(|message| {
+            keyboard::map_key(key.code, key.modifiers).map(|message| {
                 let page_lines = usize::from(area.height.saturating_sub(3)).max(1);
                 match message {
                     Message::ScrollDiffPageUp(_) => Message::ScrollDiffPageUp(page_lines),

@@ -7,8 +7,7 @@ use std::{
 
 use super::{operation::classify_failure, status::parse_status};
 use diffo_core::{
-    AccessMode, ChangeKind, FailureKind, OperationResult, Repository, RepositoryAction,
-    RepositorySource,
+    ChangeKind, FailureKind, OperationResult, Repository, RepositoryAction, RepositorySource,
 };
 
 #[test]
@@ -143,19 +142,6 @@ fn snapshots_the_whole_modified_file_as_diff_context() {
     assert!(diff.text.contains(" line 1\n"));
     assert!(diff.text.contains(" line 20\n"));
     assert!(diff.text.contains("-line 10\n+changed 10\n"));
-}
-
-#[test]
-fn read_only_source_rejects_actions() {
-    let repo = test_repository();
-    let source =
-        super::GitRepositorySource::new(repo.path()).with_access_mode(AccessMode::ReadOnly);
-
-    let error = source
-        .apply(&RepositoryAction::StageAll)
-        .expect_err("read-only action should fail");
-
-    assert!(error.to_string().contains("read-only"));
 }
 
 #[test]

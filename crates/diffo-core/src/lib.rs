@@ -116,15 +116,7 @@ impl std::fmt::Display for OperationFailure {
 
 impl std::error::Error for OperationFailure {}
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum AccessMode {
-    ReadOnly,
-    ReadWrite,
-}
-
 pub trait Repository: RepositorySource {
-    fn access_mode(&self) -> AccessMode;
-
     /// Change the repository index.
     ///
     /// # Errors

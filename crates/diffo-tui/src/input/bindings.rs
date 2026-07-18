@@ -1,10 +1,4 @@
-use super::{AccessMode, KeyCode, KeyModifiers, Message};
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(super) enum Availability {
-    Always,
-    ReadWrite,
-}
+use super::{KeyCode, KeyModifiers, Message};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) struct KeyChord {
@@ -36,7 +30,6 @@ pub(super) struct KeyBinding {
     pub(super) keys: &'static [KeyChord],
     pub(super) message: Message,
     pub(super) description: &'static str,
-    pub(super) availability: Availability,
 }
 
 pub(super) static KEY_BINDINGS: &[KeyBinding] = &[
@@ -47,7 +40,6 @@ pub(super) static KEY_BINDINGS: &[KeyBinding] = &[
         ],
         message: Message::OpenCommandPalette,
         description: "Open command palette",
-        availability: Availability::Always,
     },
     KeyBinding {
         keys: &[
@@ -56,7 +48,6 @@ pub(super) static KEY_BINDINGS: &[KeyBinding] = &[
         ],
         message: Message::ToggleHelp,
         description: "Toggle help",
-        availability: Availability::Always,
     },
     KeyBinding {
         keys: &[
@@ -66,7 +57,6 @@ pub(super) static KEY_BINDINGS: &[KeyBinding] = &[
         ],
         message: Message::Quit,
         description: "Quit",
-        availability: Availability::Always,
     },
     KeyBinding {
         keys: &[
@@ -75,7 +65,6 @@ pub(super) static KEY_BINDINGS: &[KeyBinding] = &[
         ],
         message: Message::SelectPreviousFile,
         description: "Previous file",
-        availability: Availability::Always,
     },
     KeyBinding {
         keys: &[
@@ -85,37 +74,31 @@ pub(super) static KEY_BINDINGS: &[KeyBinding] = &[
         ],
         message: Message::SelectNextFile,
         description: "Next file",
-        availability: Availability::Always,
     },
     KeyBinding {
         keys: &[KeyChord::plain(KeyCode::Up)],
         message: Message::ScrollDiffUp,
         description: "Scroll diff up by four lines",
-        availability: Availability::Always,
     },
     KeyBinding {
         keys: &[KeyChord::plain(KeyCode::Down)],
         message: Message::ScrollDiffDown,
         description: "Scroll diff down by four lines",
-        availability: Availability::Always,
     },
     KeyBinding {
         keys: &[KeyChord::plain(KeyCode::PageUp)],
         message: Message::ScrollDiffPageUp(0),
         description: "Scroll up one page",
-        availability: Availability::Always,
     },
     KeyBinding {
         keys: &[KeyChord::plain(KeyCode::PageDown)],
         message: Message::ScrollDiffPageDown(0),
         description: "Scroll down one page",
-        availability: Availability::Always,
     },
     KeyBinding {
         keys: &[KeyChord::plain(KeyCode::Left)],
         message: Message::ScrollDiffLeft,
         description: "Scroll diff left by four columns",
-        availability: Availability::Always,
     },
     KeyBinding {
         keys: &[
@@ -124,31 +107,26 @@ pub(super) static KEY_BINDINGS: &[KeyBinding] = &[
         ],
         message: Message::ScrollDiffRight,
         description: "Scroll diff right by four columns",
-        availability: Availability::Always,
     },
     KeyBinding {
         keys: &[KeyChord::plain(KeyCode::Char('r'))],
         message: Message::ToggleDiffView,
         description: "Toggle inline / side-by-side view",
-        availability: Availability::Always,
     },
     KeyBinding {
         keys: &[KeyChord::plain(KeyCode::Char('N'))],
         message: Message::JumpToPreviousChange,
         description: "Previous change",
-        availability: Availability::Always,
     },
     KeyBinding {
         keys: &[KeyChord::plain(KeyCode::Char('n'))],
         message: Message::JumpToNextChange,
         description: "Next change",
-        availability: Availability::Always,
     },
     KeyBinding {
         keys: &[KeyChord::plain(KeyCode::Char('e'))],
         message: Message::ToggleFilePane,
         description: "Show / hide file list",
-        availability: Availability::Always,
     },
     KeyBinding {
         keys: &[
@@ -157,7 +135,6 @@ pub(super) static KEY_BINDINGS: &[KeyBinding] = &[
         ],
         message: Message::SelectFirstFile,
         description: "First file",
-        availability: Availability::Always,
     },
     KeyBinding {
         keys: &[
@@ -166,26 +143,22 @@ pub(super) static KEY_BINDINGS: &[KeyBinding] = &[
         ],
         message: Message::SelectLastFile,
         description: "Last file",
-        availability: Availability::Always,
     },
     KeyBinding {
         keys: &[KeyChord::plain(KeyCode::Char(' '))],
         message: Message::ToggleStageSelected,
         description: "Stage / unstage selected file",
-        availability: Availability::ReadWrite,
     },
     KeyBinding {
         keys: &[KeyChord::plain(KeyCode::Char('a'))],
         message: Message::ToggleStageAll,
         description: "Stage / unstage all files",
-        availability: Availability::ReadWrite,
     },
 ];
 
-pub(crate) fn help_rows(access_mode: AccessMode) -> Vec<(String, &'static str)> {
+pub(crate) fn help_rows() -> Vec<(String, &'static str)> {
     KEY_BINDINGS
         .iter()
-        .filter(|binding| binding.is_available(access_mode))
         .map(|binding| {
             let keys = binding
                 .keys
@@ -220,11 +193,5 @@ impl KeyChord {
         } else {
             key
         }
-    }
-}
-
-impl KeyBinding {
-    pub(super) fn is_available(&self, access_mode: AccessMode) -> bool {
-        self.availability == Availability::Always || access_mode == AccessMode::ReadWrite
     }
 }

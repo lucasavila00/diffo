@@ -7,8 +7,8 @@ use std::time::Instant;
 use crossterm::event::{Event, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 use diffo_app::{DiffViewMode, Model};
 use diffo_core::{
-    AccessMode, ChangeKind, FileDiff, FileState, OperationResult, RepositoryAction,
-    RepositorySnapshot, UpstreamState,
+    ChangeKind, FileDiff, FileState, OperationResult, RepositoryAction, RepositorySnapshot,
+    UpstreamState,
 };
 use diffo_diff::RowKind;
 use diffo_highlight::Rgb;
@@ -106,21 +106,18 @@ fn conflict_rows_require_trusted_repository_state() {
 }
 
 fn model() -> Model {
-    Model::new(
-        RepositorySnapshot {
-            files: vec![FileState {
-                path: PathBuf::from("src/main.rs"),
-                old_path: None,
-                kind: ChangeKind::Modified,
-                staged: None,
-                unstaged: Some(FileDiff {
-                    text: "@@ -1 +1 @@\n-let old = true;\n+let new = false;\n".to_owned(),
-                }),
-            }],
-            ..RepositorySnapshot::default()
-        },
-        AccessMode::ReadWrite,
-    )
+    Model::new(RepositorySnapshot {
+        files: vec![FileState {
+            path: PathBuf::from("src/main.rs"),
+            old_path: None,
+            kind: ChangeKind::Modified,
+            staged: None,
+            unstaged: Some(FileDiff {
+                text: "@@ -1 +1 @@\n-let old = true;\n+let new = false;\n".to_owned(),
+            }),
+        }],
+        ..RepositorySnapshot::default()
+    })
 }
 
 fn mouse_at(kind: MouseEventKind, area: Rect) -> Event {
@@ -392,7 +389,7 @@ fn staged_and_unstaged_buffers_of_one_path_have_distinct_identities() {
     snapshot.files[0].unstaged = Some(FileDiff {
         text: "@@ -1,3 +1,3 @@\n context\n context\n-old\n+unstaged\n".to_owned(),
     });
-    let mut model = Model::new(snapshot, AccessMode::ReadWrite);
+    let mut model = Model::new(snapshot);
     let mut renderer = Renderer::new();
     let area = Rect::new(0, 0, 100, 30);
     let staged = renderer.prepare_frame(&model, area);

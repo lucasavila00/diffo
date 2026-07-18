@@ -132,7 +132,7 @@ fn collect(
 mod tests {
     use std::sync::atomic::AtomicUsize;
 
-    use diffo_core::{AccessMode, RepositorySource};
+    use diffo_core::RepositorySource;
 
     use super::*;
 
@@ -148,10 +148,6 @@ mod tests {
     }
 
     impl Repository for FakeRepository {
-        fn access_mode(&self) -> AccessMode {
-            AccessMode::ReadWrite
-        }
-
         fn apply(
             &self,
             _action: &RepositoryAction,

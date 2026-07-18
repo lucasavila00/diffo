@@ -8,7 +8,7 @@ use std::{
 use anyhow::{Context, Result, bail};
 
 use crate::{
-    AccessMode, FailureKind, OperationFailure, OperationResult, Repository, RepositoryAction,
+    FailureKind, OperationFailure, OperationResult, Repository, RepositoryAction,
     RepositorySnapshot, RepositorySource,
 };
 
@@ -36,23 +36,6 @@ impl RepositorySource for FixtureRepositorySource {
                 "failed to parse mock repository state from {}",
                 self.path.display()
             )
-        })
-    }
-}
-
-impl Repository for FixtureRepositorySource {
-    fn access_mode(&self) -> AccessMode {
-        AccessMode::ReadOnly
-    }
-
-    fn apply(
-        &self,
-        action: &RepositoryAction,
-    ) -> std::result::Result<OperationResult, OperationFailure> {
-        Err(OperationFailure {
-            action: action.clone(),
-            kind: FailureKind::Unknown,
-            detail: "mock repository is read-only".to_owned(),
         })
     }
 }
@@ -259,10 +242,6 @@ impl RepositorySource for MutableFixtureRepository {
 }
 
 impl Repository for MutableFixtureRepository {
-    fn access_mode(&self) -> AccessMode {
-        AccessMode::ReadWrite
-    }
-
     fn apply(
         &self,
         action: &RepositoryAction,
@@ -347,7 +326,7 @@ impl Repository for MutableFixtureRepository {
 mod tests {
     use std::{collections::HashSet, path::Path};
 
-    use crate::{AccessMode, ChangeKind, Repository, RepositoryAction, RepositorySource};
+    use crate::{ChangeKind, Repository, RepositoryAction, RepositorySource};
 
     use super::{FixtureRepositorySource, MutableFixtureRepository};
 
@@ -397,7 +376,6 @@ mod tests {
         let repository = MutableFixtureRepository::new(&fixture).expect("fixture should load");
         let path = Path::new("examples/new_tool.rs");
 
-        assert_eq!(repository.access_mode(), AccessMode::ReadWrite);
         repository
             .apply(&RepositoryAction::Stage(path.to_path_buf()))
             .expect("mock stage should work");

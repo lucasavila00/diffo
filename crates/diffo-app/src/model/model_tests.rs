@@ -1,8 +1,7 @@
 use std::path::PathBuf;
 
 use diffo_core::{
-    AccessMode, ChangeKind, FileDiff, FileState, OperationResult, RepositoryAction,
-    RepositorySnapshot,
+    ChangeKind, FileDiff, FileState, OperationResult, RepositoryAction, RepositorySnapshot,
 };
 
 use super::{ChangeArea, FileKey, Model};
@@ -35,7 +34,7 @@ fn snapshot() -> RepositorySnapshot {
 
 #[test]
 fn navigates_both_groups() {
-    let mut app = Model::new(snapshot(), AccessMode::ReadWrite);
+    let mut app = Model::new(snapshot());
     assert_eq!(
         app.selected.as_ref().expect("selection").path,
         PathBuf::from("both.txt")
@@ -63,7 +62,7 @@ fn navigates_both_groups() {
 
 #[test]
 fn creates_actions_for_the_selected_group() {
-    let mut app = Model::new(snapshot(), AccessMode::ReadWrite);
+    let mut app = Model::new(snapshot());
     assert_eq!(app.stage_selected(), None);
     assert_eq!(
         app.unstage_selected(),
@@ -80,7 +79,7 @@ fn creates_actions_for_the_selected_group() {
 
 #[test]
 fn staging_for_review_selects_the_next_unstaged_file_after_refresh() {
-    let mut app = Model::new(snapshot(), AccessMode::ReadWrite);
+    let mut app = Model::new(snapshot());
     app.select_next();
     assert_eq!(
         app.selected,
@@ -109,7 +108,7 @@ fn staging_for_review_selects_the_next_unstaged_file_after_refresh() {
 
 #[test]
 fn keeps_selection_after_refresh() {
-    let mut app = Model::new(snapshot(), AccessMode::ReadWrite);
+    let mut app = Model::new(snapshot());
     let selected = FileKey {
         path: PathBuf::from("both.txt"),
         area: ChangeArea::Staged,
@@ -122,7 +121,7 @@ fn keeps_selection_after_refresh() {
 
 #[test]
 fn preserves_scroll_when_the_selected_file_changes_content() {
-    let mut app = Model::new(snapshot(), AccessMode::ReadWrite);
+    let mut app = Model::new(snapshot());
     app.diff_scroll = 12;
     app.diff_horizontal_scroll = 8;
 
@@ -144,7 +143,7 @@ fn preserves_scroll_when_the_selected_file_changes_content() {
 
 #[test]
 fn preserves_commit_input_focus_across_repository_refresh() {
-    let mut app = Model::new(snapshot(), AccessMode::ReadWrite);
+    let mut app = Model::new(snapshot());
     app.focus_commit_input();
 
     app.repository_changed(snapshot());
@@ -156,7 +155,7 @@ fn preserves_commit_input_focus_across_repository_refresh() {
 
 #[test]
 fn edits_commit_message_at_a_preserved_character_cursor() {
-    let mut app = Model::new(snapshot(), AccessMode::ReadWrite);
+    let mut app = Model::new(snapshot());
     app.focus_commit_input();
     for character in "ac".chars() {
         app.commit_message_input(character);
@@ -173,18 +172,8 @@ fn edits_commit_message_at_a_preserved_character_cursor() {
 }
 
 #[test]
-fn read_only_mode_blocks_actions() {
-    let mut app = Model::new(snapshot(), AccessMode::ReadOnly);
-
-    assert_eq!(app.stage_selected(), None);
-    assert_eq!(app.toggle_stage_all(), None);
-    app.focus_commit_input();
-    assert!(!app.commit_input_focused());
-}
-
-#[test]
 fn queues_replaces_limits_and_dismisses_toasts() {
-    let mut app = Model::new(snapshot(), AccessMode::ReadWrite);
+    let mut app = Model::new(snapshot());
     for updated_refs in 1..=4 {
         app.open_command_palette();
         assert_eq!(

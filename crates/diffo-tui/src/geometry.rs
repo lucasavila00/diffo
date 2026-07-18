@@ -1,6 +1,6 @@
 use super::{
-    AccessMode, ChangeArea, Constraint, DiffViewMode, DiffViewportMetrics, Direction, FileKey,
-    FileState, HunkDirection, Layout, Model, Rect, Renderer, ScrollbarAxis, file_group_areas,
+    ChangeArea, Constraint, DiffViewMode, DiffViewportMetrics, Direction, FileKey, FileState,
+    HunkDirection, Layout, Model, Rect, Renderer, ScrollbarAxis, file_group_areas,
     file_panel_areas, staged_files, unstaged_files,
 };
 
@@ -66,9 +66,6 @@ pub(crate) fn file_action_at_position(
     column: u16,
     row: u16,
 ) -> Option<diffo_app::Message> {
-    if model.access_mode == AccessMode::ReadOnly {
-        return None;
-    }
     let columns = horizontal_panes(main_area(area), model.file_pane_percent);
     let file_areas = file_panel_areas(columns[0]);
     let groups = file_group_areas(file_areas[1]);

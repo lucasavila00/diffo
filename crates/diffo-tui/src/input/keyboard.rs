@@ -1,5 +1,5 @@
 use super::bindings::KEY_BINDINGS;
-use super::{AccessMode, Event, KeyCode, KeyEventKind, KeyModifiers, Message};
+use super::{Event, KeyCode, KeyEventKind, KeyModifiers, Message};
 
 pub(super) fn map_help_event(event: &Event) -> Option<Message> {
     let Event::Key(key) = event else {
@@ -40,14 +40,9 @@ pub(super) fn map_command_palette_event(event: &Event) -> Option<Message> {
     }
 }
 
-pub(super) fn map_key(
-    code: KeyCode,
-    modifiers: KeyModifiers,
-    access_mode: AccessMode,
-) -> Option<Message> {
+pub(super) fn map_key(code: KeyCode, modifiers: KeyModifiers) -> Option<Message> {
     KEY_BINDINGS
         .iter()
-        .filter(|binding| binding.is_available(access_mode))
         .find(|binding| binding.keys.iter().any(|key| key.matches(code, modifiers)))
         .map(|binding| binding.message.clone())
 }

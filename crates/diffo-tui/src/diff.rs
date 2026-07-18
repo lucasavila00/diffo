@@ -1,9 +1,10 @@
 use super::{
-    AnchorRow, DiffBlock, DiffDocument, DiffKey, DiffViewMode, Duration, HighlightCache,
-    HighlightedDiff, MAX_HIGHLIGHT_FILE_LINES, MAX_SYNC_BYTES, MAX_SYNC_LINES, PrepareOutcome,
-    PrepareRequest, ProjectionOptions, RenderLine, Renderer, RowKind, ScrollAnchor,
-    SyntaxHighlighter, TrySendError, env, inline_change_starts, inline_rows_with_options,
-    parse_unified_patch, side_by_side_change_starts, side_by_side_rows_with_options,
+    AnchorRow, Arc, DiffBlock, DiffDocument, DiffKey, DiffViewMode, Duration, HighlightCache,
+    HighlightedDiff, HunkButtonMetrics, MAX_HIGHLIGHT_FILE_LINES, MAX_SYNC_BYTES, MAX_SYNC_LINES,
+    PrepareOutcome, PrepareRequest, ProjectionOptions, RenderLine, Renderer, RowKind, ScrollAnchor,
+    ScrollbarMetrics, SyntaxHighlighter, TrySendError, env, inline_change_starts,
+    inline_rows_with_options, parse_unified_patch, side_by_side_change_starts,
+    side_by_side_rows_with_options, sync_channel, thread,
 };
 
 impl ScrollAnchor {
@@ -305,5 +306,59 @@ impl Renderer {
             DiffViewMode::Inline => cache.inline_changes.as_slice(),
             DiffViewMode::SideBySide => cache.side_by_side_changes.as_slice(),
         })
+    }
+}
+
+impl Default for Renderer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Renderer {
+    #[must_use]
+    /// Create a renderer and its background diff worker.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the operating system cannot start the worker thread.
+    pub fn new() -> Self {
+        let highlighter = Arc::new(SyntaxHighlighter::new());
+        let worker_highlighter = Arc::clone(&highlighter);
+        let (prepare_tx, requests) = sync_channel::<PrepareRequest>(1);
+        let (results, prepare_rx) = sync_channel(1);
+        let prepare_delay = preparation_delay_from_environment();
+        thread::Builder::new()
+            .name("diffo-diff-prepare".to_owned())
+            .spawn(move || {
+                while let Ok(request) = requests.recv() {
+                    if !prepare_delay.is_zero() {
+                        thread::sleep(prepare_delay);
+                    }
+                    let key = request.key.clone();
+                    let result = prepare_diff(request, &worker_highlighter).ok_or(key);
+                    if results.send(result).is_err() {
+                        break;
+                    }
+                }
+            })
+            .expect("failed to start diff preparation worker");
+        Self {
+            highlighter,
+            highlighted: None,
+            prepare_tx,
+            prepare_rx,
+            submitted: Vec::new(),
+            requested: None,
+            failed: None,
+            scrollbars: ScrollbarMetrics::default(),
+            scrollbar_drag: None,
+            hunk_buttons: HunkButtonMetrics::default(),
+            hovered_hunk_button: None,
+            content_revision: 0,
+            network_animation_tick: 0,
+            #[cfg(test)]
+            highlight_computations: 0,
+        }
     }
 }

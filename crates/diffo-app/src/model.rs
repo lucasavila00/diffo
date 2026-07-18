@@ -1,8 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use diffo_core::{
-    AccessMode, FailureKind, OperationFailure, OperationResult, RepositoryAction,
-    RepositorySnapshot,
+    FailureKind, OperationFailure, OperationResult, RepositoryAction, RepositorySnapshot,
 };
 
 use crate::{CommandId, CommandPalette};
@@ -122,7 +121,6 @@ pub struct Model {
     pub selected: Option<FileKey>,
     pub should_quit: bool,
     pub error: Option<String>,
-    pub access_mode: AccessMode,
     pub diff_scroll: usize,
     pub diff_horizontal_scroll: usize,
     pub diff_view_mode: DiffViewMode,
@@ -144,14 +142,13 @@ pub struct Model {
 
 impl Model {
     #[must_use]
-    pub fn new(snapshot: RepositorySnapshot, access_mode: AccessMode) -> Self {
+    pub fn new(snapshot: RepositorySnapshot) -> Self {
         let selected = file_keys(&snapshot).into_iter().next();
         Self {
             snapshot,
             selected,
             should_quit: false,
             error: None,
-            access_mode,
             diff_scroll: 0,
             diff_horizontal_scroll: 0,
             diff_view_mode: DiffViewMode::default(),

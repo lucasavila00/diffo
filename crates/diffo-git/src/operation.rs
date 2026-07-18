@@ -1,29 +1,17 @@
 use std::{env, process::Command, thread, time::Duration};
 
 use diffo_core::{
-    AccessMode, FailureKind, OperationFailure, OperationResult, Repository, RepositoryAction,
-    RepositorySource, UpstreamState,
+    FailureKind, OperationFailure, OperationResult, Repository, RepositoryAction, RepositorySource,
+    UpstreamState,
 };
 
 use super::GitRepositorySource;
 
 impl Repository for GitRepositorySource {
-    fn access_mode(&self) -> AccessMode {
-        self.access_mode
-    }
-
     fn apply(
         &self,
         action: &RepositoryAction,
     ) -> std::result::Result<OperationResult, OperationFailure> {
-        if self.access_mode == AccessMode::ReadOnly {
-            return Err(operation_failure(
-                action,
-                FailureKind::Unknown,
-                "repository is read-only",
-            ));
-        }
-
         if matches!(
             action,
             RepositoryAction::Fetch | RepositoryAction::Pull | RepositoryAction::Push

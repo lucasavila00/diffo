@@ -1,4 +1,4 @@
-use super::{AccessMode, CommandId, CommandPalette, Model, RepositoryAction};
+use super::{CommandId, CommandPalette, Model, RepositoryAction};
 
 impl Model {
     pub fn open_command_palette(&mut self) {
@@ -50,7 +50,7 @@ impl Model {
     }
 
     pub fn execute_selected_command(&mut self) -> Option<RepositoryAction> {
-        if self.access_mode == AccessMode::ReadOnly || self.pending_operation.is_some() {
+        if self.pending_operation.is_some() {
             return None;
         }
         let command = self.command_palette.as_ref()?.selected_command()?.id;

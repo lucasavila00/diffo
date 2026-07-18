@@ -1,6 +1,9 @@
 use std::path::{Path, PathBuf};
 
-use diffo_core::{AccessMode, RepositoryAction, RepositorySnapshot};
+use diffo_core::{
+    AccessMode, FailureKind, OperationFailure, OperationResult, RepositoryAction,
+    RepositorySnapshot,
+};
 
 use crate::{CommandId, CommandPalette};
 
@@ -37,6 +40,21 @@ pub enum NetworkOperation {
     Fetch,
     Pull,
     Push,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ToastKind {
+    Success,
+    Info,
+    Error,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Toast {
+    pub id: u64,
+    pub kind: ToastKind,
+    pub title: String,
+    pub detail: Option<String>,
 }
 
 impl NetworkOperation {
@@ -99,11 +117,13 @@ pub struct Model {
     pub command_palette: Option<CommandPalette>,
     pub help_open: bool,
     pub commit_message: String,
+    pub toasts: Vec<Toast>,
     commit_composer_state: CommitComposerState,
     commit_message_cursor: usize,
     network_operation: Option<NetworkOperation>,
     expanded_file_pane_percent: u16,
     cursor: usize,
+    next_toast_id: u64,
 }
 
 impl Model {
@@ -124,11 +144,13 @@ impl Model {
             command_palette: None,
             help_open: false,
             commit_message: String::new(),
+            toasts: Vec::new(),
             commit_composer_state: CommitComposerState::Idle,
             commit_message_cursor: 0,
             network_operation: None,
             expanded_file_pane_percent: 25,
             cursor: 0,
+            next_toast_id: 1,
         }
     }
 
@@ -260,10 +282,18 @@ impl Model {
     }
 
     pub fn execute_primary_action(&mut self) -> Option<RepositoryAction> {
+        let primary = self.primary_action();
+        if primary == PrimaryAction::PushAndPull {
+            self.show_operation_failure(OperationFailure {
+                action: RepositoryAction::Push,
+                kind: FailureKind::PullRequired,
+                detail: "pull and merge required".to_owned(),
+            });
+            return None;
+        }
         if !self.primary_action_enabled() {
             return None;
         }
-        let primary = self.primary_action();
         let action = match primary {
             PrimaryAction::Commit => RepositoryAction::Commit(self.effective_commit_message()?),
             PrimaryAction::Push => RepositoryAction::Push,
@@ -583,6 +613,40 @@ impl Model {
         self.error = Some(error.into());
     }
 
+    pub fn complete_operation(&mut self, result: OperationResult, snapshot: RepositorySnapshot) {
+        self.refresh(snapshot);
+        let (kind, title) = operation_result_toast(&result);
+        self.push_toast(kind, title, None);
+    }
+
+    pub fn show_operation_failure(&mut self, failure: OperationFailure) {
+        self.show_error(failure.detail.clone());
+        self.error = None;
+        self.push_toast(
+            ToastKind::Error,
+            operation_failure_title(&failure),
+            None,
+        );
+    }
+
+    pub fn dismiss_toast(&mut self, id: u64) {
+        self.toasts.retain(|toast| toast.id != id);
+    }
+
+    fn push_toast(&mut self, kind: ToastKind, title: String, detail: Option<String>) {
+        self.toasts
+            .retain(|toast| toast.title != title || toast.detail != detail);
+        let toast = Toast {
+            id: self.next_toast_id,
+            kind,
+            title,
+            detail,
+        };
+        self.next_toast_id = self.next_toast_id.saturating_add(1);
+        self.toasts.insert(0, toast);
+        self.toasts.truncate(3);
+    }
+
     #[must_use]
     pub fn is_selected(&self, path: &Path, area: ChangeArea) -> bool {
         self.selected
@@ -600,6 +664,47 @@ fn byte_index_at_char(text: &str, character: usize) -> usize {
     text.char_indices()
         .nth(character)
         .map_or(text.len(), |(index, _)| index)
+}
+
+fn operation_result_toast(result: &OperationResult) -> (ToastKind, String) {
+    let title = match result {
+        OperationResult::Stage => "Staged changes".to_owned(),
+        OperationResult::Unstage => "Unstaged changes".to_owned(),
+        OperationResult::Fetch { updated_refs: 0 } => "Fetch complete".to_owned(),
+        OperationResult::Fetch { updated_refs: 1 } => "Fetched 1 ref".to_owned(),
+        OperationResult::Fetch { updated_refs } => format!("Fetched {updated_refs} refs"),
+        OperationResult::Pull { commits: 0 } => "Already up to date".to_owned(),
+        OperationResult::Pull { commits: 1 } => "Pulled 1 commit".to_owned(),
+        OperationResult::Pull { commits } => format!("Pulled {commits} commits"),
+        OperationResult::Push { hash, upstream } => {
+            format!("Pushed {} to {upstream}", short_hash(hash))
+        }
+        OperationResult::Commit { hash } => format!("Committed {}", short_hash(hash)),
+    };
+    (ToastKind::Success, title)
+}
+
+fn operation_failure_title(failure: &OperationFailure) -> String {
+    let action = match &failure.action {
+        RepositoryAction::Stage(_) | RepositoryAction::StageAll => "Stage",
+        RepositoryAction::Unstage(_) | RepositoryAction::UnstageAll => "Unstage",
+        RepositoryAction::Fetch => "Fetch",
+        RepositoryAction::Pull => "Pull",
+        RepositoryAction::Push => "Push",
+        RepositoryAction::Commit(_) => "Commit",
+    };
+    match failure.kind {
+        FailureKind::PullRequired => format!("Push blocked: {}", failure.detail),
+        FailureKind::PushRejected | FailureKind::HookRejected => {
+            format!("Push rejected: {}", failure.detail)
+        }
+        FailureKind::MergeConflict => format!("Pull stopped: {}", failure.detail),
+        _ => format!("{action} failed: {}", failure.detail),
+    }
+}
+
+fn short_hash(hash: &str) -> &str {
+    hash.get(..7.min(hash.len())).unwrap_or(hash)
 }
 
 fn file_keys(snapshot: &RepositorySnapshot) -> Vec<FileKey> {
@@ -635,7 +740,8 @@ mod tests {
     use std::path::PathBuf;
 
     use diffo_core::{
-        AccessMode, ChangeKind, FileDiff, FileState, RepositoryAction, RepositorySnapshot,
+        AccessMode, ChangeKind, FileDiff, FileState, OperationResult, RepositoryAction,
+        RepositorySnapshot,
     };
 
     use super::{ChangeArea, FileKey, Model};
@@ -784,5 +890,31 @@ mod tests {
         assert_eq!(app.toggle_stage_all(), None);
         app.focus_commit_input();
         assert!(!app.commit_input_focused());
+    }
+
+    #[test]
+    fn queues_replaces_limits_and_dismisses_toasts() {
+        let mut app = Model::new(snapshot(), AccessMode::ReadWrite);
+        for updated_refs in 1..=4 {
+            app.complete_operation(
+                OperationResult::Fetch { updated_refs },
+                snapshot(),
+            );
+        }
+        assert_eq!(app.toasts.len(), 3);
+        assert_eq!(app.toasts[0].title, "Fetched 4 refs");
+
+        app.complete_operation(OperationResult::Fetch { updated_refs: 4 }, snapshot());
+        assert_eq!(app.toasts.len(), 3);
+        assert_eq!(
+            app.toasts
+                .iter()
+                .filter(|toast| toast.title == "Fetched 4 refs")
+                .count(),
+            1
+        );
+        let id = app.toasts[0].id;
+        app.dismiss_toast(id);
+        assert!(app.toasts.iter().all(|toast| toast.id != id));
     }
 }

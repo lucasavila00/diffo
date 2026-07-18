@@ -77,6 +77,44 @@ pub enum RepositoryAction {
     Commit(String),
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum OperationResult {
+    Stage,
+    Unstage,
+    Fetch { updated_refs: usize },
+    Pull { commits: usize },
+    Push { hash: String, upstream: String },
+    Commit { hash: String },
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum FailureKind {
+    PullRequired,
+    PushRejected,
+    Authentication,
+    Network,
+    MergeConflict,
+    DirtyWorktree,
+    HookRejected,
+    NoRemote,
+    Unknown,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct OperationFailure {
+    pub action: RepositoryAction,
+    pub kind: FailureKind,
+    pub detail: String,
+}
+
+impl std::fmt::Display for OperationFailure {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(formatter, "{}", self.detail)
+    }
+}
+
+impl std::error::Error for OperationFailure {}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum AccessMode {
     ReadOnly,
@@ -91,5 +129,8 @@ pub trait Repository: RepositorySource {
     /// # Errors
     ///
     /// Returns an error when the action cannot be applied.
-    fn apply(&self, action: &RepositoryAction) -> Result<()>;
+    fn apply(
+        &self,
+        action: &RepositoryAction,
+    ) -> std::result::Result<OperationResult, OperationFailure>;
 }

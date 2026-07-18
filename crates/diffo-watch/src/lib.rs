@@ -10,7 +10,7 @@ use std::{
 };
 
 use anyhow::{Context, Result};
-use diffo_core::{Repository, RepositoryAction, RepositorySnapshot};
+use diffo_core::{OperationFailure, OperationResult, Repository, RepositoryAction, RepositorySnapshot};
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 
 const DEBOUNCE: Duration = Duration::from_millis(100);
@@ -37,6 +37,15 @@ pub enum RefreshResult {
     Error {
         generation: u64,
         message: String,
+    },
+    ActionCompleted {
+        generation: u64,
+        result: OperationResult,
+        snapshot: RepositorySnapshot,
+    },
+    ActionFailed {
+        generation: u64,
+        failure: OperationFailure,
     },
 }
 
@@ -196,17 +205,37 @@ fn collect(
     generation: &mut u64,
 ) -> RefreshResult {
     *generation = generation.saturating_add(1);
-    let result = action
-        .map_or(Ok(()), |action| repository.apply(action))
-        .and_then(|()| repository.snapshot());
-    match result {
-        Ok(snapshot) => RefreshResult::Snapshot {
-            generation: *generation,
-            snapshot,
+    match action {
+        Some(action) => match repository.apply(action) {
+            Ok(result) => match repository.snapshot() {
+                Ok(snapshot) => RefreshResult::ActionCompleted {
+                    generation: *generation,
+                    result,
+                    snapshot,
+                },
+                Err(error) => RefreshResult::ActionFailed {
+                    generation: *generation,
+                    failure: OperationFailure {
+                        action: action.clone(),
+                        kind: diffo_core::FailureKind::Unknown,
+                        detail: error.to_string(),
+                    },
+                },
+            },
+            Err(failure) => RefreshResult::ActionFailed {
+                generation: *generation,
+                failure,
+            },
         },
-        Err(error) => RefreshResult::Error {
-            generation: *generation,
-            message: error.to_string(),
+        None => match repository.snapshot() {
+            Ok(snapshot) => RefreshResult::Snapshot {
+                generation: *generation,
+                snapshot,
+            },
+            Err(error) => RefreshResult::Error {
+                generation: *generation,
+                message: error.to_string(),
+            },
         },
     }
 }
@@ -235,8 +264,11 @@ mod tests {
             AccessMode::ReadWrite
         }
 
-        fn apply(&self, _action: &RepositoryAction) -> Result<()> {
-            Ok(())
+        fn apply(
+            &self,
+            _action: &RepositoryAction,
+        ) -> std::result::Result<OperationResult, OperationFailure> {
+            Ok(OperationResult::Stage)
         }
     }
 
@@ -287,5 +319,29 @@ mod tests {
         commands.send(Command::Wake).unwrap();
         commands.send(Command::Shutdown).unwrap();
         worker.join().unwrap();
+    }
+
+    #[test]
+    fn action_completion_is_distinct_from_watcher_snapshot() {
+        let repository = FakeRepository {
+            collections: AtomicUsize::new(0),
+        };
+        let mut generation = 0;
+
+        let watcher = collect(&repository, None, &mut generation);
+        let action = collect(
+            &repository,
+            Some(&RepositoryAction::StageAll),
+            &mut generation,
+        );
+
+        assert!(matches!(watcher, RefreshResult::Snapshot { .. }));
+        assert!(matches!(
+            action,
+            RefreshResult::ActionCompleted {
+                result: OperationResult::Stage,
+                ..
+            }
+        ));
     }
 }

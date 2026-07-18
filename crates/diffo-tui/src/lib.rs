@@ -1,4 +1,4 @@
-use diffo_app::{ChangeArea, DiffViewMode, FileKey, Model};
+use diffo_app::{ChangeArea, DiffViewMode, FileKey, Model, ToastKind};
 use std::{
     path::{Path, PathBuf},
     sync::{
@@ -171,6 +171,7 @@ impl Renderer {
         render_files(frame, panes[0], model);
         self.render_diff(frame, panes[1], model);
         render_status(frame, vertical[1], model, self.network_animation_tick);
+        render_toasts(frame, model);
         render_command_palette(frame, model);
         render_help(frame, model);
         render_commit_editor(frame, model);
@@ -256,6 +257,15 @@ impl Renderer {
         model: &Model,
         area: Rect,
     ) -> Option<diffo_app::Message> {
+        if !model.commit_input_focused()
+            && model.command_palette.is_none()
+            && !model.help_open
+            && let Event::Mouse(mouse) = event
+            && mouse.kind == MouseEventKind::Down(MouseButton::Left)
+            && let Some(id) = toast_at_position(model, area, mouse.column, mouse.row)
+        {
+            return Some(diffo_app::Message::DismissToast(id));
+        }
         if model.command_palette.is_some() || model.help_open {
             if let Event::Mouse(mouse) = event
                 && mouse.kind == MouseEventKind::Down(MouseButton::Left)
@@ -742,6 +752,64 @@ fn render_help(frame: &mut Frame, model: &Model) {
     );
 }
 
+fn render_toasts(frame: &mut Frame, model: &Model) {
+    for (toast, area) in model.toasts.iter().zip(toast_areas(model, frame.area())) {
+        let color = match toast.kind {
+            ToastKind::Success => Color::LightGreen,
+            ToastKind::Info => Color::LightCyan,
+            ToastKind::Error => Color::LightRed,
+        };
+        frame.render_widget(Clear, area);
+        let text = toast.detail.as_ref().map_or_else(
+            || toast.title.clone(),
+            |detail| format!("{}\n{detail}", toast.title),
+        );
+        frame.render_widget(
+            Paragraph::new(text)
+                .wrap(ratatui::widgets::Wrap { trim: true })
+                .style(Style::default().fg(Color::White))
+                .block(
+                    Block::default()
+                        .borders(Borders::ALL)
+                        .border_style(Style::default().fg(color)),
+                ),
+            area,
+        );
+    }
+}
+
+fn toast_areas(model: &Model, area: Rect) -> Vec<Rect> {
+    let width = 44.min(area.width.saturating_sub(2));
+    let height = 3_u16;
+    let right = area.right().saturating_sub(1);
+    let mut bottom = area.bottom().saturating_sub(2);
+    model
+        .toasts
+        .iter()
+        .filter_map(|_| {
+            if width < 4 || bottom < area.y.saturating_add(height) {
+                return None;
+            }
+            let rect = Rect::new(right.saturating_sub(width), bottom - height, width, height);
+            bottom = rect.y;
+            Some(rect)
+        })
+        .collect()
+}
+
+fn toast_at_position(
+    model: &Model,
+    area: Rect,
+    column: u16,
+    row: u16,
+) -> Option<u64> {
+    model
+        .toasts
+        .iter()
+        .zip(toast_areas(model, area))
+        .find_map(|(toast, area)| area.contains((column, row).into()).then_some(toast.id))
+}
+
 fn render_commit_editor(frame: &mut Frame, model: &Model) {
     if !model.commit_input_focused() {
         return;
@@ -1223,7 +1291,10 @@ pub(crate) fn commit_action_at_position(
     if sections[0].contains((column, row).into()) {
         return Some(diffo_app::Message::FocusCommitInput);
     }
-    if sections[1].contains((column, row).into()) && model.primary_action_enabled() {
+    if sections[1].contains((column, row).into())
+        && (model.primary_action_enabled()
+            || model.primary_action() == diffo_app::PrimaryAction::PushAndPull)
+    {
         return Some(diffo_app::Message::ExecutePrimaryAction);
     }
     None

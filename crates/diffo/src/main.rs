@@ -1,11 +1,12 @@
 use std::{
+    collections::HashMap,
     env, fs, io,
     path::Path,
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
     },
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use anyhow::{Context, Result};
@@ -14,7 +15,7 @@ use crossterm::{
     execute,
     terminal::{Clear, ClearType},
 };
-use diffo_app::{Effect, Message, Model, update};
+use diffo_app::{Effect, Message, Model, ToastKind, update};
 use diffo_core::{
     Repository,
     fixture_source::{FixtureRepositorySource, MutableFixtureRepository},
@@ -130,7 +131,9 @@ fn run_watch_dump(
                     dump_snapshot_atomic(path, &snapshot)?;
                 }
                 RefreshResult::Error { message, .. } => eprintln!("{message}"),
-                RefreshResult::Snapshot { .. } => {}
+                RefreshResult::Snapshot { .. }
+                | RefreshResult::ActionCompleted { .. }
+                | RefreshResult::ActionFailed { .. } => {}
             }
         }
         std::thread::sleep(Duration::from_millis(10));
@@ -148,6 +151,7 @@ fn run(
     tracer: &mut FrameTracer,
 ) -> Result<()> {
     let mut generation = 0;
+    let mut toast_deadlines = HashMap::new();
     let scroll = (model.diff_scroll, model.diff_horizontal_scroll);
     let update_start_us = tracer.elapsed_us();
     let (preparation, draw_start_us, draw_end_us) = draw_frame(terminal, renderer, model, tracer)?;
@@ -163,6 +167,7 @@ fn run(
         draw_end_us,
     ));
     while !model.should_quit && !shutdown.load(Ordering::Relaxed) {
+        expire_toasts(model, &mut toast_deadlines);
         let poll_timeout = if renderer.is_preparing()
             || refresh.is_some_and(RefreshService::is_busy)
             || model.network_operation().is_some()
@@ -203,6 +208,26 @@ fn run(
     }
 
     Ok(())
+}
+
+fn expire_toasts(model: &mut Model, deadlines: &mut HashMap<u64, Instant>) {
+    let now = Instant::now();
+    deadlines.retain(|id, _| model.toasts.iter().any(|toast| toast.id == *id));
+    for toast in &model.toasts {
+        if toast.kind != ToastKind::Error {
+            deadlines
+                .entry(toast.id)
+                .or_insert_with(|| now + Duration::from_secs(4));
+        }
+    }
+    let expired = deadlines
+        .iter()
+        .filter_map(|(id, deadline)| (*deadline <= now).then_some(*id))
+        .collect::<Vec<_>>();
+    for id in expired {
+        let _ = update(model, Message::DismissToast(id));
+        deadlines.remove(&id);
+    }
 }
 
 fn draw_frame(
@@ -329,7 +354,25 @@ fn drain_refresh(refresh: &RefreshService, model: &mut Model, generation: &mut u
                 *generation = next;
                 Some(Message::OperationFailed(message))
             }
-            RefreshResult::Snapshot { .. } | RefreshResult::Error { .. } => None,
+            RefreshResult::ActionCompleted {
+                generation: next,
+                result,
+                snapshot,
+            } if next > *generation => {
+                *generation = next;
+                Some(Message::OperationCompleted(result, snapshot))
+            }
+            RefreshResult::ActionFailed {
+                generation: next,
+                failure,
+            } if next > *generation => {
+                *generation = next;
+                Some(Message::ActionFailed(failure))
+            }
+            RefreshResult::Snapshot { .. }
+            | RefreshResult::Error { .. }
+            | RefreshResult::ActionCompleted { .. }
+            | RefreshResult::ActionFailed { .. } => None,
         };
         if let Some(message) = message {
             let _ = update(model, message);
@@ -339,12 +382,12 @@ fn drain_refresh(refresh: &RefreshService, model: &mut Model, generation: &mut u
 
 fn execute_effect(repository: &dyn Repository, model: &mut Model, effect: Effect) {
     let Effect::Repository(action) = effect;
-    let message = match repository
-        .apply(&action)
-        .and_then(|()| repository.snapshot())
-    {
-        Ok(snapshot) => Message::SnapshotLoaded(snapshot),
-        Err(error) => Message::OperationFailed(error.to_string()),
+    let message = match repository.apply(&action) {
+        Ok(result) => match repository.snapshot() {
+            Ok(snapshot) => Message::OperationCompleted(result, snapshot),
+            Err(error) => Message::OperationFailed(error.to_string()),
+        },
+        Err(failure) => Message::ActionFailed(failure),
     };
     let _ = update(model, message);
 }

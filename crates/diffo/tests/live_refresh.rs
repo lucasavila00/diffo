@@ -130,6 +130,9 @@ fn wait_for_refresh(
                 return Ok(snapshot);
             }
             Ok(Some(RefreshResult::Snapshot { .. })) => {}
+            Ok(Some(
+                RefreshResult::ActionCompleted { .. } | RefreshResult::ActionFailed { .. },
+            )) => {}
             Ok(Some(RefreshResult::Error { message, .. })) => bail!(message),
             Ok(None) => thread::sleep(Duration::from_millis(10)),
             Err(error) => bail!("refresh worker stopped: {error}"),

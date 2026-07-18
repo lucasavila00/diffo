@@ -7,7 +7,10 @@ use std::{
 
 use anyhow::{Context, Result, bail};
 
-use crate::{AccessMode, Repository, RepositoryAction, RepositorySnapshot, RepositorySource};
+use crate::{
+    AccessMode, FailureKind, OperationFailure, OperationResult, Repository,
+    RepositoryAction, RepositorySnapshot, RepositorySource,
+};
 
 pub struct FixtureRepositorySource {
     path: PathBuf,
@@ -42,8 +45,15 @@ impl Repository for FixtureRepositorySource {
         AccessMode::ReadOnly
     }
 
-    fn apply(&self, _action: &RepositoryAction) -> Result<()> {
-        bail!("mock repository is read-only")
+    fn apply(
+        &self,
+        action: &RepositoryAction,
+    ) -> std::result::Result<OperationResult, OperationFailure> {
+        Err(OperationFailure {
+            action: action.clone(),
+            kind: FailureKind::Unknown,
+            detail: "mock repository is read-only".to_owned(),
+        })
     }
 }
 
@@ -253,10 +263,15 @@ impl Repository for MutableFixtureRepository {
         AccessMode::ReadWrite
     }
 
-    fn apply(&self, action: &RepositoryAction) -> Result<()> {
-        match action {
-            RepositoryAction::Stage(path) => self.stage(path),
-            RepositoryAction::Unstage(path) => self.unstage(path),
+    fn apply(
+        &self,
+        action: &RepositoryAction,
+    ) -> std::result::Result<OperationResult, OperationFailure> {
+        let result = (|| -> Result<OperationResult> { match action {
+            RepositoryAction::Stage(path) => self.stage(path).map(|()| OperationResult::Stage),
+            RepositoryAction::Unstage(path) => {
+                self.unstage(path).map(|()| OperationResult::Unstage)
+            }
             RepositoryAction::StageAll => {
                 let paths = self
                     .snapshot
@@ -270,7 +285,7 @@ impl Repository for MutableFixtureRepository {
                 for path in paths {
                     self.stage(&path)?;
                 }
-                Ok(())
+                Ok(OperationResult::Stage)
             }
             RepositoryAction::UnstageAll => {
                 let paths = self
@@ -285,7 +300,7 @@ impl Repository for MutableFixtureRepository {
                 for path in paths {
                     self.unstage(&path)?;
                 }
-                Ok(())
+                Ok(OperationResult::Unstage)
             }
             RepositoryAction::Commit(message) => {
                 let mut snapshot = self.snapshot.lock().expect("mock snapshot mutex poisoned");
@@ -303,12 +318,26 @@ impl Repository for MutableFixtureRepository {
                 if let Some(upstream) = snapshot.upstream.as_mut() {
                     upstream.ahead = upstream.ahead.saturating_add(1);
                 }
-                Ok(())
+                Ok(OperationResult::Commit {
+                    hash: "mock-commit".to_owned(),
+                })
             }
             RepositoryAction::Fetch | RepositoryAction::Pull | RepositoryAction::Push => {
                 bail!("mock repository cannot execute {action:?}: no remote configured")
             }
-        }
+        }})();
+        result.map_err(|error| OperationFailure {
+            action: action.clone(),
+            kind: if matches!(
+                action,
+                RepositoryAction::Fetch | RepositoryAction::Pull | RepositoryAction::Push
+            ) {
+                FailureKind::NoRemote
+            } else {
+                FailureKind::Unknown
+            },
+            detail: error.to_string(),
+        })
     }
 }
 

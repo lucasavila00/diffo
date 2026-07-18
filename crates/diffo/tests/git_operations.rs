@@ -52,7 +52,8 @@ fn mock_remote_error_shows_the_executed_action() -> Result<()> {
         .press(Key::Char('1'))?
         .type_text("fetch")?
         .press(Key::Enter)?
-        .wait_for_text("cannot execute Fetch: no remote configured")?;
+        .wait_for_text("Fetch failed:")?
+        .wait_for_text("Fetch")?;
     Ok(())
 }
 
@@ -202,6 +203,8 @@ fn commit_composer_commits_then_pushes() -> Result<()> {
                 == "Commit from composer",
         )
     })?;
+    let commit = git_output(&repository.worktree, &["rev-parse", "--short=7", "HEAD"])?;
+    screen.wait_for_text(&format!("Committed {commit}"))?;
 
     screen
         .wait_for_text("[ Push ]")?
@@ -212,6 +215,7 @@ fn commit_composer_commits_then_pushes() -> Result<()> {
         let remote = git_output(&repository.worktree, &["ls-remote", "origin", "HEAD"])?;
         Ok(remote.starts_with(&local))
     })?;
+    screen.wait_for_text(&format!("Pushed {commit} to origin/master"))?;
     screen.wait_for_text_gone("Pushing")?;
     Ok(())
 }
@@ -232,6 +236,7 @@ fn palette_search_runs_fetch() -> Result<()> {
     wait_for("origin tracking branch to be fetched", || {
         Ok(git_output(&repository.worktree, &["rev-parse", "origin/HEAD"])? == remote_commit)
     })?;
+    screen.wait_for_text("Fetched 1 ref")?;
     screen.wait_for_text_gone("Fetching")?;
     assert!(!repository.worktree.join("remote.txt").exists());
     Ok(())
@@ -253,6 +258,7 @@ fn palette_search_runs_pull() -> Result<()> {
     wait_for("remote file to be pulled", || {
         Ok(repository.worktree.join("remote.txt").exists())
     })?;
+    screen.wait_for_text("Pulled 1 commit")?;
     screen.wait_for_text_gone("Pulling")?;
     Ok(())
 }
@@ -374,7 +380,8 @@ fn divergent_primary_button_is_blocked() -> Result<()> {
 
     screen
         .wait_for_text("[ Push + Pull ]")?
-        .click(&Selector::text("[ Push + Pull ]"))?;
+        .click(&Selector::text("[ Push + Pull ]"))?
+        .wait_for_text("Push blocked: pull and merge required")?;
     thread::sleep(Duration::from_millis(150));
 
     assert_eq!(
@@ -382,6 +389,38 @@ fn divergent_primary_button_is_blocked() -> Result<()> {
         before
     );
     assert!(!repository.worktree.join("remote.txt").exists());
+    Ok(())
+}
+
+#[test]
+fn rejected_push_shows_a_persistent_failure_toast() -> Result<()> {
+    let repository = TestRepository::new()?;
+    fs::write(repository.worktree.join("local.txt"), "local\n")?;
+    git(&repository.worktree, &["add", "local.txt"])?;
+    git(&repository.worktree, &["commit", "-m", "Local commit"])?;
+    let mut screen = repository.screen_with_network_delay()?;
+    screen.wait_for_text("[ Push ]")?;
+
+    repository.commit_remote("remote.txt", "remote\n", "Remote commit")?;
+    screen
+        .click(&Selector::text("[ Push ]"))?
+        .wait_for_text("Pushing")?
+        .wait_for_text("Push rejected: remote changed; pull required")?;
+    thread::sleep(Duration::from_millis(300));
+    assert!(screen.contents().contains("Push rejected"));
+    Ok(())
+}
+
+#[test]
+fn success_toast_is_automatically_dismissed() -> Result<()> {
+    let repository = TestRepository::new()?;
+    fs::write(repository.worktree.join("tracked.txt"), "changed\n")?;
+    let mut screen = repository.screen()?;
+
+    screen
+        .press(Key::Char(' '))?
+        .wait_for_text("Staged changes")?
+        .wait_for_text_gone("Staged changes")?;
     Ok(())
 }
 

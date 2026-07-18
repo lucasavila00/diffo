@@ -1,10 +1,12 @@
 mod command_palette;
 mod model;
 
-use diffo_core::{RepositoryAction, RepositorySnapshot};
+use diffo_core::{OperationFailure, OperationResult, RepositoryAction, RepositorySnapshot};
 
 pub use command_palette::{Command, CommandId, CommandPalette};
-pub use model::{ChangeArea, DiffViewMode, FileKey, Model, NetworkOperation, PrimaryAction};
+pub use model::{
+    ChangeArea, DiffViewMode, FileKey, Model, NetworkOperation, PrimaryAction, Toast, ToastKind,
+};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Message {
@@ -55,6 +57,9 @@ pub enum Message {
     ExecutePrimaryAction,
     SnapshotLoaded(RepositorySnapshot),
     OperationFailed(String),
+    OperationCompleted(OperationResult, RepositorySnapshot),
+    ActionFailed(OperationFailure),
+    DismissToast(u64),
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -120,6 +125,9 @@ pub fn update(model: &mut Model, message: Message) -> Option<Effect> {
         }
         Message::SnapshotLoaded(snapshot) => model.refresh(snapshot),
         Message::OperationFailed(error) => model.show_error(error),
+        Message::OperationCompleted(result, snapshot) => model.complete_operation(result, snapshot),
+        Message::ActionFailed(failure) => model.show_operation_failure(failure),
+        Message::DismissToast(id) => model.dismiss_toast(id),
     }
     None
 }
@@ -219,6 +227,10 @@ mod tests {
         assert_eq!(model.primary_action().label(), "Push + Pull");
         assert!(!model.primary_action().enabled());
         assert_eq!(update(&mut model, Message::ExecutePrimaryAction), None);
+        assert_eq!(
+            model.toasts.first().map(|toast| toast.title.as_str()),
+            Some("Push blocked: pull and merge required")
+        );
     }
 
     #[test]

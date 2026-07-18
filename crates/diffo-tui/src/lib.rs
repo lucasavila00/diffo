@@ -341,7 +341,8 @@ impl Renderer {
         if model.help_open {
             return input::map_event(event, model, area).map(RendererEvent::Message);
         }
-        if let Event::Key(key) = event
+        if !model.commit_input_focused()
+            && let Event::Key(key) = event
             && let Some(command) = diffo_file_picker::navigation(key)
         {
             return Some(RendererEvent::Message(match command {

@@ -201,14 +201,26 @@ where
     }
 
     pub fn render(&self, frame: &mut Frame, focused: bool) {
+        let title = if self.document.mode == Mode::Flat {
+            self.document.panel_action.as_deref().map_or_else(
+                || format!(" {} ", terminal_safe_text(&self.document.title)),
+                |action| {
+                    format!(
+                        " {} {} ",
+                        terminal_safe_text(&self.document.title),
+                        terminal_safe_text(action)
+                    )
+                },
+            )
+        } else {
+            format!(" {} ", terminal_safe_text(&self.document.title))
+        };
         let mut block = Block::default()
             .borders(Borders::ALL)
             .border_style(self.document.border_style)
-            .title(format!(" {} ", terminal_safe_text(&self.document.title)));
+            .title(title);
         if self.document.mode == Mode::Tree && self.area.width >= 12 {
             block = block.title(Line::from("[-] [+]").alignment(Alignment::Right));
-        } else if let Some(action) = self.document.panel_action.as_deref() {
-            block = block.title(Line::from(terminal_safe_text(action)).alignment(Alignment::Right));
         }
         frame.render_widget(block, self.area);
 
@@ -583,8 +595,10 @@ where
             }
         } else if let Some(action) = self.document.panel_action.as_deref() {
             let width = u16::try_from(action.chars().count()).unwrap_or(u16::MAX);
-            let start = self.area.right().saturating_sub(1).saturating_sub(width);
-            if column >= start && column < self.area.right().saturating_sub(1) {
+            let start = self.area.x.saturating_add(3).saturating_add(
+                u16::try_from(self.document.title.chars().count()).unwrap_or(u16::MAX),
+            );
+            if column >= start && column < start.saturating_add(width) {
                 return Some(Outcome::PanelAction);
             }
         }

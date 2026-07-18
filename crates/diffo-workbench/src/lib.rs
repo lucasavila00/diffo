@@ -318,8 +318,7 @@ impl Workbench {
         match self.active {
             Activity::Diff => self.diff.handle_event(event, content, self.pane_split),
             Activity::Explorer => {
-                self.explorer.handle_event(event, content, self.pane_split);
-                None
+                Tool::handle_event(&mut self.explorer, event, content, self.pane_split)
             }
             Activity::Search => self.search.handle_event(event, content, self.pane_split),
         }

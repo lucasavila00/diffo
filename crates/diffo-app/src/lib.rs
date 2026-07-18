@@ -4,7 +4,7 @@ mod model;
 use diffo_core::{RepositoryAction, RepositorySnapshot};
 
 pub use command_palette::{Command, CommandId, CommandPalette};
-pub use model::{ChangeArea, DiffViewMode, FileKey, Model};
+pub use model::{ChangeArea, DiffViewMode, FileKey, Model, PrimaryAction};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Message {
@@ -46,6 +46,11 @@ pub enum Message {
     UnstageAll,
     StageFile(std::path::PathBuf),
     UnstageFile(std::path::PathBuf),
+    FocusCommitInput,
+    BlurCommitInput,
+    CommitMessageInput(char),
+    CommitMessageBackspace,
+    ExecutePrimaryAction,
     SnapshotLoaded(RepositorySnapshot),
     OperationFailed(String),
 }
@@ -102,6 +107,13 @@ pub fn update(model: &mut Model, message: Message) -> Option<Effect> {
         Message::UnstageAll => return model.unstage_all().map(Effect::Repository),
         Message::StageFile(path) => return model.stage_file(path).map(Effect::Repository),
         Message::UnstageFile(path) => return model.unstage_file(path).map(Effect::Repository),
+        Message::FocusCommitInput => model.focus_commit_input(),
+        Message::BlurCommitInput => model.blur_commit_input(),
+        Message::CommitMessageInput(character) => model.commit_message_input(character),
+        Message::CommitMessageBackspace => model.commit_message_backspace(),
+        Message::ExecutePrimaryAction => {
+            return model.execute_primary_action().map(Effect::Repository);
+        }
         Message::SnapshotLoaded(snapshot) => model.refresh(snapshot),
         Message::OperationFailed(error) => model.show_error(error),
     }
@@ -114,9 +126,10 @@ mod tests {
 
     use diffo_core::{
         AccessMode, ChangeKind, FileDiff, FileState, RepositoryAction, RepositorySnapshot,
+        UpstreamState,
     };
 
-    use super::{ChangeArea, DiffViewMode, Effect, FileKey, Message, Model, update};
+    use super::{ChangeArea, DiffViewMode, Effect, FileKey, Message, Model, PrimaryAction, update};
 
     fn model(access_mode: AccessMode) -> Model {
         Model::new(
@@ -146,6 +159,42 @@ mod tests {
         assert_eq!(model.diff_horizontal_scroll, 4);
         assert_eq!(update(&mut model, Message::Quit), None);
         assert!(model.should_quit);
+    }
+
+    #[test]
+    fn primary_action_chooses_commit_push_pull_or_blocked_sync() {
+        let mut model = model(AccessMode::ReadWrite);
+        assert_eq!(model.primary_action(), PrimaryAction::Disabled);
+
+        update(&mut model, Message::FocusCommitInput);
+        for character in "ship it".chars() {
+            update(&mut model, Message::CommitMessageInput(character));
+        }
+        assert_eq!(model.primary_action(), PrimaryAction::Commit);
+        assert_eq!(
+            update(&mut model, Message::ExecutePrimaryAction),
+            Some(Effect::Repository(RepositoryAction::Commit(
+                "ship it".to_owned()
+            )))
+        );
+        assert_eq!(model.commit_message, "ship it");
+        let refreshed = model.snapshot.clone();
+        update(&mut model, Message::SnapshotLoaded(refreshed));
+        assert!(model.commit_message.is_empty());
+
+        model.snapshot.files[0].staged = None;
+        model.snapshot.upstream = Some(UpstreamState {
+            name: "origin/main".to_owned(),
+            ahead: 1,
+            behind: 0,
+        });
+        assert_eq!(model.primary_action(), PrimaryAction::Push);
+        model.snapshot.upstream.as_mut().unwrap().ahead = 0;
+        model.snapshot.upstream.as_mut().unwrap().behind = 1;
+        assert_eq!(model.primary_action(), PrimaryAction::Pull);
+        model.snapshot.upstream.as_mut().unwrap().ahead = 1;
+        assert_eq!(model.primary_action(), PrimaryAction::PushAndPull);
+        assert_eq!(update(&mut model, Message::ExecutePrimaryAction), None);
     }
 
     #[test]

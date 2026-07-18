@@ -310,6 +310,12 @@ impl Repository for GitRepositorySource {
             RepositoryAction::Pull => {
                 command.args(["pull", "--no-edit"]);
             }
+            RepositoryAction::Push => {
+                command.arg("push");
+            }
+            RepositoryAction::Commit(message) => {
+                command.args(["commit", "-m", message]);
+            }
         }
 
         let output = command.output().context("failed to run git index action")?;

@@ -73,6 +73,8 @@ pub enum RepositoryAction {
     UnstageAll,
     Fetch,
     Pull,
+    Push,
+    Commit(String),
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

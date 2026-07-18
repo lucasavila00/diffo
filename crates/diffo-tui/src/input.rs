@@ -4,7 +4,8 @@ use diffo_core::AccessMode;
 use ratatui::layout::Rect;
 
 use crate::{
-    file_action_at_position, file_at_position, file_pane_percent_at, is_file_pane_splitter_at,
+    commit_action_at_position, file_action_at_position, file_at_position, file_pane_percent_at,
+    is_file_pane_splitter_at,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -238,6 +239,23 @@ pub fn map_event(event: &Event, model: &Model, area: Rect) -> Option<Message> {
     if model.command_palette.is_some() {
         return map_command_palette_event(event);
     }
+    if model.commit_input_focused
+        && let Event::Key(key) = event
+        && key.kind == KeyEventKind::Press
+    {
+        if key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL) {
+            return Some(Message::Quit);
+        }
+        return match key.code {
+            KeyCode::Esc => Some(Message::BlurCommitInput),
+            KeyCode::Enter => Some(Message::ExecutePrimaryAction),
+            KeyCode::Backspace => Some(Message::CommitMessageBackspace),
+            KeyCode::Char(character) if !key.modifiers.contains(KeyModifiers::CONTROL) => {
+                Some(Message::CommitMessageInput(character))
+            }
+            _ => None,
+        };
+    }
     match event {
         Event::Key(key) if key.kind == KeyEventKind::Press => {
             map_key(key.code, key.modifiers, model.access_mode).map(|message| {
@@ -250,7 +268,9 @@ pub fn map_event(event: &Event, model: &Model, area: Rect) -> Option<Message> {
             })
         }
         Event::Mouse(mouse) if mouse.kind == MouseEventKind::Down(MouseButton::Left) => {
-            if is_file_pane_splitter_at(model, area, mouse.column, mouse.row) {
+            if let Some(message) = commit_action_at_position(model, area, mouse.column, mouse.row) {
+                Some(message)
+            } else if is_file_pane_splitter_at(model, area, mouse.column, mouse.row) {
                 Some(Message::BeginFilePaneResize)
             } else if let Some(message) =
                 file_action_at_position(model, area, mouse.column, mouse.row)
@@ -466,7 +486,7 @@ mod tests {
                 &Event::Mouse(MouseEvent {
                     kind: MouseEventKind::Down(MouseButton::Left),
                     column: 4,
-                    row: 16,
+                    row: 18,
                     modifiers: KeyModifiers::NONE,
                 }),
                 &model,
@@ -504,6 +524,29 @@ mod tests {
     }
 
     #[test]
+    fn focused_commit_input_keeps_control_c_as_global_quit() {
+        let mut model = model();
+        model.focus_commit_input();
+
+        assert_eq!(
+            map_event(
+                &Event::Key(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL,)),
+                &model,
+                Rect::default(),
+            ),
+            Some(Message::Quit)
+        );
+        assert_eq!(
+            map_event(
+                &Event::Key(KeyEvent::new(KeyCode::Char('q'), KeyModifiers::NONE)),
+                &model,
+                Rect::default(),
+            ),
+            Some(Message::CommitMessageInput('q'))
+        );
+    }
+
+    #[test]
     fn ignores_non_press_unknown_and_non_file_clicks() {
         let model = model();
         for kind in [KeyEventKind::Repeat, KeyEventKind::Release] {
@@ -527,7 +570,7 @@ mod tests {
             map_event(
                 &Event::Mouse(MouseEvent {
                     kind: MouseEventKind::Down(MouseButton::Left),
-                    column: 4,
+                    column: 80,
                     row: 1,
                     modifiers: KeyModifiers::NONE,
                 }),
@@ -597,11 +640,11 @@ mod tests {
         };
 
         assert_eq!(
-            map_event(&click(1), &model, area),
+            map_event(&click(5), &model, area),
             Some(Message::UnstageFile(PathBuf::from("file.txt")))
         );
         assert_eq!(
-            map_event(&click(16), &model, area),
+            map_event(&click(18), &model, area),
             Some(Message::StageFile(PathBuf::from("file.txt")))
         );
         assert_eq!(
@@ -609,7 +652,7 @@ mod tests {
                 &Event::Mouse(MouseEvent {
                     kind: MouseEventKind::Down(MouseButton::Left),
                     column: 11,
-                    row: 15,
+                    row: 17,
                     modifiers: KeyModifiers::NONE,
                 }),
                 &model,
@@ -622,7 +665,7 @@ mod tests {
                 &Event::Mouse(MouseEvent {
                     kind: MouseEventKind::Down(MouseButton::Left),
                     column: 13,
-                    row: 15,
+                    row: 17,
                     modifiers: KeyModifiers::NONE,
                 }),
                 &model,
@@ -636,7 +679,7 @@ mod tests {
                 &Event::Mouse(MouseEvent {
                     kind: MouseEventKind::Down(MouseButton::Left),
                     column: 10,
-                    row: 0,
+                    row: 4,
                     modifiers: KeyModifiers::NONE,
                 }),
                 &model,
@@ -649,7 +692,7 @@ mod tests {
                 &Event::Mouse(MouseEvent {
                     kind: MouseEventKind::Down(MouseButton::Left),
                     column: 13,
-                    row: 0,
+                    row: 4,
                     modifiers: KeyModifiers::NONE,
                 }),
                 &model,

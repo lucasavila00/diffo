@@ -183,6 +183,37 @@ fn minus_button_unstages_clicked_file() -> Result<()> {
 }
 
 #[test]
+fn commit_composer_commits_then_pushes() -> Result<()> {
+    let repository = TestRepository::new()?;
+    fs::write(
+        repository.worktree.join("tracked.txt"),
+        "committed change\n",
+    )?;
+    git(&repository.worktree, &["add", "tracked.txt"])?;
+    let mut screen = repository.screen()?;
+
+    screen
+        .click(&Selector::text("Type a message"))?
+        .type_text("Commit from composer")?
+        .click(&Selector::text("[ Commit ]"))?;
+    wait_for("composer commit", || {
+        Ok(
+            git_output(&repository.worktree, &["log", "-1", "--format=%s"])?
+                == "Commit from composer",
+        )
+    })?;
+
+    screen
+        .wait_for_text("[ Push ]")?
+        .click(&Selector::text("[ Push ]"))?;
+    wait_for("composer push", || {
+        let local = git_output(&repository.worktree, &["rev-parse", "HEAD"])?;
+        let remote = git_output(&repository.worktree, &["ls-remote", "origin", "HEAD"])?;
+        Ok(remote.starts_with(&local))
+    })
+}
+
+#[test]
 fn palette_search_runs_fetch() -> Result<()> {
     let repository = TestRepository::new()?;
     let remote_commit = repository.commit_remote("remote.txt", "remote\n", "Remote commit")?;
@@ -382,6 +413,11 @@ fn q_and_control_c_exit_cleanly() -> Result<()> {
         .wait_for_exit()?;
     repository
         .screen()?
+        .press(Key::Ctrl('c'))?
+        .wait_for_exit()?;
+    repository
+        .screen()?
+        .click(&Selector::text("Type a message"))?
         .press(Key::Ctrl('c'))?
         .wait_for_exit()?;
     Ok(())

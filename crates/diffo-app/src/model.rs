@@ -23,6 +23,32 @@ pub enum DiffViewMode {
     SideBySide,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum PrimaryAction {
+    Commit,
+    Push,
+    Pull,
+    PushAndPull,
+    Disabled,
+}
+
+impl PrimaryAction {
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Commit | Self::Disabled => "Commit",
+            Self::Push => "Push",
+            Self::Pull => "Pull",
+            Self::PushAndPull => "Push + Pull",
+        }
+    }
+
+    #[must_use]
+    pub const fn enabled(self) -> bool {
+        matches!(self, Self::Commit | Self::Push | Self::Pull)
+    }
+}
+
 impl DiffViewMode {
     #[must_use]
     pub fn toggled(self) -> Self {
@@ -46,6 +72,9 @@ pub struct Model {
     pub resizing_file_pane: bool,
     pub command_palette: Option<CommandPalette>,
     pub help_open: bool,
+    pub commit_message: String,
+    pub commit_input_focused: bool,
+    commit_pending: bool,
     expanded_file_pane_percent: u16,
     cursor: usize,
 }
@@ -67,6 +96,9 @@ impl Model {
             resizing_file_pane: false,
             command_palette: None,
             help_open: false,
+            commit_message: String::new(),
+            commit_input_focused: false,
+            commit_pending: false,
             expanded_file_pane_percent: 25,
             cursor: 0,
         }
@@ -88,6 +120,65 @@ impl Model {
 
     pub fn close_help(&mut self) {
         self.help_open = false;
+    }
+
+    pub fn focus_commit_input(&mut self) {
+        if self.access_mode == AccessMode::ReadWrite {
+            self.commit_input_focused = true;
+        }
+    }
+
+    pub fn blur_commit_input(&mut self) {
+        self.commit_input_focused = false;
+    }
+
+    pub fn commit_message_input(&mut self, character: char) {
+        if self.commit_input_focused && !character.is_control() {
+            self.commit_message.push(character);
+        }
+    }
+
+    pub fn commit_message_backspace(&mut self) {
+        if self.commit_input_focused {
+            self.commit_message.pop();
+        }
+    }
+
+    #[must_use]
+    pub fn primary_action(&self) -> PrimaryAction {
+        if self.access_mode == AccessMode::ReadOnly {
+            return PrimaryAction::Disabled;
+        }
+        if self.commit_pending {
+            return PrimaryAction::Disabled;
+        }
+        let has_staged = self.snapshot.files.iter().any(|file| file.staged.is_some());
+        if has_staged && !self.commit_message.trim().is_empty() {
+            return PrimaryAction::Commit;
+        }
+        match self.snapshot.upstream.as_ref() {
+            Some(upstream) if upstream.ahead > 0 && upstream.behind > 0 => {
+                PrimaryAction::PushAndPull
+            }
+            Some(upstream) if upstream.behind > 0 => PrimaryAction::Pull,
+            Some(upstream) if upstream.ahead > 0 => PrimaryAction::Push,
+            _ => PrimaryAction::Disabled,
+        }
+    }
+
+    pub fn execute_primary_action(&mut self) -> Option<RepositoryAction> {
+        let action = match self.primary_action() {
+            PrimaryAction::Commit => {
+                let message = self.commit_message.trim().to_owned();
+                self.commit_pending = true;
+                RepositoryAction::Commit(message)
+            }
+            PrimaryAction::Push => RepositoryAction::Push,
+            PrimaryAction::Pull => RepositoryAction::Pull,
+            PrimaryAction::PushAndPull | PrimaryAction::Disabled => return None,
+        };
+        self.commit_input_focused = false;
+        Some(action)
     }
 
     pub fn command_palette_input(&mut self, character: char) {
@@ -344,6 +435,10 @@ impl Model {
     }
 
     pub fn refresh(&mut self, snapshot: RepositorySnapshot) {
+        if self.commit_pending {
+            self.commit_message.clear();
+            self.commit_pending = false;
+        }
         let old_selected = self.selected.clone();
         let old_cursor = self.cursor;
         let keys = file_keys(&snapshot);
@@ -364,6 +459,7 @@ impl Model {
     }
 
     pub fn show_error(&mut self, error: impl Into<String>) {
+        self.commit_pending = false;
         self.error = Some(error.into());
     }
 

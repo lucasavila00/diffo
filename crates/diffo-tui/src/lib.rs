@@ -821,7 +821,8 @@ pub(crate) fn file_at_position(
         .constraints([Constraint::Min(3), Constraint::Length(1)])
         .split(area);
     let panes = horizontal_panes(vertical[0], model.file_pane_percent);
-    let groups = file_group_areas(panes[0]);
+    let panels = file_panel_areas(panes[0]);
+    let groups = file_group_areas(panels[1]);
     file_in_group_at(
         staged_files(&model.snapshot),
         ChangeArea::Staged,
@@ -850,7 +851,8 @@ pub(crate) fn file_action_at_position(
         return None;
     }
     let panes = horizontal_panes(main_area(area), model.file_pane_percent);
-    let groups = file_group_areas(panes[0]);
+    let panels = file_panel_areas(panes[0]);
+    let groups = file_group_areas(panels[1]);
     if header_action_contains(groups[0], " Staged [", column, row) {
         return Some(diffo_app::Message::UnstageAll);
     }
@@ -967,7 +969,9 @@ fn file_in_group_at<'a>(
 }
 
 fn render_files(frame: &mut Frame, area: ratatui::layout::Rect, model: &Model) {
-    let groups = file_group_areas(area);
+    let panels = file_panel_areas(area);
+    render_commit_composer(frame, panels[0], model);
+    let groups = file_group_areas(panels[1]);
     render_file_group(
         frame,
         groups[0],
@@ -993,6 +997,74 @@ fn render_files(frame: &mut Frame, area: ratatui::layout::Rect, model: &Model) {
         ChangeArea::Unstaged,
         model,
     );
+}
+
+fn file_panel_areas(area: Rect) -> std::rc::Rc<[Rect]> {
+    Layout::vertical([Constraint::Length(4), Constraint::Min(2)]).split(area)
+}
+
+fn commit_composer_areas(area: Rect) -> std::rc::Rc<[Rect]> {
+    Layout::vertical([Constraint::Length(3), Constraint::Length(1)]).split(area)
+}
+
+fn render_commit_composer(frame: &mut Frame, area: Rect, model: &Model) {
+    let sections = commit_composer_areas(area);
+    let empty = model.commit_message.is_empty();
+    let message = if empty {
+        "Type a message…".to_owned()
+    } else {
+        model.commit_message.clone()
+    };
+    frame.render_widget(
+        Paragraph::new(message)
+            .style(if empty {
+                Style::default().fg(Color::DarkGray)
+            } else {
+                Style::default().fg(Color::White)
+            })
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title(" Commit message ")
+                    .border_style(if model.commit_input_focused {
+                        Style::default().fg(Color::Cyan)
+                    } else {
+                        Style::default()
+                    }),
+            ),
+        sections[0],
+    );
+    let action = model.primary_action();
+    let style = if action.enabled() {
+        Style::default()
+            .bg(Color::Indexed(24))
+            .fg(Color::White)
+            .add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().fg(Color::DarkGray)
+    };
+    frame.render_widget(
+        Paragraph::new(format!("[ {} ]", action.label())).style(style),
+        sections[1],
+    );
+}
+
+pub(crate) fn commit_action_at_position(
+    model: &Model,
+    area: Rect,
+    column: u16,
+    row: u16,
+) -> Option<diffo_app::Message> {
+    let panes = horizontal_panes(main_area(area), model.file_pane_percent);
+    let panels = file_panel_areas(panes[0]);
+    let sections = commit_composer_areas(panels[0]);
+    if sections[0].contains((column, row).into()) {
+        return Some(diffo_app::Message::FocusCommitInput);
+    }
+    if sections[1].contains((column, row).into()) && model.primary_action().enabled() {
+        return Some(diffo_app::Message::ExecutePrimaryAction);
+    }
+    None
 }
 
 fn file_group_areas(area: ratatui::layout::Rect) -> std::rc::Rc<[ratatui::layout::Rect]> {

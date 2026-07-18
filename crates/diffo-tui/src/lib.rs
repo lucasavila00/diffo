@@ -42,8 +42,9 @@ use diff::first_change;
 #[cfg(test)]
 use diff::{diff_file_lines, should_syntax_highlight};
 #[cfg(test)]
-use files::status_line;
 use diffo_ui::change_kind_style as file_kind_style;
+#[cfg(test)]
+use files::status_line;
 use files::{
     FileListMetrics, commit_action_at_position, file_group_areas, file_group_metrics,
     file_panel_areas, prepared_file_list_scroll, render_files, render_status, resize_border_style,

@@ -7,8 +7,8 @@ use std::time::Instant;
 use crossterm::event::{Event, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 use diffo_app::{ChangeArea, DiffViewMode, FileListScroll, Message, Model};
 use diffo_core::{
-    ChangeKind, FileDiff, FileState, OperationResult, RepositoryAction, RepositorySnapshot,
-    UpstreamState,
+    ChangeKind, FileDiff, FileState, HeadState, OperationResult, RepositoryAction,
+    RepositorySnapshot, UpstreamState,
 };
 use diffo_diff::RowKind;
 use diffo_highlight::Rgb;
@@ -22,7 +22,7 @@ use ratatui::{
 use super::{
     Renderer, command_palette_layout, contrast_ratio, contrasting_foreground, diff_background,
     diff_background_rgb, diff_file_lines, file_kind_style, overview_position, row_style,
-    scrollbar_position_count, should_syntax_highlight,
+    scrollbar_position_count, should_syntax_highlight, status_line,
 };
 
 #[test]
@@ -156,6 +156,98 @@ fn buffer_text(buffer: &ratatui::buffer::Buffer) -> String {
             output.push_str(cell.symbol());
             output
         })
+}
+
+fn line_text(line: &ratatui::text::Line<'_>) -> String {
+    line.spans
+        .iter()
+        .map(|span| span.content.as_ref())
+        .collect()
+}
+
+#[test]
+fn status_line_shows_named_head_state_and_divergence() {
+    let mut model = Model::new(RepositorySnapshot {
+        head: HeadState::Named {
+            name: "main".to_owned(),
+            commit: "123456789abcdef".to_owned(),
+        },
+        upstream: Some(UpstreamState {
+            name: "origin/main".to_owned(),
+            ahead: 2,
+            behind: 1,
+        }),
+        ..RepositorySnapshot::default()
+    });
+
+    let line = status_line(&model, 0, 80);
+    assert!(line_text(&line).contains(" branch main · clean · ↓1 ↑2"));
+    assert_eq!(line.spans[0].style.fg, Some(Color::Cyan));
+    assert!(line.spans[0].style.add_modifier.contains(Modifier::BOLD));
+
+    model.snapshot.files.push(FileState {
+        path: PathBuf::from("changed.rs"),
+        old_path: None,
+        kind: ChangeKind::Modified,
+        staged: None,
+        unstaged: Some(FileDiff {
+            text: "@@ -1 +1 @@\n-old\n+new\n".to_owned(),
+        }),
+    });
+    assert!(line_text(&status_line(&model, 0, 80)).contains(" · changes"));
+
+    model.snapshot.files[0].staged = model.snapshot.files[0].unstaged.clone();
+    assert!(line_text(&status_line(&model, 0, 80)).contains(" · staged"));
+
+    model.snapshot.files[0].kind = ChangeKind::Conflicted;
+    let line = status_line(&model, 0, 80);
+    assert!(line_text(&line).contains(" · conflicts"));
+    assert_eq!(line.spans[1].style.fg, Some(Color::LightRed));
+}
+
+#[test]
+fn status_line_distinguishes_unborn_and_detached_head() {
+    let mut model = Model::new(RepositorySnapshot {
+        head: HeadState::Unborn {
+            name: "main".to_owned(),
+        },
+        ..RepositorySnapshot::default()
+    });
+    assert!(
+        line_text(&status_line(&model, 0, 80)).contains(" branch main (unborn) · clean")
+    );
+
+    model.snapshot.head = HeadState::Detached {
+        commit: "123456789abcdef".to_owned(),
+    };
+    assert!(line_text(&status_line(&model, 0, 80)).contains(" detached 1234567 · clean"));
+}
+
+#[test]
+fn status_line_preserves_head_and_respects_unicode_width() {
+    let mut model = Model::new(RepositorySnapshot {
+        head: HeadState::Named {
+            name: "feature/日本語-very-long".to_owned(),
+            commit: "123456789abcdef".to_owned(),
+        },
+        upstream: Some(UpstreamState {
+            name: "origin/feature".to_owned(),
+            ahead: 3,
+            behind: 4,
+        }),
+        ..RepositorySnapshot::default()
+    });
+    model.error = Some("Checkout failed: local changes".to_owned());
+
+    let line = status_line(&model, 0, 24);
+    assert_eq!(line.width(), 24);
+    assert!(line_text(&line).starts_with(" branch feature/"));
+    assert!(line_text(&line).ends_with('…'));
+    assert!(!line_text(&line).contains("↓4"));
+
+    let minimum = status_line(&model, 0, 1);
+    assert_eq!(minimum.width(), 1);
+    assert_eq!(line_text(&minimum), "…");
 }
 
 #[test]

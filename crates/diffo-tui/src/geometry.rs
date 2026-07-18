@@ -187,7 +187,8 @@ pub(super) fn file_in_group_at<'a>(
 impl Renderer {
     pub(super) fn change_jump(&self, model: &Model, next: bool) -> Option<usize> {
         let cache = self.highlighted.as_ref()?;
-        let changes = match model.diff_view_mode {
+        let scroll = self.pending_scroll.unwrap_or(model.diff_scroll);
+        let changes = match cache.key.mode {
             DiffViewMode::Inline => &cache.inline_changes,
             DiffViewMode::SideBySide => &cache.side_by_side_changes,
         };
@@ -195,14 +196,14 @@ impl Renderer {
             changes
                 .iter()
                 .copied()
-                .find(|row| *row > model.diff_scroll)
+                .find(|row| *row > scroll)
                 .or_else(|| changes.first().copied())
         } else {
             changes
                 .iter()
                 .rev()
                 .copied()
-                .find(|row| *row < model.diff_scroll)
+                .find(|row| *row < scroll)
                 .or_else(|| changes.last().copied())
         }
     }
@@ -233,13 +234,13 @@ impl Renderer {
         }
     }
 
-    pub(super) fn change_at_marker(&self, column: u16, row: u16, model: &Model) -> Option<usize> {
+    pub(super) fn change_at_marker(&self, column: u16, row: u16, _model: &Model) -> Option<usize> {
         let marker_column = self.scrollbars.vertical_area.x.saturating_add(1);
         if column != marker_column {
             return None;
         }
         let cache = self.highlighted.as_ref()?;
-        let changes = match model.diff_view_mode {
+        let changes = match cache.key.mode {
             DiffViewMode::Inline => &cache.inline_changes,
             DiffViewMode::SideBySide => &cache.side_by_side_changes,
         };

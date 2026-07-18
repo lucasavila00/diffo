@@ -1,11 +1,23 @@
 use super::{
-    AnchorRow, Arc, DiffBlock, DiffDocument, DiffKey, DiffViewMode, Duration, HighlightCache,
-    HighlightedDiff, HunkButtonMetrics, MAX_HIGHLIGHT_FILE_LINES, MAX_SYNC_BYTES, MAX_SYNC_LINES,
-    PrepareOutcome, PrepareRequest, ProjectionOptions, RenderLine, Renderer, RowKind, ScrollAnchor,
-    ScrollbarMetrics, SyntaxHighlighter, TrySendError, env, inline_change_starts,
-    inline_rows_with_options, parse_unified_patch, side_by_side_change_starts,
-    side_by_side_rows_with_options, sync_channel, thread,
+    AnchorRow, Arc, DiffBlock, DiffDocument, DiffKey, DiffViewMode, Duration,
+    HIGHLIGHT_LOOKBEHIND_LINES, HIGHLIGHT_PREFETCH_VIEWPORTS, HighlightCache, HighlightedDiff,
+    HunkButtonMetrics, MAX_HIGHLIGHT_BYTES_PER_SIDE, MAX_HIGHLIGHT_FILE_LINES, MAX_SYNC_BYTES,
+    MAX_SYNC_LINES, PREPARED_BUFFER_CACHE_SIZE, PrepareCommit, PrepareOutcome, PrepareRequest,
+    ProjectionOptions, RenderLine, Renderer, RowKind, ScrollAnchor, ScrollbarMetrics,
+    SyntaxHighlighter, TrySendError, env, inline_change_starts, inline_rows_with_options,
+    parse_unified_patch, side_by_side_change_starts, side_by_side_rows_with_options, sync_channel,
+    thread,
 };
+use diffo_diff::SideBySideRow;
+use diffo_highlight::{HighlightWindowRequest, LineRange};
+
+#[derive(Clone, Copy)]
+struct ProjectionHighlightRequest {
+    viewport_rows: usize,
+    mode: DiffViewMode,
+    target_scroll: Option<usize>,
+    prefetch_viewports: usize,
+}
 
 impl ScrollAnchor {
     pub(super) fn capture(cache: &HighlightCache, mode: DiffViewMode, first_row: usize) -> Self {
@@ -103,19 +115,49 @@ pub(super) fn prepare_diff(
     highlighter: &SyntaxHighlighter,
 ) -> Option<HighlightCache> {
     let document = parse_unified_patch(&request.key.patch).ok()?;
-    let syntax_highlighted = should_syntax_highlight(&document);
-    let syntax_styles = if syntax_highlighted {
-        highlighter.highlight(&request.key.file.path, &document)
-    } else {
-        HighlightedDiff::default()
-    };
     let options = ProjectionOptions {
         mark_conflicts: request.key.mark_conflicts,
     };
-    let inline = inline_rows_with_options(&document, options);
+    let inline = if request.mode == DiffViewMode::Inline {
+        inline_rows_with_options(&document, options)
+    } else {
+        Vec::new()
+    };
     let inline_changes = inline_change_starts(&inline);
-    let side_by_side = side_by_side_rows_with_options(&document, options);
+    let side_by_side = if request.mode == DiffViewMode::SideBySide {
+        side_by_side_rows_with_options(&document, options)
+    } else {
+        Vec::new()
+    };
     let side_by_side_changes = side_by_side_change_starts(&side_by_side);
+    let syntax_highlighted = should_syntax_highlight(&document);
+    let (old_range, new_range) = projection_highlight_ranges(
+        &inline,
+        &inline_changes,
+        &side_by_side,
+        &side_by_side_changes,
+        ProjectionHighlightRequest {
+            viewport_rows: request.viewport_rows,
+            mode: request.mode,
+            target_scroll: request.target_scroll,
+            prefetch_viewports: HIGHLIGHT_PREFETCH_VIEWPORTS,
+        },
+    );
+    let highlighted_window = syntax_highlighted.then(|| {
+        highlighter.highlight_window(
+            &request.key.file.path,
+            &document,
+            HighlightWindowRequest {
+                old: old_range,
+                new: new_range,
+                lookbehind_lines: HIGHLIGHT_LOOKBEHIND_LINES,
+                maximum_bytes_per_side: MAX_HIGHLIGHT_BYTES_PER_SIDE,
+            },
+        )
+    });
+    let syntax_styles = highlighted_window
+        .as_ref()
+        .map_or_else(HighlightedDiff::default, |window| window.styles.clone());
     Some(HighlightCache {
         key: request.key,
         document,
@@ -124,9 +166,84 @@ pub(super) fn prepare_diff(
         inline_changes,
         side_by_side_changes,
         highlighted: syntax_styles,
-        #[cfg(test)]
         syntax_highlighted,
+        highlighted_old_coverage: highlighted_window
+            .as_ref()
+            .and_then(|window| window.old_coverage),
+        highlighted_new_coverage: highlighted_window
+            .as_ref()
+            .and_then(|window| window.new_coverage),
+        #[cfg(test)]
+        highlighted_lines_processed: highlighted_window.as_ref().map_or(0, |window| {
+            window
+                .old_lines_processed
+                .saturating_add(window.new_lines_processed)
+        }),
     })
+}
+
+fn projection_highlight_ranges(
+    inline: &[RenderLine],
+    inline_changes: &[usize],
+    side_by_side: &[SideBySideRow],
+    side_by_side_changes: &[usize],
+    request: ProjectionHighlightRequest,
+) -> (Option<LineRange>, Option<LineRange>) {
+    let rows = request
+        .viewport_rows
+        .max(1)
+        .saturating_mul(request.prefetch_viewports.max(1));
+    let inline_start = request
+        .target_scroll
+        .filter(|_| request.mode == DiffViewMode::Inline)
+        .or_else(|| inline_changes.first().copied())
+        .unwrap_or(0);
+    let side_start = request
+        .target_scroll
+        .filter(|_| request.mode == DiffViewMode::SideBySide)
+        .or_else(|| side_by_side_changes.first().copied())
+        .unwrap_or(0);
+    let mut old = None;
+    let mut new = None;
+    let include_inline = request.target_scroll.is_none() || request.mode == DiffViewMode::Inline;
+    for row in inline
+        .iter()
+        .skip(inline_start)
+        .take(rows)
+        .filter(|_| include_inline)
+    {
+        match row.kind {
+            RowKind::Removed => include_line(&mut old, row.number),
+            RowKind::Added | RowKind::Context | RowKind::Changed | RowKind::Conflict => {
+                include_line(&mut new, row.number);
+            }
+            RowKind::Header | RowKind::Meta => {}
+        }
+    }
+    let include_side = request.target_scroll.is_none() || request.mode == DiffViewMode::SideBySide;
+    for row in side_by_side
+        .iter()
+        .skip(side_start)
+        .take(rows)
+        .filter(|_| include_side)
+    {
+        include_line(&mut old, row.old.as_ref().and_then(|line| line.number));
+        include_line(&mut new, row.new.as_ref().and_then(|line| line.number));
+    }
+    (old, new)
+}
+
+fn include_line(range: &mut Option<LineRange>, line: Option<u32>) {
+    let Some(line) = line else {
+        return;
+    };
+    match range {
+        Some(range) => {
+            range.start = range.start.min(line);
+            range.end = range.end.max(line);
+        }
+        None => *range = Some(LineRange::new(line, line)),
+    }
 }
 
 pub(super) fn should_syntax_highlight(document: &DiffDocument) -> bool {
@@ -166,21 +283,83 @@ pub(super) fn preparation_delay_from_environment() -> Duration {
 }
 
 impl Renderer {
-    pub(super) fn prepare_requested(&mut self, requested: Option<&DiffKey>) -> bool {
+    pub(super) fn guard_vertical_message(
+        &mut self,
+        message: diffo_app::Message,
+        model: &diffo_app::Model,
+    ) -> Option<diffo_app::Message> {
+        let base = self.pending_scroll.unwrap_or(model.diff_scroll);
+        let target = match message {
+            diffo_app::Message::SetDiffScroll(target) => target,
+            diffo_app::Message::ScrollDiffUp => base.saturating_sub(4),
+            diffo_app::Message::ScrollDiffDown => base.saturating_add(4),
+            diffo_app::Message::ScrollDiffPageUp(lines) => base.saturating_sub(lines),
+            diffo_app::Message::ScrollDiffPageDown(lines) => base.saturating_add(lines),
+            diffo_app::Message::ScrollDiffBy(lines) => {
+                let magnitude = usize::try_from(lines.unsigned_abs()).unwrap_or(usize::MAX);
+                if lines >= 0 {
+                    base.saturating_add(magnitude)
+                } else {
+                    base.saturating_sub(magnitude)
+                }
+            }
+            _ => return Some(message),
+        };
+        if self.syntax_ready_for_viewport(self.displayed_mode(model.diff_view_mode), target) {
+            self.pending_scroll = None;
+            Some(message)
+        } else {
+            self.pending_scroll = Some(target);
+            None
+        }
+    }
+
+    pub(super) fn syntax_ready_for_viewport(&self, mode: DiffViewMode, target: usize) -> bool {
+        let Some(cache) = self.highlighted.as_ref() else {
+            return false;
+        };
+        if !cache.syntax_highlighted {
+            return true;
+        }
+        let (old, new) = projection_highlight_ranges(
+            &cache.inline,
+            &cache.inline_changes,
+            &cache.side_by_side,
+            &cache.side_by_side_changes,
+            ProjectionHighlightRequest {
+                viewport_rows: self.diff_viewport_rows,
+                mode,
+                target_scroll: Some(target),
+                prefetch_viewports: 1,
+            },
+        );
+        range_is_covered(cache.highlighted_old_coverage, old)
+            && range_is_covered(cache.highlighted_new_coverage, new)
+    }
+
+    pub(super) fn prepare_requested(
+        &mut self,
+        requested: Option<&DiffKey>,
+        viewport_rows: usize,
+        mode: DiffViewMode,
+    ) -> Option<PrepareCommit> {
         let mut matching_outcome = None;
         while let Ok(outcome) = self.prepare_rx.try_recv() {
-            let outcome_key = match &outcome {
-                Ok(cache) => &cache.key,
-                Err(key) => key,
-            };
-            self.submitted.retain(|key| key != outcome_key);
-            if requested == Some(outcome_key) {
+            self.submitted
+                .retain(|job| job != &(outcome.key.clone(), outcome.target_scroll));
+            let target_matches =
+                outcome.target_scroll.is_none() || self.pending_scroll == outcome.target_scroll;
+            if requested == Some(&outcome.key) && target_matches {
                 matching_outcome = Some(outcome);
             }
         }
         if let Some(outcome) = matching_outcome {
+            let target_scroll = outcome.target_scroll;
             self.install_outcome(outcome);
-            return true;
+            if target_scroll.is_some() {
+                self.pending_scroll = None;
+            }
+            return Some(PrepareCommit { target_scroll });
         }
         let Some(requested) = requested else {
             let changed = self.displayed_key().is_some();
@@ -189,50 +368,75 @@ impl Renderer {
                 self.failed = None;
                 self.content_revision = self.content_revision.saturating_add(1);
             }
-            return changed;
+            self.pending_scroll = None;
+            return changed.then_some(PrepareCommit {
+                target_scroll: None,
+            });
         };
-        if self.displayed_key() == Some(requested) {
-            return false;
+        let target_scroll = self.pending_scroll;
+        if self.displayed_key() == Some(requested) && target_scroll.is_none() {
+            return None;
+        }
+        let job = (requested.clone(), target_scroll);
+        if target_scroll.is_none()
+            && let Some(position) = self
+                .prepared_cache
+                .iter()
+                .position(|cache| cache.key == *requested)
+        {
+            let cache = self.prepared_cache.remove(position);
+            self.install_cache(cache);
+            return Some(PrepareCommit {
+                target_scroll: None,
+            });
         }
         if requested.patch.len() <= MAX_SYNC_BYTES
             && requested.patch.lines().count() <= MAX_SYNC_LINES
         {
             let request = PrepareRequest {
                 key: requested.clone(),
+                viewport_rows,
+                mode,
+                target_scroll,
             };
-            let outcome = prepare_diff(request, &self.highlighter).ok_or_else(|| requested.clone());
+            let outcome = PrepareOutcome {
+                key: requested.clone(),
+                target_scroll,
+                cache: prepare_diff(request, &self.highlighter),
+            };
             self.install_outcome(outcome);
-            return true;
+            self.pending_scroll = None;
+            return Some(PrepareCommit { target_scroll });
         }
-        if !self.submitted.contains(requested) {
+        if !self.submitted.contains(&job) {
             let request = PrepareRequest {
                 key: requested.clone(),
+                viewport_rows,
+                mode,
+                target_scroll,
             };
             match self.prepare_tx.try_send(request) {
-                Ok(()) => self.submitted.push(requested.clone()),
+                Ok(()) => self.submitted.push(job),
                 Err(TrySendError::Full(_) | TrySendError::Disconnected(_)) => {}
             }
         }
-        false
+        None
     }
 
     pub(super) fn install_outcome(&mut self, outcome: PrepareOutcome) {
-        match outcome {
-            Ok(cache) => {
-                #[cfg(test)]
-                if cache.syntax_highlighted {
-                    self.highlight_computations += 1;
-                }
-                self.failed = None;
-                self.install_cache(cache);
+        if let Some(cache) = outcome.cache {
+            #[cfg(test)]
+            if cache.syntax_highlighted {
+                self.highlight_computations += 1;
             }
-            Err(key) => {
-                let changed = self.displayed_key() != Some(&key);
-                self.highlighted = None;
-                self.failed = Some(key);
-                if changed {
-                    self.content_revision = self.content_revision.saturating_add(1);
-                }
+            self.failed = None;
+            self.install_cache(cache);
+        } else {
+            let changed = self.displayed_key() != Some(&outcome.key);
+            self.highlighted = None;
+            self.failed = Some(outcome.key);
+            if changed {
+                self.content_revision = self.content_revision.saturating_add(1);
             }
         }
     }
@@ -242,7 +446,17 @@ impl Renderer {
             .highlighted
             .as_ref()
             .is_none_or(|current| current.key != cache.key);
-        self.highlighted = Some(cache);
+        if let Some(current) = self.highlighted.replace(cache)
+            && self
+                .highlighted
+                .as_ref()
+                .is_some_and(|replacement| replacement.key != current.key)
+        {
+            self.prepared_cache
+                .retain(|cached| cached.key != current.key);
+            self.prepared_cache.insert(0, current);
+            self.prepared_cache.truncate(PREPARED_BUFFER_CACHE_SIZE);
+        }
         if changed {
             self.content_revision = self.content_revision.saturating_add(1);
         }
@@ -253,6 +467,10 @@ impl Renderer {
             .as_ref()
             .map(|cache| &cache.key)
             .or(self.failed.as_ref())
+    }
+
+    pub(super) fn displayed_mode(&self, fallback: DiffViewMode) -> DiffViewMode {
+        self.displayed_key().map_or(fallback, |key| key.mode)
     }
 
     pub(super) fn displayed_rows(&self, mode: DiffViewMode) -> usize {
@@ -309,6 +527,13 @@ impl Renderer {
     }
 }
 
+fn range_is_covered(coverage: Option<LineRange>, needed: Option<LineRange>) -> bool {
+    needed.is_none_or(|needed| {
+        coverage
+            .is_some_and(|coverage| coverage.start <= needed.start && coverage.end >= needed.end)
+    })
+}
+
 impl Default for Renderer {
     fn default() -> Self {
         Self::new()
@@ -336,8 +561,16 @@ impl Renderer {
                         thread::sleep(prepare_delay);
                     }
                     let key = request.key.clone();
-                    let result = prepare_diff(request, &worker_highlighter).ok_or(key);
-                    if results.send(result).is_err() {
+                    let target_scroll = request.target_scroll;
+                    let cache = prepare_diff(request, &worker_highlighter);
+                    if results
+                        .send(PrepareOutcome {
+                            key,
+                            target_scroll,
+                            cache,
+                        })
+                        .is_err()
+                    {
                         break;
                     }
                 }
@@ -346,10 +579,13 @@ impl Renderer {
         Self {
             highlighter,
             highlighted: None,
+            prepared_cache: Vec::new(),
             prepare_tx,
             prepare_rx,
             submitted: Vec::new(),
             requested: None,
+            pending_scroll: None,
+            diff_viewport_rows: 1,
             failed: None,
             scrollbars: ScrollbarMetrics::default(),
             scrollbar_drag: None,

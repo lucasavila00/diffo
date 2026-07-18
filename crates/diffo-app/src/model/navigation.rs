@@ -106,7 +106,6 @@ impl Model {
 
     pub fn toggle_diff_view(&mut self) {
         self.diff_view_mode = self.diff_view_mode.toggled();
-        self.reset_diff_scroll();
     }
 
     pub fn toggle_file_pane(&mut self) {
@@ -141,11 +140,6 @@ impl Model {
         self.selected
             .as_ref()
             .is_some_and(|key| key.path == path && key.area == area)
-    }
-
-    pub(super) fn reset_diff_scroll(&mut self) {
-        self.diff_scroll = 0;
-        self.diff_horizontal_scroll = 0;
     }
 }
 

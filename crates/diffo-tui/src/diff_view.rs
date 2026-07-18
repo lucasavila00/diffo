@@ -58,11 +58,12 @@ impl Renderer {
         area: ratatui::layout::Rect,
         model: &Model,
     ) {
-        let mode = match model.diff_view_mode {
+        let displayed_mode = self.displayed_mode(model.diff_view_mode);
+        let mode = match displayed_mode {
             DiffViewMode::Inline => "Inline",
             DiffViewMode::SideBySide => "Side by side",
         };
-        let viewport = self.diff_viewport_metrics(model.diff_view_mode, area, model.diff_scroll);
+        let viewport = self.diff_viewport_metrics(displayed_mode, area, model.diff_scroll);
         let lines = self.diff_lines(
             model,
             viewport.content_area.width,
@@ -164,13 +165,10 @@ impl Renderer {
                 .viewport_content_length(viewport.viewport_rows)
                 .position(model.diff_scroll);
             frame.render_stateful_widget(scrollbar, self.scrollbars.vertical_area, &mut state);
-            let changes = self
-                .highlighted
-                .as_ref()
-                .map(|cache| match model.diff_view_mode {
-                    DiffViewMode::Inline => cache.inline_changes.as_slice(),
-                    DiffViewMode::SideBySide => cache.side_by_side_changes.as_slice(),
-                });
+            let changes = self.highlighted.as_ref().map(|cache| match cache.key.mode {
+                DiffViewMode::Inline => cache.inline_changes.as_slice(),
+                DiffViewMode::SideBySide => cache.side_by_side_changes.as_slice(),
+            });
             if let Some(changes) = changes {
                 render_change_markers(
                     frame,
@@ -223,7 +221,7 @@ impl Renderer {
             return vec![Line::raw("Binary file changed.")];
         }
 
-        match model.diff_view_mode {
+        match cache.key.mode {
             DiffViewMode::Inline => cache
                 .inline
                 .iter()

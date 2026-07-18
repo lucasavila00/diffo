@@ -30,15 +30,18 @@ metrics.
   mode. A path alone is not a buffer identity.
 - Drain worker results and commit buffers only during frame preparation. Rendering
   reads committed state and never polls or installs preparation results.
-- Commit the buffer, projections, change targets, scroll bounds, and initial viewport
-  before one draw. A newly opened file starts at its first change and horizontal row
-  zero.
+- Commit the buffer, projections, visible syntax coverage, change targets, scroll
+  bounds, and initial viewport before one draw. A newly opened file starts at its
+  first change and horizontal row zero.
 - Preserve a visible-row anchor when refreshed content belongs to the same exact file
   area. A staged-to-unstaged switch is a new open, not a refresh.
 - Ignore stale results. When selections change faster than preparation completes, the
   newest requested buffer is the only result that may be committed.
 - While a replacement is pending, scrolling and change navigation continue to use the
   displayed buffer. They cannot read targets or bounds from an uncommitted buffer.
+- When a vertical target falls outside prepared syntax coverage, keep the previous
+  viewport committed until the target window is ready. Never flash an uncolored
+  target and repaint it later.
 
 The application model remains the owner of numeric scroll state. Frame preparation
 returns a complete vertical and horizontal viewport transition, and the main loop
@@ -59,6 +62,7 @@ transaction in ADR 0014.
 
 - A replacement stays invisible until its first-change position is ready.
 - The buffer and viewport change in the same traced frame.
+- The first displayed frame reports syntax-ready coverage for its viewport.
 - Rendering cannot install a worker result.
 - Staged and unstaged buffers for one path have distinct identities.
 - Stale and out-of-order results never become displayed buffers.

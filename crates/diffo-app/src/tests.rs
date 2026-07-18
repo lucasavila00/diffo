@@ -303,8 +303,8 @@ fn toggles_diff_view_mode() {
 
     update(&mut model, Message::ToggleDiffView);
     assert_eq!(model.diff_view_mode, DiffViewMode::SideBySide);
-    assert_eq!(model.diff_scroll, 0);
-    assert_eq!(model.diff_horizontal_scroll, 0);
+    assert_eq!(model.diff_scroll, 4);
+    assert_eq!(model.diff_horizontal_scroll, 4);
 
     update(&mut model, Message::ToggleDiffView);
     assert_eq!(model.diff_view_mode, DiffViewMode::Inline);

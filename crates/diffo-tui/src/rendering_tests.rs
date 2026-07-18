@@ -244,6 +244,20 @@ fn diff_lines(
     panic!("diff preparation timed out");
 }
 
+fn wait_for_viewport_transition(
+    renderer: &mut Renderer,
+    model: &Model,
+) -> super::ViewportTransition {
+    for _ in 0..200 {
+        let preparation = renderer.prepare_frame(model, Rect::new(0, 0, 100, 30));
+        if let Some(viewport) = preparation.viewport_transition {
+            return viewport;
+        }
+        sleep(Duration::from_millis(1));
+    }
+    panic!("viewport preparation timed out");
+}
+
 #[test]
 fn renders_syntax_foregrounds_over_diff_backgrounds() {
     let mut renderer = Renderer::new();
@@ -518,10 +532,12 @@ fn maps_inset_scrollbar_clicks_to_absolute_positions() {
         row: vertical.bottom().saturating_sub(1),
         modifiers: KeyModifiers::NONE,
     });
-    assert!(matches!(
+    assert_eq!(
         renderer.map_event(&vertical_click, &model, Rect::new(0, 0, 100, 30)),
-        Some(diffo_app::Message::SetDiffScroll(position)) if position > 0
-    ));
+        None
+    );
+    let pending_vertical = renderer.pending_scroll.expect("pending vertical target");
+    assert!(pending_vertical > 0);
 
     renderer.scrollbar_drag = None;
     let horizontal = renderer.scrollbars.horizontal_area;
@@ -540,6 +556,8 @@ fn maps_inset_scrollbar_clicks_to_absolute_positions() {
         Some(diffo_app::Message::SetDiffHorizontalScroll(position))
             if position == horizontal_maximum
     ));
+    let committed = wait_for_viewport_transition(&mut renderer, &model);
+    assert_eq!(committed.vertical, pending_vertical);
 }
 
 #[test]
@@ -640,7 +658,12 @@ fn hunk_markers_have_a_separate_clickable_rail_beside_the_scrollbar() {
     );
     assert_eq!(
         renderer.map_event(&click, &model, Rect::new(0, 0, 100, 30)),
-        Some(diffo_app::Message::SetDiffScroll(target))
+        None
+    );
+    assert_eq!(renderer.pending_scroll, Some(target));
+    assert_eq!(
+        wait_for_viewport_transition(&mut renderer, &model).vertical,
+        target
     );
 }
 
@@ -790,14 +813,18 @@ fn command_palette_has_fixed_top_and_mouse_execution() {
 }
 
 #[test]
-fn reuses_highlights_across_modes_and_invalidates_changed_patch() {
+fn prepares_view_modes_lazily_caches_them_and_invalidates_changed_patch() {
     let mut renderer = Renderer::new();
     let mut model = model();
 
     diff_lines(&mut renderer, &model, 0);
     model.diff_view_mode = DiffViewMode::SideBySide;
     diff_lines(&mut renderer, &model, 0);
-    assert_eq!(renderer.highlight_computations, 1);
+    assert_eq!(renderer.highlight_computations, 2);
+
+    model.diff_view_mode = DiffViewMode::Inline;
+    diff_lines(&mut renderer, &model, 0);
+    assert_eq!(renderer.highlight_computations, 2);
 
     model.snapshot.files[0]
         .unstaged
@@ -806,7 +833,75 @@ fn reuses_highlights_across_modes_and_invalidates_changed_patch() {
         .text
         .push_str("\\ No newline at end of file\n");
     diff_lines(&mut renderer, &model, 0);
+    assert_eq!(renderer.highlight_computations, 3);
+}
+
+#[test]
+fn view_mode_and_reset_viewport_commit_together() {
+    let mut renderer = Renderer::new();
+    let mut model = model();
+    let mut patch = String::from("@@ -1,700 +1,700 @@\n");
+    for line in 1..=700 {
+        if line == 600 {
+            writeln!(patch, "-let old_target = {line};").unwrap();
+            writeln!(patch, "+let new_target = {line};").unwrap();
+        } else {
+            writeln!(patch, " let context_{line} = {line};").unwrap();
+        }
+    }
+    model.snapshot.files[0].unstaged.as_mut().unwrap().text = patch;
+    diff_lines(&mut renderer, &model, 0);
+    assert_eq!(
+        renderer.highlighted.as_ref().unwrap().key.mode,
+        DiffViewMode::Inline
+    );
+
+    model.diff_scroll = 10;
+    model.diff_horizontal_scroll = 5;
+    model.diff_view_mode = DiffViewMode::SideBySide;
+    let pending = renderer.prepare_frame(&model, Rect::new(0, 0, 100, 30));
+    assert!(pending.viewport_transition.is_none());
+    assert_eq!(
+        renderer.highlighted.as_ref().unwrap().key.mode,
+        DiffViewMode::Inline
+    );
+    assert_eq!((model.diff_scroll, model.diff_horizontal_scroll), (10, 5));
+
+    let transition = wait_for_viewport_transition(&mut renderer, &model);
+    assert_eq!((transition.vertical, transition.horizontal), (0, 0));
+    let cache = renderer.highlighted.as_ref().unwrap();
+    assert_eq!(cache.key.mode, DiffViewMode::SideBySide);
+    assert!(cache.inline.is_empty());
+    assert!(!cache.side_by_side.is_empty());
+}
+
+#[test]
+fn reuses_a_prepared_buffer_after_visiting_another_file() {
+    let mut renderer = Renderer::new();
+    let mut model = model();
+    model.snapshot.files.push(FileState {
+        path: PathBuf::from("src/second.rs"),
+        old_path: None,
+        kind: ChangeKind::Modified,
+        staged: None,
+        unstaged: Some(FileDiff {
+            text: "@@ -1 +1 @@\n-let second = 1;\n+let second = 2;\n".to_owned(),
+        }),
+    });
+
+    diff_lines(&mut renderer, &model, 0);
+    assert_eq!(renderer.highlight_computations, 1);
+    model.select_next();
+    diff_lines(&mut renderer, &model, 0);
     assert_eq!(renderer.highlight_computations, 2);
+    model.select_previous();
+    diff_lines(&mut renderer, &model, 0);
+
+    assert_eq!(renderer.highlight_computations, 2);
+    assert_eq!(
+        renderer.highlighted.as_ref().unwrap().key.file.path,
+        PathBuf::from("src/main.rs")
+    );
 }
 
 #[test]
@@ -824,6 +919,39 @@ fn syntax_highlighting_uses_a_strict_ten_thousand_file_line_limit() {
     assert!(should_syntax_highlight(&below_limit));
     assert_eq!(diff_file_lines(&at_limit), 10_000);
     assert!(!should_syntax_highlight(&at_limit));
+}
+
+#[test]
+fn initial_highlighting_is_bounded_around_the_first_change() {
+    let mut model = model();
+    let mut patch = String::from("@@ -1,9999 +1,9999 @@\n");
+    for line in 1..=9_999 {
+        if line == 9_000 {
+            writeln!(patch, "-pub const OLD_TARGET: usize = 1;").unwrap();
+            writeln!(patch, "+pub const NEW_TARGET: usize = 2;").unwrap();
+        } else {
+            writeln!(patch, " pub const LINE_{line}: usize = {line};").unwrap();
+        }
+    }
+    model.snapshot.files[0].unstaged.as_mut().unwrap().text = patch;
+    let mut renderer = Renderer::new();
+
+    diff_lines(&mut renderer, &model, 0);
+
+    let cache = renderer.highlighted.as_ref().unwrap();
+    assert!(
+        cache
+            .highlighted_old_coverage
+            .is_some_and(|range| range.contains(9_000))
+    );
+    assert!(
+        cache
+            .highlighted_new_coverage
+            .is_some_and(|range| range.contains(9_000))
+    );
+    assert!(cache.highlighted_lines_processed < 800);
+    assert!(!cache.highlighted.new.contains_key(&1));
+    assert!(cache.highlighted.new.contains_key(&9_000));
 }
 
 #[test]
@@ -882,4 +1010,36 @@ fn measures_large_diff_rendering() {
     );
     assert_eq!(lines.len(), 50);
     assert_eq!(renderer.highlight_computations, 0);
+}
+
+#[test]
+#[ignore = "manual file-open performance measurement"]
+fn measures_bounded_9999_line_file_open() {
+    let mut model = model();
+    let mut patch = String::from("@@ -1,9999 +1,9999 @@\n");
+    for line in 1..=9_999 {
+        if line == 9_000 {
+            writeln!(patch, "-pub const OLD_TARGET: usize = 1;").unwrap();
+            writeln!(patch, "+pub const PERF_TARGET_09000: usize = 2;").unwrap();
+        } else {
+            writeln!(patch, " pub const LINE_{line}: usize = {line};").unwrap();
+        }
+    }
+    model.snapshot.files[0].unstaged.as_mut().unwrap().text = patch;
+    let mut renderer = Renderer::new();
+    let area = Rect::new(0, 0, 100, 30);
+    let started = Instant::now();
+    let transition = loop {
+        let preparation = renderer.prepare_frame(&model, area);
+        if let Some(transition) = preparation.viewport_transition {
+            break transition;
+        }
+        sleep(Duration::from_millis(1));
+    };
+    let elapsed = started.elapsed();
+    let cache = renderer.highlighted.as_ref().unwrap();
+
+    eprintln!("bounded 9,999-line open={elapsed:?}");
+    assert!(transition.vertical > 8_900);
+    assert!(cache.highlighted_lines_processed < 800);
 }

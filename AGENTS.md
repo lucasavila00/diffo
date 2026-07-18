@@ -31,6 +31,10 @@ This repository is a Rust workspace containing small command-line utilities. Eac
 - Document key bindings in the interface and update them when controls change.
 - Avoid blocking work in the rendering and input loop.
 - Treat the displayed diff buffer and its viewport as one atomic commit. Keep the previous buffer unchanged until the replacement content, projections, hunk targets, scroll bounds, and initial position are ready to draw together.
+- Treat visible syntax coverage as part of the atomic commit. File opens and uncached vertical jumps must not display a plain target and color it in a later frame.
+- Bound syntax work by the visible viewport, fixed parser look-behind, and a fixed byte budget; never put full-file syntax work back on the file-opening critical path.
+- Build only the requested diff projection on a cold path. Treat a view-mode change as an atomic prepared transition and keep the previously committed mode visible until it is ready.
+- Preserve the strict 10,000-line syntax eligibility boundary and the sub-100 ms 9,999-line reference benchmark unless a newer ADR replaces that contract.
 - Drain and install background diff results only during frame preparation. Rendering must consume committed state only, and stale results must never supply content, navigation targets, or scroll metrics.
 - Keep the vertical scrollbar and hunk-marker rail visually and interactively separate; neither control may overwrite or capture the other control's cells.
 - Add deterministic state-transition tests and a delayed PTY regression whenever changing asynchronous diff preparation, buffer opening, first-hunk navigation, or scrollbar markers.

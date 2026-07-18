@@ -56,6 +56,20 @@ pub(super) fn navigation_file(changed: bool) -> Result<String> {
     Ok(contents)
 }
 
+pub(super) fn large_syntax_file(changed: bool) -> Result<String> {
+    let mut contents = String::new();
+    for line in 1..10_000 {
+        if changed && line == 9_000 {
+            writeln!(contents, "pub const PERF_TARGET_09000: usize = 0;")
+                .context("build syntax target")?;
+        } else {
+            writeln!(contents, "pub const LINE_{line:05}: usize = {line};")
+                .context("build large syntax file")?;
+        }
+    }
+    Ok(contents)
+}
+
 #[derive(Deserialize)]
 pub(super) struct ScrollFrame {
     pub(super) input_events: Vec<String>,
@@ -71,6 +85,7 @@ pub(super) struct BufferFrame {
     pub(super) displayed_diff: Option<String>,
     pub(super) viewport_transition: Option<(usize, usize)>,
     pub(super) first_rendered_row: usize,
+    pub(super) syntax_ready: bool,
 }
 
 pub(super) fn changed_repository() -> Result<TestRepository> {

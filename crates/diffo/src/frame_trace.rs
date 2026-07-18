@@ -29,6 +29,7 @@ pub struct FrameRecord {
     displayed_diff: Option<String>,
     content_revision: u64,
     preparing: bool,
+    syntax_ready: bool,
     viewport_transition: Option<(usize, usize)>,
     scroll_before: (usize, usize),
     scroll_after: (usize, usize),
@@ -70,6 +71,7 @@ impl FrameRecord {
                 .map(|file| format!("{:?}:{}", file.area, file.path.display())),
             content_revision: preparation.content_revision,
             preparing: preparation.preparing,
+            syntax_ready: preparation.syntax_ready,
             viewport_transition: preparation
                 .viewport_transition
                 .map(|viewport| (viewport.vertical, viewport.horizontal)),

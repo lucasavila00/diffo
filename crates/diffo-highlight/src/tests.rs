@@ -2,7 +2,7 @@ use std::path::Path;
 
 use diffo_diff::parse_unified_patch;
 
-use super::SyntaxHighlighter;
+use super::{HighlightWindowRequest, LineRange, SyntaxHighlighter};
 
 #[test]
 fn highlights_old_and_new_rust_lines() {
@@ -57,4 +57,56 @@ fn unknown_syntax_falls_back_to_plain_text() {
 
     assert!(result.old.is_empty());
     assert!(result.new.is_empty());
+}
+
+#[test]
+fn window_highlighting_bounds_work_and_reports_coverage() {
+    let mut patch = String::from("@@ -1,1000 +1,1000 @@\n");
+    for line in 1..=1_000 {
+        use std::fmt::Write as _;
+        writeln!(patch, " pub const LINE_{line}: usize = {line};").unwrap();
+    }
+    let document = parse_unified_patch(&patch).expect("valid patch");
+    let range = LineRange::new(900, 930);
+    let result = SyntaxHighlighter::new().highlight_window(
+        Path::new("src/main.rs"),
+        &document,
+        HighlightWindowRequest {
+            old: Some(range),
+            new: Some(range),
+            lookbehind_lines: 64,
+            maximum_bytes_per_side: usize::MAX,
+        },
+    );
+
+    assert_eq!(result.old_coverage, Some(range));
+    assert_eq!(result.new_coverage, Some(range));
+    assert_eq!(result.old_lines_processed, 95);
+    assert_eq!(result.new_lines_processed, 95);
+    assert!(result.styles.old.contains_key(&900));
+    assert!(result.styles.new.contains_key(&930));
+    assert!(!result.styles.new.contains_key(&899));
+}
+
+#[test]
+fn window_byte_budget_finishes_with_plain_fallback() {
+    let document = parse_unified_patch(
+        "@@ -0,0 +1,2 @@\n+pub const FIRST: usize = 1;\n+pub const SECOND: usize = 2;\n",
+    )
+    .expect("valid patch");
+    let range = LineRange::new(1, 2);
+    let result = SyntaxHighlighter::new().highlight_window(
+        Path::new("src/main.rs"),
+        &document,
+        HighlightWindowRequest {
+            old: None,
+            new: Some(range),
+            lookbehind_lines: 0,
+            maximum_bytes_per_side: 1,
+        },
+    );
+
+    assert_eq!(result.new_coverage, Some(range));
+    assert_eq!(result.new_lines_processed, 0);
+    assert!(result.styles.new.is_empty());
 }

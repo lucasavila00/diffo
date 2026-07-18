@@ -5,16 +5,19 @@ use std::sync::{
 
 use diffo_app::FileKey;
 use diffo_diff::{DiffDocument, RenderLine, RowKind, SideBySideRow};
-use diffo_highlight::{HighlightedDiff, SyntaxHighlighter};
+use diffo_highlight::{HighlightedDiff, LineRange, SyntaxHighlighter};
 use ratatui::layout::Rect;
 
 pub struct Renderer {
     pub(super) highlighter: Arc<SyntaxHighlighter>,
     pub(super) highlighted: Option<HighlightCache>,
+    pub(super) prepared_cache: Vec<HighlightCache>,
     pub(super) prepare_tx: SyncSender<PrepareRequest>,
     pub(super) prepare_rx: Receiver<PrepareOutcome>,
-    pub(super) submitted: Vec<DiffKey>,
+    pub(super) submitted: Vec<(DiffKey, Option<usize>)>,
     pub(super) requested: Option<DiffKey>,
+    pub(super) pending_scroll: Option<usize>,
+    pub(super) diff_viewport_rows: usize,
     pub(super) failed: Option<DiffKey>,
     pub(super) scrollbars: ScrollbarMetrics,
     pub(super) scrollbar_drag: Option<ScrollbarAxis>,
@@ -34,8 +37,11 @@ pub(super) struct HighlightCache {
     pub(super) inline_changes: Vec<usize>,
     pub(super) side_by_side_changes: Vec<usize>,
     pub(super) highlighted: HighlightedDiff,
-    #[cfg(test)]
     pub(super) syntax_highlighted: bool,
+    pub(super) highlighted_old_coverage: Option<LineRange>,
+    pub(super) highlighted_new_coverage: Option<LineRange>,
+    #[cfg(test)]
+    pub(super) highlighted_lines_processed: usize,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -44,6 +50,7 @@ pub struct FramePreparation {
     pub maximum_horizontal_scroll: usize,
     pub content_revision: u64,
     pub preparing: bool,
+    pub syntax_ready: bool,
     pub viewport_transition: Option<ViewportTransition>,
     pub requested_file: Option<FileKey>,
     pub displayed_file: Option<FileKey>,
@@ -74,12 +81,26 @@ pub(super) struct ScrollAnchor {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) struct DiffKey {
     pub(super) file: FileKey,
-    pub(super) patch: String,
+    pub(super) patch: Arc<str>,
     pub(super) mark_conflicts: bool,
+    pub(super) mode: diffo_app::DiffViewMode,
 }
 
 pub(super) struct PrepareRequest {
     pub(super) key: DiffKey,
+    pub(super) viewport_rows: usize,
+    pub(super) mode: diffo_app::DiffViewMode,
+    pub(super) target_scroll: Option<usize>,
+}
+
+pub(super) struct PrepareOutcome {
+    pub(super) key: DiffKey,
+    pub(super) target_scroll: Option<usize>,
+    pub(super) cache: Option<HighlightCache>,
+}
+
+pub(super) struct PrepareCommit {
+    pub(super) target_scroll: Option<usize>,
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -126,5 +147,7 @@ pub(super) enum ScrollbarAxis {
 pub(super) const MAX_HIGHLIGHT_FILE_LINES: usize = 10_000;
 pub(super) const MAX_SYNC_BYTES: usize = 64 * 1024;
 pub(super) const MAX_SYNC_LINES: usize = 500;
-
-pub(super) type PrepareOutcome = Result<HighlightCache, DiffKey>;
+pub(super) const HIGHLIGHT_LOOKBEHIND_LINES: usize = 256;
+pub(super) const HIGHLIGHT_PREFETCH_VIEWPORTS: usize = 3;
+pub(super) const MAX_HIGHLIGHT_BYTES_PER_SIDE: usize = 512 * 1024;
+pub(super) const PREPARED_BUFFER_CACHE_SIZE: usize = 4;

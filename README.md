@@ -39,6 +39,21 @@ before one draw. Rendering must never poll or install background preparation res
 and stale results must never become visible. See
 [`ADR 0024`](docs/adr/0024-atomic-diff-buffer-transitions.md).
 
+Syntax preparation is viewport-bounded but remains part of that atomic commit. A
+9,999-line Rust fixture previously took about 3.45–3.56 seconds in debug and 640 ms
+in release because both complete file versions were highlighted. The same cold open
+now measures 72–98 ms in debug and 31 ms in release by highlighting the first visible
+window with bounded parser context and parallel old/new sides. The full measurements
+and tradeoffs are in [`ADR 0032`](docs/adr/0032-bounded-syntax-windows.md).
+
+Only the active inline or side-by-side projection is built for a cold open. Switching
+modes is itself an atomic prepared transition, and returning to a recently prepared
+file or mode uses a four-entry cache.
+
+Uncached vertical jumps also wait for their colored target window; the current
+viewport remains unchanged until content, colors, targets, bounds, and position can
+commit together. Syntax remains enabled below 10,000 file lines.
+
 The vertical scrollbar and hunk overview are separate controls. The scrollbar owns
 the inner track; hunk markers own the adjacent right-border rail. Neither control may
 paint over or capture clicks intended for the other.

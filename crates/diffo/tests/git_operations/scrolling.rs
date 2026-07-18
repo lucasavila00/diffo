@@ -86,3 +86,44 @@ fn large_hunk_buttons_click_between_changes_without_wrapping() -> Result<()> {
         .wait_for_text("MIDDLE_CHANGE")?;
     Ok(())
 }
+
+#[test]
+fn cold_large_file_open_commits_at_a_syntax_ready_first_change() -> Result<()> {
+    let repository = TestRepository::new()?;
+    let path = repository.worktree.join("large-syntax.rs");
+    fs::write(&path, large_syntax_file(false)?)?;
+    git(&repository.worktree, &["add", "large-syntax.rs"])?;
+    git(
+        &repository.worktree,
+        &["commit", "-m", "Add large syntax fixture"],
+    )?;
+    fs::write(&path, large_syntax_file(true)?)?;
+    let trace_path = repository.root.path().join("large-syntax-frames.ronl");
+    let mut screen = DiffoScreen::launch_with_env(
+        env!("CARGO_BIN_EXE_diffo"),
+        &repository.worktree,
+        &[("DIFFO_TRACE_FRAMES", trace_path.as_os_str())],
+    )?;
+    screen
+        .wait_for_text("PERF_TARGET_09000")?
+        .press(Key::Char('q'))?
+        .wait_for_exit()?;
+    drop(screen);
+
+    let trace = fs::read_to_string(&trace_path).context("read large syntax frame trace")?;
+    let committed = trace
+        .lines()
+        .map(ron::from_str::<BufferFrame>)
+        .collect::<std::result::Result<Vec<_>, _>>()?
+        .into_iter()
+        .find(|frame| {
+            frame.displayed_diff.as_deref() == Some("Unstaged:large-syntax.rs")
+                && frame.viewport_transition.is_some()
+        })
+        .with_context(|| format!("trace has no large syntax commit:\n{trace}"))?;
+    let first_change = committed.viewport_transition.context("commit viewport")?.0;
+    assert!(committed.syntax_ready);
+    assert_eq!(committed.first_rendered_row, first_change);
+    assert!(first_change > 8_900);
+    Ok(())
+}

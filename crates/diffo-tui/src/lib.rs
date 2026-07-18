@@ -62,9 +62,11 @@ use style::{
 };
 
 use state::{
-    AnchorRow, DiffKey, DiffViewportMetrics, HighlightCache, HunkButtonMetrics, HunkDirection,
-    MAX_HIGHLIGHT_FILE_LINES, MAX_SYNC_BYTES, MAX_SYNC_LINES, PrepareOutcome, PrepareRequest,
-    ScrollAnchor, ScrollbarAxis, ScrollbarMetrics,
+    AnchorRow, DiffKey, DiffViewportMetrics, HIGHLIGHT_LOOKBEHIND_LINES,
+    HIGHLIGHT_PREFETCH_VIEWPORTS, HighlightCache, HunkButtonMetrics, HunkDirection,
+    MAX_HIGHLIGHT_BYTES_PER_SIDE, MAX_HIGHLIGHT_FILE_LINES, MAX_SYNC_BYTES, MAX_SYNC_LINES,
+    PREPARED_BUFFER_CACHE_SIZE, PrepareCommit, PrepareOutcome, PrepareRequest, ScrollAnchor,
+    ScrollbarAxis, ScrollbarMetrics,
 };
 
 pub use state::{FramePreparation, Renderer, ViewportTransition};
@@ -114,42 +116,68 @@ impl Renderer {
                 ChangeArea::Unstaged => file.unstaged.as_ref(),
                 ChangeArea::Staged => file.staged.as_ref(),
             }?;
+            let patch = self
+                .requested
+                .as_ref()
+                .filter(|key| key.file == *selected && key.patch.as_ref() == diff.text)
+                .map_or_else(
+                    || Arc::<str>::from(diff.text.as_str()),
+                    |key| key.patch.clone(),
+                );
             Some(DiffKey {
                 file: selected.clone(),
-                patch: diff.text.clone(),
+                patch,
                 mark_conflicts: file.kind == ChangeKind::Conflicted,
+                mode: model.diff_view_mode,
             })
         });
+        if self.requested.as_ref() != requested.as_ref() {
+            self.pending_scroll = None;
+        }
         self.requested.clone_from(&requested);
         let displayed_before = self.displayed_key().cloned();
         let anchor = requested.as_ref().and_then(|requested| {
             self.highlighted
                 .as_ref()
                 .filter(|cache| cache.key.file == requested.file)
-                .map(|cache| ScrollAnchor::capture(cache, model.diff_view_mode, model.diff_scroll))
+                .map(|cache| ScrollAnchor::capture(cache, cache.key.mode, model.diff_scroll))
         });
-        let committed = self.prepare_requested(requested.as_ref());
+        self.diff_viewport_rows = usize::from(diff_area.height.saturating_sub(2));
+        let commit = self.prepare_requested(
+            requested.as_ref(),
+            self.diff_viewport_rows,
+            model.diff_view_mode,
+        );
+        let committed = commit.is_some();
         let displayed_after = self.displayed_key().cloned();
         let viewport_transition = committed.then(|| {
             let same_file = displayed_before
                 .as_ref()
                 .zip(displayed_after.as_ref())
                 .is_some_and(|(before, after)| before.file == after.file);
-            let vertical = if same_file {
+            let same_mode = displayed_before
+                .as_ref()
+                .zip(displayed_after.as_ref())
+                .is_some_and(|(before, after)| before.mode == after.mode);
+            let vertical = if let Some(target) = commit.and_then(|commit| commit.target_scroll) {
+                Some(target)
+            } else if same_file && same_mode {
                 self.highlighted.as_ref().and_then(|cache| {
                     anchor
-                        .and_then(|anchor| anchor.resolve(cache, model.diff_view_mode))
-                        .or_else(|| first_change(cache, model.diff_view_mode))
+                        .and_then(|anchor| anchor.resolve(cache, cache.key.mode))
+                        .or_else(|| first_change(cache, cache.key.mode))
                 })
+            } else if same_file {
+                Some(0)
             } else {
                 self.highlighted
                     .as_ref()
-                    .and_then(|cache| first_change(cache, model.diff_view_mode))
+                    .and_then(|cache| first_change(cache, cache.key.mode))
             }
             .unwrap_or(0);
             ViewportTransition {
                 vertical,
-                horizontal: if same_file {
+                horizontal: if same_file && same_mode {
                     model.diff_horizontal_scroll
                 } else {
                     0
@@ -158,14 +186,18 @@ impl Renderer {
         });
         let rendered_vertical_scroll = viewport_transition
             .map_or(model.diff_scroll, |viewport| viewport.vertical)
-            .min(self.displayed_rows(model.diff_view_mode));
+            .min(self.displayed_rows(self.displayed_mode(model.diff_view_mode)));
+        let displayed_mode = self.displayed_mode(model.diff_view_mode);
         let viewport =
-            self.diff_viewport_metrics(model.diff_view_mode, diff_area, rendered_vertical_scroll);
+            self.diff_viewport_metrics(displayed_mode, diff_area, rendered_vertical_scroll);
+        let syntax_ready = self.failed.is_some()
+            || self.syntax_ready_for_viewport(displayed_mode, rendered_vertical_scroll);
         FramePreparation {
             maximum_vertical_scroll: viewport.maximum_vertical_scroll,
             maximum_horizontal_scroll: viewport.columns.saturating_sub(viewport.viewport_columns),
             content_revision: self.content_revision,
             preparing: self.requested.as_ref() != self.displayed_key(),
+            syntax_ready,
             viewport_transition,
             requested_file: self.requested.as_ref().map(|key| key.file.clone()),
             displayed_file: self.displayed_key().map(|key| key.file.clone()),
@@ -174,7 +206,7 @@ impl Renderer {
 
     #[must_use]
     pub fn is_preparing(&self) -> bool {
-        self.requested.as_ref() != self.displayed_key()
+        self.requested.as_ref() != self.displayed_key() || self.pending_scroll.is_some()
     }
 
     pub fn map_event(
@@ -218,7 +250,8 @@ impl Renderer {
             if mouse.kind == MouseEventKind::Down(MouseButton::Left)
                 && let Some(target) = self.hunk_button_target_at(mouse.column, mouse.row)
             {
-                return Some(diffo_app::Message::SetDiffScroll(target));
+                return self
+                    .guard_vertical_message(diffo_app::Message::SetDiffScroll(target), model);
             }
             if mouse.kind == MouseEventKind::Up(MouseButton::Left) {
                 self.scrollbar_drag = None;
@@ -229,7 +262,8 @@ impl Renderer {
                 if mouse.kind == MouseEventKind::Down(MouseButton::Left)
                     && let Some(change) = self.change_at_marker(mouse.column, mouse.row, model)
                 {
-                    return Some(diffo_app::Message::SetDiffScroll(change));
+                    return self
+                        .guard_vertical_message(diffo_app::Message::SetDiffScroll(change), model);
                 }
                 let axis = if mouse.kind == MouseEventKind::Down(MouseButton::Left) {
                     self.scrollbar_at(mouse.column, mouse.row)
@@ -238,11 +272,12 @@ impl Renderer {
                 };
                 if let Some(axis) = axis {
                     self.scrollbar_drag = Some(axis);
-                    return Some(self.scrollbar_message(axis, mouse.column, mouse.row));
+                    let message = self.scrollbar_message(axis, mouse.column, mouse.row);
+                    return self.guard_vertical_message(message, model);
                 }
             }
         }
-        match input::map_event(event, model, area) {
+        let message = match input::map_event(event, model, area) {
             Some(diffo_app::Message::JumpToPreviousChange) => self
                 .change_jump(model, false)
                 .map(diffo_app::Message::SetDiffScroll),
@@ -250,7 +285,8 @@ impl Renderer {
                 .change_jump(model, true)
                 .map(diffo_app::Message::SetDiffScroll),
             message => message,
-        }
+        }?;
+        self.guard_vertical_message(message, model)
     }
 }
 

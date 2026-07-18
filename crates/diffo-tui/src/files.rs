@@ -362,7 +362,7 @@ pub(super) fn status_line(model: &Model, animation_tick: usize, width: usize) ->
     }
     if let Some(help) = help {
         let used = left_width
-            .saturating_add((transient_width != 0).then_some(2).unwrap_or(0))
+            .saturating_add(if transient_width == 0 { 0 } else { 2 })
             .saturating_add(transient_width);
         spans.push(Span::raw(
             " ".repeat(width.saturating_sub(used.saturating_add(help_width))),

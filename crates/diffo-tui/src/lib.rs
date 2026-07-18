@@ -1,6 +1,6 @@
 #![doc = include_str!("../README.md")]
 
-use diffo_app::{ChangeArea, DiffViewMode, FileKey, Model, ToastKind};
+use diffo_app::{ChangeArea, DiffViewMode, FileKey, Model, Toast, ToastKind};
 use std::{
     env,
     sync::{
@@ -51,10 +51,8 @@ use files::{
 #[cfg(test)]
 use geometry::scrollbar_position_count;
 use geometry::{horizontal_panes, main_area, overview_position};
-use overlays::{
-    commit_editor_action_at_position, render_commit_editor, render_help, render_toasts,
-    toast_at_position,
-};
+use overlays::{commit_editor_action_at_position, render_commit_editor, render_help};
+pub use overlays::{render_toasts, toast_at_position};
 #[cfg(test)]
 use style::{
     contrast_ratio, contrasting_foreground, diff_background, diff_background_rgb, row_style,
@@ -126,7 +124,6 @@ impl Renderer {
         );
         self.render_diff(frame, panes[1], model);
         render_status(frame, areas.status, model, self.network_animation_tick);
-        render_toasts(frame, model, area);
         render_help(frame, model, area);
         render_commit_editor(frame, model, area);
         self.staged_picker.render_menu(frame);
@@ -324,14 +321,6 @@ impl Renderer {
     pub fn map_event(&mut self, event: &Event, model: &Model, area: Rect) -> Option<RendererEvent> {
         if let Some(outcome) = self.map_open_picker_menu(event, area) {
             return Some(outcome);
-        }
-        if !model.commit_input_focused()
-            && !model.help_open
-            && let Event::Mouse(mouse) = event
-            && mouse.kind == MouseEventKind::Down(MouseButton::Left)
-            && let Some(id) = toast_at_position(model, area, mouse.column, mouse.row)
-        {
-            return Some(RendererEvent::Message(diffo_app::Message::DismissToast(id)));
         }
         if model.help_open {
             return input::map_event(event, model, area).map(RendererEvent::Message);

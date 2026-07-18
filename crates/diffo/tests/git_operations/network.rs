@@ -66,9 +66,7 @@ fn shared_palette_fetch_from_activity(activity_tabs: usize) -> Result<()> {
     wait_for("shared fetch command to update origin", || {
         Ok(git_output(&repository.worktree, &["rev-parse", "origin/HEAD"])? == remote_commit)
     })?;
-    screen
-        .press_many(Key::Tab, 3_usize.saturating_sub(activity_tabs))?
-        .wait_for_text("Fetched 1 ref")?;
+    screen.wait_for_text("Fetched 1 ref")?;
     Ok(())
 }
 

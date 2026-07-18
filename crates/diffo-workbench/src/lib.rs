@@ -3,11 +3,11 @@
 use std::{collections::HashMap, time::Instant};
 
 use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind};
-use diffo_app::{Effect, Message, Model, ToastKind, update};
+use diffo_app::{Effect, Message, Model, ToastKind, ToastQueue, update};
 use diffo_command::{Command, CommandId, CommandPalette, PaletteEvent};
 use diffo_core::{OperationFailure, OperationResult, RepositoryAction, RepositorySnapshot};
 use diffo_text_view::{TextRenderMode, TextSurfacePreparation};
-use diffo_tui::{FramePreparation, Renderer, RendererEvent};
+use diffo_tui::{FramePreparation, Renderer, RendererEvent, render_toasts, toast_at_position};
 use diffo_ui::{PaneSplit, tool_areas};
 use ratatui::{Frame, layout::Rect, widgets::Clear};
 
@@ -41,14 +41,6 @@ pub enum WorkbenchEffect {
     },
 }
 
-impl From<Effect> for WorkbenchEffect {
-    fn from(effect: Effect) -> Self {
-        match effect {
-            Effect::Repository(action) => Self::Repository(action),
-        }
-    }
-}
-
 pub enum WorkbenchTask {
     Explorer(ExplorerRequest),
 }
@@ -75,13 +67,14 @@ pub struct Workbench {
     search: SearchActivity,
     palettes: ActivityPalettes,
     pane_split: PaneSplit,
+    toasts: ToastQueue,
+    toast_deadlines: HashMap<u64, Instant>,
     should_quit: bool,
 }
 
 struct DiffActivity {
     model: Model,
     renderer: Renderer,
-    toast_deadlines: HashMap<u64, Instant>,
 }
 
 struct SearchActivity;
@@ -136,12 +129,13 @@ impl Workbench {
             diff: DiffActivity {
                 model: Model::new(snapshot.clone()),
                 renderer: Renderer::new(),
-                toast_deadlines: HashMap::new(),
             },
             explorer: ExplorerActivity::new(snapshot),
             search: SearchActivity,
             palettes: ActivityPalettes::default(),
             pane_split: PaneSplit::default(),
+            toasts: ToastQueue::new(),
+            toast_deadlines: HashMap::new(),
             should_quit: false,
         }
     }
@@ -166,7 +160,7 @@ impl Workbench {
     }
 
     pub fn tick(&mut self) {
-        self.diff.expire_toasts();
+        self.expire_toasts();
     }
 
     #[must_use]
@@ -198,6 +192,7 @@ impl Workbench {
             Activity::Explorer => self.explorer.render(frame, content, self.pane_split),
             Activity::Search => self.search.render(frame, content, self.pane_split),
         }
+        render_toasts(frame, self.toasts.as_slice(), content);
         self.active_palette().render(frame, content);
         render_activity_bar(frame, area, self.active);
     }
@@ -219,7 +214,7 @@ impl Workbench {
                 WorkbenchCommand::Diff(message) => {
                     scroll.flush(self);
                     if let Some(effect) = self.update_diff(message) {
-                        effects.push(effect.into());
+                        effects.push(effect);
                     }
                 }
                 WorkbenchCommand::Effect(effect) => {
@@ -267,6 +262,9 @@ impl Workbench {
             Activity::Explorer => self.explorer.captures_global_input(),
             Activity::Search => self.search.captures_global_input(),
         };
+        if !tool_captures_global_input && self.dismiss_clicked_toast(event, content) {
+            return None;
+        }
         if !tool_captures_global_input
             && let Event::Key(key) = event
             && key.kind == KeyEventKind::Press
@@ -331,6 +329,22 @@ impl Workbench {
         }
     }
 
+    fn dismiss_clicked_toast(&mut self, event: &Event, area: Rect) -> bool {
+        let Event::Mouse(mouse) = event else {
+            return false;
+        };
+        if mouse.kind != MouseEventKind::Down(MouseButton::Left) {
+            return false;
+        }
+        let Some(id) = toast_at_position(self.toasts.as_slice(), area, mouse.column, mouse.row)
+        else {
+            return false;
+        };
+        self.toasts.dismiss(id);
+        self.toast_deadlines.remove(&id);
+        true
+    }
+
     fn sync_diff_pane_state(&mut self) {
         self.diff.model.file_pane_percent = self.pane_split.percent();
         self.diff.model.resizing_file_pane = self.pane_split.is_dragging();
@@ -346,14 +360,21 @@ impl Workbench {
         }
     }
 
-    fn update_diff(&mut self, message: Message) -> Option<Effect> {
+    fn update_diff(&mut self, message: Message) -> Option<WorkbenchEffect> {
         match &message {
             Message::SnapshotLoaded(snapshot) | Message::OperationCompleted(_, _, snapshot) => {
                 self.explorer.repository_changed(snapshot.clone());
             }
             _ => {}
         }
-        update(&mut self.diff.model, message)
+        match update(&mut self.diff.model, message) {
+            Some(Effect::Repository(action)) => Some(WorkbenchEffect::Repository(action)),
+            Some(Effect::Toast(kind, title)) => {
+                self.show_toast(kind, title);
+                None
+            }
+            None => None,
+        }
     }
 
     fn active_palette(&self) -> &CommandPalette {
@@ -416,7 +437,7 @@ impl Workbench {
     }
 
     pub fn show_toast(&mut self, kind: ToastKind, message: impl Into<String>) {
-        self.diff.model.show_toast(kind, message);
+        self.toasts.show(kind, message);
     }
 
     pub fn repository_changed(&mut self, snapshot: RepositorySnapshot) {
@@ -438,6 +459,28 @@ impl Workbench {
 
     pub fn action_failed(&mut self, failure: OperationFailure) {
         let _ = self.update_diff(Message::ActionFailed(failure));
+    }
+
+    fn expire_toasts(&mut self) {
+        let now = Instant::now();
+        self.toast_deadlines
+            .retain(|id, _| self.toasts.as_slice().iter().any(|toast| toast.id == *id));
+        for toast in self.toasts.as_slice() {
+            if toast.kind != ToastKind::Error {
+                self.toast_deadlines
+                    .entry(toast.id)
+                    .or_insert_with(|| now + std::time::Duration::from_secs(3));
+            }
+        }
+        let expired = self
+            .toast_deadlines
+            .iter()
+            .filter_map(|(id, deadline)| (*deadline <= now).then_some(*id))
+            .collect::<Vec<_>>();
+        for id in expired {
+            self.toasts.dismiss(id);
+            self.toast_deadlines.remove(&id);
+        }
     }
 }
 
@@ -532,30 +575,6 @@ impl Tool for DiffActivity {
         self.model.commit_input_focused()
             || self.model.help_open
             || self.renderer.has_open_picker_menu()
-    }
-}
-
-impl DiffActivity {
-    fn expire_toasts(&mut self) {
-        let now = Instant::now();
-        self.toast_deadlines
-            .retain(|id, _| self.model.toasts.iter().any(|toast| toast.id == *id));
-        for toast in &self.model.toasts {
-            if toast.kind != ToastKind::Error {
-                self.toast_deadlines
-                    .entry(toast.id)
-                    .or_insert_with(|| now + std::time::Duration::from_secs(3));
-            }
-        }
-        let expired = self
-            .toast_deadlines
-            .iter()
-            .filter_map(|(id, deadline)| (*deadline <= now).then_some(*id))
-            .collect::<Vec<_>>();
-        for id in expired {
-            let _ = update(&mut self.model, Message::DismissToast(id));
-            self.toast_deadlines.remove(&id);
-        }
     }
 }
 
@@ -860,6 +879,102 @@ mod tests {
                 Some(NetworkOperation::Fetch)
             );
         }
+    }
+
+    #[test]
+    fn operation_toasts_render_in_diff_and_explorer() {
+        for activity in [Activity::Diff, Activity::Explorer] {
+            let mut workbench = Workbench::new(RepositorySnapshot::default());
+            workbench.active = activity;
+            assert_eq!(
+                workbench
+                    .diff
+                    .model
+                    .start_repository_action(RepositoryAction::Pull),
+                Some(RepositoryAction::Pull)
+            );
+            workbench.operation_completed(
+                RepositoryAction::Pull,
+                OperationResult::Pull { commits: 1 },
+                RepositorySnapshot::default(),
+            );
+            assert_eq!(workbench.diff.model.network_operation(), None);
+            assert_eq!(workbench.toasts.as_slice()[0].title, "Pulled 1 commit");
+            let backend = TestBackend::new(100, 30);
+            let mut terminal = Terminal::new(backend).unwrap();
+
+            terminal.draw(|frame| workbench.render(frame)).unwrap();
+
+            let screen = terminal
+                .backend()
+                .buffer()
+                .content
+                .iter()
+                .map(ratatui::buffer::Cell::symbol)
+                .collect::<String>();
+            assert!(
+                screen.contains("Pulled 1 commit"),
+                "missing operation toast in {activity:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn explorer_can_click_dismiss_a_workbench_toast() {
+        let mut workbench = Workbench::new(RepositorySnapshot::default());
+        workbench.active = Activity::Explorer;
+        workbench.show_toast(ToastKind::Info, "Fetch complete");
+        let click = Event::Mouse(MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: 70,
+            row: 26,
+            modifiers: KeyModifiers::NONE,
+        });
+
+        let _ = workbench.handle_event(&click, Rect::new(0, 0, 100, 30));
+
+        assert!(workbench.toasts.as_slice().is_empty());
+    }
+
+    #[test]
+    fn network_activity_does_not_own_the_toast_queue() {
+        let mut workbench = Workbench::new(RepositorySnapshot::default());
+        workbench.show_toast(ToastKind::Info, "Existing result");
+        let existing_id = workbench.toasts.as_slice()[0].id;
+
+        assert_eq!(
+            workbench
+                .diff
+                .model
+                .start_repository_action(RepositoryAction::Fetch),
+            Some(RepositoryAction::Fetch)
+        );
+        assert_eq!(
+            workbench.diff.model.network_operation(),
+            Some(NetworkOperation::Fetch)
+        );
+        assert!(
+            workbench
+                .toasts
+                .as_slice()
+                .iter()
+                .any(|toast| toast.id == existing_id)
+        );
+
+        workbench.operation_completed(
+            RepositoryAction::Fetch,
+            OperationResult::Fetch { updated_refs: 0 },
+            RepositorySnapshot::default(),
+        );
+
+        assert_eq!(workbench.diff.model.network_operation(), None);
+        assert!(
+            workbench
+                .toasts
+                .as_slice()
+                .iter()
+                .any(|toast| toast.id == existing_id)
+        );
     }
 
     #[test]

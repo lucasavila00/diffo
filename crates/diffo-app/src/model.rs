@@ -11,6 +11,8 @@ mod staging;
 mod toast;
 
 use navigation::file_keys;
+pub use toast::ToastQueue;
+pub(crate) use toast::{operation_failure_title, operation_result_toast};
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum ChangeArea {
     Unstaged,
@@ -136,13 +138,11 @@ pub struct Model {
     pub resizing_file_pane: bool,
     pub help_open: bool,
     pub commit_message: String,
-    pub toasts: Vec<Toast>,
     commit_composer_state: CommitComposerState,
     commit_message_cursor: usize,
     pending_operation: Option<RepositoryAction>,
     expanded_file_pane_percent: u16,
     cursor: usize,
-    next_toast_id: u64,
     pending_file_action: Option<PendingFileAction>,
 }
 
@@ -167,13 +167,11 @@ impl Model {
             resizing_file_pane: false,
             help_open: false,
             commit_message: String::new(),
-            toasts: Vec::new(),
             commit_composer_state: CommitComposerState::Idle,
             commit_message_cursor: 0,
             pending_operation: None,
             expanded_file_pane_percent: 25,
             cursor,
-            next_toast_id: 1,
             pending_file_action: None,
         }
     }

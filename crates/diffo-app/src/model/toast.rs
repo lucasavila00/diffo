@@ -1,59 +1,52 @@
-use super::repository::same_repository_operation;
-use super::{
-    CommitComposerState, FailureKind, Model, OperationFailure, OperationResult, RepositoryAction,
-    Toast, ToastKind,
-};
+use super::{FailureKind, OperationFailure, OperationResult, RepositoryAction, Toast, ToastKind};
 
-impl Model {
-    pub fn show_error(&mut self, error: impl Into<String>) {
-        self.error = Some(error.into());
+pub struct ToastQueue {
+    toasts: Vec<Toast>,
+    next_id: u64,
+}
+
+impl ToastQueue {
+    #[must_use]
+    pub const fn new() -> Self {
+        Self {
+            toasts: Vec::new(),
+            next_id: 1,
+        }
     }
 
-    pub fn show_operation_failure(&mut self, failure: &OperationFailure) {
-        if let Some(pending) = self.pending_operation.as_ref()
-            && !same_repository_operation(pending, &failure.action)
-        {
-            return;
-        }
-        let pending_file_action_failed = self
-            .pending_file_action
-            .as_ref()
-            .is_some_and(|pending| pending.matches_repository_action(&failure.action));
-        if matches!(self.pending_operation, Some(RepositoryAction::Commit(_))) {
-            self.commit_composer_state = CommitComposerState::Focused;
-        }
-        self.pending_operation = None;
-        if pending_file_action_failed {
-            self.pending_file_action = None;
-        }
-        self.error = None;
-        self.push_toast(ToastKind::Error, operation_failure_title(failure), None);
+    #[must_use]
+    pub fn as_slice(&self) -> &[Toast] {
+        &self.toasts
     }
 
-    pub fn dismiss_toast(&mut self, id: u64) {
+    pub fn dismiss(&mut self, id: u64) {
         self.toasts.retain(|toast| toast.id != id);
     }
 
-    pub fn show_toast(&mut self, kind: ToastKind, title: impl Into<String>) {
-        self.push_toast(kind, title.into(), None);
-    }
-
-    pub(super) fn push_toast(&mut self, kind: ToastKind, title: String, detail: Option<String>) {
+    pub fn show(&mut self, kind: ToastKind, title: impl Into<String>) {
+        let title = title.into();
+        let detail = None;
         self.toasts
             .retain(|toast| toast.title != title || toast.detail != detail);
         let toast = Toast {
-            id: self.next_toast_id,
+            id: self.next_id,
             kind,
             title,
             detail,
         };
-        self.next_toast_id = self.next_toast_id.saturating_add(1);
+        self.next_id = self.next_id.saturating_add(1);
         self.toasts.insert(0, toast);
         self.toasts.truncate(3);
     }
 }
 
-pub(super) fn operation_result_toast(result: &OperationResult) -> Option<(ToastKind, String)> {
+impl Default for ToastQueue {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+pub(crate) fn operation_result_toast(result: &OperationResult) -> Option<(ToastKind, String)> {
     let title = match result {
         OperationResult::Stage | OperationResult::Unstage => return None,
         OperationResult::Fetch { updated_refs: 0 } => "Fetch complete".to_owned(),
@@ -70,7 +63,7 @@ pub(super) fn operation_result_toast(result: &OperationResult) -> Option<(ToastK
     Some((ToastKind::Success, title))
 }
 
-pub(super) fn operation_failure_title(failure: &OperationFailure) -> String {
+pub(crate) fn operation_failure_title(failure: &OperationFailure) -> String {
     let action = match &failure.action {
         RepositoryAction::Stage(_) | RepositoryAction::StageAll => "Stage",
         RepositoryAction::Unstage(_) | RepositoryAction::UnstageAll => "Unstage",

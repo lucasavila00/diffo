@@ -7,10 +7,9 @@ use std::time::Instant;
 use crossterm::event::{
     Event, KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
 };
-use diffo_app::{ChangeArea, DiffViewMode, Message, Model};
+use diffo_app::{ChangeArea, DiffViewMode, Message, Model, ToastKind, ToastQueue};
 use diffo_core::{
-    ChangeKind, FileDiff, FileState, HeadState, OperationResult, RepositoryAction,
-    RepositorySnapshot, UpstreamState,
+    ChangeKind, FileDiff, FileState, HeadState, RepositoryAction, RepositorySnapshot, UpstreamState,
 };
 use diffo_diff::RowKind;
 use diffo_highlight::Rgb;
@@ -548,26 +547,14 @@ fn network_operations_animate_the_frame_and_name_the_operation() {
 }
 
 #[test]
-fn renders_and_mouse_dismisses_a_bottom_right_toast() {
-    let mut model = model();
-    model.snapshot.files[0].staged = model.snapshot.files[0].unstaged.take();
-    let action = model.execute_primary_action().expect("commit action");
-    assert!(matches!(&action, RepositoryAction::Commit(_)));
-    model.complete_operation(
-        &action,
-        &OperationResult::Commit {
-            hash: "a1b2c3d4e5".to_owned(),
-        },
-        model.snapshot.clone(),
-    );
-    let id = model.toasts[0].id;
-    let mut renderer = Renderer::new();
+fn renders_and_hit_tests_a_bottom_right_toast() {
+    let mut toasts = ToastQueue::new();
+    toasts.show(ToastKind::Success, "Committed a1b2c3d");
+    let id = toasts.as_slice()[0].id;
     let backend = TestBackend::new(100, 30);
     let mut terminal = Terminal::new(backend).unwrap();
-    renderer.prepare_frame(&model, Rect::new(0, 0, 100, 30));
-    wait_for_syntax_ready(&mut renderer, &model);
     terminal
-        .draw(|frame| renderer.render(frame, &model))
+        .draw(|frame| super::render_toasts(frame, toasts.as_slice(), frame.area()))
         .unwrap();
     assert!(
         terminal
@@ -578,15 +565,9 @@ fn renders_and_mouse_dismisses_a_bottom_right_toast() {
             .any(|cell| { cell.symbol().contains("Committed") || cell.fg == Color::LightGreen })
     );
 
-    let click = Event::Mouse(MouseEvent {
-        kind: MouseEventKind::Down(MouseButton::Left),
-        column: 70,
-        row: 26,
-        modifiers: KeyModifiers::NONE,
-    });
     assert_eq!(
-        renderer.map_event(&click, &model, Rect::new(0, 0, 100, 30)),
-        Some(RendererEvent::Message(diffo_app::Message::DismissToast(id)))
+        super::toast_at_position(toasts.as_slice(), Rect::new(0, 0, 100, 30), 70, 26),
+        Some(id)
     );
 }
 

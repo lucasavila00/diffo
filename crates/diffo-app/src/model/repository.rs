@@ -1,10 +1,13 @@
-use super::toast::operation_result_toast;
 use super::{
-    FileKey, Model, OperationResult, PendingFileAction, RepositoryAction, RepositorySnapshot,
-    file_keys,
+    CommitComposerState, FileKey, Model, OperationFailure, OperationResult, PendingFileAction,
+    RepositoryAction, RepositorySnapshot, file_keys,
 };
 
 impl Model {
+    pub fn show_error(&mut self, error: impl Into<String>) {
+        self.error = Some(error.into());
+    }
+
     pub fn start_repository_action(
         &mut self,
         action: RepositoryAction,
@@ -58,7 +61,7 @@ impl Model {
         action: &RepositoryAction,
         result: &OperationResult,
         snapshot: RepositorySnapshot,
-    ) {
+    ) -> bool {
         let is_async_result = matches!(
             result,
             OperationResult::Fetch { .. }
@@ -69,7 +72,7 @@ impl Model {
         let finishes_pending = self.pending_operation.as_ref() == Some(action);
         if is_async_result && !finishes_pending {
             self.install_snapshot(snapshot, None);
-            return;
+            return false;
         }
         if finishes_pending {
             self.finish_pending_operation();
@@ -81,9 +84,28 @@ impl Model {
             })
             .and_then(|action| action.selection_after_success(&snapshot));
         self.install_snapshot(snapshot, intended_selection.as_ref());
-        if let Some((kind, title)) = operation_result_toast(result) {
-            self.push_toast(kind, title, None);
+        true
+    }
+
+    pub fn fail_operation(&mut self, failure: &OperationFailure) -> bool {
+        if let Some(pending) = self.pending_operation.as_ref()
+            && !same_repository_operation(pending, &failure.action)
+        {
+            return false;
         }
+        let pending_file_action_failed = self
+            .pending_file_action
+            .as_ref()
+            .is_some_and(|pending| pending.matches_repository_action(&failure.action));
+        if matches!(self.pending_operation, Some(RepositoryAction::Commit(_))) {
+            self.commit_composer_state = CommitComposerState::Focused;
+        }
+        self.pending_operation = None;
+        if pending_file_action_failed {
+            self.pending_file_action = None;
+        }
+        self.error = None;
+        true
     }
 }
 

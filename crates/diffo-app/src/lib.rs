@@ -2,10 +2,13 @@
 
 mod model;
 
-use diffo_core::{OperationFailure, OperationResult, RepositoryAction, RepositorySnapshot};
+use diffo_core::{
+    FailureKind, OperationFailure, OperationResult, RepositoryAction, RepositorySnapshot,
+};
 
 pub use model::{
     ChangeArea, DiffViewMode, FileKey, Model, NetworkOperation, PrimaryAction, Toast, ToastKind,
+    ToastQueue,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -49,12 +52,12 @@ pub enum Message {
     OperationFailed(String),
     OperationCompleted(RepositoryAction, OperationResult, RepositorySnapshot),
     ActionFailed(OperationFailure),
-    DismissToast(u64),
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Effect {
     Repository(RepositoryAction),
+    Toast(ToastKind, String),
 }
 
 pub fn update(model: &mut Model, message: Message) -> Option<Effect> {
@@ -96,15 +99,36 @@ pub fn update(model: &mut Model, message: Message) -> Option<Effect> {
         Message::CommitMessageCursorLeft => model.commit_message_cursor_left(),
         Message::CommitMessageCursorRight => model.commit_message_cursor_right(),
         Message::ExecutePrimaryAction => {
+            if model.primary_action() == PrimaryAction::PushAndPull {
+                let failure = OperationFailure {
+                    action: RepositoryAction::Push,
+                    kind: FailureKind::PullRequired,
+                    detail: "pull and merge required".to_owned(),
+                };
+                return Some(Effect::Toast(
+                    ToastKind::Error,
+                    model::operation_failure_title(&failure),
+                ));
+            }
             return model.execute_primary_action().map(Effect::Repository);
         }
         Message::SnapshotLoaded(snapshot) => model.repository_changed(snapshot),
         Message::OperationFailed(error) => model.show_error(error),
         Message::OperationCompleted(action, result, snapshot) => {
-            model.complete_operation(&action, &result, snapshot);
+            if model.complete_operation(&action, &result, snapshot)
+                && let Some((kind, title)) = model::operation_result_toast(&result)
+            {
+                return Some(Effect::Toast(kind, title));
+            }
         }
-        Message::ActionFailed(failure) => model.show_operation_failure(&failure),
-        Message::DismissToast(id) => model.dismiss_toast(id),
+        Message::ActionFailed(failure) => {
+            if model.fail_operation(&failure) {
+                return Some(Effect::Toast(
+                    ToastKind::Error,
+                    model::operation_failure_title(&failure),
+                ));
+            }
+        }
     }
     None
 }

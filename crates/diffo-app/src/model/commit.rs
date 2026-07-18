@@ -1,7 +1,4 @@
-use super::{
-    CommitComposerState, FailureKind, Model, NetworkOperation, OperationFailure, PrimaryAction,
-    RepositoryAction,
-};
+use super::{CommitComposerState, Model, NetworkOperation, PrimaryAction, RepositoryAction};
 
 impl Model {
     pub fn focus_commit_input(&mut self) {
@@ -113,11 +110,6 @@ impl Model {
     pub fn execute_primary_action(&mut self) -> Option<RepositoryAction> {
         let primary = self.primary_action();
         if primary == PrimaryAction::PushAndPull {
-            self.show_operation_failure(&OperationFailure {
-                action: RepositoryAction::Push,
-                kind: FailureKind::PullRequired,
-                detail: "pull and merge required".to_owned(),
-            });
             return None;
         }
         if !self.primary_action_enabled() {

@@ -1,6 +1,6 @@
 use super::{
     Alignment, Block, Borders, Cell, Clear, Color, Constraint, Frame, Layout, Model, Modifier,
-    Paragraph, Rect, Row, Style, Table, ToastKind, input,
+    Paragraph, Rect, Row, Style, Table, Toast, ToastKind, input,
 };
 
 pub(super) fn render_help(frame: &mut Frame, model: &Model, content_area: Rect) {
@@ -49,8 +49,8 @@ pub(super) fn render_help(frame: &mut Frame, model: &Model, content_area: Rect) 
     );
 }
 
-pub(super) fn render_toasts(frame: &mut Frame, model: &Model, content_area: Rect) {
-    for (toast, area) in model.toasts.iter().zip(toast_areas(model, content_area)) {
+pub fn render_toasts(frame: &mut Frame, toasts: &[Toast], content_area: Rect) {
+    for (toast, area) in toasts.iter().zip(toast_areas(toasts, content_area)) {
         let color = match toast.kind {
             ToastKind::Success => Color::LightGreen,
             ToastKind::Info => Color::LightCyan,
@@ -75,12 +75,11 @@ pub(super) fn render_toasts(frame: &mut Frame, model: &Model, content_area: Rect
     }
 }
 
-pub(super) fn toast_areas(model: &Model, area: Rect) -> Vec<Rect> {
+fn toast_areas(toasts: &[Toast], area: Rect) -> Vec<Rect> {
     let width = 44.min(area.width.saturating_sub(2));
     let right = area.right().saturating_sub(1);
     let mut bottom = area.bottom().saturating_sub(2);
-    model
-        .toasts
+    toasts
         .iter()
         .filter_map(|toast| {
             let inner_width = usize::from(width.saturating_sub(2)).max(1);
@@ -102,11 +101,11 @@ pub(super) fn toast_areas(model: &Model, area: Rect) -> Vec<Rect> {
         .collect()
 }
 
-pub(super) fn toast_at_position(model: &Model, area: Rect, column: u16, row: u16) -> Option<u64> {
-    model
-        .toasts
+#[must_use]
+pub fn toast_at_position(toasts: &[Toast], area: Rect, column: u16, row: u16) -> Option<u64> {
+    toasts
         .iter()
-        .zip(toast_areas(model, area))
+        .zip(toast_areas(toasts, area))
         .find_map(|(toast, area)| area.contains((column, row).into()).then_some(toast.id))
 }
 

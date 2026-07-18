@@ -7,7 +7,7 @@ use diffo_core::{
 
 use super::{
     ChangeArea, DiffViewMode, Effect, FileKey, Message, Model, NetworkOperation, PrimaryAction,
-    update,
+    ToastKind, update,
 };
 
 fn model() -> Model {
@@ -110,10 +110,12 @@ fn primary_action_chooses_commit_push_pull_or_blocked_sync() {
     assert_eq!(model.primary_action(), PrimaryAction::PushAndPull);
     assert_eq!(model.primary_action().label(), "Push + Pull");
     assert!(!model.primary_action().enabled());
-    assert_eq!(update(&mut model, Message::ExecutePrimaryAction), None);
     assert_eq!(
-        model.toasts.first().map(|toast| toast.title.as_str()),
-        Some("Push blocked: pull and merge required")
+        update(&mut model, Message::ExecutePrimaryAction),
+        Some(Effect::Toast(
+            ToastKind::Error,
+            "Push blocked: pull and merge required".to_owned()
+        ))
     );
 }
 

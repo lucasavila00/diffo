@@ -5,7 +5,7 @@ use diffo_core::{
     RepositoryAction, RepositorySnapshot,
 };
 
-use super::{ChangeArea, FileKey, Model};
+use super::{ChangeArea, FileKey, Model, ToastKind, ToastQueue};
 
 fn snapshot() -> RepositorySnapshot {
     RepositorySnapshot {
@@ -153,7 +153,7 @@ fn failed_stage_file_action_keeps_the_reviewed_file_open() {
     let selected = app.selected.clone();
     let action = app.toggle_stage_selected().expect("stage action");
 
-    app.show_operation_failure(&OperationFailure {
+    app.fail_operation(&OperationFailure {
         action: action.clone(),
         kind: FailureKind::Unknown,
         detail: "stage failed".to_owned(),
@@ -266,39 +266,24 @@ fn edits_commit_message_at_a_preserved_character_cursor() {
 
 #[test]
 fn queues_replaces_limits_and_dismisses_toasts() {
-    let mut app = Model::new(snapshot());
+    let mut toasts = ToastQueue::new();
     for updated_refs in 1..=4 {
-        assert_eq!(
-            app.start_repository_action(RepositoryAction::Fetch),
-            Some(RepositoryAction::Fetch)
-        );
-        app.complete_operation(
-            &RepositoryAction::Fetch,
-            &OperationResult::Fetch { updated_refs },
-            snapshot(),
-        );
+        toasts.show(ToastKind::Success, format!("Fetched {updated_refs} refs"));
     }
-    assert_eq!(app.toasts.len(), 3);
-    assert_eq!(app.toasts[0].title, "Fetched 4 refs");
+    assert_eq!(toasts.as_slice().len(), 3);
+    assert_eq!(toasts.as_slice()[0].title, "Fetched 4 refs");
 
+    toasts.show(ToastKind::Success, "Fetched 4 refs");
+    assert_eq!(toasts.as_slice().len(), 3);
     assert_eq!(
-        app.start_repository_action(RepositoryAction::Fetch),
-        Some(RepositoryAction::Fetch)
-    );
-    app.complete_operation(
-        &RepositoryAction::Fetch,
-        &OperationResult::Fetch { updated_refs: 4 },
-        snapshot(),
-    );
-    assert_eq!(app.toasts.len(), 3);
-    assert_eq!(
-        app.toasts
+        toasts
+            .as_slice()
             .iter()
             .filter(|toast| toast.title == "Fetched 4 refs")
             .count(),
         1
     );
-    let id = app.toasts[0].id;
-    app.dismiss_toast(id);
-    assert!(app.toasts.iter().all(|toast| toast.id != id));
+    let id = toasts.as_slice()[0].id;
+    toasts.dismiss(id);
+    assert!(toasts.as_slice().iter().all(|toast| toast.id != id));
 }

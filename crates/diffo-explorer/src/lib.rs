@@ -7,6 +7,7 @@ use std::{collections::VecDeque, path::PathBuf};
 use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind};
 use diffo_command::{Command, CommandId};
 use diffo_core::RepositorySnapshot;
+use diffo_file_picker::{FilePicker, Outcome as PickerOutcome};
 use diffo_text_view::{
     LINE_SCROLL_ROWS, ScrollCommand, ScrollbarAxis, TextRenderMode, TextSurface,
     TextSurfacePreparation, Viewport, ViewportMetrics, WHEEL_SCROLL_ROWS, scrollbar_areas,
@@ -16,8 +17,14 @@ use diffo_ui::PaneSplit;
 use ratatui::{Frame, layout::Rect};
 
 use model::ExplorerModel;
-use view::{TreeAction, VIEWER_GUTTER_WIDTH, explorer_areas, tree_action_at, viewer_metrics};
+use view::{VIEWER_GUTTER_WIDTH, explorer_areas, tree_document, viewer_metrics};
 pub use worker::{ExplorerOutcome, ExplorerRequest, ExplorerWorker};
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum ExplorerEvent {
+    Consumed,
+    CopyPath { path: PathBuf, absolute: bool },
+}
 
 pub const COLLAPSE_ALL_COMMAND: CommandId = CommandId::new("explorer.collapse_all");
 pub const EXPAND_ALL_COMMAND: CommandId = CommandId::new("explorer.expand_all");
@@ -35,6 +42,7 @@ static COMMANDS: [Command; 2] = [
 
 pub struct ExplorerActivity {
     model: ExplorerModel,
+    picker: FilePicker<PathBuf>,
     next_id: u64,
     latest_paths: u64,
     latest_file: u64,
@@ -53,6 +61,7 @@ impl ExplorerActivity {
     pub fn new(snapshot: RepositorySnapshot) -> Self {
         let mut activity = Self {
             model: ExplorerModel::new(snapshot),
+            picker: FilePicker::default(),
             next_id: 0,
             latest_paths: 0,
             latest_file: 0,
@@ -85,11 +94,7 @@ impl ExplorerActivity {
         let id = self.next_id();
         self.latest_file = id;
         self.pending_path = Some(path.clone());
-        let status = self
-            .model
-            .selected_entry()
-            .filter(|entry| entry.path == path)
-            .and_then(|entry| entry.status);
+        let status = self.model.entry(&path).and_then(|entry| entry.status);
         self.queued
             .retain(|request| !matches!(request, ExplorerRequest::File { .. }));
         self.queued.push_back(ExplorerRequest::File {
@@ -106,14 +111,13 @@ impl ExplorerActivity {
             return;
         }
         self.request_paths();
-        if let Some(path) = self.model.selected_file().map(PathBuf::from) {
+        if let Some(path) = self.selected_file().cloned() {
             self.request_file(path, self.model.viewer_scroll);
         }
     }
 
     pub fn prepare_frame(&mut self, area: Rect, split: PaneSplit) -> TextSurfacePreparation {
         let areas = explorer_areas(area, split);
-        let tree_rows = usize::from(areas.tree.height.saturating_sub(2));
         self.viewport_rows = usize::from(areas.viewer.height.saturating_sub(2)).max(1);
         self.viewport_columns = usize::from(
             areas
@@ -143,8 +147,16 @@ impl ExplorerActivity {
             .model
             .viewer_horizontal_scroll
             .min(maximum_horizontal_scroll);
-        self.model.ensure_tree_selection_visible(tree_rows);
-        let selected = self.model.selected_file().map(PathBuf::from);
+        let selected_before = self.picker.selected().cloned();
+        self.picker.prepare(
+            areas.tree,
+            tree_document(&self.model, split.border_style(), self.paths_pending),
+            None,
+        );
+        if self.picker.selected() != selected_before.as_ref() {
+            self.selection_changed();
+        }
+        let selected = self.selected_file().cloned();
         let displayed = self.model.viewer.as_ref().map(|viewer| viewer.path.clone());
         let text_missing = selected != displayed;
         if text_missing && selected.as_ref() != self.pending_path.as_ref() {
@@ -183,7 +195,14 @@ impl ExplorerActivity {
     }
 
     pub fn render(&self, frame: &mut Frame, area: Rect, split: PaneSplit) {
-        view::render(frame, area, split, &self.model, !self.viewer_syntax_ready());
+        view::render(
+            frame,
+            area,
+            split,
+            &self.model,
+            &self.picker,
+            !self.viewer_syntax_ready(),
+        );
     }
 
     #[must_use]
@@ -193,9 +212,9 @@ impl ExplorerActivity {
 
     pub fn execute_command(&mut self, command: CommandId) -> bool {
         if command == COLLAPSE_ALL_COMMAND {
-            self.model.collapse_all();
+            self.picker.collapse_all();
         } else if command == EXPAND_ALL_COMMAND {
-            self.model.expand_all();
+            self.picker.expand_all();
         } else {
             return false;
         }
@@ -203,34 +222,38 @@ impl ExplorerActivity {
         true
     }
 
-    pub fn handle_event(&mut self, event: &Event, area: Rect, split: PaneSplit) -> bool {
-        if self.handle_viewer_mouse(event, area, split) {
-            return true;
+    pub fn handle_event(
+        &mut self,
+        event: &Event,
+        area: Rect,
+        split: PaneSplit,
+    ) -> Option<ExplorerEvent> {
+        let selected_before = self.picker.selected().cloned();
+        if let Some(outcome) = self.picker.handle_event(event, area) {
+            if self.picker.selected() != selected_before.as_ref() {
+                self.selection_changed();
+            }
+            return match outcome {
+                PickerOutcome::CopyPath { id, absolute } => {
+                    Some(ExplorerEvent::CopyPath { path: id, absolute })
+                }
+                PickerOutcome::Consumed
+                | PickerOutcome::Selected(_)
+                | PickerOutcome::Activated(_)
+                | PickerOutcome::RowAction(_)
+                | PickerOutcome::PanelAction => Some(ExplorerEvent::Consumed),
+            };
         }
-        if let Event::Mouse(mouse) = event
-            && mouse.kind == MouseEventKind::Down(MouseButton::Left)
-        {
-            return self.handle_tree_click(area, split, mouse.column, mouse.row);
+        if self.handle_viewer_mouse(event, area, split) {
+            return Some(ExplorerEvent::Consumed);
         }
         let Event::Key(key) = event else {
-            return false;
+            return None;
         };
         if key.kind != KeyEventKind::Press || key.modifiers != KeyModifiers::NONE {
-            return false;
+            return None;
         }
         match key.code {
-            KeyCode::Char('j') => {
-                self.model.select_by(1);
-                self.selection_changed();
-            }
-            KeyCode::Char('k') => {
-                self.model.select_by(-1);
-                self.selection_changed();
-            }
-            KeyCode::Enter => {
-                self.model.toggle_selected_directory();
-                self.selection_changed();
-            }
             KeyCode::Up => self.scroll_viewer(-LINE_SCROLL_ROWS),
             KeyCode::Down => self.scroll_viewer(LINE_SCROLL_ROWS),
             KeyCode::PageUp => {
@@ -241,9 +264,9 @@ impl ExplorerActivity {
             }
             KeyCode::Left => self.scroll_viewer_horizontal(-LINE_SCROLL_ROWS),
             KeyCode::Right => self.scroll_viewer_horizontal(LINE_SCROLL_ROWS),
-            _ => return false,
+            _ => return None,
         }
-        true
+        Some(ExplorerEvent::Consumed)
     }
 
     fn handle_viewer_mouse(&mut self, event: &Event, area: Rect, split: PaneSplit) -> bool {
@@ -298,45 +321,21 @@ impl ExplorerActivity {
         false
     }
 
-    fn handle_tree_click(&mut self, area: Rect, split: PaneSplit, column: u16, row: u16) -> bool {
-        let tree_area = explorer_areas(area, split).tree;
-        if let Some(action) = tree_action_at(tree_area, column, row) {
-            match action {
-                TreeAction::CollapseAll => self.model.collapse_all(),
-                TreeAction::ExpandAll => self.model.expand_all(),
-            }
-            self.selection_changed();
-            return true;
-        }
-        let tree = tree_area.inner(ratatui::layout::Margin {
-            vertical: 1,
-            horizontal: 1,
-        });
-        if !tree.contains((column, row).into()) {
-            return false;
-        }
-        let index = self
-            .model
-            .tree_scroll
-            .saturating_add(usize::from(row.saturating_sub(tree.y)));
-        self.model.select(index);
-        if self
-            .model
-            .selected_entry()
-            .is_some_and(|entry| entry.directory)
-        {
-            self.model.toggle_selected_directory();
-        }
-        self.selection_changed();
-        true
-    }
-
     fn selection_changed(&mut self) {
-        if let Some(path) = self.model.selected_file().map(PathBuf::from) {
-            self.request_file(path, 0);
+        if let Some(path) = self.selected_file().cloned() {
+            let displayed = self.model.viewer.as_ref().map(|viewer| &viewer.path);
+            if displayed != Some(&path) && self.pending_path.as_ref() != Some(&path) {
+                self.request_file(path, 0);
+            }
         } else {
             self.pending_path = None;
         }
+    }
+
+    fn selected_file(&self) -> Option<&PathBuf> {
+        self.picker
+            .selected()
+            .filter(|path| self.model.entry(path).is_some_and(|entry| !entry.directory))
     }
 
     fn scroll_viewer(&mut self, amount: i64) {
@@ -536,7 +535,11 @@ mod tests {
             KeyCode::Char('J'),
             KeyModifiers::SHIFT,
         ));
-        assert!(!explorer.handle_event(&event, Rect::default(), PaneSplit::default()));
+        assert!(
+            explorer
+                .handle_event(&event, Rect::default(), PaneSplit::default())
+                .is_none()
+        );
     }
 
     #[test]
@@ -546,6 +549,8 @@ mod tests {
             id: 1,
             result: Ok(vec![PathBuf::from("src/main.rs")]),
         });
+        let area = Rect::new(0, 0, 100, 30);
+        explorer.prepare_frame(area, PaneSplit::default());
         let click = Event::Mouse(MouseEvent {
             kind: MouseEventKind::Down(MouseButton::Left),
             column: 1,
@@ -553,10 +558,18 @@ mod tests {
             modifiers: KeyModifiers::NONE,
         });
 
-        assert!(explorer.handle_event(&click, Rect::new(0, 0, 100, 30), PaneSplit::default()));
-        assert_eq!(explorer.model.visible.len(), 2);
-        assert!(explorer.handle_event(&click, Rect::new(0, 0, 100, 30), PaneSplit::default()));
-        assert_eq!(explorer.model.visible.len(), 1);
+        assert!(
+            explorer
+                .handle_event(&click, area, PaneSplit::default())
+                .is_some()
+        );
+        assert_eq!(explorer.picker.visible_rows(), 2);
+        assert!(
+            explorer
+                .handle_event(&click, area, PaneSplit::default())
+                .is_some()
+        );
+        assert_eq!(explorer.picker.visible_rows(), 1);
     }
 
     #[test]
@@ -568,6 +581,7 @@ mod tests {
         });
         let area = Rect::new(0, 0, 100, 30);
         let split = PaneSplit::default();
+        explorer.prepare_frame(area, split);
         let tree = explorer_areas(area, split).tree;
         let click = |column| {
             Event::Mouse(MouseEvent {
@@ -578,10 +592,18 @@ mod tests {
             })
         };
 
-        assert!(explorer.handle_event(&click(tree.right() - 4), area, split));
-        assert_eq!(explorer.model.visible.len(), 3);
-        assert!(explorer.handle_event(&click(tree.right() - 8), area, split));
-        assert_eq!(explorer.model.visible.len(), 1);
+        assert!(
+            explorer
+                .handle_event(&click(tree.right() - 4), area, split)
+                .is_some()
+        );
+        assert_eq!(explorer.picker.visible_rows(), 3);
+        assert!(
+            explorer
+                .handle_event(&click(tree.right() - 8), area, split)
+                .is_some()
+        );
+        assert_eq!(explorer.picker.visible_rows(), 1);
     }
 
     #[test]
@@ -591,11 +613,12 @@ mod tests {
             id: 1,
             result: Ok(vec![PathBuf::from("src/nested/main.rs")]),
         });
+        explorer.prepare_frame(Rect::new(0, 0, 100, 30), PaneSplit::default());
 
         assert!(explorer.execute_command(EXPAND_ALL_COMMAND));
-        assert_eq!(explorer.model.visible.len(), 3);
+        assert_eq!(explorer.picker.visible_rows(), 3);
         assert!(explorer.execute_command(COLLAPSE_ALL_COMMAND));
-        assert_eq!(explorer.model.visible.len(), 1);
+        assert_eq!(explorer.picker.visible_rows(), 1);
         assert!(!explorer.execute_command(CommandId::new("unknown")));
     }
 
@@ -623,14 +646,22 @@ mod tests {
         ));
 
         for _ in 0..100 {
-            assert!(explorer.handle_event(&right, area, PaneSplit::default()));
+            assert!(
+                explorer
+                    .handle_event(&right, area, PaneSplit::default())
+                    .is_some()
+            );
         }
         assert_eq!(
             explorer.model.viewer_horizontal_scroll,
             100_usize.saturating_sub(explorer.viewport_columns)
         );
         for _ in 0..100 {
-            assert!(explorer.handle_event(&left, area, PaneSplit::default()));
+            assert!(
+                explorer
+                    .handle_event(&left, area, PaneSplit::default())
+                    .is_some()
+            );
         }
         assert_eq!(explorer.model.viewer_horizontal_scroll, 0);
     }

@@ -1,24 +1,19 @@
 use diffo_core::ChangeKind;
+use diffo_file_picker::{Document as PickerDocument, FilePicker, Row as PickerRow};
 use diffo_text_view::render_lines;
 use diffo_text_view::{Viewport, ViewportMetrics, render_scrollbars, viewport_metrics};
 use diffo_ui::{PaneSplit, change_kind_style, plain_syntax_spans, terminal_safe_text, tool_areas};
 use ratatui::{
     Frame,
-    layout::{Alignment, Constraint, Layout, Rect},
+    layout::{Constraint, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Clear, HighlightSpacing, List, ListItem, ListState, Paragraph},
+    widgets::{Block, Borders, Clear, Paragraph},
 };
 
 use super::model::{ExplorerModel, GutterMarker, TreeEntry};
 
 pub(crate) const VIEWER_GUTTER_WIDTH: u16 = 7;
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum TreeAction {
-    CollapseAll,
-    ExpandAll,
-}
 
 pub(crate) struct ExplorerAreas {
     pub(crate) tree: Rect,
@@ -36,106 +31,76 @@ pub(crate) fn explorer_areas(area: Rect, split: PaneSplit) -> ExplorerAreas {
     }
 }
 
-pub(crate) fn tree_action_at(area: Rect, column: u16, row: u16) -> Option<TreeAction> {
-    if row != area.y || area.width < 12 {
-        return None;
-    }
-    let start = area.right().saturating_sub(8);
-    if column >= start && column < start.saturating_add(3) {
-        Some(TreeAction::CollapseAll)
-    } else if column >= start.saturating_add(4) && column < start.saturating_add(7) {
-        Some(TreeAction::ExpandAll)
-    } else {
-        None
-    }
-}
-
 pub(crate) fn render(
     frame: &mut Frame,
     area: Rect,
     split: PaneSplit,
     model: &ExplorerModel,
+    picker: &FilePicker<std::path::PathBuf>,
     skeleton: bool,
 ) {
     frame.render_widget(Clear, area);
     let areas = explorer_areas(area, split);
     let border_style = split.border_style();
-    render_tree(frame, areas.tree, model, border_style);
+    picker.render(frame, true);
     render_viewer(frame, areas.viewer, model, border_style, skeleton);
     frame.render_widget(
         Paragraph::new(
-            " j/k: select  enter/click: expand  [-]/[+]: fold all  1/f1: commands  ↑/↓: scroll ",
+            " j/w: previous  k/l/s: next  enter/click: expand  1/f1: commands  ↑/↓: scroll ",
         ),
         areas.status,
     );
+    picker.render_menu(frame);
 }
 
-fn render_tree(frame: &mut Frame, area: Rect, model: &ExplorerModel, border_style: Style) {
-    let inner = area.inner(ratatui::layout::Margin {
-        vertical: 1,
-        horizontal: 1,
-    });
-    let items = model
-        .visible
+pub(crate) fn tree_document(
+    model: &ExplorerModel,
+    border_style: Style,
+    loading: bool,
+) -> PickerDocument<std::path::PathBuf> {
+    let rows = model
+        .entries
         .iter()
-        .skip(model.tree_scroll)
-        .take(usize::from(inner.height))
-        .enumerate()
-        .map(|(offset, entry)| {
-            tree_item(
-                entry,
-                model.tree_scroll.saturating_add(offset) == model.selected,
+        .map(|entry| {
+            let name = entry
+                .path
+                .file_name()
+                .unwrap_or(entry.path.as_os_str())
+                .to_string_lossy();
+            let prefix = if entry.directory {
+                ""
+            } else {
+                match entry.status {
+                    Some(ChangeKind::Added | ChangeKind::Untracked) => "A ",
+                    Some(ChangeKind::Modified) => "M ",
+                    Some(ChangeKind::Deleted) => "D ",
+                    Some(ChangeKind::Renamed) => "R ",
+                    Some(ChangeKind::Copied) => "C ",
+                    Some(ChangeKind::Conflicted) => "U ",
+                    None => "  ",
+                }
+            };
+            PickerRow::tree(
+                entry.path.clone(),
+                Line::styled(
+                    terminal_safe_text(&format!("{prefix}{name}")),
+                    entry_style(entry),
+                ),
+                entry.depth,
+                entry.directory,
             )
-        });
-    let selected = model
-        .selected
-        .checked_sub(model.tree_scroll)
-        .filter(|index| *index < usize::from(inner.height));
-    let mut block = Block::default()
-        .borders(Borders::ALL)
-        .border_style(border_style)
-        .title(" Explorer ");
-    if area.width >= 12 {
-        block = block.title(Line::from("[-] [+]").alignment(Alignment::Right));
+        })
+        .collect();
+    let mut document = PickerDocument::tree("Explorer", rows);
+    document.border_style = border_style;
+    if loading {
+        document.empty_message = "Loading files…".to_owned();
     }
-    frame.render_widget(block, area);
-    let list = List::new(items)
-        .highlight_style(Style::default())
-        .highlight_symbol("› ")
-        .highlight_spacing(HighlightSpacing::Always);
-    let mut state = ListState::default().with_selected(selected);
-    frame.render_stateful_widget(list, inner, &mut state);
+    document
 }
 
-fn tree_item(entry: &TreeEntry, selected: bool) -> ListItem<'static> {
-    let name = entry
-        .path
-        .file_name()
-        .unwrap_or(entry.path.as_os_str())
-        .to_string_lossy();
-    let name = terminal_safe_text(&name);
-    let prefix = if entry.directory {
-        if entry.expanded { "▾ " } else { "▸ " }
-    } else {
-        match entry.status {
-            Some(ChangeKind::Added | ChangeKind::Untracked) => "A ",
-            Some(ChangeKind::Modified) => "M ",
-            Some(ChangeKind::Deleted) => "D ",
-            Some(ChangeKind::Renamed) => "R ",
-            Some(ChangeKind::Copied) => "C ",
-            Some(ChangeKind::Conflicted) => "U ",
-            None => "  ",
-        }
-    };
-    let style = entry_style(entry, selected);
-    ListItem::new(Line::styled(
-        format!("{}{}{}", "  ".repeat(entry.depth), prefix, name),
-        style,
-    ))
-}
-
-fn entry_style(entry: &TreeEntry, selected: bool) -> Style {
-    let style = entry.status.map_or_else(
+fn entry_style(entry: &TreeEntry) -> Style {
+    entry.status.map_or_else(
         || {
             Style::default().fg(if entry.directory {
                 Color::Gray
@@ -144,12 +109,7 @@ fn entry_style(entry: &TreeEntry, selected: bool) -> Style {
             })
         },
         status_style,
-    );
-    if selected && !entry.directory {
-        style.bg(Color::DarkGray).add_modifier(Modifier::BOLD)
-    } else {
-        style
-    }
+    )
 }
 
 fn status_style(kind: ChangeKind) -> Style {
@@ -310,29 +270,17 @@ mod tests {
             path: "plain.txt".into(),
             depth: 0,
             directory: false,
-            expanded: false,
             status: None,
         };
-        assert_eq!(entry_style(&unchanged, false).fg, Some(Color::White));
-        assert_eq!(entry_style(&unchanged, true).bg, Some(Color::DarkGray));
+        assert_eq!(entry_style(&unchanged).fg, Some(Color::White));
 
         let directory = TreeEntry {
             path: "src".into(),
             depth: 0,
             directory: true,
-            expanded: false,
             status: None,
         };
-        assert_eq!(entry_style(&directory, true).bg, None);
-    }
-
-    #[test]
-    fn tree_header_actions_have_separate_click_targets() {
-        let area = Rect::new(5, 7, 30, 20);
-        assert_eq!(tree_action_at(area, 27, 7), Some(TreeAction::CollapseAll));
-        assert_eq!(tree_action_at(area, 31, 7), Some(TreeAction::ExpandAll));
-        assert_eq!(tree_action_at(area, 30, 7), None);
-        assert_eq!(tree_action_at(area, 31, 8), None);
+        assert_eq!(entry_style(&directory).fg, Some(Color::Gray));
     }
 
     #[test]

@@ -5,11 +5,11 @@ use diffo_app::{Effect, Message, Model, ToastKind, update};
 use diffo_command::{Command, CommandId, CommandPalette, PaletteEvent};
 use diffo_core::{OperationFailure, OperationResult, RepositoryAction, RepositorySnapshot};
 use diffo_text_view::{TextRenderMode, TextSurfacePreparation};
-use diffo_tui::{FramePreparation, Renderer};
+use diffo_tui::{FramePreparation, Renderer, RendererEvent};
 use diffo_ui::{PaneSplit, tool_areas};
 use ratatui::{Frame, layout::Rect, widgets::Clear};
 
-use diffo_explorer::{ExplorerActivity, ExplorerOutcome, ExplorerRequest};
+use diffo_explorer::{ExplorerActivity, ExplorerEvent, ExplorerOutcome, ExplorerRequest};
 
 mod activity_bar;
 
@@ -43,7 +43,6 @@ impl From<Effect> for WorkbenchEffect {
     fn from(effect: Effect) -> Self {
         match effect {
             Effect::Repository(action) => Self::Repository(action),
-            Effect::CopyPath { path, absolute } => Self::CopyPath { path, absolute },
         }
     }
 }
@@ -261,7 +260,7 @@ impl Workbench {
         let diff_overlay_captures_input = self.active == Activity::Diff
             && (self.diff.model.commit_input_focused()
                 || self.diff.model.help_open
-                || self.diff.model.file_context_menu.is_some());
+                || self.diff.renderer.has_open_picker_menu());
         if !diff_overlay_captures_input
             && let Event::Key(key) = event
             && key.kind == KeyEventKind::Press
@@ -490,7 +489,16 @@ impl Tool for DiffActivity {
     ) -> Option<WorkbenchCommand> {
         self.renderer
             .map_event(event, &self.model, area)
-            .map(WorkbenchCommand::Diff)
+            .and_then(|event| match event {
+                RendererEvent::Consumed => None,
+                RendererEvent::Message(message) => Some(WorkbenchCommand::Diff(message)),
+                RendererEvent::CopyPath { path, absolute } => {
+                    Some(WorkbenchCommand::Effect(WorkbenchEffect::CopyPath {
+                        path,
+                        absolute,
+                    }))
+                }
+            })
     }
 
     fn prepare_frame(&mut self, area: Rect, _split: PaneSplit) -> FramePreparation {
@@ -503,8 +511,6 @@ impl Tool for DiffActivity {
             preparation.maximum_vertical_scroll,
             preparation.maximum_horizontal_scroll,
         );
-        self.model
-            .set_file_list_scrolls(preparation.file_list_scroll);
         preparation
     }
 
@@ -548,8 +554,15 @@ impl Tool for ExplorerActivity {
         area: Rect,
         split: PaneSplit,
     ) -> Option<WorkbenchCommand> {
-        ExplorerActivity::handle_event(self, event, area, split);
-        None
+        ExplorerActivity::handle_event(self, event, area, split).and_then(|event| match event {
+            ExplorerEvent::Consumed => None,
+            ExplorerEvent::CopyPath { path, absolute } => {
+                Some(WorkbenchCommand::Effect(WorkbenchEffect::CopyPath {
+                    path,
+                    absolute,
+                }))
+            }
+        })
     }
 
     fn prepare_frame(&mut self, area: Rect, split: PaneSplit) -> FramePreparation {

@@ -1,4 +1,4 @@
-use diffo_app::{ChangeArea, DiffViewMode, FileKey, FileListScroll, Model, ToastKind};
+use diffo_app::{ChangeArea, DiffViewMode, FileKey, Model, ToastKind};
 use std::{
     env,
     sync::{
@@ -16,6 +16,7 @@ use diffo_diff::{
     inline_change_starts, inline_rows_with_options, parse_unified_patch,
     side_by_side_change_starts, side_by_side_rows_with_options,
 };
+use diffo_file_picker::{Navigation as PickerNavigation, Outcome as PickerOutcome};
 use diffo_highlight::{HighlightedDiff, HighlightedLine, Rgb, StyledSpan, SyntaxHighlighter};
 use diffo_ui::tool_areas;
 use ratatui::{
@@ -23,10 +24,7 @@ use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{
-        Block, Borders, Cell, Clear, HighlightSpacing, List, ListItem, ListState, Paragraph, Row,
-        Scrollbar, ScrollbarOrientation, ScrollbarState, Table,
-    },
+    widgets::{Block, Borders, Cell, Clear, Paragraph, Row, Table},
 };
 
 mod diff;
@@ -45,19 +43,15 @@ use diffo_ui::change_kind_style as file_kind_style;
 #[cfg(test)]
 use files::status_line;
 use files::{
-    FileListMetrics, commit_action_at_position, file_group_areas, file_group_metrics,
-    file_panel_areas, prepared_file_list_scroll, render_files, render_status, resize_border_style,
-    staged_files, unstaged_files,
+    commit_action_at_position, file_group_areas, file_panel_areas, picker_document,
+    render_commit_composer, render_status, resize_border_style, staged_files, unstaged_files,
 };
 #[cfg(test)]
 use geometry::scrollbar_position_count;
-use geometry::{
-    file_action_at_position, file_at_position, file_group_at_position, file_pane_percent_at,
-    horizontal_panes, is_file_pane_splitter_at, main_area, overview_position,
-};
+use geometry::{horizontal_panes, main_area, overview_position};
 use overlays::{
-    commit_editor_action_at_position, map_file_context_menu_event, render_commit_editor,
-    render_file_context_menu, render_help, render_toasts, toast_at_position,
+    commit_editor_action_at_position, render_commit_editor, render_help, render_toasts,
+    toast_at_position,
 };
 #[cfg(test)]
 use style::{
@@ -83,7 +77,22 @@ pub use state::{FramePreparation, Renderer, ViewportTransition};
 
 pub use input::map_event;
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum RendererEvent {
+    Consumed,
+    Message(diffo_app::Message),
+    CopyPath {
+        path: std::path::PathBuf,
+        absolute: bool,
+    },
+}
+
 impl Renderer {
+    #[must_use]
+    pub fn has_open_picker_menu(&self) -> bool {
+        self.staged_picker.has_open_menu() || self.unstaged_picker.has_open_menu()
+    }
+
     pub fn render(&mut self, frame: &mut Frame, model: &Model) {
         self.render_in(frame, model, frame.area());
     }
@@ -97,13 +106,29 @@ impl Renderer {
         let areas = tool_areas(area);
         let panes = horizontal_panes(areas.content, model.file_pane_percent);
 
-        self.file_lists = render_files(frame, panes[0], model);
+        let file_panels = file_panel_areas(panes[0]);
+        render_commit_composer(frame, file_panels[0], model);
+        self.staged_picker.render(
+            frame,
+            model
+                .selected
+                .as_ref()
+                .is_some_and(|selected| selected.area == ChangeArea::Staged),
+        );
+        self.unstaged_picker.render(
+            frame,
+            model
+                .selected
+                .as_ref()
+                .is_some_and(|selected| selected.area == ChangeArea::Unstaged),
+        );
         self.render_diff(frame, panes[1], model);
         render_status(frame, areas.status, model, self.network_animation_tick);
         render_toasts(frame, model, area);
         render_help(frame, model, area);
         render_commit_editor(frame, model, area);
-        render_file_context_menu(frame, model, area);
+        self.staged_picker.render_menu(frame);
+        self.unstaged_picker.render_menu(frame);
         if model.network_operation().is_some() {
             frame.render_widget(
                 Block::default()
@@ -115,7 +140,34 @@ impl Renderer {
     }
 
     pub fn prepare_frame(&mut self, model: &Model, area: Rect) -> FramePreparation {
-        let diff_area = horizontal_panes(main_area(area), model.file_pane_percent)[1];
+        let panes = horizontal_panes(main_area(area), model.file_pane_percent);
+        let file_panels = file_panel_areas(panes[0]);
+        let file_groups = file_group_areas(file_panels[1]);
+        let border_style = resize_border_style(model);
+        let selected = model.selected.as_ref();
+        self.staged_picker.prepare(
+            file_groups[0],
+            picker_document(
+                "Staged",
+                "[-] Unstage All",
+                staged_files(&model.snapshot),
+                ChangeArea::Staged,
+                border_style,
+            ),
+            selected.filter(|selected| selected.area == ChangeArea::Staged),
+        );
+        self.unstaged_picker.prepare(
+            file_groups[1],
+            picker_document(
+                "Changes",
+                "[+] Stage All",
+                unstaged_files(&model.snapshot),
+                ChangeArea::Unstaged,
+                border_style,
+            ),
+            selected.filter(|selected| selected.area == ChangeArea::Unstaged),
+        );
+        let diff_area = panes[1];
         let requested = model.selected.as_ref().and_then(|selected| {
             let file = model
                 .snapshot
@@ -205,7 +257,6 @@ impl Renderer {
             viewport_transition,
             requested_file: self.requested.as_ref().map(|key| key.file.clone()),
             displayed_file: self.displayed_key().map(|key| key.file.clone()),
-            file_list_scroll: prepared_file_list_scroll(model, area),
             text_surface: Some(self.text_surface_preparation(
                 rendered_vertical_scroll,
                 syntax_ready,
@@ -264,14 +315,20 @@ impl Renderer {
         self.requested.as_ref() != self.displayed_key() || !self.submitted.is_empty()
     }
 
-    pub fn map_event(
-        &mut self,
-        event: &Event,
-        model: &Model,
-        area: Rect,
-    ) -> Option<diffo_app::Message> {
-        if model.file_context_menu.is_some() {
-            return map_file_context_menu_event(event, model, area);
+    pub fn map_event(&mut self, event: &Event, model: &Model, area: Rect) -> Option<RendererEvent> {
+        if self.staged_picker.has_open_menu() {
+            return self
+                .staged_picker
+                .handle_event(event, area)
+                .map(|outcome| picker_event(outcome, ChangeArea::Staged))
+                .or(Some(RendererEvent::Consumed));
+        }
+        if self.unstaged_picker.has_open_menu() {
+            return self
+                .unstaged_picker
+                .handle_event(event, area)
+                .map(|outcome| picker_event(outcome, ChangeArea::Unstaged))
+                .or(Some(RendererEvent::Consumed));
         }
         if !model.commit_input_focused()
             && !model.help_open
@@ -279,42 +336,52 @@ impl Renderer {
             && mouse.kind == MouseEventKind::Down(MouseButton::Left)
             && let Some(id) = toast_at_position(model, area, mouse.column, mouse.row)
         {
-            return Some(diffo_app::Message::DismissToast(id));
+            return Some(RendererEvent::Message(diffo_app::Message::DismissToast(id)));
         }
         if model.help_open {
-            return input::map_event(event, model, area);
+            return input::map_event(event, model, area).map(RendererEvent::Message);
+        }
+        if let Event::Key(key) = event
+            && let Some(command) = diffo_file_picker::navigation(key)
+        {
+            return Some(RendererEvent::Message(match command {
+                PickerNavigation::Previous => diffo_app::Message::SelectPreviousFile,
+                PickerNavigation::Next => diffo_app::Message::SelectNextFile,
+                PickerNavigation::First => diffo_app::Message::SelectFirstFile,
+                PickerNavigation::Last => diffo_app::Message::SelectLastFile,
+                PickerNavigation::Activate => return Some(RendererEvent::Consumed),
+            }));
+        }
+        if matches!(event, Event::Mouse(_)) {
+            if let Some(outcome) = self.staged_picker.handle_event(event, area) {
+                return Some(picker_event(outcome, ChangeArea::Staged));
+            }
+            if let Some(outcome) = self.unstaged_picker.handle_event(event, area) {
+                return Some(picker_event(outcome, ChangeArea::Unstaged));
+            }
         }
         if let Event::Mouse(mouse) = event {
             if mouse.kind == MouseEventKind::Down(MouseButton::Left)
                 && let Some(target) = self.hunk_button_target_at(mouse.column, mouse.row)
             {
                 self.requested_navigation_target = Some(target);
-                return Some(diffo_app::Message::JumpDiffToPosition(target));
+                return Some(RendererEvent::Message(
+                    diffo_app::Message::JumpDiffToPosition(target),
+                ));
             }
             if mouse.kind == MouseEventKind::Up(MouseButton::Left) {
                 self.scrollbar_drag = None;
-                self.file_scrollbar_drag = None;
             } else if matches!(
                 mouse.kind,
                 MouseEventKind::Down(MouseButton::Left) | MouseEventKind::Drag(MouseButton::Left)
             ) {
-                let file_area = if mouse.kind == MouseEventKind::Down(MouseButton::Left) {
-                    let area = self.file_scrollbar_at(mouse.column, mouse.row);
-                    self.file_scrollbar_drag = area;
-                    area
-                } else {
-                    self.file_scrollbar_drag
-                };
-                if let Some(area) = file_area {
-                    self.file_scrollbar_drag = Some(area);
-                    self.scrollbar_drag = None;
-                    return Some(self.file_scrollbar_message(area, mouse.row));
-                }
                 if mouse.kind == MouseEventKind::Down(MouseButton::Left)
                     && let Some(change) = self.change_at_marker(mouse.column, mouse.row, model)
                 {
                     self.requested_navigation_target = Some(change);
-                    return Some(diffo_app::Message::JumpDiffToPosition(change));
+                    return Some(RendererEvent::Message(
+                        diffo_app::Message::JumpDiffToPosition(change),
+                    ));
                 }
                 let axis = if mouse.kind == MouseEventKind::Down(MouseButton::Left) {
                     self.scrollbar_at(mouse.column, mouse.row)
@@ -325,7 +392,9 @@ impl Renderer {
                     self.scrollbar_drag = Some(axis);
                     let message = self.scrollbar_message(axis, mouse.column, mouse.row);
                     self.requested_navigation_target = None;
-                    return Some(Self::vertical_message(message, model));
+                    return Some(RendererEvent::Message(Self::vertical_message(
+                        message, model,
+                    )));
                 }
             }
         }
@@ -355,7 +424,30 @@ impl Renderer {
         ) {
             self.requested_navigation_target = None;
         }
-        Some(Self::vertical_message(message, model))
+        Some(RendererEvent::Message(Self::vertical_message(
+            message, model,
+        )))
+    }
+}
+
+fn picker_event(outcome: PickerOutcome<FileKey>, area: ChangeArea) -> RendererEvent {
+    match outcome {
+        PickerOutcome::Consumed => RendererEvent::Consumed,
+        PickerOutcome::Selected(file) | PickerOutcome::Activated(file) => {
+            RendererEvent::Message(diffo_app::Message::SelectFile(file))
+        }
+        PickerOutcome::RowAction(file) => RendererEvent::Message(match file.area {
+            ChangeArea::Staged => diffo_app::Message::UnstageFile(file.path),
+            ChangeArea::Unstaged => diffo_app::Message::StageFile(file.path),
+        }),
+        PickerOutcome::PanelAction => RendererEvent::Message(match area {
+            ChangeArea::Staged => diffo_app::Message::UnstageAll,
+            ChangeArea::Unstaged => diffo_app::Message::StageAll,
+        }),
+        PickerOutcome::CopyPath { id, absolute } => RendererEvent::CopyPath {
+            path: id.path,
+            absolute,
+        },
     }
 }
 

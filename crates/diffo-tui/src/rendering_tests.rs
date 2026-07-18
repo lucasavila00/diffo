@@ -5,7 +5,7 @@ use std::time::Duration;
 use std::time::Instant;
 
 use crossterm::event::{Event, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
-use diffo_app::{ChangeArea, DiffViewMode, FileListScroll, Message, Model};
+use diffo_app::{ChangeArea, DiffViewMode, Message, Model};
 use diffo_core::{
     ChangeKind, FileDiff, FileState, HeadState, OperationResult, RepositoryAction,
     RepositorySnapshot, UpstreamState,
@@ -20,9 +20,9 @@ use ratatui::{
 };
 
 use super::{
-    Renderer, contrast_ratio, contrasting_foreground, diff_background, diff_background_rgb,
-    diff_file_lines, file_kind_style, overview_position, row_style, scrollbar_position_count,
-    should_syntax_highlight, status_line,
+    Renderer, RendererEvent, contrast_ratio, contrasting_foreground, diff_background,
+    diff_background_rgb, diff_file_lines, file_kind_style, overview_position, row_style,
+    scrollbar_position_count, should_syntax_highlight, status_line,
 };
 
 #[test]
@@ -269,34 +269,49 @@ fn status_line_keeps_the_head_visible_with_transient_errors() {
 
 #[test]
 fn file_list_scrollbars_have_independent_offsets_and_exact_hit_targets() {
-    let mut model = file_list_model(30);
-    model.file_list_scroll = FileListScroll {
-        staged: 3,
-        unstaged: 7,
-    };
+    let model = file_list_model(30);
     let area = Rect::new(0, 0, 100, 30);
     let mut renderer = Renderer::new();
-    let preparation = renderer.prepare_frame(&model, area);
-    model.set_file_list_scrolls(preparation.file_list_scroll);
+    renderer.prepare_frame(&model, area);
     let backend = TestBackend::new(area.width, area.height);
     let mut terminal = Terminal::new(backend).unwrap();
     terminal
         .draw(|frame| renderer.render(frame, &model))
         .unwrap();
 
-    assert_eq!(renderer.file_lists.staged.offset, 3);
-    assert_eq!(renderer.file_lists.unstaged.offset, 7);
-    assert!(renderer.file_lists.staged.maximum_scroll > 0);
-    assert!(renderer.file_lists.unstaged.maximum_scroll > 0);
+    for _ in 0..3 {
+        let wheel = mouse_at(
+            MouseEventKind::ScrollDown,
+            renderer.staged_picker.metrics().list_area,
+        );
+        assert_eq!(
+            renderer.map_event(&wheel, &model, area),
+            Some(RendererEvent::Consumed)
+        );
+    }
+    for _ in 0..7 {
+        let wheel = mouse_at(
+            MouseEventKind::ScrollDown,
+            renderer.unstaged_picker.metrics().list_area,
+        );
+        assert_eq!(
+            renderer.map_event(&wheel, &model, area),
+            Some(RendererEvent::Consumed)
+        );
+    }
+    assert_eq!(renderer.staged_picker.metrics().offset, 3);
+    assert_eq!(renderer.unstaged_picker.metrics().offset, 7);
 
-    let unstaged = renderer.file_lists.unstaged;
+    let unstaged = renderer.unstaged_picker.metrics();
     let row_click = mouse_at(MouseEventKind::Down(MouseButton::Left), unstaged.list_area);
     assert_eq!(
         renderer.map_event(&row_click, &model, area),
-        Some(Message::SelectFile(diffo_app::FileKey {
-            path: PathBuf::from("generated/file-007.rs"),
-            area: ChangeArea::Unstaged,
-        }))
+        Some(RendererEvent::Message(Message::SelectFile(
+            diffo_app::FileKey {
+                path: PathBuf::from("generated/file-007.rs"),
+                area: ChangeArea::Unstaged,
+            },
+        )))
     );
 
     let mut action_area = unstaged.list_area;
@@ -305,7 +320,9 @@ fn file_list_scrollbars_have_independent_offsets_and_exact_hit_targets() {
     let action_click = mouse_at(MouseEventKind::Down(MouseButton::Left), action_area);
     assert_eq!(
         renderer.map_event(&action_click, &model, area),
-        Some(Message::StageFile(PathBuf::from("generated/file-007.rs")))
+        Some(RendererEvent::Message(Message::StageFile(PathBuf::from(
+            "generated/file-007.rs",
+        ))))
     );
 
     let mut bottom = unstaged.scrollbar_area;
@@ -314,10 +331,11 @@ fn file_list_scrollbars_have_independent_offsets_and_exact_hit_targets() {
     let scrollbar_click = mouse_at(MouseEventKind::Down(MouseButton::Left), bottom);
     assert_eq!(
         renderer.map_event(&scrollbar_click, &model, area),
-        Some(Message::SetFileListScroll(
-            ChangeArea::Unstaged,
-            unstaged.maximum_scroll,
-        ))
+        Some(RendererEvent::Consumed)
+    );
+    assert_eq!(
+        renderer.unstaged_picker.metrics().offset,
+        unstaged.maximum_offset
     );
 
     let drag_to_top = mouse_at(
@@ -326,32 +344,27 @@ fn file_list_scrollbars_have_independent_offsets_and_exact_hit_targets() {
     );
     assert_eq!(
         renderer.map_event(&drag_to_top, &model, area),
-        Some(Message::SetFileListScroll(ChangeArea::Unstaged, 0))
+        Some(RendererEvent::Consumed)
     );
+    assert_eq!(renderer.unstaged_picker.metrics().offset, 0);
 }
 
 #[test]
 fn file_list_scrollbars_hide_without_overflow_and_offsets_clamp() {
-    let mut model = file_list_model(1);
-    model.file_list_scroll = FileListScroll {
-        staged: usize::MAX,
-        unstaged: usize::MAX,
-    };
+    let model = file_list_model(1);
     let area = Rect::new(0, 0, 100, 30);
     let mut renderer = Renderer::new();
-    let preparation = renderer.prepare_frame(&model, area);
-    assert_eq!(preparation.file_list_scroll, FileListScroll::default());
-    model.set_file_list_scrolls(preparation.file_list_scroll);
+    renderer.prepare_frame(&model, area);
     let backend = TestBackend::new(area.width, area.height);
     let mut terminal = Terminal::new(backend).unwrap();
     terminal
         .draw(|frame| renderer.render(frame, &model))
         .unwrap();
 
-    assert_eq!(renderer.file_lists.staged.maximum_scroll, 0);
-    assert_eq!(renderer.file_lists.unstaged.maximum_scroll, 0);
-    assert!(renderer.file_lists.staged.scrollbar_area.is_empty());
-    assert!(renderer.file_lists.unstaged.scrollbar_area.is_empty());
+    assert_eq!(renderer.staged_picker.metrics().maximum_offset, 0);
+    assert_eq!(renderer.unstaged_picker.metrics().maximum_offset, 0);
+    assert!(renderer.staged_picker.metrics().scrollbar_area.is_empty());
+    assert!(renderer.unstaged_picker.metrics().scrollbar_area.is_empty());
 }
 
 #[test]
@@ -449,7 +462,7 @@ fn renders_and_mouse_dismisses_a_bottom_right_toast() {
     });
     assert_eq!(
         renderer.map_event(&click, &model, Rect::new(0, 0, 100, 30)),
-        Some(diffo_app::Message::DismissToast(id))
+        Some(RendererEvent::Message(diffo_app::Message::DismissToast(id)))
     );
 }
 
@@ -769,7 +782,7 @@ fn maps_inset_scrollbar_clicks_to_absolute_positions() {
         row: vertical.bottom().saturating_sub(1),
         modifiers: KeyModifiers::NONE,
     });
-    let Some(diffo_app::Message::SetDiffScroll(vertical_target)) =
+    let Some(RendererEvent::Message(diffo_app::Message::SetDiffScroll(vertical_target))) =
         renderer.map_event(&vertical_click, &model, Rect::new(0, 0, 100, 30))
     else {
         panic!("vertical scrollbar did not return an absolute target");
@@ -790,7 +803,9 @@ fn maps_inset_scrollbar_clicks_to_absolute_positions() {
         .saturating_sub(renderer.scrollbars.viewport_columns);
     assert!(matches!(
         renderer.map_event(&horizontal_click, &model, Rect::new(0, 0, 100, 30)),
-        Some(diffo_app::Message::SetDiffHorizontalScroll(position))
+        Some(RendererEvent::Message(
+            diffo_app::Message::SetDiffHorizontalScroll(position)
+        ))
             if position == horizontal_maximum
     ));
     model.diff_scroll = vertical_target;
@@ -974,7 +989,9 @@ fn hunk_markers_have_a_separate_clickable_rail_beside_the_scrollbar() {
     );
     assert_eq!(
         renderer.map_event(&click, &model, Rect::new(0, 0, 100, 30)),
-        Some(diffo_app::Message::JumpDiffToPosition(target))
+        Some(RendererEvent::Message(
+            diffo_app::Message::JumpDiffToPosition(target)
+        ))
     );
     let old_scroll = model.diff_scroll;
     let pending = renderer.prepare_frame(&model, Rect::new(0, 0, 100, 30));
@@ -1023,7 +1040,9 @@ fn large_hunk_buttons_are_fixed_and_do_not_wrap() {
             &model,
             area,
         ),
-        Some(diffo_app::Message::JumpDiffToPosition(next_target))
+        Some(RendererEvent::Message(
+            diffo_app::Message::JumpDiffToPosition(next_target)
+        ))
     );
 
     let transition = renderer
@@ -1048,7 +1067,9 @@ fn large_hunk_buttons_are_fixed_and_do_not_wrap() {
             &model,
             area,
         ),
-        Some(diffo_app::Message::JumpDiffToPosition(previous_target))
+        Some(RendererEvent::Message(
+            diffo_app::Message::JumpDiffToPosition(previous_target)
+        ))
     );
 
     model.diff_scroll = renderer

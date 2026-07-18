@@ -1,7 +1,6 @@
 use super::{
-    ChangeArea, Constraint, DiffViewMode, DiffViewportMetrics, Direction, FileKey, FileState,
-    Layout, Model, Rect, Renderer, ScrollbarAxis, file_group_areas, file_group_metrics,
-    file_panel_areas, staged_files, unstaged_files,
+    Constraint, DiffViewMode, DiffViewportMetrics, Direction, Layout, Model, Rect, Renderer,
+    ScrollbarAxis,
 };
 pub(super) use diffo_text_view::scrollbar_position;
 #[cfg(test)]
@@ -17,153 +16,6 @@ pub(super) fn overview_position(content_row: usize, content_rows: usize, track_h
         .saturating_mul(last_track_row)
         / (content_rows - 1);
     u16::try_from(position).unwrap_or(track_height - 1)
-}
-
-pub(crate) fn file_at_position(
-    model: &Model,
-    area: ratatui::layout::Rect,
-    column: u16,
-    row: u16,
-) -> Option<FileKey> {
-    let vertical = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Min(3), Constraint::Length(1)])
-        .split(area);
-    let columns = horizontal_panes(vertical[0], model.file_pane_percent);
-    let file_areas = file_panel_areas(columns[0]);
-    let groups = file_group_areas(file_areas[1]);
-    let staged_metrics = file_group_metrics(
-        groups[0],
-        staged_files(&model.snapshot).count(),
-        model.file_list_scroll.staged,
-    );
-    file_in_group_at(
-        staged_files(&model.snapshot),
-        ChangeArea::Staged,
-        staged_metrics,
-        column,
-        row,
-    )
-    .or_else(|| {
-        let unstaged_metrics = file_group_metrics(
-            groups[1],
-            unstaged_files(&model.snapshot).count(),
-            model.file_list_scroll.unstaged,
-        );
-        file_in_group_at(
-            unstaged_files(&model.snapshot),
-            ChangeArea::Unstaged,
-            unstaged_metrics,
-            column,
-            row,
-        )
-    })
-}
-
-pub(crate) fn file_action_at_position(
-    model: &Model,
-    area: Rect,
-    column: u16,
-    row: u16,
-) -> Option<diffo_app::Message> {
-    let columns = horizontal_panes(main_area(area), model.file_pane_percent);
-    let file_areas = file_panel_areas(columns[0]);
-    let groups = file_group_areas(file_areas[1]);
-    if header_action_contains(groups[0], " Staged [", column, row) {
-        return Some(diffo_app::Message::UnstageAll);
-    }
-    if header_action_contains(groups[1], " Changes [", column, row) {
-        return Some(diffo_app::Message::StageAll);
-    }
-    for (group, change_area) in [
-        (groups[0], ChangeArea::Staged),
-        (groups[1], ChangeArea::Unstaged),
-    ] {
-        let file_count = match change_area {
-            ChangeArea::Staged => staged_files(&model.snapshot).count(),
-            ChangeArea::Unstaged => unstaged_files(&model.snapshot).count(),
-        };
-        let metrics =
-            file_group_metrics(group, file_count, model.file_list_scroll.get(change_area));
-        let button_start = metrics.list_area.right().saturating_sub(3);
-        if column < button_start || column >= metrics.list_area.right() {
-            continue;
-        }
-        let key = match change_area {
-            ChangeArea::Staged => file_in_group_at(
-                staged_files(&model.snapshot),
-                change_area,
-                metrics,
-                column,
-                row,
-            ),
-            ChangeArea::Unstaged => file_in_group_at(
-                unstaged_files(&model.snapshot),
-                change_area,
-                metrics,
-                column,
-                row,
-            ),
-        };
-        let Some(key) = key else {
-            continue;
-        };
-        return Some(match change_area {
-            ChangeArea::Staged => diffo_app::Message::UnstageFile(key.path),
-            ChangeArea::Unstaged => diffo_app::Message::StageFile(key.path),
-        });
-    }
-    None
-}
-
-pub(crate) fn file_group_at_position(
-    model: &Model,
-    area: Rect,
-    column: u16,
-    row: u16,
-) -> Option<ChangeArea> {
-    let columns = horizontal_panes(main_area(area), model.file_pane_percent);
-    let file_areas = file_panel_areas(columns[0]);
-    let groups = file_group_areas(file_areas[1]);
-    if groups[0].contains((column, row).into()) {
-        Some(ChangeArea::Staged)
-    } else if groups[1].contains((column, row).into()) {
-        Some(ChangeArea::Unstaged)
-    } else {
-        None
-    }
-}
-
-pub(super) fn header_action_contains(area: Rect, prefix: &str, column: u16, row: u16) -> bool {
-    let button = area
-        .x
-        .saturating_add(1)
-        .saturating_add(u16::try_from(prefix.chars().count()).unwrap_or(u16::MAX));
-    row == area.y && column == button && button < area.right().saturating_sub(1)
-}
-
-pub(crate) fn is_file_pane_splitter_at(
-    model: &Model,
-    area: ratatui::layout::Rect,
-    column: u16,
-    row: u16,
-) -> bool {
-    let main = main_area(area);
-    if row < main.y || row >= main.y.saturating_add(main.height) {
-        return false;
-    }
-    let panes = horizontal_panes(main, model.file_pane_percent);
-    let splitter = panes[1].x;
-    column.abs_diff(splitter) <= 1
-}
-
-pub(crate) fn file_pane_percent_at(area: ratatui::layout::Rect, column: u16) -> u16 {
-    let main = main_area(area);
-    if main.width == 0 {
-        return 0;
-    }
-    let offset = column.saturating_sub(main.x).min(main.width);
-    u16::try_from(u32::from(offset) * 100 / u32::from(main.width)).unwrap_or(100)
 }
 
 pub(super) fn main_area(area: ratatui::layout::Rect) -> ratatui::layout::Rect {
@@ -186,50 +38,7 @@ pub(super) fn horizontal_panes(
         .split(area)
 }
 
-pub(super) fn file_in_group_at<'a>(
-    mut files: impl Iterator<Item = &'a FileState>,
-    change_area: ChangeArea,
-    metrics: crate::files::FileGroupMetrics,
-    column: u16,
-    row: u16,
-) -> Option<FileKey> {
-    if !metrics.list_area.contains((column, row).into()) {
-        return None;
-    }
-    files
-        .nth(
-            metrics
-                .offset
-                .saturating_add(usize::from(row.saturating_sub(metrics.list_area.y))),
-        )
-        .map(|file| FileKey {
-            path: file.path.clone(),
-            area: change_area,
-        })
-}
-
 impl Renderer {
-    pub(super) fn file_scrollbar_at(&self, column: u16, row: u16) -> Option<ChangeArea> {
-        [ChangeArea::Staged, ChangeArea::Unstaged]
-            .into_iter()
-            .find(|area| {
-                let metrics = self.file_lists.get(*area);
-                metrics.maximum_scroll > 0 && metrics.scrollbar_area.contains((column, row).into())
-            })
-    }
-
-    pub(super) fn file_scrollbar_message(&self, area: ChangeArea, row: u16) -> diffo_app::Message {
-        let metrics = self.file_lists.get(area);
-        diffo_app::Message::SetFileListScroll(
-            area,
-            scrollbar_position(
-                row.saturating_sub(metrics.scrollbar_area.y),
-                metrics.scrollbar_area.height,
-                metrics.maximum_scroll,
-            ),
-        )
-    }
-
     pub(super) fn change_jump(&self, model: &Model, next: bool) -> Option<usize> {
         let cache = self.highlighted.as_ref()?;
         let scroll = model.diff_scroll;

@@ -1,4 +1,4 @@
-use super::{ChangeArea, FileContextMenu, FileKey, Model, Path, RepositorySnapshot};
+use super::{ChangeArea, FileKey, Model, Path, RepositorySnapshot};
 
 impl Model {
     pub fn select_next(&mut self) {
@@ -36,20 +36,6 @@ impl Model {
             self.selected = keys.get(cursor).cloned();
             self.error = None;
         }
-    }
-
-    pub fn open_file_context_menu(&mut self, file: FileKey, column: u16, row: u16) {
-        self.select_file(&file);
-        self.file_context_menu = Some(FileContextMenu { file, column, row });
-    }
-
-    pub fn close_file_context_menu(&mut self) {
-        self.file_context_menu = None;
-    }
-
-    pub fn copy_context_path(&mut self, absolute: bool) -> Option<crate::Effect> {
-        let path = self.file_context_menu.take()?.file.path;
-        Some(crate::Effect::CopyPath { path, absolute })
     }
 
     pub fn scroll_diff_down(&mut self) {
@@ -102,25 +88,6 @@ impl Model {
     pub fn set_diff_viewport(&mut self, vertical: usize, horizontal: usize) {
         self.diff_scroll = vertical;
         self.diff_horizontal_scroll = horizontal;
-    }
-
-    pub fn scroll_file_list_by(&mut self, area: ChangeArea, rows: i64) {
-        let current = self.file_list_scroll.get(area);
-        let magnitude = usize::try_from(rows.unsigned_abs()).unwrap_or(usize::MAX);
-        let position = if rows >= 0 {
-            current.saturating_add(magnitude)
-        } else {
-            current.saturating_sub(magnitude)
-        };
-        self.set_file_list_scroll(area, position);
-    }
-
-    pub fn set_file_list_scroll(&mut self, area: ChangeArea, position: usize) {
-        self.file_list_scroll.set(area, position);
-    }
-
-    pub fn set_file_list_scrolls(&mut self, scroll: crate::FileListScroll) {
-        self.file_list_scroll = scroll;
     }
 
     pub fn toggle_diff_view(&mut self) {

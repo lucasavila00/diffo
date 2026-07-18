@@ -24,9 +24,7 @@ Two modes. Only projection differs:
 Activities supply IDs, labels, styles, titles, and domain actions. Diff keeps staging
 and diff preparation. Explorer keeps path and file loading.
 
-All scrollable panels use `diffo-ui` for wheel distance, bounded offsets, and
-scrollbar track mapping. Rendering may differ. The main Diff buffer keeps its hunk
-marker rail.
+Scrolling follows ADR 0050.
 
 Prepare rows, selection, offsets, bounds, and hit targets together. Render committed
 state only. Stale Explorer results cannot change the picker.

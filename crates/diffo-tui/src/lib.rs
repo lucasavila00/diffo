@@ -53,7 +53,6 @@ struct HighlightCache {
     document: DiffDocument,
     inline: Vec<RenderLine>,
     side_by_side: Vec<SideBySideRow>,
-    inline_width: usize,
     inline_changes: Vec<usize>,
     side_by_side_changes: Vec<usize>,
     highlighted: HighlightedDiff,
@@ -265,9 +264,19 @@ impl Renderer {
                 },
             }
         });
-        let (rows, columns) = self.displayed_dimensions(model.diff_view_mode, viewport_columns);
+        let rows = self.displayed_rows(model.diff_view_mode);
+        let maximum_vertical_scroll = rows.saturating_sub(viewport_rows);
+        let rendered_vertical_scroll = viewport_transition
+            .map_or(model.diff_scroll, |viewport| viewport.vertical)
+            .min(maximum_vertical_scroll);
+        let columns = self.displayed_columns(
+            model.diff_view_mode,
+            viewport_columns,
+            rendered_vertical_scroll,
+            viewport_rows,
+        );
         FramePreparation {
-            maximum_vertical_scroll: rows.saturating_sub(viewport_rows),
+            maximum_vertical_scroll,
             maximum_horizontal_scroll: columns.saturating_sub(viewport_columns),
             content_revision: self.content_revision,
             preparing: self.requested.as_ref() != self.displayed_key(),
@@ -523,22 +532,49 @@ impl Renderer {
             .or(self.failed.as_ref())
     }
 
-    fn displayed_dimensions(&self, mode: DiffViewMode, viewport_columns: usize) -> (usize, usize) {
+    fn displayed_rows(&self, mode: DiffViewMode) -> usize {
         if let Some(cache) = self.highlighted.as_ref() {
             match mode {
-                DiffViewMode::Inline => (cache.inline.len(), cache.inline_width),
-                DiffViewMode::SideBySide => (cache.side_by_side.len(), viewport_columns),
+                DiffViewMode::Inline => cache.inline.len(),
+                DiffViewMode::SideBySide => cache.side_by_side.len(),
             }
         } else if let Some(failed) = self.failed.as_ref() {
-            let width = failed
+            failed.patch.lines().count()
+        } else {
+            0
+        }
+    }
+
+    fn displayed_columns(
+        &self,
+        mode: DiffViewMode,
+        viewport_columns: usize,
+        first_row: usize,
+        row_count: usize,
+    ) -> usize {
+        if mode == DiffViewMode::SideBySide {
+            return viewport_columns;
+        }
+        if let Some(cache) = self.highlighted.as_ref() {
+            cache
+                .inline
+                .iter()
+                .skip(first_row)
+                .take(row_count)
+                .map(|row| row.text.chars().count().saturating_add(7))
+                .max()
+                .unwrap_or(0)
+        } else if let Some(failed) = self.failed.as_ref() {
+            failed
                 .patch
                 .lines()
+                .skip(first_row)
+                .take(row_count)
                 .map(|line| line.chars().count())
                 .max()
-                .unwrap_or(0);
-            (failed.patch.lines().count(), width)
+                .unwrap_or(0)
         } else {
-            (0, 0)
+            0
         }
     }
 
@@ -573,7 +609,13 @@ impl Renderer {
 
         let viewport_rows = usize::from(area.height.saturating_sub(2));
         let viewport_columns = usize::from(area.width.saturating_sub(2));
-        let (rows, columns) = self.displayed_dimensions(model.diff_view_mode, viewport_columns);
+        let rows = self.displayed_rows(model.diff_view_mode);
+        let columns = self.displayed_columns(
+            model.diff_view_mode,
+            viewport_columns,
+            model.diff_scroll,
+            viewport_rows,
+        );
         self.scrollbars = ScrollbarMetrics {
             vertical_area: Rect::new(
                 area.right().saturating_sub(2),
@@ -1216,11 +1258,6 @@ fn prepare_diff(
     };
     let inline = inline_rows_with_options(&document, options);
     let inline_changes = inline_change_starts(&inline);
-    let inline_width = inline
-        .iter()
-        .map(|row| row.text.chars().count().saturating_add(7))
-        .max()
-        .unwrap_or(0);
     let side_by_side = side_by_side_rows_with_options(&document, options);
     let side_by_side_changes = side_by_side_change_starts(&side_by_side);
     Some(HighlightCache {
@@ -1228,7 +1265,6 @@ fn prepare_diff(
         document,
         inline,
         side_by_side,
-        inline_width,
         inline_changes,
         side_by_side_changes,
         highlighted: syntax_styles,
@@ -2486,6 +2522,39 @@ mod rendering_tests {
             Some(diffo_app::Message::SetDiffHorizontalScroll(position))
                 if position == horizontal_maximum
         ));
+    }
+
+    #[test]
+    fn horizontal_scrollbar_tracks_only_the_visible_vertical_slice() {
+        let mut model = model();
+        let mut patch = String::from("@@ -1,100 +1,100 @@\n-old first\n+new first\n");
+        for line in 0..100 {
+            if line == 80 {
+                writeln!(patch, " {}", "wide-content-".repeat(20)).unwrap();
+            } else {
+                writeln!(patch, " short line {line}").unwrap();
+            }
+        }
+        model.snapshot.files[0].unstaged.as_mut().unwrap().text = patch;
+        let mut renderer = Renderer::new();
+        let area = Rect::new(0, 0, 100, 30);
+
+        let top = renderer.prepare_frame(&model, area);
+        assert_eq!(top.maximum_horizontal_scroll, 0);
+
+        model.diff_scroll = 70;
+        let wide = renderer.prepare_frame(&model, area);
+        assert!(wide.maximum_horizontal_scroll > 0);
+        model.diff_horizontal_scroll = wide.maximum_horizontal_scroll;
+
+        model.diff_scroll = 0;
+        let top_again = renderer.prepare_frame(&model, area);
+        assert_eq!(top_again.maximum_horizontal_scroll, 0);
+        model.clamp_diff_scroll(
+            top_again.maximum_vertical_scroll,
+            top_again.maximum_horizontal_scroll,
+        );
+        assert_eq!(model.diff_horizontal_scroll, 0);
     }
 
     #[test]

@@ -13,8 +13,9 @@ Keep key definitions and help text in the binding registry.
 
 ## Scrollbars
 
-Show a vertical scrollbar when rows overflow. Show a horizontal scrollbar in inline
-mode when columns overflow.
+Show a vertical scrollbar when rows overflow. In inline mode, show a horizontal
+scrollbar only when the currently visible vertical slice contains columns that
+overflow. ADR 0025 defines the visible-slice rule.
 
 - Click the track to jump.
 - Drag the track to scroll.

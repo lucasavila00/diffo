@@ -452,4 +452,22 @@ fn maps_mouse_wheel_to_diff_scrolling() {
         map_event(&mouse(MouseEventKind::ScrollDown), &model, Rect::default()),
         Some(Message::ScrollDiffBy(1))
     );
+
+    let file_wheel = |kind, row| {
+        Event::Mouse(MouseEvent {
+            kind,
+            column: 4,
+            row,
+            modifiers: KeyModifiers::NONE,
+        })
+    };
+    let area = Rect::new(0, 0, 100, 30);
+    assert_eq!(
+        map_event(&file_wheel(MouseEventKind::ScrollUp, 7), &model, area),
+        Some(Message::ScrollFileListBy(ChangeArea::Staged, -1))
+    );
+    assert_eq!(
+        map_event(&file_wheel(MouseEventKind::ScrollDown, 19), &model, area),
+        Some(Message::ScrollFileListBy(ChangeArea::Unstaged, 1))
+    );
 }

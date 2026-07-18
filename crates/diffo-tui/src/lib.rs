@@ -1,4 +1,4 @@
-use diffo_app::{ChangeArea, DiffViewMode, FileKey, Model, ToastKind};
+use diffo_app::{ChangeArea, DiffViewMode, FileKey, FileListScroll, Model, ToastKind};
 use std::{
     env,
     sync::{
@@ -41,12 +41,14 @@ use diff::first_change;
 #[cfg(test)]
 use diff::{diff_file_lines, should_syntax_highlight};
 use files::{
-    commit_action_at_position, file_group_areas, file_panel_areas, render_files, render_status,
-    resize_border_style, staged_files, unstaged_files,
+    FileListMetrics, commit_action_at_position, file_group_areas, file_group_metrics,
+    file_panel_areas, prepared_file_list_scroll, render_files, render_status, resize_border_style,
+    staged_files, unstaged_files,
 };
 use geometry::{
-    file_action_at_position, file_at_position, file_pane_percent_at, horizontal_panes,
-    is_file_pane_splitter_at, main_area, overview_position, scrollbar_position_count,
+    file_action_at_position, file_at_position, file_group_at_position, file_pane_percent_at,
+    horizontal_panes, is_file_pane_splitter_at, main_area, overview_position,
+    scrollbar_position_count,
 };
 use overlays::{
     command_palette_layout, commit_editor_action_at_position, map_file_context_menu_event,
@@ -86,7 +88,7 @@ impl Renderer {
             .split(frame.area());
         let panes = horizontal_panes(vertical[0], model.file_pane_percent);
 
-        render_files(frame, panes[0], model);
+        self.file_lists = render_files(frame, panes[0], model);
         self.render_diff(frame, panes[1], model);
         render_status(frame, vertical[1], model, self.network_animation_tick);
         render_toasts(frame, model);
@@ -201,6 +203,7 @@ impl Renderer {
             viewport_transition,
             requested_file: self.requested.as_ref().map(|key| key.file.clone()),
             displayed_file: self.displayed_key().map(|key| key.file.clone()),
+            file_list_scroll: prepared_file_list_scroll(model, area),
         }
     }
 
@@ -255,10 +258,23 @@ impl Renderer {
             }
             if mouse.kind == MouseEventKind::Up(MouseButton::Left) {
                 self.scrollbar_drag = None;
+                self.file_scrollbar_drag = None;
             } else if matches!(
                 mouse.kind,
                 MouseEventKind::Down(MouseButton::Left) | MouseEventKind::Drag(MouseButton::Left)
             ) {
+                let file_area = if mouse.kind == MouseEventKind::Down(MouseButton::Left) {
+                    let area = self.file_scrollbar_at(mouse.column, mouse.row);
+                    self.file_scrollbar_drag = area;
+                    area
+                } else {
+                    self.file_scrollbar_drag
+                };
+                if let Some(area) = file_area {
+                    self.file_scrollbar_drag = Some(area);
+                    self.scrollbar_drag = None;
+                    return Some(self.file_scrollbar_message(area, mouse.row));
+                }
                 if mouse.kind == MouseEventKind::Down(MouseButton::Left)
                     && let Some(change) = self.change_at_marker(mouse.column, mouse.row, model)
                 {

@@ -5,7 +5,7 @@ use std::time::Duration;
 use std::time::Instant;
 
 use crossterm::event::{Event, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
-use diffo_app::{DiffViewMode, Model};
+use diffo_app::{ChangeArea, DiffViewMode, FileListScroll, Message, Model};
 use diffo_core::{
     ChangeKind, FileDiff, FileState, OperationResult, RepositoryAction, RepositorySnapshot,
     UpstreamState,
@@ -120,6 +120,25 @@ fn model() -> Model {
     })
 }
 
+fn file_list_model(file_count: usize) -> Model {
+    Model::new(RepositorySnapshot {
+        files: (0..file_count)
+            .map(|index| FileState {
+                path: PathBuf::from(format!("generated/file-{index:03}.rs")),
+                old_path: None,
+                kind: ChangeKind::Modified,
+                staged: Some(FileDiff {
+                    text: format!("@@ -0,0 +1 @@\n+staged {index}\n"),
+                }),
+                unstaged: Some(FileDiff {
+                    text: format!("@@ -0,0 +1 @@\n+unstaged {index}\n"),
+                }),
+            })
+            .collect(),
+        ..RepositorySnapshot::default()
+    })
+}
+
 fn mouse_at(kind: MouseEventKind, area: Rect) -> Event {
     Event::Mouse(MouseEvent {
         kind,
@@ -127,6 +146,93 @@ fn mouse_at(kind: MouseEventKind, area: Rect) -> Event {
         row: area.y,
         modifiers: KeyModifiers::NONE,
     })
+}
+
+#[test]
+fn file_list_scrollbars_have_independent_offsets_and_exact_hit_targets() {
+    let mut model = file_list_model(30);
+    model.file_list_scroll = FileListScroll {
+        staged: 3,
+        unstaged: 7,
+    };
+    let area = Rect::new(0, 0, 100, 30);
+    let mut renderer = Renderer::new();
+    let preparation = renderer.prepare_frame(&model, area);
+    model.set_file_list_scrolls(preparation.file_list_scroll);
+    let backend = TestBackend::new(area.width, area.height);
+    let mut terminal = Terminal::new(backend).unwrap();
+    terminal
+        .draw(|frame| renderer.render(frame, &model))
+        .unwrap();
+
+    assert_eq!(renderer.file_lists.staged.offset, 3);
+    assert_eq!(renderer.file_lists.unstaged.offset, 7);
+    assert!(renderer.file_lists.staged.maximum_scroll > 0);
+    assert!(renderer.file_lists.unstaged.maximum_scroll > 0);
+
+    let unstaged = renderer.file_lists.unstaged;
+    let row_click = mouse_at(MouseEventKind::Down(MouseButton::Left), unstaged.list_area);
+    assert_eq!(
+        renderer.map_event(&row_click, &model, area),
+        Some(Message::SelectFile(diffo_app::FileKey {
+            path: PathBuf::from("generated/file-007.rs"),
+            area: ChangeArea::Unstaged,
+        }))
+    );
+
+    let mut action_area = unstaged.list_area;
+    action_area.x = action_area.right().saturating_sub(1);
+    action_area.width = 1;
+    let action_click = mouse_at(MouseEventKind::Down(MouseButton::Left), action_area);
+    assert_eq!(
+        renderer.map_event(&action_click, &model, area),
+        Some(Message::StageFile(PathBuf::from("generated/file-007.rs")))
+    );
+
+    let mut bottom = unstaged.scrollbar_area;
+    bottom.y = bottom.bottom().saturating_sub(1);
+    bottom.height = 1;
+    let scrollbar_click = mouse_at(MouseEventKind::Down(MouseButton::Left), bottom);
+    assert_eq!(
+        renderer.map_event(&scrollbar_click, &model, area),
+        Some(Message::SetFileListScroll(
+            ChangeArea::Unstaged,
+            unstaged.maximum_scroll,
+        ))
+    );
+
+    let drag_to_top = mouse_at(
+        MouseEventKind::Drag(MouseButton::Left),
+        unstaged.scrollbar_area,
+    );
+    assert_eq!(
+        renderer.map_event(&drag_to_top, &model, area),
+        Some(Message::SetFileListScroll(ChangeArea::Unstaged, 0))
+    );
+}
+
+#[test]
+fn file_list_scrollbars_hide_without_overflow_and_offsets_clamp() {
+    let mut model = file_list_model(1);
+    model.file_list_scroll = FileListScroll {
+        staged: usize::MAX,
+        unstaged: usize::MAX,
+    };
+    let area = Rect::new(0, 0, 100, 30);
+    let mut renderer = Renderer::new();
+    let preparation = renderer.prepare_frame(&model, area);
+    assert_eq!(preparation.file_list_scroll, FileListScroll::default());
+    model.set_file_list_scrolls(preparation.file_list_scroll);
+    let backend = TestBackend::new(area.width, area.height);
+    let mut terminal = Terminal::new(backend).unwrap();
+    terminal
+        .draw(|frame| renderer.render(frame, &model))
+        .unwrap();
+
+    assert_eq!(renderer.file_lists.staged.maximum_scroll, 0);
+    assert_eq!(renderer.file_lists.unstaged.maximum_scroll, 0);
+    assert!(renderer.file_lists.staged.scrollbar_area.is_empty());
+    assert!(renderer.file_lists.unstaged.scrollbar_area.is_empty());
 }
 
 #[test]

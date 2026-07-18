@@ -589,6 +589,8 @@ impl Renderer {
             failed: None,
             scrollbars: ScrollbarMetrics::default(),
             scrollbar_drag: None,
+            file_lists: super::FileListMetrics::default(),
+            file_scrollbar_drag: None,
             hunk_buttons: HunkButtonMetrics::default(),
             hovered_hunk_button: None,
             content_revision: 0,

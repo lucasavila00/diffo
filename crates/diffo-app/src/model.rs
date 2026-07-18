@@ -26,6 +26,29 @@ pub struct FileKey {
     pub area: ChangeArea,
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct FileListScroll {
+    pub staged: usize,
+    pub unstaged: usize,
+}
+
+impl FileListScroll {
+    #[must_use]
+    pub const fn get(self, area: ChangeArea) -> usize {
+        match area {
+            ChangeArea::Staged => self.staged,
+            ChangeArea::Unstaged => self.unstaged,
+        }
+    }
+
+    pub fn set(&mut self, area: ChangeArea, position: usize) {
+        match area {
+            ChangeArea::Staged => self.staged = position,
+            ChangeArea::Unstaged => self.unstaged = position,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct FileContextMenu {
     pub file: FileKey,
@@ -124,6 +147,7 @@ pub struct Model {
     pub diff_scroll: usize,
     pub diff_horizontal_scroll: usize,
     pub diff_view_mode: DiffViewMode,
+    pub file_list_scroll: FileListScroll,
     pub file_pane_percent: u16,
     pub resizing_file_pane: bool,
     pub command_palette: Option<CommandPalette>,
@@ -152,6 +176,7 @@ impl Model {
             diff_scroll: 0,
             diff_horizontal_scroll: 0,
             diff_view_mode: DiffViewMode::default(),
+            file_list_scroll: FileListScroll::default(),
             file_pane_percent: 25,
             resizing_file_pane: false,
             command_palette: None,

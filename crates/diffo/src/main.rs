@@ -237,6 +237,7 @@ fn draw_frame(
     if let Some(viewport) = preparation.viewport_transition {
         model.set_diff_viewport(viewport.vertical, viewport.horizontal);
     }
+    model.set_file_list_scrolls(preparation.file_list_scroll);
     model.clamp_diff_scroll(
         preparation.maximum_vertical_scroll,
         preparation.maximum_horizontal_scroll,

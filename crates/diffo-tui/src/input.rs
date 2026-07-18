@@ -4,7 +4,7 @@ use ratatui::layout::Rect;
 
 use crate::{
     commit_action_at_position, commit_editor_action_at_position, file_action_at_position,
-    file_at_position, file_pane_percent_at, is_file_pane_splitter_at,
+    file_at_position, file_group_at_position, file_pane_percent_at, is_file_pane_splitter_at,
 };
 
 mod bindings;

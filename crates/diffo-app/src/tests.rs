@@ -275,6 +275,26 @@ fn scrolls_by_a_page() {
 }
 
 #[test]
+fn scrolls_file_lists_independently_without_changing_selection() {
+    let mut model = model();
+    let selected = model.selected.clone();
+
+    update(&mut model, Message::ScrollFileListBy(ChangeArea::Staged, 4));
+    update(
+        &mut model,
+        Message::SetFileListScroll(ChangeArea::Unstaged, 9),
+    );
+    update(
+        &mut model,
+        Message::ScrollFileListBy(ChangeArea::Staged, -1),
+    );
+
+    assert_eq!(model.file_list_scroll.staged, 3);
+    assert_eq!(model.file_list_scroll.unstaged, 9);
+    assert_eq!(model.selected, selected);
+}
+
+#[test]
 fn resizes_and_toggles_the_file_pane() {
     let mut model = model();
 

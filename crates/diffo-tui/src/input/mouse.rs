@@ -1,7 +1,7 @@
 use super::{
     Event, Message, Model, MouseButton, MouseEventKind, Rect, commit_action_at_position,
     commit_editor_action_at_position, file_action_at_position, file_at_position,
-    file_pane_percent_at, is_file_pane_splitter_at,
+    file_group_at_position, file_pane_percent_at, is_file_pane_splitter_at,
 };
 
 pub(super) fn map_commit_event(event: &Event, model: &Model, area: Rect) -> Option<Message> {
@@ -47,10 +47,16 @@ pub(super) fn map_event(event: &Event, model: &Model, area: Rect) -> Option<Mess
             Some(Message::EndFilePaneResize)
         }
         Event::Mouse(mouse) if mouse.kind == MouseEventKind::ScrollUp => {
-            Some(Message::ScrollDiffBy(-1))
+            file_group_at_position(model, area, mouse.column, mouse.row).map_or_else(
+                || Some(Message::ScrollDiffBy(-1)),
+                |area| Some(Message::ScrollFileListBy(area, -1)),
+            )
         }
         Event::Mouse(mouse) if mouse.kind == MouseEventKind::ScrollDown => {
-            Some(Message::ScrollDiffBy(1))
+            file_group_at_position(model, area, mouse.column, mouse.row).map_or_else(
+                || Some(Message::ScrollDiffBy(1)),
+                |area| Some(Message::ScrollFileListBy(area, 1)),
+            )
         }
         _ => None,
     }

@@ -104,6 +104,25 @@ impl Model {
         self.diff_horizontal_scroll = horizontal;
     }
 
+    pub fn scroll_file_list_by(&mut self, area: ChangeArea, rows: i64) {
+        let current = self.file_list_scroll.get(area);
+        let magnitude = usize::try_from(rows.unsigned_abs()).unwrap_or(usize::MAX);
+        let position = if rows >= 0 {
+            current.saturating_add(magnitude)
+        } else {
+            current.saturating_sub(magnitude)
+        };
+        self.set_file_list_scroll(area, position);
+    }
+
+    pub fn set_file_list_scroll(&mut self, area: ChangeArea, position: usize) {
+        self.file_list_scroll.set(area, position);
+    }
+
+    pub fn set_file_list_scrolls(&mut self, scroll: crate::FileListScroll) {
+        self.file_list_scroll = scroll;
+    }
+
     pub fn toggle_diff_view(&mut self) {
         self.diff_view_mode = self.diff_view_mode.toggled();
     }

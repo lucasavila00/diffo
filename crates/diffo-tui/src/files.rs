@@ -1,15 +1,43 @@
 use super::{
-    Alignment, Block, Borders, ChangeArea, ChangeKind, Color, Constraint, Direction, FileState,
-    Frame, HighlightSpacing, Layout, Line, List, ListItem, ListState, Model, Modifier, Paragraph,
-    Rect, RepositorySnapshot, Span, Style, file_action_style, file_kind_style, horizontal_panes,
-    main_area, network_animation_style,
+    Alignment, Block, Borders, ChangeArea, ChangeKind, Color, Constraint, Direction,
+    FileListScroll, FileState, Frame, HighlightSpacing, Layout, Line, List, ListItem, ListState,
+    Model, Modifier, Paragraph, Rect, RepositorySnapshot, Scrollbar, ScrollbarOrientation,
+    ScrollbarState, Span, Style, file_action_style, file_kind_style, horizontal_panes, main_area,
+    network_animation_style,
 };
 
-pub(super) fn render_files(frame: &mut Frame, area: ratatui::layout::Rect, model: &Model) {
+#[derive(Clone, Copy, Debug, Default)]
+pub(super) struct FileListMetrics {
+    pub(super) staged: FileGroupMetrics,
+    pub(super) unstaged: FileGroupMetrics,
+}
+
+impl FileListMetrics {
+    pub(super) const fn get(self, area: ChangeArea) -> FileGroupMetrics {
+        match area {
+            ChangeArea::Staged => self.staged,
+            ChangeArea::Unstaged => self.unstaged,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub(super) struct FileGroupMetrics {
+    pub(super) list_area: Rect,
+    pub(super) scrollbar_area: Rect,
+    pub(super) maximum_scroll: usize,
+    pub(super) offset: usize,
+}
+
+pub(super) fn render_files(
+    frame: &mut Frame,
+    area: ratatui::layout::Rect,
+    model: &Model,
+) -> FileListMetrics {
     let panels = file_panel_areas(area);
     render_commit_composer(frame, panels[0], model);
     let groups = file_group_areas(panels[1]);
-    render_file_group(
+    let staged = render_file_group(
         frame,
         groups[0],
         " Staged [-] Unstage All ",
@@ -17,7 +45,7 @@ pub(super) fn render_files(frame: &mut Frame, area: ratatui::layout::Rect, model
         ChangeArea::Staged,
         model,
     );
-    render_file_group(
+    let unstaged = render_file_group(
         frame,
         groups[1],
         " Changes [+] Stage All ",
@@ -25,6 +53,7 @@ pub(super) fn render_files(frame: &mut Frame, area: ratatui::layout::Rect, model
         ChangeArea::Unstaged,
         model,
     );
+    FileListMetrics { staged, unstaged }
 }
 
 pub(super) fn file_panel_areas(area: Rect) -> std::rc::Rc<[Rect]> {
@@ -118,26 +147,40 @@ pub(super) fn render_file_group<'a>(
     files: impl Iterator<Item = &'a FileState>,
     change_area: ChangeArea,
     model: &Model,
-) {
+) -> FileGroupMetrics {
     let files = files.collect::<Vec<_>>();
+    let metrics = file_group_metrics(area, files.len(), model.file_list_scroll.get(change_area));
     let selected = files
         .iter()
-        .position(|file| model.is_selected(&file.path, change_area));
-    let items = files.into_iter().map(|file| {
-        file_item(
-            file,
-            model.is_selected(&file.path, change_area),
-            change_area,
-            usize::from(area.width.saturating_sub(4)),
-        )
-    });
+        .position(|file| model.is_selected(&file.path, change_area))
+        .filter(|selected| {
+            *selected >= metrics.offset
+                && *selected
+                    < metrics
+                        .offset
+                        .saturating_add(usize::from(metrics.list_area.height))
+        })
+        .map(|selected| selected - metrics.offset);
+    let items = files
+        .into_iter()
+        .skip(metrics.offset)
+        .take(usize::from(metrics.list_area.height))
+        .map(|file| {
+            file_item(
+                file,
+                model.is_selected(&file.path, change_area),
+                change_area,
+                usize::from(metrics.list_area.width.saturating_sub(2)),
+            )
+        });
+    frame.render_widget(
+        Block::default()
+            .borders(Borders::ALL)
+            .border_style(resize_border_style(model))
+            .title(title),
+        area,
+    );
     let list = List::new(items)
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .border_style(resize_border_style(model))
-                .title(title),
-        )
         .highlight_style(
             Style::default()
                 .bg(Color::DarkGray)
@@ -146,7 +189,72 @@ pub(super) fn render_file_group<'a>(
         .highlight_symbol("› ")
         .highlight_spacing(HighlightSpacing::Always);
     let mut state = ListState::default().with_selected(selected);
-    frame.render_stateful_widget(list, area, &mut state);
+    frame.render_stateful_widget(list, metrics.list_area, &mut state);
+    if metrics.maximum_scroll > 0 && !metrics.scrollbar_area.is_empty() {
+        let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
+            .begin_symbol(None)
+            .end_symbol(None)
+            .thumb_style(Style::default().fg(Color::Cyan));
+        let mut state = ScrollbarState::new(metrics.maximum_scroll.saturating_add(1))
+            .viewport_content_length(usize::from(metrics.list_area.height))
+            .position(metrics.offset);
+        frame.render_stateful_widget(scrollbar, metrics.scrollbar_area, &mut state);
+    }
+    metrics
+}
+
+pub(super) fn file_group_metrics(
+    area: Rect,
+    file_count: usize,
+    requested_offset: usize,
+) -> FileGroupMetrics {
+    let content = area.inner(ratatui::layout::Margin {
+        vertical: 1,
+        horizontal: 1,
+    });
+    let viewport_rows = usize::from(content.height);
+    let maximum_scroll = if viewport_rows == 0 {
+        0
+    } else {
+        file_count.saturating_sub(viewport_rows)
+    };
+    let offset = requested_offset.min(maximum_scroll);
+    let has_scrollbar = maximum_scroll > 0 && content.width > 0;
+    let list_area = Rect::new(
+        content.x,
+        content.y,
+        content.width.saturating_sub(u16::from(has_scrollbar)),
+        content.height,
+    );
+    let scrollbar_area = if has_scrollbar {
+        Rect::new(
+            content.right().saturating_sub(1),
+            content.y,
+            1,
+            content.height,
+        )
+    } else {
+        Rect::default()
+    };
+    FileGroupMetrics {
+        list_area,
+        scrollbar_area,
+        maximum_scroll,
+        offset,
+    }
+}
+
+pub(super) fn prepared_file_list_scroll(model: &Model, area: Rect) -> FileListScroll {
+    let file_pane = horizontal_panes(main_area(area), model.file_pane_percent)[0];
+    let panels = file_panel_areas(file_pane);
+    let groups = file_group_areas(panels[1]);
+    let staged_count = staged_files(&model.snapshot).count();
+    let unstaged_count = unstaged_files(&model.snapshot).count();
+    FileListScroll {
+        staged: file_group_metrics(groups[0], staged_count, model.file_list_scroll.staged).offset,
+        unstaged: file_group_metrics(groups[1], unstaged_count, model.file_list_scroll.unstaged)
+            .offset,
+    }
 }
 
 pub(super) fn file_item(

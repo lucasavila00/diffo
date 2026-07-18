@@ -56,7 +56,7 @@ impl MutableFixtureRepository {
         Ok(Self::from_snapshot(snapshot))
     }
 
-    /// Load a mutable fixture and append generated large-file changes.
+    /// Load a mutable fixture and append generated large-file and file-list stress changes.
     ///
     /// # Errors
     ///
@@ -65,6 +65,7 @@ impl MutableFixtureRepository {
         let mut snapshot = FixtureRepositorySource::new(path).snapshot()?;
         append_large_files(&mut snapshot, 20_000, 5_000, 25_000);
         append_line_stress_files(&mut snapshot);
+        append_file_list_stress_files(&mut snapshot, 250);
         Ok(Self::from_snapshot(snapshot))
     }
 
@@ -172,6 +173,23 @@ fn append_line_stress_files(snapshot: &mut RepositorySnapshot) {
             staged: None,
             unstaged: Some(crate::FileDiff {
                 text: added_source_stress_patch(name, line_count),
+            }),
+        });
+    }
+}
+
+fn append_file_list_stress_files(snapshot: &mut RepositorySnapshot, file_count: usize) {
+    for index in 0..file_count {
+        let path = format!("generated/file-list/file-{index:03}.rs");
+        snapshot.files.push(crate::FileState {
+            path: PathBuf::from(&path),
+            old_path: None,
+            kind: crate::ChangeKind::Untracked,
+            staged: None,
+            unstaged: Some(crate::FileDiff {
+                text: format!(
+                    "diff --git a/{path} b/{path}\nnew file mode 100644\n--- /dev/null\n+++ b/{path}\n@@ -0,0 +1 @@\n+pub const FILE_INDEX: usize = {index};\n"
+                ),
             }),
         });
     }
@@ -457,6 +475,16 @@ mod tests {
                 .filter(|line| line.starts_with("+pub const ITEM_"))
                 .count(),
             20_000
+        );
+        assert_eq!(
+            snapshot
+                .files
+                .iter()
+                .filter(|file| {
+                    file.path.starts_with("generated/file-list") && file.unstaged.is_some()
+                })
+                .count(),
+            250
         );
 
         let long_line = snapshot

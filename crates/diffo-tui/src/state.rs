@@ -3,10 +3,12 @@ use std::sync::{
     mpsc::{Receiver, SyncSender},
 };
 
-use diffo_app::FileKey;
+use diffo_app::{ChangeArea, FileKey, FileListScroll};
 use diffo_diff::{DiffDocument, RenderLine, RowKind, SideBySideRow};
 use diffo_highlight::{HighlightedDiff, LineRange, SyntaxHighlighter};
 use ratatui::layout::Rect;
+
+use crate::files::FileListMetrics;
 
 pub struct Renderer {
     pub(super) highlighter: Arc<SyntaxHighlighter>,
@@ -21,6 +23,8 @@ pub struct Renderer {
     pub(super) failed: Option<DiffKey>,
     pub(super) scrollbars: ScrollbarMetrics,
     pub(super) scrollbar_drag: Option<ScrollbarAxis>,
+    pub(super) file_lists: FileListMetrics,
+    pub(super) file_scrollbar_drag: Option<ChangeArea>,
     pub(super) hunk_buttons: HunkButtonMetrics,
     pub(super) hovered_hunk_button: Option<HunkDirection>,
     pub(super) content_revision: u64,
@@ -54,6 +58,7 @@ pub struct FramePreparation {
     pub viewport_transition: Option<ViewportTransition>,
     pub requested_file: Option<FileKey>,
     pub displayed_file: Option<FileKey>,
+    pub file_list_scroll: FileListScroll,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]

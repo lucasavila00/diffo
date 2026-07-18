@@ -104,11 +104,11 @@ fn watcher_refresh_never_resets_scroll_for_the_same_selection() -> Result<()> {
     model.diff_scroll = 40;
 
     fs::write(repository.path().join("ignored.tmp"), "ignored\n")?;
-    model.refresh(wait_for_refresh(&refresh, deadline, |_| true)?);
+    model.repository_changed(wait_for_refresh(&refresh, deadline, |_| true)?);
     assert_eq!(model.diff_scroll, 40);
 
     fs::write(repository.path().join("tracked.txt"), "second change\n")?;
-    model.refresh(wait_for_refresh(&refresh, deadline, |snapshot| {
+    model.repository_changed(wait_for_refresh(&refresh, deadline, |snapshot| {
         snapshot.files.iter().any(|file| {
             file.unstaged
                 .as_ref()

@@ -73,7 +73,6 @@ enum CommitComposerState {
     #[default]
     Idle,
     Focused,
-    Pending(PrimaryAction),
 }
 
 impl PrimaryAction {
@@ -120,7 +119,7 @@ pub struct Model {
     pub toasts: Vec<Toast>,
     commit_composer_state: CommitComposerState,
     commit_message_cursor: usize,
-    network_operation: Option<NetworkOperation>,
+    pending_operation: Option<RepositoryAction>,
     expanded_file_pane_percent: u16,
     cursor: usize,
     next_toast_id: u64,
@@ -148,7 +147,7 @@ impl Model {
             toasts: Vec::new(),
             commit_composer_state: CommitComposerState::Idle,
             commit_message_cursor: 0,
-            network_operation: None,
+            pending_operation: None,
             expanded_file_pane_percent: 25,
             cursor: 0,
             next_toast_id: 1,
@@ -260,8 +259,13 @@ impl Model {
         if self.access_mode == AccessMode::ReadOnly {
             return PrimaryAction::Disabled;
         }
-        if let CommitComposerState::Pending(action) = self.commit_composer_state {
-            return action;
+        if let Some(action) = self.pending_operation.as_ref() {
+            return match action {
+                RepositoryAction::Commit(_) => PrimaryAction::Commit,
+                RepositoryAction::Push => PrimaryAction::Push,
+                RepositoryAction::Pull => PrimaryAction::Pull,
+                _ => PrimaryAction::Disabled,
+            };
         }
         if self.effective_commit_message().is_some() {
             return PrimaryAction::Commit;
@@ -278,9 +282,7 @@ impl Model {
 
     #[must_use]
     pub fn primary_action_enabled(&self) -> bool {
-        !matches!(self.commit_composer_state, CommitComposerState::Pending(_))
-            && self.network_operation.is_none()
-            && self.primary_action().enabled()
+        self.pending_operation.is_none() && self.primary_action().enabled()
     }
 
     pub fn execute_primary_action(&mut self) -> Option<RepositoryAction> {
@@ -302,19 +304,20 @@ impl Model {
             PrimaryAction::Pull => RepositoryAction::Pull,
             PrimaryAction::PushAndPull | PrimaryAction::Disabled => return None,
         };
-        self.commit_composer_state = CommitComposerState::Pending(primary);
+        self.commit_composer_state = CommitComposerState::Idle;
         self.error = None;
-        self.network_operation = match primary {
-            PrimaryAction::Push => Some(NetworkOperation::Push),
-            PrimaryAction::Pull => Some(NetworkOperation::Pull),
-            PrimaryAction::Commit | PrimaryAction::PushAndPull | PrimaryAction::Disabled => None,
-        };
+        self.pending_operation = Some(action.clone());
         Some(action)
     }
 
     #[must_use]
     pub fn network_operation(&self) -> Option<NetworkOperation> {
-        self.network_operation
+        match self.pending_operation.as_ref() {
+            Some(RepositoryAction::Fetch) => Some(NetworkOperation::Fetch),
+            Some(RepositoryAction::Pull) => Some(NetworkOperation::Pull),
+            Some(RepositoryAction::Push) => Some(NetworkOperation::Push),
+            _ => None,
+        }
     }
 
     pub fn command_palette_input(&mut self, character: char) {
@@ -348,17 +351,17 @@ impl Model {
     }
 
     pub fn execute_selected_command(&mut self) -> Option<RepositoryAction> {
-        if self.access_mode == AccessMode::ReadOnly || self.network_operation.is_some() {
+        if self.access_mode == AccessMode::ReadOnly || self.pending_operation.is_some() {
             return None;
         }
         let command = self.command_palette.as_ref()?.selected_command()?.id;
         self.command_palette = None;
-        let (operation, action) = match command {
-            CommandId::Fetch => (NetworkOperation::Fetch, RepositoryAction::Fetch),
-            CommandId::Pull => (NetworkOperation::Pull, RepositoryAction::Pull),
+        let action = match command {
+            CommandId::Fetch => RepositoryAction::Fetch,
+            CommandId::Pull => RepositoryAction::Pull,
         };
         self.error = None;
-        self.network_operation = Some(operation);
+        self.pending_operation = Some(action.clone());
         Some(action)
     }
 
@@ -621,33 +624,39 @@ impl Model {
     }
 
     fn finish_pending_operation(&mut self) {
-        let composer_state = self.commit_composer_state;
-        if composer_state == CommitComposerState::Pending(PrimaryAction::Commit) {
+        if matches!(self.pending_operation, Some(RepositoryAction::Commit(_))) {
             self.commit_message.clear();
             self.commit_message_cursor = 0;
         }
-        self.commit_composer_state = match composer_state {
-            CommitComposerState::Focused => CommitComposerState::Focused,
-            CommitComposerState::Idle | CommitComposerState::Pending(_) => {
-                CommitComposerState::Idle
-            }
-        };
-        self.network_operation = None;
+        self.pending_operation = None;
     }
 
     pub fn show_error(&mut self, error: impl Into<String>) {
-        self.commit_composer_state = match self.commit_composer_state {
-            CommitComposerState::Pending(PrimaryAction::Commit) => CommitComposerState::Focused,
-            CommitComposerState::Pending(_) => CommitComposerState::Idle,
-            state => state,
-        };
-        self.network_operation = None;
-        self.selection_after_action = None;
         self.error = Some(error.into());
     }
 
     pub fn complete_operation(&mut self, result: &OperationResult, snapshot: RepositorySnapshot) {
-        self.finish_pending_operation();
+        let is_async_result = matches!(
+            result,
+            OperationResult::Fetch { .. }
+                | OperationResult::Pull { .. }
+                | OperationResult::Push { .. }
+                | OperationResult::Commit { .. }
+        );
+        let finishes_pending = match (self.pending_operation.as_ref(), result) {
+            (Some(RepositoryAction::Fetch), OperationResult::Fetch { .. })
+            | (Some(RepositoryAction::Pull), OperationResult::Pull { .. })
+            | (Some(RepositoryAction::Push), OperationResult::Push { .. })
+            | (Some(RepositoryAction::Commit(_)), OperationResult::Commit { .. }) => true,
+            _ => false,
+        };
+        if is_async_result && !finishes_pending {
+            self.install_snapshot(snapshot, false);
+            return;
+        }
+        if finishes_pending {
+            self.finish_pending_operation();
+        }
         self.install_snapshot(snapshot, true);
         if let Some((kind, title)) = operation_result_toast(result) {
             self.push_toast(kind, title, None);
@@ -655,7 +664,16 @@ impl Model {
     }
 
     pub fn show_operation_failure(&mut self, failure: &OperationFailure) {
-        self.show_error(failure.detail.clone());
+        if let Some(pending) = self.pending_operation.as_ref()
+            && !same_repository_operation(pending, &failure.action)
+        {
+            return;
+        }
+        if matches!(self.pending_operation, Some(RepositoryAction::Commit(_))) {
+            self.commit_composer_state = CommitComposerState::Focused;
+        }
+        self.pending_operation = None;
+        self.selection_after_action = None;
         self.error = None;
         self.push_toast(ToastKind::Error, operation_failure_title(failure), None);
     }
@@ -689,6 +707,20 @@ impl Model {
         self.diff_scroll = 0;
         self.diff_horizontal_scroll = 0;
     }
+}
+
+fn same_repository_operation(left: &RepositoryAction, right: &RepositoryAction) -> bool {
+    matches!(
+        (left, right),
+        (RepositoryAction::Fetch, RepositoryAction::Fetch)
+            | (RepositoryAction::Pull, RepositoryAction::Pull)
+            | (RepositoryAction::Push, RepositoryAction::Push)
+            | (RepositoryAction::Commit(_), RepositoryAction::Commit(_))
+            | (RepositoryAction::Stage(_), RepositoryAction::Stage(_))
+            | (RepositoryAction::Unstage(_), RepositoryAction::Unstage(_))
+            | (RepositoryAction::StageAll, RepositoryAction::StageAll)
+            | (RepositoryAction::UnstageAll, RepositoryAction::UnstageAll)
+    )
 }
 
 fn byte_index_at_char(text: &str, character: usize) -> usize {
@@ -866,7 +898,7 @@ mod tests {
         );
         let mut refreshed = snapshot();
         refreshed.files[0].unstaged = None;
-        app.refresh(refreshed);
+        app.complete_operation(&OperationResult::Stage, refreshed);
 
         assert_eq!(
             app.selected,
@@ -885,7 +917,7 @@ mod tests {
             area: ChangeArea::Staged,
         };
 
-        app.refresh(snapshot());
+        app.repository_changed(snapshot());
 
         assert_eq!(app.selected, Some(selected));
     }
@@ -896,7 +928,7 @@ mod tests {
         app.diff_scroll = 12;
         app.diff_horizontal_scroll = 8;
 
-        app.refresh(snapshot());
+        app.repository_changed(snapshot());
         assert_eq!(app.diff_scroll, 12);
         assert_eq!(app.diff_horizontal_scroll, 8);
 
@@ -907,7 +939,7 @@ mod tests {
             .expect("staged diff")
             .text
             .push_str("changed");
-        app.refresh(changed);
+        app.repository_changed(changed);
         assert_eq!(app.diff_scroll, 12);
         assert_eq!(app.diff_horizontal_scroll, 8);
     }
@@ -917,7 +949,7 @@ mod tests {
         let mut app = Model::new(snapshot(), AccessMode::ReadWrite);
         app.focus_commit_input();
 
-        app.refresh(snapshot());
+        app.repository_changed(snapshot());
         app.commit_message_input('x');
 
         assert!(app.commit_input_focused());
@@ -956,11 +988,21 @@ mod tests {
     fn queues_replaces_limits_and_dismisses_toasts() {
         let mut app = Model::new(snapshot(), AccessMode::ReadWrite);
         for updated_refs in 1..=4 {
+            app.open_command_palette();
+            assert_eq!(
+                app.execute_selected_command(),
+                Some(RepositoryAction::Fetch)
+            );
             app.complete_operation(&OperationResult::Fetch { updated_refs }, snapshot());
         }
         assert_eq!(app.toasts.len(), 3);
         assert_eq!(app.toasts[0].title, "Fetched 4 refs");
 
+        app.open_command_palette();
+        assert_eq!(
+            app.execute_selected_command(),
+            Some(RepositoryAction::Fetch)
+        );
         app.complete_operation(&OperationResult::Fetch { updated_refs: 4 }, snapshot());
         assert_eq!(app.toasts.len(), 3);
         assert_eq!(

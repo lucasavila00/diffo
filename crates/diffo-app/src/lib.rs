@@ -139,8 +139,8 @@ mod tests {
     use std::path::PathBuf;
 
     use diffo_core::{
-        AccessMode, ChangeKind, FileDiff, FileState, RepositoryAction, RepositorySnapshot,
-        UpstreamState,
+        AccessMode, ChangeKind, FailureKind, FileDiff, FileState, OperationFailure,
+        OperationResult, RepositoryAction, RepositorySnapshot, UpstreamState,
     };
 
     use super::{
@@ -200,7 +200,17 @@ mod tests {
         );
         assert_eq!(model.commit_message, "ship it");
         let refreshed = model.snapshot.clone();
-        update(&mut model, Message::SnapshotLoaded(refreshed));
+        update(&mut model, Message::SnapshotLoaded(refreshed.clone()));
+        assert_eq!(model.commit_message, "ship it");
+        update(
+            &mut model,
+            Message::OperationCompleted(
+                OperationResult::Commit {
+                    hash: "abc1234".to_owned(),
+                },
+                refreshed,
+            ),
+        );
         assert!(model.commit_message.is_empty());
 
         model.snapshot.files[0].staged = None;
@@ -219,7 +229,18 @@ mod tests {
         assert!(!model.primary_action_enabled());
         assert_eq!(model.network_operation(), Some(NetworkOperation::Push));
         let refreshed = model.snapshot.clone();
-        update(&mut model, Message::SnapshotLoaded(refreshed));
+        update(&mut model, Message::SnapshotLoaded(refreshed.clone()));
+        assert_eq!(model.network_operation(), Some(NetworkOperation::Push));
+        update(
+            &mut model,
+            Message::OperationCompleted(
+                OperationResult::Push {
+                    hash: "abc1234".to_owned(),
+                    upstream: "origin/main".to_owned(),
+                },
+                refreshed,
+            ),
+        );
         assert_eq!(model.network_operation(), None);
         model.snapshot.upstream.as_mut().unwrap().ahead = 0;
         model.snapshot.upstream.as_mut().unwrap().behind = 1;
@@ -245,6 +266,54 @@ mod tests {
                 "Update 1 file".to_owned()
             )))
         );
+    }
+
+    #[test]
+    fn passive_and_unrelated_results_cannot_finish_a_push() {
+        let mut model = model(AccessMode::ReadWrite);
+        model.snapshot.files[0].staged = None;
+        model.snapshot.upstream = Some(UpstreamState {
+            name: "origin/main".to_owned(),
+            ahead: 1,
+            behind: 0,
+        });
+        assert_eq!(
+            update(&mut model, Message::ExecutePrimaryAction),
+            Some(Effect::Repository(RepositoryAction::Push))
+        );
+
+        let changed = model.snapshot.clone();
+        update(&mut model, Message::SnapshotLoaded(changed.clone()));
+        update(
+            &mut model,
+            Message::OperationFailed("watch failed".to_owned()),
+        );
+        update(
+            &mut model,
+            Message::OperationCompleted(OperationResult::Fetch { updated_refs: 1 }, changed),
+        );
+        update(
+            &mut model,
+            Message::ActionFailed(OperationFailure {
+                action: RepositoryAction::Pull,
+                kind: FailureKind::Network,
+                detail: "unrelated".to_owned(),
+            }),
+        );
+
+        assert_eq!(model.network_operation(), Some(NetworkOperation::Push));
+        assert_eq!(model.primary_action(), PrimaryAction::Push);
+        assert!(!model.primary_action_enabled());
+
+        update(
+            &mut model,
+            Message::ActionFailed(OperationFailure {
+                action: RepositoryAction::Push,
+                kind: FailureKind::Network,
+                detail: "offline".to_owned(),
+            }),
+        );
+        assert_eq!(model.network_operation(), None);
     }
 
     #[test]
@@ -283,7 +352,12 @@ mod tests {
         assert!(model.command_palette.is_none());
 
         let refreshed = model.snapshot.clone();
-        update(&mut model, Message::SnapshotLoaded(refreshed));
+        update(&mut model, Message::SnapshotLoaded(refreshed.clone()));
+        assert_eq!(model.network_operation(), Some(NetworkOperation::Fetch));
+        update(
+            &mut model,
+            Message::OperationCompleted(OperationResult::Fetch { updated_refs: 0 }, refreshed),
+        );
         update(&mut model, Message::OpenCommandPalette);
         update(&mut model, Message::CommandPaletteSelectNext);
         assert_eq!(
@@ -292,7 +366,14 @@ mod tests {
         );
         assert_eq!(model.network_operation(), Some(NetworkOperation::Pull));
 
-        update(&mut model, Message::OperationFailed("offline".to_owned()));
+        update(
+            &mut model,
+            Message::ActionFailed(OperationFailure {
+                action: RepositoryAction::Pull,
+                kind: FailureKind::Network,
+                detail: "offline".to_owned(),
+            }),
+        );
         assert_eq!(model.network_operation(), None);
         update(&mut model, Message::OpenCommandPalette);
         assert_eq!(

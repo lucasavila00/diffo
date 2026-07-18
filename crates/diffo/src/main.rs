@@ -433,7 +433,7 @@ mod tests {
         let mut pending = PendingScroll::default();
         assert!(pending.push(&Message::ScrollDiffDown));
 
-        model.refresh(RepositorySnapshot::default());
+        model.repository_changed(RepositorySnapshot::default());
         pending.flush(&mut model);
 
         assert_eq!(model.diff_scroll, 4);

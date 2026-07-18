@@ -1661,15 +1661,15 @@ fn render_status(
     model: &Model,
     animation_tick: usize,
 ) {
-    let text = if let Some(error) = model.error.as_deref() {
-        error.to_owned()
-    } else if let Some(operation) = model.network_operation() {
+    let text = if let Some(operation) = model.network_operation() {
         const SPINNER: [&str; 4] = ["◐", "◓", "◑", "◒"];
         format!(
             " {} {}… · Ctrl+C to exit ",
             SPINNER[(animation_tick / 2) % SPINNER.len()],
             operation.label()
         )
+    } else if let Some(error) = model.error.as_deref() {
+        error.to_owned()
     } else if model.resizing_file_pane {
         format!(
             " Resizing file pane: {}% · release mouse to finish ",
@@ -1678,10 +1678,10 @@ fn render_status(
     } else {
         " 1/f1: commands  2/f2: help ".to_owned()
     };
-    let style = if model.error.is_some() {
-        Style::default().fg(Color::Red)
-    } else if model.network_operation().is_some() {
+    let style = if model.network_operation().is_some() {
         network_animation_style(animation_tick)
+    } else if model.error.is_some() {
+        Style::default().fg(Color::Red)
     } else if model.resizing_file_pane {
         Style::default()
             .fg(Color::Cyan)
@@ -1842,6 +1842,11 @@ mod rendering_tests {
     #[test]
     fn renders_and_mouse_dismisses_a_bottom_right_toast() {
         let mut model = model();
+        model.snapshot.files[0].staged = model.snapshot.files[0].unstaged.take();
+        assert!(matches!(
+            model.execute_primary_action(),
+            Some(RepositoryAction::Commit(_))
+        ));
         model.complete_operation(
             &OperationResult::Commit {
                 hash: "a1b2c3d4e5".to_owned(),

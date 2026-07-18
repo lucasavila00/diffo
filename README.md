@@ -39,6 +39,13 @@ used where they fit the interaction.
 
 ## TUI architecture invariants
 
+Diffo is designed for use over SSH, so terminal input and output must always be
+treated as network traffic. Buttons and other controls keep a stable appearance as
+the pointer moves over them: hover-only state and redraws consume network and CPU
+resources for little value, particularly on slow, high-latency, or metered
+connections. Mouse clicks, drags, and wheel actions remain supported. See
+[`ADR 0038`](docs/adr/0038-remove-button-hover-changes.md).
+
 Diff-buffer changes are atomic. While a selected file is being prepared, Diffo keeps
 the last committed buffer and viewport unchanged. It commits the replacement's
 content, projections, hunk targets, scroll bounds, and initial position together

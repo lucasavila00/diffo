@@ -95,6 +95,10 @@ This repository is a Rust workspace containing small command-line utilities. Eac
 ## TUI conventions
 
 - Always restore the terminal before returning from the application.
+- Design for SSH use and treat terminal input, redraw work, and output as network
+  costs at all times. Do not add hover-driven visual changes, hover-only state,
+  passive mouse-movement handling solely for hover feedback, or redraws caused only
+  by pointer movement; the resource cost provides too little user value.
 - Keep terminal rendering, input handling, application state, and external commands in separate modules.
 - Document key bindings in the interface and update them when controls change.
 - Keep tests that reject uppercase character entries in the fixed key-binding table.

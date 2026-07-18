@@ -9,8 +9,8 @@ all:
 check-file-lines:
 	@git ls-files '*.rs' | { failed=; while IFS= read -r file; do \
 		lines=$$(wc -l < "$$file"); \
-		if [ "$$lines" -gt 1000 ]; then \
-			printf '%s has %s lines (maximum 1000)\n' "$$file" "$$lines"; \
+		if [ "$$lines" -gt 700 ]; then \
+			printf '%s has %s lines (maximum 700)\n' "$$file" "$$lines"; \
 			failed=1; \
 		fi; \
 	done; \

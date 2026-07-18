@@ -11,6 +11,9 @@ use super::{
 use diffo_diff::SideBySideRow;
 use diffo_highlight::{HighlightWindowRequest, LineRange};
 
+mod coverage;
+use coverage::{merge_coverage, range_is_covered, retain_covered_styles};
+
 #[derive(Clone, Copy)]
 struct ProjectionHighlightRequest {
     viewport_rows: usize,
@@ -620,48 +623,6 @@ impl Renderer {
             DiffViewMode::SideBySide => cache.side_by_side_changes.as_slice(),
         })
     }
-}
-
-const MAX_COVERAGE_WINDOWS: usize = 8;
-
-fn range_is_covered(coverage: &[LineRange], needed: Option<LineRange>) -> bool {
-    needed.is_none_or(|needed| {
-        coverage
-            .iter()
-            .any(|coverage| coverage.start <= needed.start && coverage.end >= needed.end)
-    })
-}
-
-fn merge_coverage(coverage: &mut Vec<LineRange>, incoming: Vec<LineRange>) {
-    for range in incoming {
-        if let Some(existing) = coverage.iter_mut().find(|existing| {
-            existing.start <= range.end.saturating_add(1)
-                && range.start <= existing.end.saturating_add(1)
-        }) {
-            existing.start = existing.start.min(range.start);
-            existing.end = existing.end.max(range.end);
-        } else {
-            coverage.push(range);
-        }
-    }
-    if coverage.len() > MAX_COVERAGE_WINDOWS {
-        coverage.drain(..coverage.len() - MAX_COVERAGE_WINDOWS);
-    }
-}
-
-fn retain_covered_styles(cache: &mut HighlightCache) {
-    cache.highlighted.old.retain(|line, _| {
-        cache
-            .highlighted_old_coverage
-            .iter()
-            .any(|range| range.contains(*line))
-    });
-    cache.highlighted.new.retain(|line, _| {
-        cache
-            .highlighted_new_coverage
-            .iter()
-            .any(|range| range.contains(*line))
-    });
 }
 
 impl Default for Renderer {

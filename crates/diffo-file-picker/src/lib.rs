@@ -17,10 +17,12 @@ use ratatui::{
     style::{Modifier, Style},
     text::{Line, Span},
     widgets::{
-        Block, Borders, Clear, List, ListItem, ListState, Paragraph, Scrollbar,
-        ScrollbarOrientation, ScrollbarState,
+        Block, Borders, List, ListItem, ListState, Paragraph, Scrollbar, ScrollbarOrientation,
+        ScrollbarState,
     },
 };
+
+mod actions;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Mode {
@@ -597,154 +599,6 @@ where
             let width = u16::try_from(action.chars().count()).unwrap_or(u16::MAX);
             column >= self.metrics.list_area.right().saturating_sub(width)
         })
-    }
-
-    fn header_action_at(&mut self, column: u16, row: u16) -> Option<Outcome<K>> {
-        if row != self.area.y {
-            return None;
-        }
-        if self.document.mode == Mode::Tree && self.area.width >= design::TREE_HEADER_MIN_WIDTH {
-            let start = self
-                .area
-                .right()
-                .saturating_sub(design::TREE_HEADER_ACTIONS_WIDTH);
-            if column >= start && column < start.saturating_add(design::TREE_HEADER_ACTION_WIDTH) {
-                self.collapse_all();
-                return Some(Outcome::Consumed);
-            }
-            let expand_start = start
-                .saturating_add(design::TREE_HEADER_ACTION_WIDTH)
-                .saturating_add(design::TREE_HEADER_ACTION_GAP);
-            if column >= expand_start
-                && column < expand_start.saturating_add(design::TREE_HEADER_ACTION_WIDTH)
-            {
-                self.expand_all();
-                return Some(Outcome::Consumed);
-            }
-        } else if let Some(action) = self.document.panel_action.as_deref() {
-            let width = u16::try_from(action.chars().count()).unwrap_or(u16::MAX);
-            let start = self.area.x.saturating_add(3).saturating_add(
-                u16::try_from(self.document.title.chars().count()).unwrap_or(u16::MAX),
-            );
-            if column >= start && column < start.saturating_add(width) {
-                return Some(Outcome::PanelAction);
-            }
-        }
-        None
-    }
-
-    fn handle_context_menu_event(
-        &mut self,
-        event: &Event,
-        overlay_area: Rect,
-    ) -> Option<Outcome<K>> {
-        match event {
-            Event::Key(key)
-                if key.kind == KeyEventKind::Press
-                    && (key.code == KeyCode::Esc
-                        || (key.code == KeyCode::Char('c')
-                            && key.modifiers == KeyModifiers::NONE)) =>
-            {
-                self.context_menu = None;
-                Some(Outcome::Consumed)
-            }
-            Event::Key(key)
-                if key.kind == KeyEventKind::Press && key.modifiers == KeyModifiers::NONE =>
-            {
-                let absolute = match key.code {
-                    KeyCode::Char('a') => true,
-                    KeyCode::Char('r') => false,
-                    _ => return None,
-                };
-                let menu = self.context_menu.take()?;
-                Some(Outcome::CopyPath {
-                    id: menu.id,
-                    absolute,
-                })
-            }
-            Event::Mouse(mouse) if mouse.kind == MouseEventKind::Down(MouseButton::Left) => {
-                let menu_area = self.context_menu_area(overlay_area)?;
-                let menu = self.context_menu.take()?;
-                if mouse.column > menu_area.x
-                    && mouse.column < menu_area.right().saturating_sub(design::BORDER_WIDTH)
-                {
-                    match mouse.row.saturating_sub(menu_area.y) {
-                        design::PATH_MENU_FIRST_ACTION_ROW => Some(Outcome::CopyPath {
-                            id: menu.id,
-                            absolute: true,
-                        }),
-                        design::PATH_MENU_SECOND_ACTION_ROW => Some(Outcome::CopyPath {
-                            id: menu.id,
-                            absolute: false,
-                        }),
-                        _ => Some(Outcome::Consumed),
-                    }
-                } else {
-                    Some(Outcome::Consumed)
-                }
-            }
-            _ => None,
-        }
-    }
-
-    fn open_context_menu(&mut self) -> Option<Outcome<K>> {
-        let id = self.selected.clone()?;
-        if !self.row(&id).is_some_and(|row| row.context_menu) {
-            return None;
-        }
-        let index = self.selected_visible_index()?;
-        let row = self
-            .metrics
-            .list_area
-            .y
-            .saturating_add(u16::try_from(index.saturating_sub(self.metrics.offset)).ok()?);
-        self.context_menu = Some(ContextMenu {
-            id,
-            column: self.metrics.list_area.x,
-            row,
-        });
-        Some(Outcome::Consumed)
-    }
-
-    fn render_context_menu(&self, frame: &mut Frame) {
-        let Some(area) = self.context_menu_area(frame.area()) else {
-            return;
-        };
-        frame.render_widget(Clear, area);
-        frame.render_widget(
-            List::new([
-                ListItem::new("[a] Copy absolute path").style(enabled_control_style()),
-                ListItem::new(""),
-                ListItem::new("[r] Copy relative path").style(enabled_control_style()),
-            ])
-            .block(
-                Block::default()
-                    .title(Line::from(vec![
-                        Span::raw(" Path "),
-                        Span::styled("[c]", enabled_control_style()),
-                        Span::raw(" "),
-                    ]))
-                    .title(
-                        Line::styled(interaction::DISMISS, enabled_control_style())
-                            .alignment(Alignment::Right),
-                    )
-                    .borders(Borders::ALL)
-                    .border_style(Style::default().fg(theme::CHROME)),
-            ),
-            area,
-        );
-    }
-
-    fn context_menu_area(&self, area: Rect) -> Option<Rect> {
-        let menu = self.context_menu.as_ref()?;
-        let width = design::PATH_MENU_WIDTH.min(area.width);
-        let height = design::PATH_MENU_HEIGHT.min(area.height);
-        Some(Rect::new(
-            menu.column.min(area.right().saturating_sub(width)),
-            menu.row.min(area.bottom().saturating_sub(height)),
-            width,
-            height,
-        ))
     }
 
     fn selected_visible_index(&self) -> Option<usize> {

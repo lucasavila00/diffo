@@ -73,7 +73,9 @@ fn chrome_renderers_use_design_system_tokens() {
     let exceptions = [
         "crates/diffo-file-picker/src/tests.rs",
         "crates/diffo-tui/src/rendering_tests.rs",
+        "crates/diffo-tui/src/rendering_tests/chrome.rs",
         "crates/diffo-tui/src/rendering_tests/diff.rs",
+        "crates/diffo-tui/src/rendering_tests/diff/transitions.rs",
         "crates/diffo-tui/src/style.rs",
         "crates/diffo-workbench/src/tests.rs",
     ];

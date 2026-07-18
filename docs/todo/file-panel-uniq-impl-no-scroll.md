@@ -1,1 +1,0 @@
-on explorer can scroll on file pickler

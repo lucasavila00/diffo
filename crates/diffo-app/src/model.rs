@@ -150,6 +150,8 @@ impl Model {
 
     pub fn focus_commit_input(&mut self) {
         if self.access_mode == AccessMode::ReadWrite {
+            self.command_palette = None;
+            self.help_open = false;
             self.commit_composer_state = CommitComposerState::Focused;
         }
     }

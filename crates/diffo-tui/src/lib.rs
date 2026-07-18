@@ -173,6 +173,7 @@ impl Renderer {
         render_status(frame, vertical[1], model, self.network_animation_tick);
         render_command_palette(frame, model);
         render_help(frame, model);
+        render_commit_editor(frame, model);
         if model.network_operation().is_some() {
             frame.render_widget(
                 Block::default()
@@ -740,6 +741,131 @@ fn render_help(frame: &mut Frame, model: &Model) {
     );
 }
 
+fn render_commit_editor(frame: &mut Frame, model: &Model) {
+    if !model.commit_input_focused() {
+        return;
+    }
+    let (area, input, commit, cancel, footer) = commit_editor_layout(frame.area());
+    frame.render_widget(Clear, area);
+    frame.render_widget(
+        Block::default()
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(Color::Cyan))
+            .title(" Commit message "),
+        area,
+    );
+
+    let empty = model.commit_message.is_empty();
+    let message = if empty {
+        model
+            .suggested_commit_message()
+            .unwrap_or_else(|| "Type a message…".to_owned())
+    } else {
+        model.commit_message.clone()
+    };
+    let input_block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(Color::LightCyan));
+    let input_inner = input_block.inner(input);
+    frame.render_widget(
+        Paragraph::new(message).style(if empty {
+            Style::default().fg(Color::DarkGray)
+        } else {
+            Style::default().fg(Color::White)
+        }),
+        input_inner,
+    );
+    frame.render_widget(input_block, input);
+
+    let commit_style = if model.primary_action() == diffo_app::PrimaryAction::Commit
+        && model.primary_action_enabled()
+    {
+        Style::default()
+            .bg(Color::Indexed(24))
+            .fg(Color::White)
+            .add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().fg(Color::DarkGray)
+    };
+    frame.render_widget(
+        Paragraph::new("[ Commit ]")
+            .alignment(Alignment::Center)
+            .style(commit_style),
+        commit,
+    );
+    frame.render_widget(
+        Paragraph::new("[ Cancel ]")
+            .alignment(Alignment::Center)
+            .style(Style::default().fg(Color::White)),
+        cancel,
+    );
+    frame.render_widget(
+        Paragraph::new("Enter: commit · Esc: cancel · click outside: close")
+            .alignment(Alignment::Center)
+            .style(Style::default().fg(Color::DarkGray)),
+        footer,
+    );
+
+    let cursor_offset = model
+        .commit_message
+        .chars()
+        .count()
+        .min(usize::from(input_inner.width.saturating_sub(1)));
+    let cursor_x = input_inner
+        .x
+        .saturating_add(u16::try_from(cursor_offset).unwrap_or(u16::MAX));
+    frame.set_cursor_position((cursor_x, input_inner.y));
+}
+
+fn commit_editor_layout(area: Rect) -> (Rect, Rect, Rect, Rect, Rect) {
+    let width = (area.width.saturating_mul(7) / 10).clamp(34.min(area.width), 84.min(area.width));
+    let height = 11.min(area.height);
+    let modal = Rect::new(
+        area.x + area.width.saturating_sub(width) / 2,
+        area.y + area.height.saturating_sub(height) / 2,
+        width,
+        height,
+    );
+    let inner = modal.inner(ratatui::layout::Margin {
+        vertical: 1,
+        horizontal: 2,
+    });
+    let rows = Layout::vertical([
+        Constraint::Length(3),
+        Constraint::Length(1),
+        Constraint::Length(1),
+        Constraint::Min(0),
+        Constraint::Length(1),
+    ])
+    .split(inner);
+    let buttons =
+        Layout::horizontal([Constraint::Percentage(50), Constraint::Percentage(50)]).split(rows[2]);
+    (modal, rows[0], buttons[0], buttons[1], rows[4])
+}
+
+pub(crate) fn commit_editor_action_at_position(
+    model: &Model,
+    area: Rect,
+    column: u16,
+    row: u16,
+) -> Option<diffo_app::Message> {
+    let (modal, _input, commit, cancel, _footer) = commit_editor_layout(area);
+    let position = (column, row).into();
+    if !modal.contains(position) {
+        return Some(diffo_app::Message::BlurCommitInput);
+    }
+    if cancel.contains(position) {
+        return Some(diffo_app::Message::BlurCommitInput);
+    }
+    if commit.contains(position)
+        && model.primary_action() == diffo_app::PrimaryAction::Commit
+        && model.primary_action_enabled()
+    {
+        return Some(diffo_app::Message::ExecutePrimaryAction);
+    }
+    None
+}
+
 fn help_layout(area: Rect) -> Rect {
     let width = (area.width.saturating_mul(4) / 5).clamp(40.min(area.width), 90.min(area.width));
     let top = area.y.saturating_add(area.height.saturating_mul(10) / 100);
@@ -1047,12 +1173,7 @@ fn render_commit_composer(frame: &mut Frame, area: Rect, model: &Model) {
             .block(
                 Block::default()
                     .borders(Borders::ALL)
-                    .title(" Commit message ")
-                    .border_style(if model.commit_input_focused() {
-                        Style::default().fg(Color::Cyan)
-                    } else {
-                        Style::default()
-                    }),
+                    .title(" Commit message · click to edit "),
             ),
         sections[0],
     );

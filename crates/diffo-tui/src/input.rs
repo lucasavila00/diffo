@@ -4,8 +4,8 @@ use diffo_core::AccessMode;
 use ratatui::layout::Rect;
 
 use crate::{
-    commit_action_at_position, file_action_at_position, file_at_position, file_pane_percent_at,
-    is_file_pane_splitter_at,
+    commit_action_at_position, commit_editor_action_at_position, file_action_at_position,
+    file_at_position, file_pane_percent_at, is_file_pane_splitter_at,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -239,19 +239,30 @@ pub fn map_event(event: &Event, model: &Model, area: Rect) -> Option<Message> {
     if model.command_palette.is_some() {
         return map_command_palette_event(event);
     }
-    if model.commit_input_focused()
-        && let Event::Key(key) = event
-        && key.kind == KeyEventKind::Press
-    {
-        if key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL) {
-            return Some(Message::Quit);
+    if model.commit_input_focused() {
+        if let Event::Key(key) = event
+            && key.kind == KeyEventKind::Press
+        {
+            if key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL) {
+                return Some(Message::Quit);
+            }
+            return match key.code {
+                KeyCode::Esc => Some(Message::BlurCommitInput),
+                KeyCode::Enter => Some(Message::ExecutePrimaryAction),
+                KeyCode::Backspace => Some(Message::CommitMessageBackspace),
+                KeyCode::Char(character)
+                    if !key
+                        .modifiers
+                        .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT) =>
+                {
+                    Some(Message::CommitMessageInput(character))
+                }
+                _ => None,
+            };
         }
-        return match key.code {
-            KeyCode::Esc => Some(Message::BlurCommitInput),
-            KeyCode::Enter => Some(Message::ExecutePrimaryAction),
-            KeyCode::Backspace => Some(Message::CommitMessageBackspace),
-            KeyCode::Char(character) if !key.modifiers.contains(KeyModifiers::CONTROL) => {
-                Some(Message::CommitMessageInput(character))
+        return match event {
+            Event::Mouse(mouse) if mouse.kind == MouseEventKind::Down(MouseButton::Left) => {
+                commit_editor_action_at_position(model, area, mouse.column, mouse.row)
             }
             _ => None,
         };
@@ -728,7 +739,53 @@ mod tests {
         model.commit_message_input('x');
         assert_eq!(
             map_event(&click(2, 3), &model, area),
+            Some(Message::BlurCommitInput),
+            "a click outside the modal closes it"
+        );
+        model.blur_commit_input();
+        assert_eq!(
+            map_event(&click(2, 3), &model, area),
             Some(Message::ExecutePrimaryAction)
+        );
+    }
+
+    #[test]
+    fn commit_editor_captures_mouse_and_keyboard_until_closed() {
+        let mut model = model();
+        model.snapshot.files[0].staged = Some(FileDiff {
+            text: String::new(),
+        });
+        model.focus_commit_input();
+        let area = Rect::new(0, 0, 100, 30);
+        let click = |column, row| {
+            Event::Mouse(MouseEvent {
+                kind: MouseEventKind::Down(MouseButton::Left),
+                column,
+                row,
+                modifiers: KeyModifiers::NONE,
+            })
+        };
+
+        assert_eq!(map_event(&click(50, 11), &model, area), None);
+        assert_eq!(
+            map_event(&click(65, 14), &model, area),
+            Some(Message::BlurCommitInput)
+        );
+        assert_eq!(
+            map_event(
+                &Event::Key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE)),
+                &model,
+                area,
+            ),
+            Some(Message::BlurCommitInput)
+        );
+        assert_eq!(
+            map_event(
+                &Event::Key(KeyEvent::new(KeyCode::Char('s'), KeyModifiers::NONE)),
+                &model,
+                area,
+            ),
+            Some(Message::CommitMessageInput('s'))
         );
     }
 

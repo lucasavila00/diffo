@@ -50,6 +50,10 @@ pub enum Selector {
         action: String,
     },
     SelectedRow(String),
+    DialogAction {
+        dialog: String,
+        action: String,
+    },
 }
 
 impl Selector {
@@ -82,6 +86,14 @@ impl Selector {
     #[must_use]
     pub fn selected_row(text: impl Into<String>) -> Self {
         Self::SelectedRow(text.into())
+    }
+
+    #[must_use]
+    pub fn dialog_action(dialog: impl Into<String>, action: impl Into<String>) -> Self {
+        Self::DialogAction {
+            dialog: dialog.into(),
+            action: action.into(),
+        }
     }
 }
 
@@ -430,6 +442,7 @@ impl DiffoScreen {
                 .filter(|(_, row)| !find_in_row(row, "›").is_empty())
                 .flat_map(|(row, cells)| positions(row, find_in_row(cells, text), text))
                 .collect(),
+            Selector::DialogAction { dialog, action } => find_dialog_action(&cells, dialog, action),
         };
         match matches.as_slice() {
             [] => Ok(None),
@@ -591,6 +604,19 @@ fn find_file_action(
         .skip(panel_row + 1)
         .filter(|(_, row)| !find_in_row(row, path).is_empty())
         .flat_map(|(row, cells)| positions(row, find_in_row(cells, action), action))
+        .collect()
+}
+
+fn find_dialog_action(cells: &[Vec<String>], dialog: &str, action: &str) -> Vec<(u16, u16)> {
+    if find_text(cells, dialog).is_empty() {
+        return Vec::new();
+    }
+    let label = format!("[ {action} ]");
+    cells
+        .iter()
+        .enumerate()
+        .filter(|(_, row)| !find_in_row(row, "[ Cancel ]").is_empty())
+        .flat_map(|(row, cells)| positions(row, find_in_row(cells, &label), &label))
         .collect()
 }
 

@@ -195,7 +195,7 @@ fn commit_composer_commits_then_pushes() -> Result<()> {
     screen
         .click(&Selector::text("Update 1 file"))?
         .type_text("Commit from composer")?
-        .click(&Selector::text("[ Commit ]"))?;
+        .click(&Selector::dialog_action("Commit message", "Commit"))?;
     wait_for("composer commit", || {
         Ok(
             git_output(&repository.worktree, &["log", "-1", "--format=%s"])?
@@ -285,7 +285,7 @@ fn generated_commit_message_commits_staged_changes() -> Result<()> {
     screen
         .wait_for_text("Update 1 file")?
         .wait_for_text("[ Commit ]")?
-        .click(&Selector::text("[ Commit ]"))?;
+        .click(&Selector::dialog_action("Commit message", "Commit"))?;
     wait_for("generated commit message", || {
         Ok(git_output(&repository.worktree, &["log", "-1", "--format=%s"])? == "Update 1 file")
     })?;
@@ -307,13 +307,35 @@ fn commit_input_keeps_focus_across_live_repository_refresh() -> Result<()> {
     screen
         .wait_for_text("new.txt")?
         .type_text("Focus survives refresh")?
-        .click(&Selector::text("[ Commit ]"))?;
+        .click(&Selector::dialog_action("Commit message", "Commit"))?;
 
     wait_for("focused composer commit after refresh", || {
         Ok(
             git_output(&repository.worktree, &["log", "-1", "--format=%s"])?
                 == "Focus survives refresh",
         )
+    })
+}
+
+#[test]
+fn commit_modal_closes_on_outside_click_and_restores_its_draft() -> Result<()> {
+    let repository = TestRepository::new()?;
+    fs::write(repository.worktree.join("tracked.txt"), "staged change\n")?;
+    git(&repository.worktree, &["add", "tracked.txt"])?;
+    let mut screen = repository.screen()?;
+
+    screen
+        .click(&Selector::text("Update 1 file"))?
+        .wait_for_text("Esc: cancel")?
+        .type_text("Draft stays")?
+        .click(&Selector::text("Staged"))?
+        .wait_for_text_gone("Esc: cancel")?
+        .click(&Selector::text("Draft stays"))?
+        .wait_for_text("Esc: cancel")?
+        .press(Key::Enter)?;
+
+    wait_for("restored modal draft commit", || {
+        Ok(git_output(&repository.worktree, &["log", "-1", "--format=%s"])? == "Draft stays")
     })
 }
 

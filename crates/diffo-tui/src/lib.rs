@@ -849,10 +849,10 @@ pub(crate) fn file_action_at_position(
     }
     let panes = horizontal_panes(main_area(area), model.file_pane_percent);
     let groups = file_group_areas(panes[0]);
-    if header_action_contains(groups[0], " Staged ", "[-] Unstage All", column, row) {
+    if header_action_contains(groups[0], " Staged [", column, row) {
         return Some(diffo_app::Message::UnstageAll);
     }
-    if header_action_contains(groups[1], " Changes ", "[+] Stage All", column, row) {
+    if header_action_contains(groups[1], " Changes [", column, row) {
         return Some(diffo_app::Message::StageAll);
     }
     for (group, change_area) in [
@@ -890,13 +890,12 @@ pub(crate) fn file_action_at_position(
     None
 }
 
-fn header_action_contains(area: Rect, prefix: &str, action: &str, column: u16, row: u16) -> bool {
-    let start = area
+fn header_action_contains(area: Rect, prefix: &str, column: u16, row: u16) -> bool {
+    let button = area
         .x
         .saturating_add(1)
         .saturating_add(u16::try_from(prefix.chars().count()).unwrap_or(u16::MAX));
-    let end = start.saturating_add(u16::try_from(action.chars().count()).unwrap_or(u16::MAX));
-    row == area.y && column >= start && column < end.min(area.right().saturating_sub(1))
+    row == area.y && column == button && button < area.right().saturating_sub(1)
 }
 
 pub(crate) fn is_file_pane_splitter_at(

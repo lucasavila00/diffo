@@ -608,7 +608,7 @@ mod tests {
             map_event(
                 &Event::Mouse(MouseEvent {
                     kind: MouseEventKind::Down(MouseButton::Left),
-                    column: 13,
+                    column: 11,
                     row: 15,
                     modifiers: KeyModifiers::NONE,
                 }),
@@ -616,6 +616,20 @@ mod tests {
                 area,
             ),
             Some(Message::StageAll)
+        );
+        assert_eq!(
+            map_event(
+                &Event::Mouse(MouseEvent {
+                    kind: MouseEventKind::Down(MouseButton::Left),
+                    column: 13,
+                    row: 15,
+                    modifiers: KeyModifiers::NONE,
+                }),
+                &model,
+                area,
+            ),
+            None,
+            "the Stage All label must not be clickable"
         );
         assert_eq!(
             map_event(
@@ -629,6 +643,20 @@ mod tests {
                 area,
             ),
             Some(Message::UnstageAll)
+        );
+        assert_eq!(
+            map_event(
+                &Event::Mouse(MouseEvent {
+                    kind: MouseEventKind::Down(MouseButton::Left),
+                    column: 13,
+                    row: 0,
+                    modifiers: KeyModifiers::NONE,
+                }),
+                &model,
+                area,
+            ),
+            None,
+            "the Unstage All label must not be clickable"
         );
     }
 

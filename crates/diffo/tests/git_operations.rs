@@ -92,7 +92,7 @@ fn changes_header_stages_all_files() -> Result<()> {
     let repository = changed_repository()?;
     let mut screen = repository.screen()?;
 
-    screen.click(&Selector::panel_action("Changes", "Stage All"))?;
+    screen.click(&Selector::panel_action("Changes", "+"))?;
 
     wait_for("header action to stage all files", || {
         all_changes_are_staged(&repository.worktree)
@@ -105,7 +105,7 @@ fn staged_header_unstages_all_files() -> Result<()> {
     git(&repository.worktree, &["add", "."])?;
     let mut screen = repository.screen()?;
 
-    screen.click(&Selector::panel_action("Staged", "Unstage All"))?;
+    screen.click(&Selector::panel_action("Staged", "-"))?;
 
     wait_for("header action to unstage all files", || {
         Ok(cached_paths(&repository.worktree)?.is_empty())

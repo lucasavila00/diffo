@@ -56,9 +56,8 @@ use geometry::{
     scrollbar_position_count,
 };
 use overlays::{
-    command_palette_layout, commit_editor_action_at_position, map_file_context_menu_event,
-    render_command_palette, render_commit_editor, render_file_context_menu, render_help,
-    render_toasts, toast_at_position,
+    commit_editor_action_at_position, map_file_context_menu_event, render_commit_editor,
+    render_file_context_menu, render_help, render_toasts, toast_at_position,
 };
 #[cfg(test)]
 use style::{
@@ -75,7 +74,7 @@ use state::{
 pub use diffo_highlight::{
     HIGHLIGHT_LOOKBEHIND_LINES, MAX_HIGHLIGHT_BYTES_PER_SIDE, MAX_HIGHLIGHT_FILE_LINES,
 };
-pub use diffo_ui::{change_kind_style, plain_syntax_spans};
+pub use diffo_ui::{change_kind_style, plain_syntax_spans, terminal_safe_text};
 pub use state::{FramePreparation, Renderer, ViewportTransition};
 
 pub use input::map_event;
@@ -98,7 +97,6 @@ impl Renderer {
         self.render_diff(frame, panes[1], model);
         render_status(frame, areas.status, model, self.network_animation_tick);
         render_toasts(frame, model, area);
-        render_command_palette(frame, model, area);
         render_help(frame, model, area);
         render_commit_editor(frame, model, area);
         render_file_context_menu(frame, model, area);
@@ -228,7 +226,6 @@ impl Renderer {
             return map_file_context_menu_event(event, model, area);
         }
         if !model.commit_input_focused()
-            && model.command_palette.is_none()
             && !model.help_open
             && let Event::Mouse(mouse) = event
             && mouse.kind == MouseEventKind::Down(MouseButton::Left)
@@ -236,22 +233,7 @@ impl Renderer {
         {
             return Some(diffo_app::Message::DismissToast(id));
         }
-        if model.command_palette.is_some() || model.help_open {
-            if let Event::Mouse(mouse) = event
-                && mouse.kind == MouseEventKind::Down(MouseButton::Left)
-            {
-                let (_, results_area) = command_palette_layout(area);
-                let match_count = model
-                    .command_palette
-                    .as_ref()
-                    .map_or(0, |palette| palette.matches().len());
-                if results_area.contains((mouse.column, mouse.row).into()) {
-                    let index = usize::from(mouse.row.saturating_sub(results_area.y));
-                    if index < match_count {
-                        return Some(diffo_app::Message::ExecuteCommand(index));
-                    }
-                }
-            }
+        if model.help_open {
             return input::map_event(event, model, area);
         }
         if let Event::Mouse(mouse) = event {

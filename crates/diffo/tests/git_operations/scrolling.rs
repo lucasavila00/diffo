@@ -67,6 +67,25 @@ fn horizontal_scrollbar_drags_all_the_way_right() -> Result<()> {
 }
 
 #[test]
+fn diff_horizontal_pan_is_terminal_safe_and_reversible() -> Result<()> {
+    let repository = TestRepository::new()?;
+    let line = format!("START_{}\x1b[2JCONTROL_RIGHT_EDGE\n", "x".repeat(100));
+    fs::write(repository.worktree.join("tracked.txt"), line)?;
+    let mut screen = repository.screen()?;
+
+    screen
+        .wait_for_text("START_")?
+        .press_many(Key::Right, 20)?
+        .wait_for_text("␛[2JCONTROL_RIGHT_EDGE")?;
+    let panned = screen.contents();
+    assert!(panned.contains("File Diff"), "{panned}");
+    assert!(panned.contains("1/f1: commands"), "{panned}");
+
+    screen.press_many(Key::Left, 20)?.wait_for_text("START_")?;
+    Ok(())
+}
+
+#[test]
 fn vertical_scrollbar_reaches_its_end_with_the_last_diff_line() -> Result<()> {
     let repository = TestRepository::new()?;
     let contents = numbered_lines(120, false)?;

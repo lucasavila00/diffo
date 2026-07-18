@@ -91,14 +91,7 @@ impl ExplorerModel {
             .iter()
             .map(|file| (file.path.clone(), file.kind))
             .collect::<HashMap<_, _>>();
-        let mut directories = BTreeSet::new();
-        for path in &self.paths {
-            let mut parent = path.parent();
-            while let Some(path) = parent.filter(|path| !path.as_os_str().is_empty()) {
-                directories.insert(path.to_path_buf());
-                parent = path.parent();
-            }
-        }
+        let directories = self.directory_paths();
         let mut entries = directories
             .into_iter()
             .map(|path| TreeEntry {
@@ -125,6 +118,18 @@ impl ExplorerModel {
             .as_ref()
             .and_then(|path| self.visible.iter().position(|entry| &entry.path == path))
             .unwrap_or_else(|| self.selected.min(self.visible.len().saturating_sub(1)));
+    }
+
+    fn directory_paths(&self) -> BTreeSet<PathBuf> {
+        let mut directories = BTreeSet::new();
+        for path in &self.paths {
+            let mut parent = path.parent();
+            while let Some(path) = parent.filter(|path| !path.as_os_str().is_empty()) {
+                directories.insert(path.to_path_buf());
+                parent = path.parent();
+            }
+        }
+        directories
     }
 
     fn ancestors_expanded(&self, path: &Path) -> bool {
@@ -176,6 +181,16 @@ impl ExplorerModel {
         self.rebuild();
     }
 
+    pub(crate) fn collapse_all(&mut self) {
+        self.expanded.clear();
+        self.rebuild();
+    }
+
+    pub(crate) fn expand_all(&mut self) {
+        self.expanded = self.directory_paths().into_iter().collect();
+        self.rebuild();
+    }
+
     pub(crate) fn ensure_tree_selection_visible(&mut self, rows: usize) {
         if rows == 0 {
             self.tree_scroll = 0;
@@ -223,5 +238,10 @@ mod tests {
         assert_eq!(model.visible.len(), 4);
         assert_eq!(model.visible[2].status, Some(ChangeKind::Modified));
         assert_eq!(model.visible[3].status, None);
+
+        model.collapse_all();
+        assert_eq!(model.visible.len(), 2);
+        model.expand_all();
+        assert_eq!(model.visible.len(), 4);
     }
 }

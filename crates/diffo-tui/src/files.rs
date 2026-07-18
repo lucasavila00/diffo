@@ -3,7 +3,7 @@ use super::{
     FileListScroll, FileState, Frame, HeadState, HighlightSpacing, Layout, Line, List, ListItem,
     ListState, Model, Modifier, Paragraph, Rect, RepositorySnapshot, Scrollbar,
     ScrollbarOrientation, ScrollbarState, Span, Style, change_kind_style, file_action_style,
-    horizontal_panes, main_area, network_animation_style,
+    horizontal_panes, main_area, network_animation_style, terminal_safe_text,
 };
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -271,7 +271,7 @@ pub(super) fn file_item(
         ChangeKind::Copied => "C",
         ChangeKind::Conflicted => "U",
     };
-    let label = format!("{marker}  {}", file.path.display());
+    let label = terminal_safe_text(&format!("{marker}  {}", file.path.display()));
     let style = change_kind_style(file.kind, selected);
     if width < 3 {
         return ListItem::new(Line::styled(label, style));

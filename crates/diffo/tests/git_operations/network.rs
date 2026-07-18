@@ -42,6 +42,37 @@ fn palette_search_runs_fetch() -> Result<()> {
 }
 
 #[test]
+fn explorer_palette_runs_the_shared_fetch_command() -> Result<()> {
+    shared_palette_fetch_from_activity(1)
+}
+
+#[test]
+fn search_palette_runs_the_shared_fetch_command() -> Result<()> {
+    shared_palette_fetch_from_activity(2)
+}
+
+fn shared_palette_fetch_from_activity(activity_tabs: usize) -> Result<()> {
+    let repository = TestRepository::new()?;
+    let remote_commit = repository.commit_remote("remote.txt", "remote\n", "Remote commit")?;
+    let mut screen = repository.screen_with_network_delay()?;
+
+    screen
+        .press_many(Key::Tab, activity_tabs)?
+        .press(Key::Char('1'))?
+        .wait_for_text("Command Palette")?
+        .type_text("fetch")?
+        .press(Key::Enter)?
+        .wait_for_text_gone("Command Palette")?;
+    wait_for("shared fetch command to update origin", || {
+        Ok(git_output(&repository.worktree, &["rev-parse", "origin/HEAD"])? == remote_commit)
+    })?;
+    screen
+        .press_many(Key::Tab, 3_usize.saturating_sub(activity_tabs))?
+        .wait_for_text("Fetched 1 ref")?;
+    Ok(())
+}
+
+#[test]
 fn palette_search_runs_pull() -> Result<()> {
     let repository = TestRepository::new()?;
     repository.commit_remote("remote.txt", "remote\n", "Remote commit")?;

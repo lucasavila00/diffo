@@ -20,9 +20,9 @@ use ratatui::{
 };
 
 use super::{
-    Renderer, command_palette_layout, contrast_ratio, contrasting_foreground, diff_background,
-    diff_background_rgb, diff_file_lines, file_kind_style, overview_position, row_style,
-    scrollbar_position_count, should_syntax_highlight, status_line,
+    Renderer, contrast_ratio, contrasting_foreground, diff_background, diff_background_rgb,
+    diff_file_lines, file_kind_style, overview_position, row_style, scrollbar_position_count,
+    should_syntax_highlight, status_line,
 };
 
 #[test]
@@ -1021,55 +1021,6 @@ fn passive_mouse_movement_does_not_change_hunk_buttons_or_request_actions() {
         terminal.backend().buffer(),
         &before_movement,
         "passive movement must produce zero changed terminal cells"
-    );
-}
-
-#[test]
-fn renders_command_palette_over_the_diff() {
-    let mut model = model();
-    model.open_command_palette();
-    let mut renderer = Renderer::new();
-    let backend = TestBackend::new(100, 30);
-    let mut terminal = Terminal::new(backend).unwrap();
-
-    terminal
-        .draw(|frame| renderer.render(frame, &model))
-        .unwrap();
-
-    let screen =
-        terminal
-            .backend()
-            .buffer()
-            .content
-            .iter()
-            .fold(String::new(), |mut output, cell| {
-                output.push_str(cell.symbol());
-                output
-            });
-    assert!(screen.contains("Command Palette"));
-    assert!(screen.contains("Git: Pull"));
-    assert!(screen.contains("esc close"));
-}
-
-#[test]
-fn command_palette_has_fixed_top_and_mouse_execution() {
-    let mut model = model();
-    model.open_command_palette();
-    let area = Rect::new(0, 0, 100, 30);
-    let (palette_area, results_area) = command_palette_layout(area);
-    assert_eq!(palette_area.y, 6);
-    assert_eq!(palette_area.height, 18);
-
-    let click = Event::Mouse(MouseEvent {
-        kind: MouseEventKind::Down(MouseButton::Left),
-        column: results_area.x,
-        row: results_area.y.saturating_add(1),
-        modifiers: KeyModifiers::NONE,
-    });
-    let mut renderer = Renderer::new();
-    assert_eq!(
-        renderer.map_event(&click, &model, area),
-        Some(diffo_app::Message::ExecuteCommand(1))
     );
 }
 

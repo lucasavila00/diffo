@@ -2,6 +2,7 @@
 members = [
     "crates/diffo",
     "crates/diffo-app",
+    "crates/diffo-command",
     "crates/diffo-core",
     "crates/diffo-diff",
     "crates/diffo-e2e",
@@ -26,6 +27,7 @@ anyhow = "1.0"
 base64 = "0.22"
 crossterm = "0.29"
 diffo-core = { path = "crates/diffo-core" }
+diffo-command = { path = "crates/diffo-command" }
 diffo-diff = { path = "crates/diffo-diff" }
 diffo-explorer = { path = "crates/diffo-explorer" }
 diffo-app = { path = "crates/diffo-app" }

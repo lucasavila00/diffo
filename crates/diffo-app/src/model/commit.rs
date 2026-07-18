@@ -5,7 +5,6 @@ use super::{
 
 impl Model {
     pub fn focus_commit_input(&mut self) {
-        self.command_palette = None;
         self.help_open = false;
         self.commit_composer_state = CommitComposerState::Focused;
     }

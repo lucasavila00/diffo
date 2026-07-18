@@ -25,6 +25,26 @@ fn tab_cycles_activities_and_restores_diff_overlay_state() -> Result<()> {
 }
 
 #[test]
+fn activity_palettes_share_git_commands_and_keep_specific_catalogs_separate() -> Result<()> {
+    let repository = changed_repository()?;
+    let mut screen = repository.screen()?;
+
+    screen
+        .press(Key::Char('1'))?
+        .wait_for_text("Git: Fetch")?
+        .wait_for_text_gone("Explorer: Collapse All Folders")?
+        .press(Key::Tab)?
+        .press(Key::Char('1'))?
+        .wait_for_text("Git: Fetch")?
+        .wait_for_text("Explorer: Collapse All Folders")?
+        .press(Key::Tab)?
+        .press(Key::Char('1'))?
+        .wait_for_text("Git: Fetch")?
+        .wait_for_text_gone("Explorer: Collapse All Folders")?;
+    Ok(())
+}
+
+#[test]
 fn activity_bar_clicks_select_tools_and_diff_returns_intact() -> Result<()> {
     let repository = changed_repository()?;
     let mut screen = repository.screen()?;
@@ -73,5 +93,30 @@ fn delayed_explorer_open_commits_only_the_latest_syntax_ready_file() -> Result<(
         .wait_for_text("EXPLORER_BRAVO")?;
 
     assert!(!screen.contents().contains("EXPLORER_ALPHA"));
+    Ok(())
+}
+
+#[test]
+fn explorer_horizontal_pan_is_bounded_and_terminal_safe() -> Result<()> {
+    let repository = TestRepository::new()?;
+    let line = format!("START_{}\x1b[2JCONTROL_RIGHT_EDGE\n", "x".repeat(100));
+    fs::write(repository.worktree.join("tracked.txt"), line)?;
+    git(&repository.worktree, &["add", "tracked.txt"])?;
+    git(
+        &repository.worktree,
+        &["commit", "-m", "Add wide control fixture"],
+    )?;
+    let mut screen = repository.screen()?;
+
+    screen
+        .press(Key::Tab)?
+        .wait_for_text("START_")?
+        .press_many(Key::Right, 20)?
+        .wait_for_text("␛[2JCONTROL_RIGHT_EDGE")?;
+    let panned = screen.contents();
+    assert!(panned.contains("Explorer"), "{panned}");
+    assert!(panned.contains("1/f1: commands"), "{panned}");
+
+    screen.press_many(Key::Left, 20)?.wait_for_text("START_")?;
     Ok(())
 }

@@ -9,6 +9,7 @@ version.workspace = true
 [dependencies]
 crossterm.workspace = true
 diffo-app.workspace = true
+diffo-command.workspace = true
 diffo-core.workspace = true
 diffo-explorer.workspace = true
 diffo-tui.workspace = true

@@ -1,9 +1,7 @@
-mod command_palette;
 mod model;
 
 use diffo_core::{OperationFailure, OperationResult, RepositoryAction, RepositorySnapshot};
 
-pub use command_palette::{Command, CommandId, CommandPalette};
 pub use model::{
     ChangeArea, DiffViewMode, FileContextMenu, FileKey, FileListScroll, Model, NetworkOperation,
     PrimaryAction, Toast, ToastKind,
@@ -12,17 +10,8 @@ pub use model::{
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Message {
     Quit,
-    OpenCommandPalette,
-    CloseCommandPalette,
     ToggleHelp,
     CloseHelp,
-    CommandPaletteInput(char),
-    CommandPaletteBackspace,
-    CommandPaletteSelectPrevious,
-    CommandPaletteSelectNext,
-    CommandPaletteSelect(usize),
-    ExecuteCommand(usize),
-    ExecuteSelectedCommand,
     SelectPreviousFile,
     SelectNextFile,
     SelectFirstFile,
@@ -83,22 +72,8 @@ pub enum Effect {
 pub fn update(model: &mut Model, message: Message) -> Option<Effect> {
     match message {
         Message::Quit => model.should_quit = true,
-        Message::OpenCommandPalette => model.open_command_palette(),
-        Message::CloseCommandPalette => model.close_command_palette(),
         Message::ToggleHelp => model.toggle_help(),
         Message::CloseHelp => model.close_help(),
-        Message::CommandPaletteInput(character) => model.command_palette_input(character),
-        Message::CommandPaletteBackspace => model.command_palette_backspace(),
-        Message::CommandPaletteSelectPrevious => model.command_palette_select_previous(),
-        Message::CommandPaletteSelectNext => model.command_palette_select_next(),
-        Message::CommandPaletteSelect(index) => model.command_palette_select(index),
-        Message::ExecuteCommand(index) => {
-            model.command_palette_select(index);
-            return model.execute_selected_command().map(Effect::Repository);
-        }
-        Message::ExecuteSelectedCommand => {
-            return model.execute_selected_command().map(Effect::Repository);
-        }
         Message::SelectPreviousFile => model.select_previous(),
         Message::SelectNextFile => model.select_next(),
         Message::SelectFirstFile => model.select_first(),

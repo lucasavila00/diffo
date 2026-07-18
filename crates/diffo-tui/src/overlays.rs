@@ -1,7 +1,7 @@
 use super::{
-    Alignment, Block, Borders, Cell, Clear, Color, Constraint, Event, Frame, Layout, List,
-    ListItem, ListState, Model, Modifier, MouseButton, MouseEventKind, Paragraph, Rect, Row, Style,
-    Table, ToastKind, file_at_position, input,
+    Alignment, Block, Borders, Cell, Clear, Color, Constraint, Event, Frame, Layout, List, Model,
+    Modifier, MouseButton, MouseEventKind, Paragraph, Rect, Row, Style, Table, ToastKind,
+    file_at_position, input,
 };
 
 pub(super) fn file_context_menu_area(model: &Model, area: Rect) -> Option<Rect> {
@@ -61,63 +61,6 @@ pub(super) fn render_file_context_menu(frame: &mut Frame, model: &Model, content
                 .border_style(Style::default().fg(Color::Cyan)),
         ),
         area,
-    );
-}
-
-pub(super) fn render_command_palette(frame: &mut Frame, model: &Model, content_area: Rect) {
-    let Some(palette) = model.command_palette.as_ref() else {
-        return;
-    };
-    let commands = palette.matches();
-    let (area, results_area) = command_palette_layout(content_area);
-    frame.render_widget(Clear, area);
-    frame.render_widget(
-        Block::default()
-            .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::Cyan))
-            .title(" Command Palette "),
-        area,
-    );
-    let inner = area.inner(ratatui::layout::Margin {
-        vertical: 1,
-        horizontal: 2,
-    });
-    let sections = command_palette_sections(inner);
-    frame.render_widget(
-        Paragraph::new(format!("> {}█", palette.query)).style(
-            Style::default()
-                .fg(Color::White)
-                .add_modifier(Modifier::BOLD),
-        ),
-        sections[0],
-    );
-    frame.render_widget(
-        Paragraph::new("─".repeat(usize::from(sections[1].width)))
-            .style(Style::default().fg(Color::DarkGray)),
-        sections[1],
-    );
-    let items = if commands.is_empty() {
-        vec![ListItem::new("No matching commands").style(Style::default().fg(Color::DarkGray))]
-    } else {
-        commands
-            .iter()
-            .map(|command| ListItem::new(command.label))
-            .collect()
-    };
-    let list = List::new(items).highlight_symbol("› ").highlight_style(
-        Style::default()
-            .bg(Color::Indexed(24))
-            .fg(Color::White)
-            .add_modifier(Modifier::BOLD),
-    );
-    let mut state = ListState::default().with_selected(
-        (!commands.is_empty()).then_some(palette.selected.min(commands.len().saturating_sub(1))),
-    );
-    frame.render_stateful_widget(list, results_area, &mut state);
-    frame.render_widget(
-        Paragraph::new("type to search · ↑↓ select · enter run · esc close")
-            .style(Style::default().fg(Color::DarkGray)),
-        sections[3],
     );
 }
 
@@ -373,32 +316,4 @@ pub(super) fn help_layout(area: Rect) -> Rect {
         width,
         height,
     )
-}
-
-pub(super) fn command_palette_layout(area: Rect) -> (Rect, Rect) {
-    let width = (area.width.saturating_mul(7) / 10).clamp(30.min(area.width), 80.min(area.width));
-    let top = area.y.saturating_add(area.height.saturating_mul(20) / 100);
-    let height = 18.min(area.bottom().saturating_sub(top));
-    let palette = Rect::new(
-        area.x + area.width.saturating_sub(width) / 2,
-        top,
-        width,
-        height,
-    );
-    let inner = palette.inner(ratatui::layout::Margin {
-        vertical: 1,
-        horizontal: 2,
-    });
-    let sections = command_palette_sections(inner);
-    (palette, sections[2])
-}
-
-pub(super) fn command_palette_sections(area: Rect) -> std::rc::Rc<[Rect]> {
-    Layout::vertical([
-        Constraint::Length(1),
-        Constraint::Length(1),
-        Constraint::Min(1),
-        Constraint::Length(1),
-    ])
-    .split(area)
 }

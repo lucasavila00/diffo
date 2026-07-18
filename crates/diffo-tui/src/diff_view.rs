@@ -2,7 +2,7 @@ use super::{
     Alignment, Block, Borders, Color, DiffViewMode, DiffViewportMetrics, Frame, HunkButtonMetrics,
     Line, Model, Paragraph, Rect, Renderer, Scrollbar, ScrollbarMetrics, ScrollbarOrientation,
     ScrollbarState, Style, inline_line, overview_position, resize_border_style,
-    scrollbar_position_count, side_by_side_line,
+    scrollbar_position_count, side_by_side_line, terminal_safe_text,
 };
 
 pub(super) fn render_hunk_button(frame: &mut Frame, area: Rect, label: &str) {
@@ -190,7 +190,7 @@ impl Renderer {
                 .lines()
                 .skip(first_row)
                 .take(row_count)
-                .map(|line| Line::raw(line.to_owned()))
+                .map(|line| Line::raw(terminal_safe_text(line)))
                 .collect();
         }
         let Some(cache) = self.highlighted.as_ref() else {

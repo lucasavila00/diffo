@@ -27,8 +27,6 @@ fn model() -> Model {
 fn maps_fixed_key_bindings() {
     let cases = [
         (KeyCode::Char('q'), Message::Quit),
-        (KeyCode::Char('1'), Message::OpenCommandPalette),
-        (KeyCode::F(1), Message::OpenCommandPalette),
         (KeyCode::Char('2'), Message::ToggleHelp),
         (KeyCode::F(2), Message::ToggleHelp),
         (KeyCode::Esc, Message::Quit),
@@ -154,30 +152,6 @@ fn maps_control_c_and_file_click() {
             19,
         ))
     );
-}
-
-#[test]
-fn command_palette_captures_keys_and_escape_closes_it() {
-    let mut model = model();
-    model.open_command_palette();
-
-    for (key, expected) in [
-        (KeyCode::Char('q'), Message::CommandPaletteInput('q')),
-        (KeyCode::Backspace, Message::CommandPaletteBackspace),
-        (KeyCode::Up, Message::CommandPaletteSelectPrevious),
-        (KeyCode::Down, Message::CommandPaletteSelectNext),
-        (KeyCode::Enter, Message::ExecuteSelectedCommand),
-        (KeyCode::Esc, Message::CloseCommandPalette),
-    ] {
-        assert_eq!(
-            map_event(
-                &Event::Key(KeyEvent::new(key, KeyModifiers::NONE)),
-                &model,
-                Rect::default()
-            ),
-            Some(expected)
-        );
-    }
 }
 
 #[test]

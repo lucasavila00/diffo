@@ -4,11 +4,8 @@ use diffo_core::{
     FailureKind, OperationFailure, OperationResult, RepositoryAction, RepositorySnapshot,
 };
 
-use crate::{CommandId, CommandPalette};
-
 mod commit;
 mod navigation;
-mod palette;
 mod repository;
 mod staging;
 mod toast;
@@ -168,7 +165,6 @@ pub struct Model {
     pub file_list_scroll: FileListScroll,
     pub file_pane_percent: u16,
     pub resizing_file_pane: bool,
-    pub command_palette: Option<CommandPalette>,
     pub help_open: bool,
     pub file_context_menu: Option<FileContextMenu>,
     pub commit_message: String,
@@ -202,7 +198,6 @@ impl Model {
             file_list_scroll: FileListScroll::default(),
             file_pane_percent: 25,
             resizing_file_pane: false,
-            command_palette: None,
             help_open: false,
             file_context_menu: None,
             commit_message: String::new(),
@@ -215,6 +210,14 @@ impl Model {
             next_toast_id: 1,
             pending_file_action: None,
         }
+    }
+
+    pub fn toggle_help(&mut self) {
+        self.help_open = !self.help_open;
+    }
+
+    pub fn close_help(&mut self) {
+        self.help_open = false;
     }
 }
 

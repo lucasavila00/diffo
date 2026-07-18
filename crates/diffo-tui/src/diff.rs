@@ -3,10 +3,10 @@ use super::{
     HIGHLIGHT_LOOKBEHIND_LINES, HIGHLIGHT_PREFETCH_VIEWPORTS, HighlightCache, HighlightedDiff,
     HunkButtonMetrics, MAX_HIGHLIGHT_BYTES_PER_SIDE, MAX_HIGHLIGHT_FILE_LINES, MAX_SYNC_BYTES,
     MAX_SYNC_LINES, PREPARED_BUFFER_CACHE_SIZE, PrepareCommit, PrepareOutcome, PrepareRequest,
-    ProjectionOptions, RenderLine, Renderer, RowKind, ScrollAnchor, ScrollbarMetrics,
+    ProjectionOptions, RenderLine, Renderer, RowKind, ScrollAnchor, ScrollbarMetrics, Span,
     SyntaxHighlighter, TrySendError, env, inline_change_starts, inline_rows_with_options,
     parse_unified_patch, side_by_side_change_starts, side_by_side_rows_with_options, sync_channel,
-    thread,
+    terminal_safe_text, thread,
 };
 use diffo_diff::SideBySideRow;
 use diffo_highlight::{HighlightWindowRequest, LineRange};
@@ -502,7 +502,11 @@ impl Renderer {
                 .iter()
                 .skip(first_row)
                 .take(row_count)
-                .map(|row| row.text.chars().count().saturating_add(7))
+                .map(|row| {
+                    Span::raw(terminal_safe_text(&row.text))
+                        .width()
+                        .saturating_add(7)
+                })
                 .max()
                 .unwrap_or(0)
         } else if let Some(failed) = self.failed.as_ref() {
@@ -511,7 +515,7 @@ impl Renderer {
                 .lines()
                 .skip(first_row)
                 .take(row_count)
-                .map(|line| line.chars().count())
+                .map(|line| Span::raw(terminal_safe_text(line)).width())
                 .max()
                 .unwrap_or(0)
         } else {

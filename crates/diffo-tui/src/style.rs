@@ -1,6 +1,6 @@
 use super::{
     ChangeArea, Color, HighlightedDiff, HighlightedLine, Line, Modifier, RenderLine, Rgb, RowKind,
-    SideBySideRow, Span, Style, StyledSpan,
+    SideBySideRow, Span, Style, StyledSpan, terminal_safe_text,
 };
 
 #[must_use]
@@ -29,7 +29,7 @@ pub(super) fn inline_line(
         .map_or_else(|| "    ".to_owned(), |number| format!("{number:>4}"));
     if matches!(row.kind, RowKind::Header | RowKind::Meta) {
         return Line::styled(
-            format!("{number} {prefix} {}", row.text),
+            format!("{number} {prefix} {}", terminal_safe_text(&row.text)),
             row_style(row.kind),
         );
     }
@@ -87,7 +87,7 @@ pub(super) fn code_spans(row: &RenderLine, highlighted: &HighlightedDiff) -> Vec
     });
     let background = diff_background(row.kind);
     highlighted_line.map_or_else(
-        || vec![Span::styled(row.text.clone(), background)],
+        || vec![Span::styled(terminal_safe_text(&row.text), background)],
         |line| syntax_spans(line, background, row.kind),
     )
 }
@@ -101,7 +101,7 @@ pub(super) fn syntax_spans(
         .iter()
         .map(|span| {
             Span::styled(
-                span.text.clone(),
+                terminal_safe_text(&span.text),
                 syntax_style(span, row_kind).patch(background),
             )
         })
@@ -179,8 +179,15 @@ pub(super) fn clip_and_pad(
         if remaining == 0 {
             break;
         }
-        let text = span.content.chars().take(remaining).collect::<String>();
-        remaining = remaining.saturating_sub(text.chars().count());
+        let mut text = String::new();
+        for character in span.content.chars() {
+            let character_width = Span::raw(character.to_string()).width();
+            if character_width > remaining {
+                break;
+            }
+            text.push(character);
+            remaining = remaining.saturating_sub(character_width);
+        }
         clipped.push(Span::styled(text, span.style));
     }
     if remaining > 0 {
@@ -190,10 +197,7 @@ pub(super) fn clip_and_pad(
 }
 
 pub(super) fn pad_to_width(spans: &mut Vec<Span<'static>>, width: usize, padding_style: Style) {
-    let used = spans
-        .iter()
-        .map(|span| span.content.chars().count())
-        .sum::<usize>();
+    let used = spans.iter().map(Span::width).sum::<usize>();
     if used < width {
         spans.push(Span::styled(" ".repeat(width - used), padding_style));
     }

@@ -5,6 +5,18 @@ use super::{
 };
 
 impl Model {
+    pub fn start_repository_action(
+        &mut self,
+        action: RepositoryAction,
+    ) -> Option<RepositoryAction> {
+        if self.pending_operation.is_some() {
+            return None;
+        }
+        self.error = None;
+        self.pending_operation = Some(action.clone());
+        Some(action)
+    }
+
     pub fn repository_changed(&mut self, snapshot: RepositorySnapshot) {
         self.install_snapshot(snapshot, None);
     }

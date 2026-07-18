@@ -1,0 +1,14 @@
+[package]
+name = "diffo-command"
+description = "Reusable command palette model, input, and view for Diffo tools"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+version.workspace = true
+
+[dependencies]
+crossterm.workspace = true
+ratatui.workspace = true
+
+[lints]
+workspace = true

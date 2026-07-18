@@ -245,7 +245,6 @@ dependencies = [
  "crossterm 0.29.0",
  "diffo-app",
  "diffo-core",
- "diffo-diff",
  "diffo-e2e",
  "diffo-explorer",
  "diffo-git",
@@ -264,6 +263,14 @@ name = "diffo-app"
 version = "0.1.0"
 dependencies = [
  "diffo-core",
+]
+
+[[package]]
+name = "diffo-command"
+version = "0.1.0"
+dependencies = [
+ "crossterm 0.29.0",
+ "ratatui",
 ]
 
 [[package]]
@@ -302,6 +309,7 @@ name = "diffo-explorer"
 version = "0.1.0"
 dependencies = [
  "crossterm 0.29.0",
+ "diffo-command",
  "diffo-core",
  "diffo-diff",
  "diffo-highlight",
@@ -363,6 +371,7 @@ version = "0.1.0"
 dependencies = [
  "crossterm 0.29.0",
  "diffo-app",
+ "diffo-command",
  "diffo-core",
  "diffo-explorer",
  "diffo-tui",

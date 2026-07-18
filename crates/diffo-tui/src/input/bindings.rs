@@ -35,14 +35,6 @@ pub(super) struct KeyBinding {
 pub(super) static KEY_BINDINGS: &[KeyBinding] = &[
     KeyBinding {
         keys: &[
-            KeyChord::plain(KeyCode::Char('1')),
-            KeyChord::plain(KeyCode::F(1)),
-        ],
-        message: Message::OpenCommandPalette,
-        description: "Open command palette",
-    },
-    KeyBinding {
-        keys: &[
             KeyChord::plain(KeyCode::Char('2')),
             KeyChord::plain(KeyCode::F(2)),
         ],
@@ -151,9 +143,8 @@ pub(super) static KEY_BINDINGS: &[KeyBinding] = &[
 ];
 
 pub(crate) fn help_rows() -> Vec<(String, &'static str)> {
-    KEY_BINDINGS
-        .iter()
-        .map(|binding| {
+    std::iter::once(("1 / F1".to_owned(), "Open command palette"))
+        .chain(KEY_BINDINGS.iter().map(|binding| {
             let keys = binding
                 .keys
                 .iter()
@@ -161,7 +152,7 @@ pub(crate) fn help_rows() -> Vec<(String, &'static str)> {
                 .collect::<Vec<_>>()
                 .join(" / ");
             (keys, binding.description)
-        })
+        }))
         .collect()
 }
 

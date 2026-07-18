@@ -29,9 +29,6 @@ pub fn map_event(event: &Event, model: &Model, area: Rect) -> Option<Message> {
         }
         return keyboard::map_help_event(event);
     }
-    if model.command_palette.is_some() {
-        return keyboard::map_command_palette_event(event);
-    }
     if model.commit_input_focused() {
         return match event {
             Event::Key(key) => keyboard::map_commit_key(key),

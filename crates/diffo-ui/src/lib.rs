@@ -57,7 +57,7 @@ pub fn plain_syntax_spans(line: &HighlightedLine) -> Vec<Span<'static>> {
                 modifiers.insert(Modifier::UNDERLINED);
             }
             Span::styled(
-                span.text.clone(),
+                terminal_safe_text(&span.text),
                 Style::default()
                     .fg(Color::Rgb(
                         span.foreground.red,
@@ -68,6 +68,26 @@ pub fn plain_syntax_spans(line: &HighlightedLine) -> Vec<Span<'static>> {
             )
         })
         .collect()
+}
+
+/// Replaces characters that terminals interpret as cursor or screen commands.
+///
+/// Tabs are expanded to a fixed width so horizontal offsets stay deterministic.
+#[must_use]
+pub fn terminal_safe_text(text: &str) -> String {
+    let mut safe = String::with_capacity(text.len());
+    for character in text.chars() {
+        match character {
+            '\t' => safe.push_str("    "),
+            '\u{0000}'..='\u{001f}' => {
+                safe.push(char::from_u32(u32::from(character) + 0x2400).unwrap_or('\u{fffd}'));
+            }
+            '\u{007f}' => safe.push('\u{2421}'),
+            character if character.is_control() => safe.push('\u{fffd}'),
+            character => safe.push(character),
+        }
+    }
+    safe
 }
 
 #[cfg(test)]
@@ -116,5 +136,13 @@ mod tests {
         assert!(spans[0].style.add_modifier.contains(Modifier::BOLD));
         assert!(spans[0].style.add_modifier.contains(Modifier::ITALIC));
         assert!(spans[0].style.add_modifier.contains(Modifier::UNDERLINED));
+    }
+
+    #[test]
+    fn terminal_text_makes_control_sequences_visible_and_inert() {
+        let safe = terminal_safe_text("before\t\x1b[2J\x08after\u{0085}");
+
+        assert_eq!(safe, "before    ␛[2J␈after�");
+        assert!(!safe.chars().any(char::is_control));
     }
 }

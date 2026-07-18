@@ -17,6 +17,8 @@ use diffo_highlight::{
     HIGHLIGHT_LOOKBEHIND_LINES, HighlightWindowRequest, LineRange, MAX_HIGHLIGHT_BYTES_PER_SIDE,
     MAX_HIGHLIGHT_FILE_LINES, SyntaxHighlighter,
 };
+use diffo_ui::terminal_safe_text;
+use ratatui::text::Span;
 
 use super::model::{GutterMarker, Viewer};
 
@@ -126,6 +128,7 @@ impl ExplorerWorker {
         let _ = self.requests.send(request);
     }
 
+    #[must_use]
     pub fn try_recv(&self) -> Option<ExplorerOutcome> {
         self.outcomes.try_recv().ok()
     }
@@ -159,10 +162,10 @@ fn prepare_viewer(
             maximum_width: 0,
         };
     };
-    let lines = text.lines().map(str::to_owned).collect::<Vec<_>>();
+    let lines = text.lines().map(terminal_safe_text).collect::<Vec<_>>();
     let maximum_width = lines
         .iter()
-        .map(|line| line.chars().count())
+        .map(|line| Span::raw(line.as_str()).width())
         .max()
         .unwrap_or(0);
     let markers = change_markers(&file.patch, file.deleted, status, &lines);
@@ -420,5 +423,25 @@ mod tests {
         );
         assert!(!at_limit.syntax_eligible);
         assert!(at_limit.highlighted.is_empty());
+    }
+
+    #[test]
+    fn viewer_content_cannot_emit_terminal_control_sequences() {
+        let viewer = prepare_viewer(
+            PathBuf::from("control.txt"),
+            None,
+            ExplorerFile {
+                content: ExplorerFileContent::Text("before\t\x1b[2J\x08after\n".to_owned()),
+                patch: String::new(),
+                deleted: false,
+            },
+            0,
+            20,
+            &SyntaxHighlighter::new(),
+        );
+
+        assert_eq!(viewer.lines, ["before    ␛[2J␈after"]);
+        assert!(!viewer.lines[0].chars().any(char::is_control));
+        assert_eq!(viewer.maximum_width, Span::raw(&viewer.lines[0]).width());
     }
 }

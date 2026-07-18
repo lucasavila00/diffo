@@ -268,9 +268,8 @@ fn edits_commit_message_at_a_preserved_character_cursor() {
 fn queues_replaces_limits_and_dismisses_toasts() {
     let mut app = Model::new(snapshot());
     for updated_refs in 1..=4 {
-        app.open_command_palette();
         assert_eq!(
-            app.execute_selected_command(),
+            app.start_repository_action(RepositoryAction::Fetch),
             Some(RepositoryAction::Fetch)
         );
         app.complete_operation(
@@ -282,9 +281,8 @@ fn queues_replaces_limits_and_dismisses_toasts() {
     assert_eq!(app.toasts.len(), 3);
     assert_eq!(app.toasts[0].title, "Fetched 4 refs");
 
-    app.open_command_palette();
     assert_eq!(
-        app.execute_selected_command(),
+        app.start_repository_action(RepositoryAction::Fetch),
         Some(RepositoryAction::Fetch)
     );
     app.complete_operation(

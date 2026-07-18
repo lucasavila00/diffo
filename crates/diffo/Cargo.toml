@@ -12,7 +12,6 @@ base64.workspace = true
 crossterm.workspace = true
 diffo-app.workspace = true
 diffo-core.workspace = true
-diffo-diff.workspace = true
 diffo-explorer.workspace = true
 diffo-git.workspace = true
 diffo-tui.workspace = true

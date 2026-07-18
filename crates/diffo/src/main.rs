@@ -1,5 +1,4 @@
 use std::{
-    collections::HashMap,
     env, fmt, fs,
     io::{self, Write as _},
     path::Path,
@@ -7,7 +6,7 @@ use std::{
         Arc,
         atomic::{AtomicBool, Ordering},
     },
-    time::{Duration, Instant},
+    time::Duration,
 };
 
 use anyhow::{Context, Result};
@@ -20,17 +19,18 @@ use crossterm::{
     execute,
     terminal::{Clear, ClearType},
 };
-use diffo_app::{Effect, Message, Model, ToastKind, update};
+use diffo_app::ToastKind;
 use diffo_core::{Repository, fixture_source::MutableFixtureRepository};
 use diffo_git::GitRepositorySource;
 use diffo_watch::{RefreshResult, RefreshService};
 use ratatui::{Terminal, backend::CrosstermBackend};
 
 mod frame_trace;
+mod tool_tasks;
 
-use diffo_explorer::ExplorerWorker;
-use diffo_workbench::{Activity, Workbench};
+use diffo_workbench::{Workbench, WorkbenchEffect};
 use frame_trace::{FrameRecord, FrameTracer};
+use tool_tasks::ToolTasks;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct EnableActionMouseCapture;
@@ -92,8 +92,8 @@ fn main() -> Result<()> {
     }
 
     let mut workbench = Workbench::new(snapshot);
-    let explorer_worker = ExplorerWorker::start(Arc::clone(&repository));
-    drain_explorer(&explorer_worker, &mut workbench);
+    let tool_tasks = ToolTasks::start(Arc::clone(&repository));
+    tool_tasks.drain(&mut workbench);
     let mut tracer = FrameTracer::from_environment();
     let mut terminal = ratatui::init();
     execute!(
@@ -108,7 +108,7 @@ fn main() -> Result<()> {
         &shutdown,
         repository.as_ref(),
         refresh.as_ref(),
-        &explorer_worker,
+        &tool_tasks,
         &mut tracer,
     );
     let mouse_result = execute!(terminal.backend_mut(), DisableMouseCapture)
@@ -175,11 +175,10 @@ fn run(
     shutdown: &AtomicBool,
     repository: &dyn Repository,
     refresh: Option<&RefreshService>,
-    explorer_worker: &ExplorerWorker,
+    tool_tasks: &ToolTasks,
     tracer: &mut FrameTracer,
 ) -> Result<()> {
     let mut generation = 0;
-    let mut toast_deadlines = HashMap::new();
     let scroll = (
         workbench.diff_model().diff_scroll,
         workbench.diff_model().diff_horizontal_scroll,
@@ -198,7 +197,7 @@ fn run(
         draw_end_us,
     ));
     while !workbench.should_quit() && !shutdown.load(Ordering::Relaxed) {
-        expire_toasts(workbench.diff_model_mut(), &mut toast_deadlines);
+        workbench.tick();
         let poll_timeout = if workbench.is_preparing()
             || refresh.is_some_and(RefreshService::is_busy)
             || workbench.diff_model().network_operation().is_some()
@@ -224,7 +223,7 @@ fn run(
         if let Some(refresh) = refresh {
             drain_refresh(refresh, workbench, &mut generation);
         }
-        drain_explorer(explorer_worker, workbench);
+        tool_tasks.drain(workbench);
         dispatch_events(&events, terminal, workbench, repository, refresh)?;
         let input_events = events.iter().map(|event| format!("{event:?}")).collect();
         let (preparation, draw_start_us, draw_end_us) = draw_frame(terminal, workbench, tracer)?;
@@ -242,26 +241,6 @@ fn run(
     }
 
     Ok(())
-}
-
-fn expire_toasts(model: &mut Model, deadlines: &mut HashMap<u64, Instant>) {
-    let now = Instant::now();
-    deadlines.retain(|id, _| model.toasts.iter().any(|toast| toast.id == *id));
-    for toast in &model.toasts {
-        if toast.kind != ToastKind::Error {
-            deadlines
-                .entry(toast.id)
-                .or_insert_with(|| now + Duration::from_secs(3));
-        }
-    }
-    let expired = deadlines
-        .iter()
-        .filter_map(|(id, deadline)| (*deadline <= now).then_some(*id))
-        .collect::<Vec<_>>();
-    for id in expired {
-        let _ = update(model, Message::DismissToast(id));
-        deadlines.remove(&id);
-    }
 }
 
 fn draw_frame(
@@ -287,46 +266,26 @@ fn dispatch_events(
 ) -> Result<()> {
     let size = terminal.size()?;
     let area = ratatui::layout::Rect::new(0, 0, size.width, size.height);
-    let content = diffo_workbench::workbench_areas(area).content;
-    let mut scroll = PendingScroll::default();
-    for event in events {
-        if workbench.handle_workbench_event(event, area) {
-            scroll.flush(workbench.diff_model_mut());
-            continue;
-        }
-        if workbench.active() == Activity::Explorer {
-            let _ = workbench.handle_explorer_event(event, content);
-            continue;
-        }
-        if workbench.active() != Activity::Diff {
-            continue;
-        }
-        let Some(message) = workbench.map_diff_event(event, content) else {
-            continue;
-        };
-        if !scroll.push(&message) {
-            scroll.flush(workbench.diff_model_mut());
-            dispatch_message(message, workbench.diff_model_mut(), repository, refresh);
-        }
+    for effect in workbench.handle_events(events, area) {
+        dispatch_effect(effect, workbench, repository, refresh);
     }
-    scroll.flush(workbench.diff_model_mut());
     Ok(())
 }
 
-fn dispatch_message(
-    message: Message,
-    model: &mut Model,
+fn dispatch_effect(
+    effect: WorkbenchEffect,
+    workbench: &mut Workbench,
     repository: &dyn Repository,
     refresh: Option<&RefreshService>,
 ) {
-    if let Some(effect) = update(model, message) {
-        match effect {
-            Effect::Repository(action) if refresh.is_some() => {
-                refresh.expect("checked above").apply(action);
-            }
-            Effect::CopyPath { path, absolute } => match copy_path_to_clipboard(&path, absolute) {
+    match effect {
+        WorkbenchEffect::Repository(action) if refresh.is_some() => {
+            refresh.expect("checked above").apply(action);
+        }
+        WorkbenchEffect::CopyPath { path, absolute } => {
+            match copy_path_to_clipboard(&path, absolute) {
                 Ok(copied) => {
-                    model.show_toast(
+                    workbench.show_toast(
                         ToastKind::Success,
                         format!(
                             "Copied {} path: {copied}",
@@ -335,76 +294,30 @@ fn dispatch_message(
                     );
                 }
                 Err(error) => {
-                    model.show_toast(ToastKind::Error, format!("Could not copy path: {error}"));
+                    workbench.show_toast(ToastKind::Error, format!("Could not copy path: {error}"));
                 }
-            },
-            effect @ Effect::Repository(_) => execute_effect(repository, model, effect),
-        }
-    }
-}
-
-#[derive(Default)]
-struct PendingScroll {
-    vertical: i64,
-    horizontal: i64,
-}
-
-impl PendingScroll {
-    fn push(&mut self, message: &Message) -> bool {
-        match message {
-            Message::ScrollDiffUp => self.vertical = self.vertical.saturating_sub(4),
-            Message::ScrollDiffDown => self.vertical = self.vertical.saturating_add(4),
-            Message::ScrollDiffPageUp(lines) => {
-                self.vertical = self
-                    .vertical
-                    .saturating_sub(i64::try_from(*lines).unwrap_or(i64::MAX));
             }
-            Message::ScrollDiffPageDown(lines) => {
-                self.vertical = self
-                    .vertical
-                    .saturating_add(i64::try_from(*lines).unwrap_or(i64::MAX));
-            }
-            Message::ScrollDiffBy(lines) => {
-                self.vertical = self.vertical.saturating_add(*lines);
-            }
-            Message::ScrollDiffLeft => self.horizontal = self.horizontal.saturating_sub(4),
-            Message::ScrollDiffRight => self.horizontal = self.horizontal.saturating_add(4),
-            Message::ScrollDiffHorizontalBy(columns) => {
-                self.horizontal = self.horizontal.saturating_add(*columns);
-            }
-            _ => return false,
         }
-        true
-    }
-
-    fn flush(&mut self, model: &mut Model) {
-        if self.vertical != 0 {
-            let _ = update(model, Message::ScrollDiffBy(self.vertical));
-        }
-        if self.horizontal != 0 {
-            let _ = update(model, Message::ScrollDiffHorizontalBy(self.horizontal));
-        }
-        *self = Self::default();
+        WorkbenchEffect::Repository(action) => execute_effect(repository, workbench, action),
     }
 }
 
 fn drain_refresh(refresh: &RefreshService, workbench: &mut Workbench, generation: &mut u64) {
     while let Ok(Some(result)) = refresh.try_recv() {
-        let message = match result {
+        match result {
             RefreshResult::Snapshot {
                 generation: next,
                 snapshot,
             } if next > *generation => {
                 *generation = next;
-                workbench.explorer_repository_changed(snapshot.clone());
-                Some(Message::SnapshotLoaded(snapshot))
+                workbench.repository_changed(snapshot);
             }
             RefreshResult::Error {
                 generation: next,
                 message,
             } if next > *generation => {
                 *generation = next;
-                Some(Message::OperationFailed(message))
+                workbench.operation_failed(message);
             }
             RefreshResult::ActionCompleted {
                 generation: next,
@@ -413,48 +326,35 @@ fn drain_refresh(refresh: &RefreshService, workbench: &mut Workbench, generation
                 snapshot,
             } if next > *generation => {
                 *generation = next;
-                workbench.explorer_repository_changed(snapshot.clone());
-                Some(Message::OperationCompleted(action, result, snapshot))
+                workbench.operation_completed(action, result, snapshot);
             }
             RefreshResult::ActionFailed {
                 generation: next,
                 failure,
             } if next > *generation => {
                 *generation = next;
-                Some(Message::ActionFailed(failure))
+                workbench.action_failed(failure);
             }
             RefreshResult::Snapshot { .. }
             | RefreshResult::Error { .. }
             | RefreshResult::ActionCompleted { .. }
-            | RefreshResult::ActionFailed { .. } => None,
-        };
-        if let Some(message) = message {
-            let _ = update(workbench.diff_model_mut(), message);
+            | RefreshResult::ActionFailed { .. } => {}
         }
     }
 }
 
-fn drain_explorer(worker: &ExplorerWorker, workbench: &mut Workbench) {
-    while let Some(outcome) = worker.try_recv() {
-        workbench.accept_explorer(outcome);
-    }
-    while let Some(request) = workbench.take_explorer_request() {
-        worker.submit(request);
-    }
-}
-
-fn execute_effect(repository: &dyn Repository, model: &mut Model, effect: Effect) {
-    let Effect::Repository(action) = effect else {
-        return;
-    };
-    let message = match repository.apply(&action) {
+fn execute_effect(
+    repository: &dyn Repository,
+    workbench: &mut Workbench,
+    action: diffo_core::RepositoryAction,
+) {
+    match repository.apply(&action) {
         Ok(result) => match repository.snapshot() {
-            Ok(snapshot) => Message::OperationCompleted(action, result, snapshot),
-            Err(error) => Message::OperationFailed(error.to_string()),
+            Ok(snapshot) => workbench.operation_completed(action, result, snapshot),
+            Err(error) => workbench.operation_failed(error.to_string()),
         },
-        Err(failure) => Message::ActionFailed(failure),
-    };
-    let _ = update(model, message);
+        Err(failure) => workbench.action_failed(failure),
+    }
 }
 
 fn copy_path_to_clipboard(path: &Path, absolute: bool) -> Result<String> {
@@ -513,14 +413,11 @@ fn copy_with_tmux(value: &str) -> Result<()> {
     }
     Ok(())
 }
-
 #[cfg(test)]
 mod tests {
     use crossterm::Command;
-    use diffo_app::{Message, Model};
-    use diffo_core::RepositorySnapshot;
 
-    use super::{EnableActionMouseCapture, PendingScroll};
+    use super::EnableActionMouseCapture;
 
     #[test]
     fn mouse_capture_requests_only_actionable_events() {
@@ -533,45 +430,5 @@ mod tests {
         );
         assert_eq!(sequence.len(), 32, "mouse setup has a fixed byte budget");
         assert!(!sequence.contains("\x1b[?1003h"));
-    }
-
-    #[test]
-    fn coalesces_ready_scroll_events_into_one_transition() {
-        let mut pending = PendingScroll::default();
-        for _ in 0..10 {
-            assert!(pending.push(&Message::ScrollDiffDown));
-        }
-        let mut model = Model::new(RepositorySnapshot::default());
-
-        pending.flush(&mut model);
-
-        assert_eq!(model.diff_scroll, 40);
-        assert_eq!(pending.vertical, 0);
-    }
-
-    #[test]
-    fn coalesces_high_resolution_wheel_events() {
-        let mut pending = PendingScroll::default();
-        for _ in 0..10 {
-            assert!(pending.push(&Message::ScrollDiffBy(1)));
-        }
-        let mut model = Model::new(RepositorySnapshot::default());
-
-        pending.flush(&mut model);
-
-        assert_eq!(model.diff_scroll, 10);
-    }
-
-    #[test]
-    fn user_scroll_is_applied_after_refresh() {
-        let mut model = Model::new(RepositorySnapshot::default());
-        model.diff_scroll = 40;
-        let mut pending = PendingScroll::default();
-        assert!(pending.push(&Message::ScrollDiffDown));
-
-        model.repository_changed(RepositorySnapshot::default());
-        pending.flush(&mut model);
-
-        assert_eq!(model.diff_scroll, 44);
     }
 }

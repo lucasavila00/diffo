@@ -15,31 +15,6 @@ pub(super) fn map_help_event(event: &Event) -> Option<Message> {
     }
 }
 
-pub(super) fn map_command_palette_event(event: &Event) -> Option<Message> {
-    let Event::Key(key) = event else {
-        return None;
-    };
-    if key.kind != KeyEventKind::Press {
-        return None;
-    }
-    match key.code {
-        KeyCode::Esc => Some(Message::CloseCommandPalette),
-        KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => Some(Message::Quit),
-        KeyCode::Backspace => Some(Message::CommandPaletteBackspace),
-        KeyCode::Up => Some(Message::CommandPaletteSelectPrevious),
-        KeyCode::Down => Some(Message::CommandPaletteSelectNext),
-        KeyCode::Enter => Some(Message::ExecuteSelectedCommand),
-        KeyCode::Char(character)
-            if !key
-                .modifiers
-                .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT) =>
-        {
-            Some(Message::CommandPaletteInput(character))
-        }
-        _ => None,
-    }
-}
-
 pub(super) fn map_key(code: KeyCode, modifiers: KeyModifiers) -> Option<Message> {
     KEY_BINDINGS
         .iter()

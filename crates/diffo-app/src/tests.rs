@@ -182,82 +182,10 @@ fn passive_and_unrelated_results_cannot_finish_a_push() {
 }
 
 #[test]
-fn edits_and_closes_command_palette_state() {
+fn help_is_a_toggle() {
     let mut model = model();
-
-    update(&mut model, Message::OpenCommandPalette);
-    update(&mut model, Message::CommandPaletteInput('f'));
-    update(&mut model, Message::CommandPaletteInput('p'));
-    assert_eq!(
-        model
-            .command_palette
-            .as_ref()
-            .map(|palette| palette.query.as_str()),
-        Some("fp")
-    );
-    update(&mut model, Message::CommandPaletteSelectNext);
-    update(&mut model, Message::CommandPaletteBackspace);
-    assert_eq!(model.command_palette.as_ref().unwrap().query, "f");
-    update(&mut model, Message::CommandPaletteSelect(1));
-    assert_eq!(model.command_palette.as_ref().unwrap().selected, 0);
-    update(&mut model, Message::CloseCommandPalette);
-    assert!(model.command_palette.is_none());
-    assert!(!model.should_quit);
-}
-
-#[test]
-fn executes_fetch_and_pull_from_the_palette() {
-    let mut model = model();
-    update(&mut model, Message::OpenCommandPalette);
-    assert_eq!(
-        update(&mut model, Message::ExecuteSelectedCommand),
-        Some(Effect::Repository(RepositoryAction::Fetch))
-    );
-    assert_eq!(model.network_operation(), Some(NetworkOperation::Fetch));
-    assert!(model.command_palette.is_none());
-
-    let refreshed = model.snapshot.clone();
-    update(&mut model, Message::SnapshotLoaded(refreshed.clone()));
-    assert_eq!(model.network_operation(), Some(NetworkOperation::Fetch));
-    update(
-        &mut model,
-        Message::OperationCompleted(
-            RepositoryAction::Fetch,
-            OperationResult::Fetch { updated_refs: 0 },
-            refreshed,
-        ),
-    );
-    update(&mut model, Message::OpenCommandPalette);
-    update(&mut model, Message::CommandPaletteSelectNext);
-    assert_eq!(
-        update(&mut model, Message::ExecuteSelectedCommand),
-        Some(Effect::Repository(RepositoryAction::Pull))
-    );
-    assert_eq!(model.network_operation(), Some(NetworkOperation::Pull));
-
-    update(
-        &mut model,
-        Message::ActionFailed(OperationFailure {
-            action: RepositoryAction::Pull,
-            kind: FailureKind::Network,
-            detail: "offline".to_owned(),
-        }),
-    );
-    assert_eq!(model.network_operation(), None);
-    update(&mut model, Message::OpenCommandPalette);
-    assert_eq!(
-        update(&mut model, Message::ExecuteCommand(1)),
-        Some(Effect::Repository(RepositoryAction::Pull))
-    );
-}
-
-#[test]
-fn help_is_a_toggle_and_closes_the_palette() {
-    let mut model = model();
-    update(&mut model, Message::OpenCommandPalette);
     update(&mut model, Message::ToggleHelp);
     assert!(model.help_open);
-    assert!(model.command_palette.is_none());
     update(&mut model, Message::ToggleHelp);
     assert!(!model.help_open);
 }

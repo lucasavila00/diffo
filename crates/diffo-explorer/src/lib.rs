@@ -5,12 +5,27 @@ mod worker;
 use std::{collections::VecDeque, path::PathBuf};
 
 use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind};
+use diffo_command::{Command, CommandId};
 use diffo_core::RepositorySnapshot;
 use ratatui::{Frame, layout::Rect};
 
 use model::ExplorerModel;
-use view::explorer_areas;
+use view::{TreeAction, VIEWER_GUTTER_WIDTH, explorer_areas, tree_action_at};
 pub use worker::{ExplorerOutcome, ExplorerRequest, ExplorerWorker};
+
+pub const COLLAPSE_ALL_COMMAND: CommandId = CommandId::new("explorer.collapse_all");
+pub const EXPAND_ALL_COMMAND: CommandId = CommandId::new("explorer.expand_all");
+
+static COMMANDS: [Command; 2] = [
+    Command {
+        id: COLLAPSE_ALL_COMMAND,
+        label: "Explorer: Collapse All Folders",
+    },
+    Command {
+        id: EXPAND_ALL_COMMAND,
+        label: "Explorer: Expand All Folders",
+    },
+];
 
 pub struct ExplorerActivity {
     model: ExplorerModel,
@@ -22,9 +37,11 @@ pub struct ExplorerActivity {
     pending_path: Option<PathBuf>,
     pending_scroll: Option<usize>,
     viewport_rows: usize,
+    viewport_columns: usize,
 }
 
 impl ExplorerActivity {
+    #[must_use]
     pub fn new(snapshot: RepositorySnapshot) -> Self {
         let mut activity = Self {
             model: ExplorerModel::new(snapshot),
@@ -36,6 +53,7 @@ impl ExplorerActivity {
             pending_path: None,
             pending_scroll: None,
             viewport_rows: 1,
+            viewport_columns: 1,
         };
         activity.request_paths();
         activity
@@ -85,6 +103,20 @@ impl ExplorerActivity {
         let areas = explorer_areas(area);
         let tree_rows = usize::from(areas.tree.height.saturating_sub(2));
         self.viewport_rows = usize::from(areas.viewer.height.saturating_sub(2)).max(1);
+        self.viewport_columns = usize::from(
+            areas
+                .viewer
+                .width
+                .saturating_sub(2)
+                .saturating_sub(VIEWER_GUTTER_WIDTH),
+        );
+        let maximum_horizontal_scroll = self.model.viewer.as_ref().map_or(0, |viewer| {
+            viewer.maximum_width.saturating_sub(self.viewport_columns)
+        });
+        self.model.viewer_horizontal_scroll = self
+            .model
+            .viewer_horizontal_scroll
+            .min(maximum_horizontal_scroll);
         self.model.ensure_tree_selection_visible(tree_rows);
         let selected = self.model.selected_file().map(PathBuf::from);
         let displayed = self.model.viewer.as_ref().map(|viewer| &viewer.path);
@@ -99,11 +131,37 @@ impl ExplorerActivity {
         view::render(frame, area, &self.model);
     }
 
+    #[must_use]
+    pub fn commands(&self) -> &'static [Command] {
+        &COMMANDS
+    }
+
+    pub fn execute_command(&mut self, command: CommandId) -> bool {
+        if command == COLLAPSE_ALL_COMMAND {
+            self.model.collapse_all();
+        } else if command == EXPAND_ALL_COMMAND {
+            self.model.expand_all();
+        } else {
+            return false;
+        }
+        self.selection_changed();
+        true
+    }
+
     pub fn handle_event(&mut self, event: &Event, area: Rect) -> bool {
         if let Event::Mouse(mouse) = event
             && mouse.kind == MouseEventKind::Down(MouseButton::Left)
         {
-            let tree = explorer_areas(area).tree.inner(ratatui::layout::Margin {
+            let tree_area = explorer_areas(area).tree;
+            if let Some(action) = tree_action_at(tree_area, mouse.column, mouse.row) {
+                match action {
+                    TreeAction::CollapseAll => self.model.collapse_all(),
+                    TreeAction::ExpandAll => self.model.expand_all(),
+                }
+                self.selection_changed();
+                return true;
+            }
+            let tree = tree_area.inner(ratatui::layout::Margin {
                 vertical: 1,
                 horizontal: 1,
             });
@@ -113,6 +171,13 @@ impl ExplorerActivity {
                     .tree_scroll
                     .saturating_add(usize::from(mouse.row.saturating_sub(tree.y)));
                 self.model.select(index);
+                if self
+                    .model
+                    .selected_entry()
+                    .is_some_and(|entry| entry.directory)
+                {
+                    self.model.toggle_selected_directory();
+                }
                 self.selection_changed();
                 return true;
             }
@@ -149,11 +214,9 @@ impl ExplorerActivity {
                     self.model.viewer_horizontal_scroll.saturating_sub(4);
             }
             KeyCode::Right => {
-                let maximum = self
-                    .model
-                    .viewer
-                    .as_ref()
-                    .map_or(0, |viewer| viewer.maximum_width);
+                let maximum = self.model.viewer.as_ref().map_or(0, |viewer| {
+                    viewer.maximum_width.saturating_sub(self.viewport_columns)
+                });
                 self.model.viewer_horizontal_scroll = self
                     .model
                     .viewer_horizontal_scroll
@@ -235,6 +298,7 @@ impl ExplorerActivity {
         }
     }
 
+    #[must_use]
     pub fn is_preparing(&self) -> bool {
         self.paths_pending || self.pending_path.is_some() || !self.queued.is_empty()
     }
@@ -244,6 +308,7 @@ impl ExplorerActivity {
 mod tests {
     use super::model::Viewer;
     use super::*;
+    use crossterm::event::MouseEvent;
     use std::collections::HashMap;
 
     #[test]
@@ -276,5 +341,101 @@ mod tests {
             KeyModifiers::SHIFT,
         ));
         assert!(!explorer.handle_event(&event, Rect::default()));
+    }
+
+    #[test]
+    fn clicking_a_directory_toggles_expansion() {
+        let mut explorer = ExplorerActivity::new(RepositorySnapshot::default());
+        explorer.accept(ExplorerOutcome::Paths {
+            id: 1,
+            result: Ok(vec![PathBuf::from("src/main.rs")]),
+        });
+        let click = Event::Mouse(MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: 1,
+            row: 1,
+            modifiers: KeyModifiers::NONE,
+        });
+
+        assert!(explorer.handle_event(&click, Rect::new(0, 0, 100, 30)));
+        assert_eq!(explorer.model.visible.len(), 2);
+        assert!(explorer.handle_event(&click, Rect::new(0, 0, 100, 30)));
+        assert_eq!(explorer.model.visible.len(), 1);
+    }
+
+    #[test]
+    fn tree_header_buttons_expand_and_collapse_every_directory() {
+        let mut explorer = ExplorerActivity::new(RepositorySnapshot::default());
+        explorer.accept(ExplorerOutcome::Paths {
+            id: 1,
+            result: Ok(vec![PathBuf::from("src/nested/main.rs")]),
+        });
+        let area = Rect::new(0, 0, 100, 30);
+        let tree = explorer_areas(area).tree;
+        let click = |column| {
+            Event::Mouse(MouseEvent {
+                kind: MouseEventKind::Down(MouseButton::Left),
+                column,
+                row: tree.y,
+                modifiers: KeyModifiers::NONE,
+            })
+        };
+
+        assert!(explorer.handle_event(&click(tree.right() - 4), area));
+        assert_eq!(explorer.model.visible.len(), 3);
+        assert!(explorer.handle_event(&click(tree.right() - 8), area));
+        assert_eq!(explorer.model.visible.len(), 1);
+    }
+
+    #[test]
+    fn explorer_commands_use_the_same_state_transitions_as_header_buttons() {
+        let mut explorer = ExplorerActivity::new(RepositorySnapshot::default());
+        explorer.accept(ExplorerOutcome::Paths {
+            id: 1,
+            result: Ok(vec![PathBuf::from("src/nested/main.rs")]),
+        });
+
+        assert!(explorer.execute_command(EXPAND_ALL_COMMAND));
+        assert_eq!(explorer.model.visible.len(), 3);
+        assert!(explorer.execute_command(COLLAPSE_ALL_COMMAND));
+        assert_eq!(explorer.model.visible.len(), 1);
+        assert!(!explorer.execute_command(CommandId::new("unknown")));
+    }
+
+    #[test]
+    fn horizontal_pan_clamps_to_the_visible_code_width_and_returns_to_zero() {
+        let mut explorer = ExplorerActivity::new(RepositorySnapshot::default());
+        explorer.model.viewer = Some(Viewer {
+            path: PathBuf::from("wide.txt"),
+            lines: vec!["x".repeat(100)],
+            markers: HashMap::new(),
+            highlighted: HashMap::new(),
+            coverage: None,
+            syntax_eligible: false,
+            message: None,
+            maximum_width: 100,
+        });
+        let area = Rect::new(0, 0, 100, 30);
+        explorer.prepare_frame(area);
+        let right = Event::Key(crossterm::event::KeyEvent::new(
+            KeyCode::Right,
+            KeyModifiers::NONE,
+        ));
+        let left = Event::Key(crossterm::event::KeyEvent::new(
+            KeyCode::Left,
+            KeyModifiers::NONE,
+        ));
+
+        for _ in 0..100 {
+            assert!(explorer.handle_event(&right, area));
+        }
+        assert_eq!(
+            explorer.model.viewer_horizontal_scroll,
+            100_usize.saturating_sub(explorer.viewport_columns)
+        );
+        for _ in 0..100 {
+            assert!(explorer.handle_event(&left, area));
+        }
+        assert_eq!(explorer.model.viewer_horizontal_scroll, 0);
     }
 }

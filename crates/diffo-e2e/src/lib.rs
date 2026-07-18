@@ -257,6 +257,35 @@ impl DiffoScreen {
         Ok(self)
     }
 
+    /// Drags the visible horizontal scrollbar between two percentages.
+    ///
+    /// This targets Diffo's default 25% file-pane layout.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when a percentage is invalid or the PTY cannot accept input.
+    pub fn drag_horizontal_scrollbar(
+        &mut self,
+        from_percent: u16,
+        to_percent: u16,
+    ) -> Result<&mut Self> {
+        if from_percent > 100 || to_percent > 100 {
+            bail!("scrollbar percentages must be between 0 and 100");
+        }
+        let track_start = COLUMNS / 4 + 2;
+        let track_end = COLUMNS.saturating_sub(1);
+        let track_length = track_end.saturating_sub(track_start);
+        let position =
+            |percent: u16| track_start.saturating_add(track_length.saturating_mul(percent) / 100);
+        let from = position(from_percent);
+        let to = position(to_percent);
+        let row = ROWS.saturating_sub(2);
+        self.write(
+            format!("\x1b[<0;{from};{row}M\x1b[<32;{to};{row}M\x1b[<0;{to};{row}m").as_bytes(),
+        )?;
+        Ok(self)
+    }
+
     /// Waits until text is visible on the terminal.
     ///
     /// # Errors

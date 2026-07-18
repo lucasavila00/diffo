@@ -328,6 +328,20 @@ fn keyboard_and_mouse_scroll_move_the_visible_diff() -> Result<()> {
 }
 
 #[test]
+fn horizontal_scrollbar_drags_all_the_way_right() -> Result<()> {
+    let repository = TestRepository::new()?;
+    let contents = format!("{}RIGHT_EDGE\n", "wide-content-".repeat(80));
+    fs::write(repository.worktree.join("tracked.txt"), contents)?;
+    let mut screen = repository.screen()?;
+
+    screen
+        .wait_for_text("wide-content")?
+        .drag_horizontal_scrollbar(0, 100)?
+        .wait_for_text("RIGHT_EDGE")?;
+    Ok(())
+}
+
+#[test]
 fn every_file_navigation_alias_moves_selection() -> Result<()> {
     let repository = TestRepository::new()?;
     fs::write(repository.worktree.join("tracked.txt"), "changed\n")?;

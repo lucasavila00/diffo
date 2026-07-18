@@ -37,6 +37,17 @@ Show an action at the right of every writable file row:
 Clicking the action does not depend on selection. Clicking the rest of the row only
 selects it. Hide actions in read-only mode.
 
+The Changes header shows `[+] Stage All`. Only `+` is clickable. The Staged header
+shows `[-] Unstage All`. Only `-` is clickable. Labels and brackets are not buttons.
+
+Mock remote failures name the received action, for example:
+
+```text
+mock repository cannot execute Fetch: no remote configured
+```
+
+This proves the command reached the repository effect boundary.
+
 ## Watch refresh and scroll
 
 Do not reset scroll for every watcher snapshot.

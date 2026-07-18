@@ -434,7 +434,9 @@ impl Renderer {
                 area.right().saturating_sub(2),
                 area.y.saturating_add(1),
                 u16::from(area.width > 2),
-                area.height.saturating_sub(2),
+                // Leave the bottom-right corner to the horizontal scrollbar so
+                // its final cell remains reachable with the mouse.
+                area.height.saturating_sub(3),
             ),
             horizontal_area: Rect::new(
                 area.x.saturating_add(1),
@@ -1668,13 +1670,18 @@ mod rendering_tests {
         let horizontal = renderer.scrollbars.horizontal_area;
         let horizontal_click = Event::Mouse(MouseEvent {
             kind: MouseEventKind::Down(MouseButton::Left),
-            column: horizontal.right().saturating_sub(2),
+            column: horizontal.right().saturating_sub(1),
             row: horizontal.bottom().saturating_sub(1),
             modifiers: KeyModifiers::NONE,
         });
+        let horizontal_maximum = renderer
+            .scrollbars
+            .columns
+            .saturating_sub(renderer.scrollbars.viewport_columns);
         assert!(matches!(
             renderer.map_event(&horizontal_click, &model, Rect::new(0, 0, 100, 30)),
-            Some(diffo_app::Message::SetDiffHorizontalScroll(position)) if position > 0
+            Some(diffo_app::Message::SetDiffHorizontalScroll(position))
+                if position == horizontal_maximum
         ));
     }
 

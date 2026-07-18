@@ -13,8 +13,9 @@ Generate files with:
 - 500,000 lines.
 - 5,000,000 lines.
 
-Use tiny `+x` lines. Stress row count, parser cost, memory, background loading, and
-scrolling. Do not waste memory on large line contents.
+Generate deterministic Rust source with varied declarations and pseudo-random unique
+names. This makes scroll movement and anchoring visible. Do not use one repeated
+placeholder line.
 
 Keep the normal generated Rust, JSON, and long-line cases too.
 
@@ -22,4 +23,5 @@ Keep the normal generated Rust, JSON, and long-line cases too.
 
 - Check every generated path exists.
 - Check every patch has the exact requested added-line count.
+- Check a sample has no duplicate generated lines.
 - Keep fixture files small in Git.

@@ -13,6 +13,7 @@ Put a commit composer above the Staged and Changes lists.
   message. Typed text overrides it.
 - Typed text uses normal foreground color.
 - Ctrl+C always quits. Esc leaves the input. Enter runs the enabled primary action.
+- Passive repository watcher refreshes keep the input focused and preserve typed text.
 - Read-only mode shows the composer but never enables mutations.
 
 Show one primary button. The pure app model chooses its state:

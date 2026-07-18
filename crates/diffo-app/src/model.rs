@@ -510,10 +510,16 @@ impl Model {
     }
 
     pub fn refresh(&mut self, snapshot: RepositorySnapshot) {
-        if self.commit_composer_state == CommitComposerState::Pending(PrimaryAction::Commit) {
+        let composer_state = self.commit_composer_state;
+        if composer_state == CommitComposerState::Pending(PrimaryAction::Commit) {
             self.commit_message.clear();
         }
-        self.commit_composer_state = CommitComposerState::Idle;
+        self.commit_composer_state = match composer_state {
+            CommitComposerState::Focused => CommitComposerState::Focused,
+            CommitComposerState::Idle | CommitComposerState::Pending(_) => {
+                CommitComposerState::Idle
+            }
+        };
         self.network_operation = None;
         let old_selected = self.selected.clone();
         let old_cursor = self.cursor;
@@ -699,6 +705,18 @@ mod tests {
         app.refresh(changed);
         assert_eq!(app.diff_scroll, 12);
         assert_eq!(app.diff_horizontal_scroll, 8);
+    }
+
+    #[test]
+    fn preserves_commit_input_focus_across_repository_refresh() {
+        let mut app = Model::new(snapshot(), AccessMode::ReadWrite);
+        app.focus_commit_input();
+
+        app.refresh(snapshot());
+        app.commit_message_input('x');
+
+        assert!(app.commit_input_focused());
+        assert_eq!(app.commit_message, "x");
     }
 
     #[test]

@@ -286,14 +286,35 @@ fn generated_commit_message_commits_staged_changes() -> Result<()> {
         .wait_for_text("Update 1 file")?
         .wait_for_text("[ Commit ]")?
         .click(&Selector::text("[ Commit ]"))?;
-    thread::sleep(Duration::from_millis(150));
+    wait_for("generated commit message", || {
+        Ok(git_output(&repository.worktree, &["log", "-1", "--format=%s"])? == "Update 1 file")
+    })?;
 
-    assert_eq!(
-        git_output(&repository.worktree, &["rev-parse", "HEAD"])?,
-        before
-    );
-    assert!(cached_paths(&repository.worktree)?.contains("tracked.txt"));
     Ok(())
+}
+
+#[test]
+fn commit_input_keeps_focus_across_live_repository_refresh() -> Result<()> {
+    let repository = TestRepository::new()?;
+    fs::write(repository.worktree.join("tracked.txt"), "staged change\n")?;
+    git(&repository.worktree, &["add", "tracked.txt"])?;
+    let mut screen = repository.screen()?;
+
+    screen
+        .wait_for_text("Update 1 file")?
+        .click(&Selector::text("Update 1 file"))?;
+    fs::write(repository.worktree.join("new.txt"), "watcher refresh\n")?;
+    screen
+        .wait_for_text("new.txt")?
+        .type_text("Focus survives refresh")?
+        .click(&Selector::text("[ Commit ]"))?;
+
+    wait_for("focused composer commit after refresh", || {
+        Ok(
+            git_output(&repository.worktree, &["log", "-1", "--format=%s"])?
+                == "Focus survives refresh",
+        )
+    })
 }
 
 #[test]

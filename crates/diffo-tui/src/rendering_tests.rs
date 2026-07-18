@@ -428,6 +428,7 @@ fn renders_and_mouse_dismisses_a_bottom_right_toast() {
     let backend = TestBackend::new(100, 30);
     let mut terminal = Terminal::new(backend).unwrap();
     renderer.prepare_frame(&model, Rect::new(0, 0, 100, 30));
+    wait_for_syntax_ready(&mut renderer, &model);
     terminal
         .draw(|frame| renderer.render(frame, &model))
         .unwrap();
@@ -480,6 +481,17 @@ fn wait_for_viewport_transition(
         sleep(Duration::from_millis(1));
     }
     panic!("viewport preparation timed out");
+}
+
+fn wait_for_syntax_ready(renderer: &mut Renderer, model: &Model) {
+    for _ in 0..200 {
+        let preparation = renderer.prepare_frame(model, Rect::new(0, 0, 100, 30));
+        if preparation.syntax_ready {
+            return;
+        }
+        sleep(Duration::from_millis(1));
+    }
+    panic!("syntax preparation timed out");
 }
 
 #[test]
@@ -757,12 +769,12 @@ fn maps_inset_scrollbar_clicks_to_absolute_positions() {
         row: vertical.bottom().saturating_sub(1),
         modifiers: KeyModifiers::NONE,
     });
-    assert_eq!(
-        renderer.map_event(&vertical_click, &model, Rect::new(0, 0, 100, 30)),
-        None
-    );
-    let pending_vertical = renderer.pending_scroll.expect("pending vertical target");
-    assert!(pending_vertical > 0);
+    let Some(diffo_app::Message::SetDiffScroll(vertical_target)) =
+        renderer.map_event(&vertical_click, &model, Rect::new(0, 0, 100, 30))
+    else {
+        panic!("vertical scrollbar did not return an absolute target");
+    };
+    assert!(vertical_target > 0);
 
     renderer.scrollbar_drag = None;
     let horizontal = renderer.scrollbars.horizontal_area;
@@ -781,8 +793,13 @@ fn maps_inset_scrollbar_clicks_to_absolute_positions() {
         Some(diffo_app::Message::SetDiffHorizontalScroll(position))
             if position == horizontal_maximum
     ));
-    let committed = wait_for_viewport_transition(&mut renderer, &model);
-    assert_eq!(committed.vertical, pending_vertical);
+    model.diff_scroll = vertical_target;
+    let skeleton = renderer.prepare_frame(&model, Rect::new(0, 0, 100, 30));
+    assert!(skeleton.viewport_transition.is_none());
+    if !skeleton.syntax_ready {
+        wait_for_syntax_ready(&mut renderer, &model);
+    }
+    assert_eq!(model.diff_scroll, vertical_target);
 }
 
 #[test]
@@ -819,6 +836,40 @@ fn horizontal_scrollbar_tracks_only_the_visible_vertical_slice() {
 }
 
 #[test]
+fn uncached_scroll_uses_one_viewport_and_skeleton_until_syntax_is_ready() {
+    let mut model = model();
+    let mut patch = String::from("@@ -1,700 +1,700 @@\n");
+    for line in 1..=700 {
+        writeln!(patch, " let value_{line} = {line};").unwrap();
+    }
+    model.snapshot.files[0].unstaged.as_mut().unwrap().text = patch;
+    let mut renderer = Renderer::new();
+    let area = Rect::new(0, 0, 100, 30);
+    diff_lines(&mut renderer, &model, 0);
+
+    model.diff_scroll = 600;
+    let first = renderer.prepare_frame(&model, area);
+    assert!(!first.syntax_ready);
+    assert!(first.viewport_transition.is_none());
+    let skeleton = renderer.diff_skeleton_lines(80, model.diff_scroll, 20);
+    assert!(!skeleton.is_empty());
+    assert!(skeleton.iter().all(|line| {
+        line.spans.iter().all(|span| {
+            span.content.chars().all(|character| {
+                character.is_ascii_digit() || character.is_whitespace() || character == '│'
+            })
+        })
+    }));
+
+    model.diff_scroll = 650;
+    let newest = renderer.prepare_frame(&model, area);
+    assert!(!newest.syntax_ready);
+    wait_for_syntax_ready(&mut renderer, &model);
+    assert_eq!(model.diff_scroll, 650);
+    assert!(renderer.syntax_ready_for_viewport(DiffViewMode::Inline, 650));
+}
+
+#[test]
 fn hunk_markers_have_a_separate_clickable_rail_beside_the_scrollbar() {
     let mut model = model();
     let mut patch = String::from("@@ -1,100 +1,100 @@\n");
@@ -835,6 +886,7 @@ fn hunk_markers_have_a_separate_clickable_rail_beside_the_scrollbar() {
     let backend = TestBackend::new(100, 30);
     let mut terminal = Terminal::new(backend).unwrap();
     renderer.prepare_frame(&model, Rect::new(0, 0, 100, 30));
+    wait_for_syntax_ready(&mut renderer, &model);
     terminal
         .draw(|frame| renderer.render(frame, &model))
         .unwrap();
@@ -883,13 +935,15 @@ fn hunk_markers_have_a_separate_clickable_rail_beside_the_scrollbar() {
     );
     assert_eq!(
         renderer.map_event(&click, &model, Rect::new(0, 0, 100, 30)),
-        None
+        Some(diffo_app::Message::SetDiffScroll(target))
     );
-    assert_eq!(renderer.pending_scroll, Some(target));
-    assert_eq!(
-        wait_for_viewport_transition(&mut renderer, &model).vertical,
-        target
-    );
+    model.diff_scroll = target;
+    let skeleton = renderer.prepare_frame(&model, Rect::new(0, 0, 100, 30));
+    assert!(skeleton.viewport_transition.is_none());
+    if !skeleton.syntax_ready {
+        wait_for_syntax_ready(&mut renderer, &model);
+    }
+    assert_eq!(model.diff_scroll, target);
 }
 
 #[test]
@@ -912,6 +966,7 @@ fn large_hunk_buttons_are_fixed_and_do_not_wrap() {
     let backend = TestBackend::new(100, 30);
     let mut terminal = Terminal::new(backend).unwrap();
     let top_preparation = renderer.prepare_frame(&model, area);
+    wait_for_syntax_ready(&mut renderer, &model);
     terminal
         .draw(|frame| renderer.render(frame, &model))
         .unwrap();

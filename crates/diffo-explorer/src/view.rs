@@ -50,12 +50,18 @@ pub(crate) fn tree_action_at(area: Rect, column: u16, row: u16) -> Option<TreeAc
     }
 }
 
-pub(crate) fn render(frame: &mut Frame, area: Rect, split: PaneSplit, model: &ExplorerModel) {
+pub(crate) fn render(
+    frame: &mut Frame,
+    area: Rect,
+    split: PaneSplit,
+    model: &ExplorerModel,
+    skeleton: bool,
+) {
     frame.render_widget(Clear, area);
     let areas = explorer_areas(area, split);
     let border_style = split.border_style();
     render_tree(frame, areas.tree, model, border_style);
-    render_viewer(frame, areas.viewer, model, border_style);
+    render_viewer(frame, areas.viewer, model, border_style, skeleton);
     frame.render_widget(
         Paragraph::new(
             " j/k: select  enter/click: expand  [-]/[+]: fold all  1/f1: commands  ↑/↓: scroll ",
@@ -150,7 +156,13 @@ fn status_style(kind: ChangeKind) -> Style {
     change_kind_style(kind, false)
 }
 
-fn render_viewer(frame: &mut Frame, area: Rect, model: &ExplorerModel, border_style: Style) {
+fn render_viewer(
+    frame: &mut Frame,
+    area: Rect,
+    model: &ExplorerModel,
+    border_style: Style,
+    skeleton: bool,
+) {
     let title = model.viewer.as_ref().map_or_else(
         || " File Viewer ".to_owned(),
         |viewer| terminal_safe_text(&format!(" {} ", viewer.path.display())),
@@ -176,7 +188,7 @@ fn render_viewer(frame: &mut Frame, area: Rect, model: &ExplorerModel, border_st
             frame.render_widget(Paragraph::new(terminal_safe_text(message)), inner);
         } else {
             let metrics = viewer_metrics(inner, model, viewer);
-            render_viewer_lines(frame, metrics.area, model, viewer);
+            render_viewer_lines(frame, metrics.area, model, viewer, skeleton);
             render_scrollbars(
                 frame,
                 inner,
@@ -215,6 +227,7 @@ fn render_viewer_lines(
     area: Rect,
     model: &ExplorerModel,
     viewer: &super::model::Viewer,
+    skeleton: bool,
 ) {
     let columns = Layout::horizontal([
         Constraint::Length(VIEWER_GUTTER_WIDTH.min(area.width)),
@@ -230,18 +243,24 @@ fn render_viewer_lines(
         .collect::<Vec<_>>();
     let gutters = visible
         .iter()
-        .map(|(index, _)| viewer_gutter(index.saturating_add(1), viewer))
+        .map(|(index, _)| viewer_gutter(index.saturating_add(1), viewer, skeleton))
         .collect::<Vec<_>>();
-    let code = visible
-        .into_iter()
-        .map(|(index, text)| viewer_code(index.saturating_add(1), text, viewer))
-        .collect::<Vec<_>>();
+    let code = if skeleton {
+        Vec::new()
+    } else {
+        visible
+            .into_iter()
+            .map(|(index, text)| viewer_code(index.saturating_add(1), text, viewer))
+            .collect::<Vec<_>>()
+    };
     frame.render_widget(Paragraph::new(gutters), columns[0]);
     render_lines(frame, columns[1], code, model.viewer_horizontal_scroll);
 }
 
-fn viewer_gutter(number: usize, viewer: &super::model::Viewer) -> Line<'static> {
-    let marker = viewer.markers.get(&number).copied();
+fn viewer_gutter(number: usize, viewer: &super::model::Viewer, skeleton: bool) -> Line<'static> {
+    let marker = (!skeleton)
+        .then(|| viewer.markers.get(&number).copied())
+        .flatten();
     let marker_text = if marker.is_some() { "▌" } else { " " };
     Line::from(vec![
         Span::styled(
@@ -333,7 +352,7 @@ mod tests {
         let mut terminal = Terminal::new(backend).unwrap();
 
         terminal
-            .draw(|frame| render_viewer(frame, frame.area(), &model, Style::default()))
+            .draw(|frame| render_viewer(frame, frame.area(), &model, Style::default(), false))
             .unwrap();
 
         let screen = terminal
@@ -346,5 +365,36 @@ mod tests {
         assert!(screen.contains("   1"));
         assert!(screen.contains("␛[2JPAN_TARGET"));
         assert!(!screen.chars().any(char::is_control));
+    }
+
+    #[test]
+    fn skeleton_renders_line_numbers_without_text_or_markers() {
+        let mut model = ExplorerModel::new(diffo_core::RepositorySnapshot::default());
+        model.viewer = Some(super::super::model::Viewer {
+            path: "pending.rs".into(),
+            lines: vec!["TEXT_MUST_BE_HIDDEN".to_owned()],
+            markers: HashMap::from([(1, GutterMarker::Added)]),
+            highlighted: HashMap::new(),
+            coverage: None,
+            syntax_eligible: true,
+            message: None,
+        });
+        let backend = TestBackend::new(40, 4);
+        let mut terminal = Terminal::new(backend).unwrap();
+
+        terminal
+            .draw(|frame| render_viewer(frame, frame.area(), &model, Style::default(), true))
+            .unwrap();
+
+        let screen = terminal
+            .backend()
+            .buffer()
+            .content
+            .iter()
+            .map(ratatui::buffer::Cell::symbol)
+            .collect::<String>();
+        assert!(screen.contains("   1"));
+        assert!(!screen.contains("TEXT_MUST_BE_HIDDEN"));
+        assert!(!screen.contains('▌'));
     }
 }

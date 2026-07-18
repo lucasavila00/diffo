@@ -64,7 +64,10 @@ use overlays::{
 use style::{
     contrast_ratio, contrasting_foreground, diff_background, diff_background_rgb, row_style,
 };
-use style::{file_action_style, inline_line, network_animation_style, side_by_side_line};
+use style::{
+    file_action_style, inline_line, inline_skeleton_line, network_animation_style,
+    side_by_side_line, side_by_side_skeleton_line,
+};
 
 use state::{
     AnchorRow, DiffKey, DiffViewportMetrics, HIGHLIGHT_PREFETCH_VIEWPORTS, HighlightCache,
@@ -138,9 +141,6 @@ impl Renderer {
                 mode: model.diff_view_mode,
             })
         });
-        if self.requested.as_ref() != requested.as_ref() {
-            self.pending_scroll = None;
-        }
         self.requested.clone_from(&requested);
         let displayed_before = self.displayed_key().cloned();
         let anchor = requested.as_ref().and_then(|requested| {
@@ -150,12 +150,17 @@ impl Renderer {
                 .map(|cache| ScrollAnchor::capture(cache, cache.key.mode, model.diff_scroll))
         });
         self.diff_viewport_rows = usize::from(diff_area.height.saturating_sub(2));
+        let target_scroll =
+            self.syntax_target(requested.as_ref(), model.diff_view_mode, model.diff_scroll);
         let commit = self.prepare_requested(
             requested.as_ref(),
             self.diff_viewport_rows,
             model.diff_view_mode,
+            target_scroll,
         );
-        let committed = commit.is_some();
+        let committed = commit
+            .as_ref()
+            .is_some_and(|commit| commit.target_scroll.is_none());
         let displayed_after = self.displayed_key().cloned();
         let viewport_transition = committed.then(|| {
             let same_file = displayed_before
@@ -214,7 +219,7 @@ impl Renderer {
 
     #[must_use]
     pub fn is_preparing(&self) -> bool {
-        self.requested.as_ref() != self.displayed_key() || self.pending_scroll.is_some()
+        self.requested.as_ref() != self.displayed_key() || !self.submitted.is_empty()
     }
 
     pub fn map_event(
@@ -241,8 +246,10 @@ impl Renderer {
             if mouse.kind == MouseEventKind::Down(MouseButton::Left)
                 && let Some(target) = self.hunk_button_target_at(mouse.column, mouse.row)
             {
-                return self
-                    .guard_vertical_message(diffo_app::Message::SetDiffScroll(target), model);
+                return Some(Self::vertical_message(
+                    diffo_app::Message::SetDiffScroll(target),
+                    model,
+                ));
             }
             if mouse.kind == MouseEventKind::Up(MouseButton::Left) {
                 self.scrollbar_drag = None;
@@ -266,8 +273,10 @@ impl Renderer {
                 if mouse.kind == MouseEventKind::Down(MouseButton::Left)
                     && let Some(change) = self.change_at_marker(mouse.column, mouse.row, model)
                 {
-                    return self
-                        .guard_vertical_message(diffo_app::Message::SetDiffScroll(change), model);
+                    return Some(Self::vertical_message(
+                        diffo_app::Message::SetDiffScroll(change),
+                        model,
+                    ));
                 }
                 let axis = if mouse.kind == MouseEventKind::Down(MouseButton::Left) {
                     self.scrollbar_at(mouse.column, mouse.row)
@@ -277,7 +286,7 @@ impl Renderer {
                 if let Some(axis) = axis {
                     self.scrollbar_drag = Some(axis);
                     let message = self.scrollbar_message(axis, mouse.column, mouse.row);
-                    return self.guard_vertical_message(message, model);
+                    return Some(Self::vertical_message(message, model));
                 }
             }
         }
@@ -290,7 +299,7 @@ impl Renderer {
                 .map(diffo_app::Message::SetDiffScroll),
             message => message,
         }?;
-        self.guard_vertical_message(message, model)
+        Some(Self::vertical_message(message, model))
     }
 }
 

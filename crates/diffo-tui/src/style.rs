@@ -42,6 +42,29 @@ pub(super) fn inline_line(
     Line::from(spans)
 }
 
+pub(super) fn inline_skeleton_line(row: &RenderLine) -> Line<'static> {
+    Line::raw(
+        row.number
+            .map_or_else(|| "       ".to_owned(), |number| format!("{number:>4}   ")),
+    )
+}
+
+pub(super) fn side_by_side_skeleton_line(
+    row: &SideBySideRow,
+    column_width: usize,
+) -> Line<'static> {
+    let number = |line: Option<&RenderLine>| {
+        line.and_then(|line| line.number)
+            .map_or_else(|| "    ".to_owned(), |number| format!("{number:>4}"))
+    };
+    Line::raw(format!(
+        "{}{} │ {}",
+        number(row.old.as_ref()),
+        " ".repeat(column_width.saturating_sub(4)),
+        number(row.new.as_ref())
+    ))
+}
+
 pub(super) fn side_by_side_line(
     row: &SideBySideRow,
     column_width: usize,

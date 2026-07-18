@@ -232,7 +232,7 @@ impl Renderer {
 
     pub(super) fn change_jump(&self, model: &Model, next: bool) -> Option<usize> {
         let cache = self.highlighted.as_ref()?;
-        let scroll = self.pending_scroll.unwrap_or(model.diff_scroll);
+        let scroll = model.diff_scroll;
         let changes = match cache.key.mode {
             DiffViewMode::Inline => &cache.inline_changes,
             DiffViewMode::SideBySide => &cache.side_by_side_changes,

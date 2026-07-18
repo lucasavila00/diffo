@@ -40,7 +40,6 @@ pub struct ExplorerActivity {
     paths_pending: bool,
     queued: VecDeque<ExplorerRequest>,
     pending_path: Option<PathBuf>,
-    pending_scroll: Option<usize>,
     viewport_rows: usize,
     viewport_columns: usize,
     maximum_horizontal_scroll: usize,
@@ -58,7 +57,6 @@ impl ExplorerActivity {
             paths_pending: false,
             queued: VecDeque::new(),
             pending_path: None,
-            pending_scroll: None,
             viewport_rows: 1,
             viewport_columns: 1,
             maximum_horizontal_scroll: 0,
@@ -151,7 +149,7 @@ impl ExplorerActivity {
     }
 
     pub fn render(&self, frame: &mut Frame, area: Rect, split: PaneSplit) {
-        view::render(frame, area, split, &self.model);
+        view::render(frame, area, split, &self.model, !self.viewer_syntax_ready());
     }
 
     #[must_use]
@@ -300,7 +298,6 @@ impl ExplorerActivity {
     }
 
     fn selection_changed(&mut self) {
-        self.pending_scroll = None;
         if let Some(path) = self.model.selected_file().map(PathBuf::from) {
             self.request_file(path, 0);
         } else {
@@ -312,7 +309,7 @@ impl ExplorerActivity {
         let Some(viewer) = self.model.viewer.as_ref() else {
             return;
         };
-        let base = self.pending_scroll.unwrap_or(self.model.viewer_scroll);
+        let base = self.model.viewer_scroll;
         let magnitude = usize::try_from(amount.unsigned_abs()).unwrap_or(usize::MAX);
         let target = if amount < 0 {
             base.saturating_sub(magnitude)
@@ -327,10 +324,8 @@ impl ExplorerActivity {
                 let end = u32::try_from(visible_end.min(viewer.lines.len())).unwrap_or(u32::MAX);
                 range.start <= start && range.end >= end
             });
-        if covered && self.pending_scroll.is_none() {
-            self.model.viewer_scroll = target;
-        } else if self.pending_scroll != Some(target) {
-            self.pending_scroll = Some(target);
+        self.model.viewer_scroll = target;
+        if !covered {
             self.request_file(viewer.path.clone(), target);
         }
     }
@@ -352,7 +347,7 @@ impl ExplorerActivity {
 
     fn apply_viewer_command(&mut self, command: ScrollCommand, metrics: ViewportMetrics) {
         if let ScrollCommand::Vertical(target) = command {
-            let current = self.pending_scroll.unwrap_or(self.model.viewer_scroll);
+            let current = self.model.viewer_scroll;
             let amount = i64::try_from(target).unwrap_or(i64::MAX)
                 - i64::try_from(current).unwrap_or(i64::MAX);
             self.scroll_viewer(amount);
@@ -387,9 +382,15 @@ impl ExplorerActivity {
                 self.pending_path = None;
                 match result {
                     Ok(viewer) => {
-                        let requested_scroll = self.pending_scroll.take().unwrap_or(0);
-                        self.model.viewer_scroll = requested_scroll;
-                        self.model.viewer_horizontal_scroll = 0;
+                        let same_document = self
+                            .model
+                            .viewer
+                            .as_ref()
+                            .is_some_and(|displayed| displayed.path == viewer.path);
+                        if !same_document {
+                            self.model.viewer_scroll = 0;
+                            self.model.viewer_horizontal_scroll = 0;
+                        }
                         self.model.viewer = Some(viewer);
                         self.model.error = None;
                     }
@@ -403,6 +404,26 @@ impl ExplorerActivity {
     #[must_use]
     pub fn is_preparing(&self) -> bool {
         self.paths_pending || self.pending_path.is_some() || !self.queued.is_empty()
+    }
+
+    fn viewer_syntax_ready(&self) -> bool {
+        let Some(viewer) = self.model.viewer.as_ref() else {
+            return true;
+        };
+        if !viewer.syntax_eligible {
+            return true;
+        }
+        let start = u32::try_from(self.model.viewer_scroll.saturating_add(1)).unwrap_or(u32::MAX);
+        let end = u32::try_from(
+            self.model
+                .viewer_scroll
+                .saturating_add(self.viewport_rows)
+                .min(viewer.lines.len()),
+        )
+        .unwrap_or(u32::MAX);
+        viewer
+            .coverage
+            .is_some_and(|coverage| coverage.start <= start && coverage.end >= end)
     }
 }
 
@@ -538,5 +559,45 @@ mod tests {
             assert!(explorer.handle_event(&left, area, PaneSplit::default()));
         }
         assert_eq!(explorer.model.viewer_horizontal_scroll, 0);
+    }
+
+    #[test]
+    fn uncached_scroll_uses_the_model_viewport_until_coverage_arrives() {
+        let mut explorer = ExplorerActivity::new(RepositorySnapshot::default());
+        let path = PathBuf::from("large.rs");
+        let lines = (1..=100)
+            .map(|line| format!("let value_{line} = {line};"))
+            .collect::<Vec<_>>();
+        explorer.model.viewer = Some(Viewer {
+            path: path.clone(),
+            lines: lines.clone(),
+            markers: HashMap::new(),
+            highlighted: HashMap::new(),
+            coverage: Some(diffo_highlight::LineRange { start: 1, end: 20 }),
+            syntax_eligible: true,
+            message: None,
+        });
+        explorer.viewport_rows = 10;
+
+        explorer.scroll_viewer(40);
+        assert_eq!(explorer.model.viewer_scroll, 40);
+        assert!(!explorer.viewer_syntax_ready());
+        let request_id = explorer.latest_file;
+
+        explorer.accept(ExplorerOutcome::File {
+            id: request_id,
+            result: Ok(Viewer {
+                path,
+                lines,
+                markers: HashMap::new(),
+                highlighted: HashMap::new(),
+                coverage: Some(diffo_highlight::LineRange { start: 41, end: 60 }),
+                syntax_eligible: true,
+                message: None,
+            }),
+        });
+
+        assert_eq!(explorer.model.viewer_scroll, 40);
+        assert!(explorer.viewer_syntax_ready());
     }
 }

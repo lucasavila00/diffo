@@ -18,7 +18,6 @@ pub struct Renderer {
     pub(super) prepare_rx: Receiver<PrepareOutcome>,
     pub(super) submitted: Vec<(DiffKey, Option<usize>)>,
     pub(super) requested: Option<DiffKey>,
-    pub(super) pending_scroll: Option<usize>,
     pub(super) diff_viewport_rows: usize,
     pub(super) failed: Option<DiffKey>,
     pub(super) scrollbars: ScrollbarMetrics,

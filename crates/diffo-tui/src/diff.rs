@@ -283,12 +283,11 @@ pub(super) fn preparation_delay_from_environment() -> Duration {
 }
 
 impl Renderer {
-    pub(super) fn guard_vertical_message(
-        &mut self,
+    pub(super) fn vertical_message(
         message: diffo_app::Message,
         model: &diffo_app::Model,
-    ) -> Option<diffo_app::Message> {
-        let base = self.pending_scroll.unwrap_or(model.diff_scroll);
+    ) -> diffo_app::Message {
+        let base = model.diff_scroll;
         let target = match message {
             diffo_app::Message::SetDiffScroll(target) => target,
             diffo_app::Message::ScrollDiffUp => base.saturating_sub(4),
@@ -303,15 +302,20 @@ impl Renderer {
                     base.saturating_sub(magnitude)
                 }
             }
-            _ => return Some(message),
+            _ => return message,
         };
-        if self.syntax_ready_for_viewport(self.displayed_mode(model.diff_view_mode), target) {
-            self.pending_scroll = None;
-            Some(message)
-        } else {
-            self.pending_scroll = Some(target);
-            None
-        }
+        diffo_app::Message::SetDiffScroll(target)
+    }
+
+    pub(super) fn syntax_target(
+        &self,
+        requested: Option<&DiffKey>,
+        mode: DiffViewMode,
+        scroll: usize,
+    ) -> Option<usize> {
+        (requested == self.displayed_key()
+            && !self.syntax_ready_for_viewport(self.displayed_mode(mode), scroll))
+        .then_some(scroll)
     }
 
     pub(super) fn syntax_ready_for_viewport(&self, mode: DiffViewMode, target: usize) -> bool {
@@ -342,13 +346,14 @@ impl Renderer {
         requested: Option<&DiffKey>,
         viewport_rows: usize,
         mode: DiffViewMode,
+        target_scroll: Option<usize>,
     ) -> Option<PrepareCommit> {
         let mut matching_outcome = None;
         while let Ok(outcome) = self.prepare_rx.try_recv() {
             self.submitted
                 .retain(|job| job != &(outcome.key.clone(), outcome.target_scroll));
             let target_matches =
-                outcome.target_scroll.is_none() || self.pending_scroll == outcome.target_scroll;
+                outcome.target_scroll.is_none() || target_scroll == outcome.target_scroll;
             if requested == Some(&outcome.key) && target_matches {
                 matching_outcome = Some(outcome);
             }
@@ -356,9 +361,6 @@ impl Renderer {
         if let Some(outcome) = matching_outcome {
             let target_scroll = outcome.target_scroll;
             self.install_outcome(outcome);
-            if target_scroll.is_some() {
-                self.pending_scroll = None;
-            }
             return Some(PrepareCommit { target_scroll });
         }
         let Some(requested) = requested else {
@@ -368,12 +370,10 @@ impl Renderer {
                 self.failed = None;
                 self.content_revision = self.content_revision.saturating_add(1);
             }
-            self.pending_scroll = None;
             return changed.then_some(PrepareCommit {
                 target_scroll: None,
             });
         };
-        let target_scroll = self.pending_scroll;
         if self.displayed_key() == Some(requested) && target_scroll.is_none() {
             return None;
         }
@@ -405,7 +405,6 @@ impl Renderer {
                 cache: prepare_diff(request, &self.highlighter),
             };
             self.install_outcome(outcome);
-            self.pending_scroll = None;
             return Some(PrepareCommit { target_scroll });
         }
         if !self.submitted.contains(&job) {
@@ -588,7 +587,6 @@ impl Renderer {
             prepare_rx,
             submitted: Vec::new(),
             requested: None,
-            pending_scroll: None,
             diff_viewport_rows: 1,
             failed: None,
             scrollbars: ScrollbarMetrics::default(),

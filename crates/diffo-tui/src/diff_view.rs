@@ -1,7 +1,8 @@
 use super::{
     Alignment, Block, Borders, Color, DiffViewMode, DiffViewportMetrics, Frame, HunkButtonMetrics,
     Line, Model, Paragraph, Rect, Renderer, ScrollbarMetrics, Style, inline_line,
-    overview_position, resize_border_style, side_by_side_line, terminal_safe_text,
+    inline_skeleton_line, overview_position, resize_border_style, side_by_side_line,
+    side_by_side_skeleton_line, terminal_safe_text,
 };
 use diffo_text_view::{Viewport, ViewportMetrics, render_lines, render_scrollbars};
 
@@ -56,12 +57,22 @@ impl Renderer {
             DiffViewMode::SideBySide => "Side by side",
         };
         let viewport = self.diff_viewport_metrics(displayed_mode, area, model.diff_scroll);
-        let lines = self.diff_lines(
-            model,
-            viewport.content_area.width,
-            model.diff_scroll,
-            viewport.viewport_rows,
-        );
+        let skeleton = self.requested.as_ref() == self.displayed_key()
+            && !self.syntax_ready_for_viewport(displayed_mode, model.diff_scroll);
+        let lines = if skeleton {
+            self.diff_skeleton_lines(
+                viewport.content_area.width,
+                model.diff_scroll,
+                viewport.viewport_rows,
+            )
+        } else {
+            self.diff_lines(
+                model,
+                viewport.content_area.width,
+                model.diff_scroll,
+                viewport.viewport_rows,
+            )
+        };
         let resize_label = if model.resizing_file_pane {
             format!(" · files {}%", model.file_pane_percent)
         } else {
@@ -80,7 +91,11 @@ impl Renderer {
             lines,
             model.diff_horizontal_scroll,
         );
-        self.render_hunk_buttons(frame, area, &viewport);
+        if skeleton {
+            self.hunk_buttons = HunkButtonMetrics::default();
+        } else {
+            self.render_hunk_buttons(frame, area, &viewport);
+        }
         self.render_diff_scrollbars(frame, area, &viewport, model);
     }
 
@@ -156,7 +171,12 @@ impl Renderer {
             },
         );
         debug_assert_eq!(shared.vertical, self.scrollbars.vertical_area);
-        if viewport.maximum_vertical_scroll > 0 {
+        let skeleton = self.requested.as_ref() == self.displayed_key()
+            && !self.syntax_ready_for_viewport(
+                self.displayed_mode(model.diff_view_mode),
+                model.diff_scroll,
+            );
+        if viewport.maximum_vertical_scroll > 0 && !skeleton {
             let changes = self.highlighted.as_ref().map(|cache| match cache.key.mode {
                 DiffViewMode::Inline => cache.inline_changes.as_slice(),
                 DiffViewMode::SideBySide => cache.side_by_side_changes.as_slice(),
@@ -216,6 +236,36 @@ impl Renderer {
                     .skip(first_row)
                     .take(row_count)
                     .map(|row| side_by_side_line(row, column_width, &cache.highlighted))
+                    .collect()
+            }
+        }
+    }
+
+    pub(super) fn diff_skeleton_lines(
+        &self,
+        width: u16,
+        first_row: usize,
+        row_count: usize,
+    ) -> Vec<Line<'static>> {
+        let Some(cache) = self.highlighted.as_ref() else {
+            return Vec::new();
+        };
+        match cache.key.mode {
+            DiffViewMode::Inline => cache
+                .inline
+                .iter()
+                .skip(first_row)
+                .take(row_count)
+                .map(inline_skeleton_line)
+                .collect(),
+            DiffViewMode::SideBySide => {
+                let column_width = usize::from(width.saturating_sub(3) / 2);
+                cache
+                    .side_by_side
+                    .iter()
+                    .skip(first_row)
+                    .take(row_count)
+                    .map(|row| side_by_side_skeleton_line(row, column_width))
                     .collect()
             }
         }

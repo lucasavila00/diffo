@@ -2,46 +2,41 @@
 
 Status: Proposed
 
-Depends on [ADR 0036](0036-git-branch-status.md) and refines
+Depends on [ADR 0036](0036-git-branch-status.md). Refines
 [ADR 0013](0013-command-and-file-actions.md),
 [ADR 0039](0039-independent-app-modes.md), and
 [ADR 0055](0055-command-queue.md).
 
 ## Context
 
-Diffo shows the current branch and runs repository commands from every activity, but
-it cannot change branches. Checkout needs two distinct choices: first the command,
-then a branch from the repository. Treating text typed into the command palette as a
-ref would hide available branches and would allow unvalidated input to cross the Git
-boundary.
+Diffo shows the current branch. It cannot change branches.
 
-The application architecture has changed since this decision was first drafted. The
-workbench now owns global overlays and the FIFO application command queue;
-`diffo-repository-service` owns the serialized background repository lane; and
-completed repository commands return one result with one complete snapshot. Checkout
-must use those owners instead of adding an activity-specific worker, operation state,
-or snapshot cache.
+Checkout needs two choices: the command, then a known branch. Typed filter text is
+not a Git ref.
+
+The workbench owns overlays and the command queue. `diffo-repository-service` owns
+the single repository worker. Checkout must use them. Do not add an activity worker,
+operation state, or snapshot cache.
 
 ## Decision
 
-Add this exact shared command to every activity's command palette:
+Add this command to every activity:
 
 ```text
 Git: Checkout to...
 ```
 
-The command has no fixed key binding. Selecting it closes the command palette and
-opens a workbench-owned branch picker over the active activity. Clicking the branch
-status control specified by ADR 0036 opens the same picker through the same workbench
-transition.
+It has no key binding. It closes the command palette and opens a workbench branch
+picker. The branch status control opens the same picker.
 
-This command covers local and remote branches only. It does not cover tags, arbitrary
-commits, detached checkout, new branch names, fetch, stash, force checkout, or branch
-deletion. In particular, picker text is only a filter and is never sent to Git.
+The picker lists local and remote branches only. No tags, commits, detached checkout,
+new names, fetch, stash, force, or delete. Filter text never goes to Git.
 
 ## Branch picker
 
-The picker uses the prompt `Select a branch to checkout` and has these states:
+Prompt: `Select a branch to checkout`.
+
+States:
 
 ```text
 Closed
@@ -49,71 +44,57 @@ Loading { request_id }
 Ready { request_id, catalog, query, selection, offset }
 ```
 
-Opening the picker immediately shows `Loading branches...` and requests a fresh
-catalog. Esc closes it in both loading and ready states. A discovery failure closes
-the picker and creates a persistent workbench error toast. The picker does not retain
-its catalog after closing, so every opening observes current refs.
+Open shows `Loading branches...` and loads a fresh catalog. Esc closes the picker.
+Failure closes it and shows a persistent workbench error toast. Closing drops the
+catalog.
 
-With an empty query, render two fixed sections:
+An empty query shows:
 
-1. `Local branches`, ordered by branch name;
-2. `Remote branches`, ordered by qualified name.
+1. `Local branches`, sorted by branch name.
+2. `Remote branches`, sorted by qualified name.
 
-Display local branches as `feature/search` and remote branches as
-`origin/feature/search`. Exclude symbolic remote HEAD entries such as `origin/HEAD`.
-Mark the current local branch with `current`; it remains visible but is disabled. Also
-disable a remote row when its conventional local branch is the current branch and
-already tracks that remote. An unborn or detached HEAD does not disable another row.
+Show local names as `feature/search`. Show remote names as
+`origin/feature/search`. Hide symbolic remote HEAD refs such as `origin/HEAD`.
 
-Typing performs case-insensitive fuzzy filtering with the command palette's existing
-scoring rules. A remote row matches both its qualified name and the name without its
-remote prefix; use its better score. Break equal scores by local-before-remote section
-order and then branch name. Reset selection to the first enabled result after a query
-change. Section headings are not selectable, and disabled rows are skipped by
-keyboard and mouse selection. Show `No matching branches` when filtering returns no
-rows.
+Mark the current local branch `current` and disable it. Also disable a remote branch
+when the current local branch already tracks it. Detached or unborn HEAD disables
+nothing else.
 
-Use the established overlay controls: Up and Down move selection, Enter executes the
-selected enabled row, Esc closes, Backspace edits the query, ordinary character input
-extends it, the mouse selects a visible enabled row, and wheel input scrolls long
-results. Uppercase text is valid input; the lowercase-only rule applies to fixed
-shortcuts. Render names through the shared terminal-safe text boundary, and use the
-shared dialog geometry, chrome, enabled, disabled, selection, and scrollbar styles.
-Pointer movement alone does not change state or request a redraw.
+Use the command palette's case-insensitive fuzzy match. Match a remote branch by its
+full or short name. Use the better score. Break ties by local before remote, then
+branch name. A query change selects the first enabled result. Headings and disabled
+rows cannot be selected. Show `No matching branches` when empty.
 
-The workbench owns the picker model, input priority, layout, rendering, and hit
-targets because the picker is a global modal entry point. Keep this implementation in
-focused branch-picker modules rather than adding it to an activity or extending the
-file picker with non-file behavior. Modal input takes priority over activity switching,
-palettes, toasts, and ordinary activity input.
+Use normal overlay controls: Up, Down, Enter, Esc, Backspace, text input, mouse click,
+and wheel. Uppercase text is valid input. Render names with the terminal-safe text
+boundary. Use shared dialog and scrollbar styles. Pointer movement alone does
+nothing.
+
+The workbench owns picker state, input, layout, rendering, and hit targets. Put this
+in branch-picker modules. Do not put it in an activity or the file picker. Picker
+input wins over activity switching, palettes, toasts, and activity input.
 
 ## Catalog discovery
 
-Add transport-neutral branch catalog and target types to `diffo-core`, and add a
-read-only catalog operation to the `Repository` interface. A target preserves whether
-the selected row is local or remote and carries the discovered full ref name; it is
-not reconstructed from display text.
+Add branch catalog and target types to `diffo-core`. Add a read-only catalog operation
+to `Repository`. A target stores its local or remote kind and full discovered ref. Do
+not rebuild it from display text.
 
-`diffo-git` reads `refs/heads/` and `refs/remotes/` with one local
-`git for-each-ref` invocation. Request machine-delimited full ref names and upstream
-ref names and parse those fields instead of parsing `git branch` presentation. Ref
-discovery never fetches, contacts a remote, or mutates the repository.
+`diffo-git` runs one local `git for-each-ref` over `refs/heads/` and
+`refs/remotes/`. Request and parse machine-delimited full ref and upstream ref fields.
+Do not parse `git branch` output. Do not fetch, contact a remote, or change the repo.
 
-Run discovery on `diffo-repository-service`'s existing worker lane so it is serialized
-with watcher snapshots and repository commands. Discovery is modal preparation, not an
-application command: it does not enter `CommandQueue`, animate command progress, or
-produce a success toast. If another repository command owns the lane, the picker stays
-in its responsive loading state until discovery can run.
+Run discovery on the existing repository-service worker. It waits behind other work.
+The picker stays responsive while loading. Discovery does not enter `CommandQueue`,
+show progress, or show a success toast.
 
-Each opening receives a monotonically increasing picker request ID. Install a catalog
-only when its ID belongs to the currently open loading picker. Closing and reopening
-the picker makes the previous result stale. Repository generation remains reserved for
-snapshot and command ordering; do not overload it with picker lifetime. Rendering
-reads only installed picker state and never invokes Git.
+Each open gets a rising request ID. Install a result only when that ID still belongs
+to the open loading picker. A close or reopen makes old results stale. Do not use
+repository generation for picker lifetime. Rendering never runs Git.
 
 ## Checkout command
 
-Selecting a row closes the picker and enqueues one explicit repository action:
+Selecting a row closes the picker and queues one action:
 
 ```text
 BranchTarget
@@ -124,73 +105,58 @@ RepositoryAction::Checkout(BranchTarget)
 OperationResult::Checkout { branch }
 ```
 
-The existing workbench `CommandQueue` assigns the command ID, serializes checkout
-with every other application command, exposes cancellation, and projects
-`Checking out <target>` as command progress. The repository service executes the
-action and collects a complete `RepositorySnapshot` only after Git reports success.
+`CommandQueue` assigns the ID, serializes the action, supports cancellation, and
+shows `Checking out <target>`. The repository service runs it. It builds a full
+snapshot only after Git succeeds.
 
-For a local target, check out that local branch. For a remote target, use the remote
-branch path as the conventional local name. If that local branch does not exist at
-execution time, create it, configure the selected remote branch as its upstream, and
-check it out. If it already exists and tracks the selected remote branch, check it out
-without recreating it. If it exists with no upstream or a different upstream, fail
-with an actionable error. Never reset, rename, or overwrite the existing branch.
+For a local target, check out that branch.
 
-Refs may change after discovery. Revalidate the target during execution and fail
-safely when it no longer exists or no longer has the expected kind. Let Git decide
-whether working-tree changes can move to the target. If checkout would overwrite
-local changes, classify the failure as `DirtyWorktree`; do not stash, discard, force,
-or otherwise modify those changes to make checkout succeed.
+For a remote target, use the remote branch path as the local name:
 
-On success, the repository service returns the resulting local branch name and the
-complete post-checkout snapshot in one command-completion event. The runtime applies
-the existing repository generation check, the workbench acknowledges the queued
-command, distributes the snapshot to every activity that consumes repository state,
-and shows `Checked out <branch>` through the workbench toast queue. Branch, files,
-diff projections, navigation targets, and scroll bounds become visible through the
-activities' existing prepared-state commits; no surface may render the new branch
-against old repository content.
+- If no local branch exists, create it, set the selected upstream, and check it out.
+- If it exists and tracks that remote branch, check it out.
+- If it has no upstream or a different one, fail with a useful error.
 
-On failure or cancellation, keep the last committed snapshot. Failure removes command
-progress and creates the normal persistent error toast; successful cancellation creates
-no result toast. A watcher result or stale catalog result must never retry a checkout,
-restore an older branch, or supply a target.
+Never reset, rename, or overwrite an existing branch.
+
+Refs can change after discovery. Recheck the target before checkout. Fail if it is
+gone or changed kind. Let Git decide if working-tree changes can move. Map overwrite
+refusal to `DirtyWorktree`. Never stash, discard, or force.
+
+On success, return the local branch name and full post-checkout snapshot in one event.
+Apply the repository generation check. Acknowledge the queued command. Send the
+snapshot to every repository activity. Show `Checked out <branch>`. Commit branch,
+files, diffs, navigation, and scroll state through existing prepared-state commits.
+Never show a new branch with old content.
+
+On failure or cancellation, keep the last committed snapshot. Failure removes
+progress and shows the normal persistent error toast. Successful cancellation shows
+no result toast. Stale catalog or watcher results never retry checkout or change its
+target.
 
 ## Rejected alternatives
 
-- Put all branches in `RepositorySnapshot`. Branches are needed only while this picker
-  is open and would enlarge every watcher and command snapshot.
-- Use a separate branch worker. Concurrent repository reads would weaken the single-lane
-  ordering that already protects commands and watcher refreshes.
-- Put discovery in `CommandQueue`. Listing refs is preparation for choosing a command,
-  not a user-requested repository mutation, and should not create progress or result
-  toasts.
-- Reuse `diffo-file-picker`. Its rows, menus, tree projection, and ownership are specific
-  to files; sharing it would couple unrelated domain behavior.
-- Execute `git checkout <query>`. Query text is not a selected ref and could name a tag,
-  commit, path, or revision expression outside this command's scope.
-- Fetch before listing. Opening a local picker must not perform network work or mutate
-  refs.
+- Store branches in `RepositorySnapshot`: every snapshot would grow for picker-only
+  data.
+- Add a branch worker: it would break single-lane ordering.
+- Put discovery in `CommandQueue`: discovery is preparation, not a mutation.
+- Reuse `diffo-file-picker`: its model is for files.
+- Run `git checkout <query>`: filter text may name unsupported Git objects.
+- Fetch first: opening the picker must not use the network or change refs.
 
 ## Verification
 
-- Command-palette tests find the exact shared label in Diff, Explorer, and Search and
-  prove that both the command and branch-status control open the same workbench picker.
-- Deterministic picker tests cover loading, close-and-reopen staleness, discovery
-  failure, section order, symbolic remote HEAD exclusion, fuzzy score ties, remote
-  short-name matching, disabled current branch, empty results, scrolling, keyboard,
-  mouse, uppercase input, modal priority, and terminal-safe rendering.
-- Repository-service tests prove catalog requests share the serialized lane with
-  refreshes and commands, use independent request IDs, and never create command queue
-  or toast state.
-- Real Git tests cover local checkout, remote tracking-branch creation, reuse of an
-  existing matching tracking branch, conflicting local names, a ref deleted after
-  discovery, detached and unborn starting states, cancellation, and dirty-worktree
-  refusal without data loss.
-- Prepared-state tests prove a successful checkout installs the returned branch and
-  repository content together and that stale repository generations cannot restore the
-  previous branch.
-- A delayed PTY test opens the picker, observes loading, filters similarly named local
-  and remote branches, performs checkout, and observes the new branch and file state in
-  one committed frame. A second delayed PTY test proves a checkout blocked by local
-  changes leaves HEAD, index, working tree, and the displayed snapshot unchanged.
+- Palette tests find the exact command in Diff, Explorer, and Search. The command and
+  branch status control open the same picker.
+- Picker tests cover loading, stale results, failure, sorting, remote HEAD exclusion,
+  fuzzy ties, remote short names, disabled rows, empty results, scrolling, keyboard,
+  mouse, uppercase input, modal priority, and safe text rendering.
+- Repository-service tests prove discovery shares the worker lane, uses separate
+  request IDs, and creates no command or toast state.
+- Real Git tests cover local checkout, remote branch creation and reuse, name conflict,
+  deleted refs, detached and unborn HEAD, cancellation, and dirty-tree refusal without
+  data loss.
+- Prepared-state tests prove branch and content install together. Stale generations
+  cannot restore the old branch.
+- Delayed PTY tests cover loading, filtering similar local and remote names, atomic
+  checkout display, and dirty-tree refusal with no repository or display change.

@@ -30,7 +30,6 @@ pub mod theme {
 /// Fixed markers for mouse-interactive surfaces.
 pub mod interaction {
     pub const FLAT_ROW: &str = "· ";
-    pub const SELECTED_ROW: &str = "› ";
     pub const EDIT: &str = "✎";
     pub const DISMISS: &str = "×";
     pub const PANE_DRAG: &str = "↔";

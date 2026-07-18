@@ -261,10 +261,7 @@ where
             .iter()
             .skip(self.metrics.offset)
             .take(usize::from(self.metrics.list_area.height))
-            .enumerate()
-            .map(|(visible_index, index)| {
-                self.list_item(&self.document.rows[*index], selected == Some(visible_index))
-            });
+            .map(|index| self.list_item(&self.document.rows[*index]));
         let list = List::new(items).highlight_style(
             Style::default()
                 .bg(theme::SELECTION_BACKGROUND)
@@ -510,11 +507,9 @@ where
         self.metrics.offset = self.offset;
     }
 
-    fn list_item(&self, row: &Row<K>, selected: bool) -> ListItem<'static> {
+    fn list_item(&self, row: &Row<K>) -> ListItem<'static> {
         let mut spans = vec![Span::styled(
-            if selected {
-                interaction::SELECTED_ROW
-            } else if self.document.mode == Mode::Flat {
+            if self.document.mode == Mode::Flat {
                 interaction::FLAT_ROW
             } else {
                 "  "
@@ -951,7 +946,7 @@ mod tests {
         assert_enabled_control(action);
         assert_eq!(action.bg, theme::SELECTION_BACKGROUND);
         let selection = &buffer[(1, 1)];
-        assert_eq!(selection.symbol(), "›");
+        assert_eq!(selection.symbol(), "·");
         assert_enabled_control(selection);
         assert_eq!(selection.bg, theme::SELECTION_BACKGROUND);
     }
@@ -1041,7 +1036,7 @@ mod tests {
     }
 
     #[test]
-    fn tree_rows_omit_the_flat_dot_but_keep_tree_structure() {
+    fn tree_rows_keep_their_structure_when_selected() {
         let mut picker = FilePicker::default();
         picker.prepare(
             Rect::new(0, 0, 20, 5),
@@ -1063,6 +1058,17 @@ mod tests {
         assert_eq!(buffer[(3, 1)].symbol(), "▸");
         assert!(!rendered_row(buffer, Rect::new(1, 1, 18, 1)).contains('·'));
         assert!(!rendered_row(buffer, Rect::new(1, 2, 18, 1)).contains('·'));
+
+        terminal.draw(|frame| picker.render(frame, true)).unwrap();
+
+        let buffer = terminal.backend().buffer();
+        assert_eq!(buffer[(1, 1)].symbol(), " ");
+        assert_eq!(buffer[(3, 1)].symbol(), "▸");
+        assert!(!rendered_row(buffer, Rect::new(1, 1, 18, 1)).contains('›'));
+        let selected_label = &buffer[(5, 1)];
+        assert_eq!(selected_label.symbol(), "s");
+        assert_eq!(selected_label.bg, theme::SELECTION_BACKGROUND);
+        assert!(selected_label.modifier.contains(Modifier::BOLD));
     }
 
     #[test]

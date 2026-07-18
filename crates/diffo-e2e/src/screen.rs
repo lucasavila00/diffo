@@ -23,6 +23,7 @@ const ROWS: u16 = 30;
 const COLUMNS: u16 = 100;
 const ACTIVITY_BAR_WIDTH: u16 = 5;
 const TIMEOUT: Duration = Duration::from_secs(5);
+const SELECTION_BACKGROUND: vt100::Color = vt100::Color::Idx(8);
 
 pub struct DiffoScreen {
     parser: vt100::Parser,
@@ -391,8 +392,13 @@ impl DiffoScreen {
             Selector::SelectedRow(text) => cells
                 .iter()
                 .enumerate()
-                .filter(|(_, row)| !find_in_row(row, "›").is_empty())
                 .flat_map(|(row, cells)| positions(row, find_in_row(cells, text), text))
+                .filter(|(column, row)| {
+                    self.parser
+                        .screen()
+                        .cell(*row, *column)
+                        .is_some_and(|cell| cell.bgcolor() == SELECTION_BACKGROUND)
+                })
                 .collect(),
             Selector::DialogAction { dialog, action } => find_dialog_action(&cells, dialog, action),
             Selector::VerticalScrollbarEnd => {

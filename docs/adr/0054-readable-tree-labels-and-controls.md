@@ -54,9 +54,9 @@ because it is not focused, selected, or hovered.
 Every mouse hit target that performs a discrete action must contain a persistent
 visible affordance:
 
-- selectable flat rows use a high-contrast leading marker, with a distinct marker
-  for the selected row; tree rows rely on their disclosure/indentation structure
-  and show the selection marker only for the selected row;
+- selectable flat rows use the same high-contrast leading marker before and after
+  selection; tree rows rely on their disclosure/indentation structure and do not
+  add a selection caret;
 - draggable pane seams use a high-contrast resize marker while retaining their
   structural border;
 - dismissible toasts and menus show a high-contrast close marker, while modal
@@ -115,8 +115,8 @@ layout space no longer aliases the nearest rendered action.
   foreground differs from the surrounding border and is bold.
 - Render other enabled navigation and dialog actions with the same control contract.
 - Verify disabled controls may use chrome styling but cannot be activated.
-- Verify flat rows render an interaction marker before and after selection, while
-  tree rows omit the generic dot and retain their disclosure structure.
+- Verify flat rows retain the same interaction marker after selection, while tree
+  rows add no selection caret and retain their disclosure structure.
 - Verify long flat and tree labels render `...`, and that a right-side row action
   remains fully visible after truncation.
 - Verify the pane resize marker lies inside the seam hit target.

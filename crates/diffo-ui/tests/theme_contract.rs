@@ -25,7 +25,6 @@ fn enabled_controls_are_distinct_from_chrome() {
     assert!(style.add_modifier.contains(Modifier::BOLD));
     assert_eq!(disabled_control_style().fg, Some(theme::CHROME));
     assert_eq!(interaction::FLAT_ROW, "· ");
-    assert_eq!(interaction::SELECTED_ROW, "› ");
     assert_eq!(interaction::EDIT, "✎");
     assert_eq!(interaction::DISMISS, "×");
     assert_eq!(interaction::PANE_DRAG, "↔");

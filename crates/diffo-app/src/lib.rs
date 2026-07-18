@@ -125,8 +125,10 @@ pub fn update(model: &mut Model, message: Message) -> Option<Effect> {
         }
         Message::SnapshotLoaded(snapshot) => model.refresh(snapshot),
         Message::OperationFailed(error) => model.show_error(error),
-        Message::OperationCompleted(result, snapshot) => model.complete_operation(result, snapshot),
-        Message::ActionFailed(failure) => model.show_operation_failure(failure),
+        Message::OperationCompleted(result, snapshot) => {
+            model.complete_operation(&result, snapshot);
+        }
+        Message::ActionFailed(failure) => model.show_operation_failure(&failure),
         Message::DismissToast(id) => model.dismiss_toast(id),
     }
     None

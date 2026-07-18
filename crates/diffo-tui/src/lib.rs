@@ -1843,7 +1843,7 @@ mod rendering_tests {
     fn renders_and_mouse_dismisses_a_bottom_right_toast() {
         let mut model = model();
         model.complete_operation(
-            OperationResult::Commit {
+            &OperationResult::Commit {
                 hash: "a1b2c3d4e5".to_owned(),
             },
             model.snapshot.clone(),

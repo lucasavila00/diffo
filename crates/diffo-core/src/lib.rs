@@ -90,6 +90,7 @@ pub enum OperationResult {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum FailureKind {
     PullRequired,
+    Diverged,
     PushRejected,
     Authentication,
     Network,

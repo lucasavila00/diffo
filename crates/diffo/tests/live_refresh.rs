@@ -129,9 +129,10 @@ fn wait_for_refresh(
             Ok(Some(RefreshResult::Snapshot { snapshot, .. })) if predicate(&snapshot) => {
                 return Ok(snapshot);
             }
-            Ok(Some(RefreshResult::Snapshot { .. })) => {}
             Ok(Some(
-                RefreshResult::ActionCompleted { .. } | RefreshResult::ActionFailed { .. },
+                RefreshResult::Snapshot { .. }
+                | RefreshResult::ActionCompleted { .. }
+                | RefreshResult::ActionFailed { .. },
             )) => {}
             Ok(Some(RefreshResult::Error { message, .. })) => bail!(message),
             Ok(None) => thread::sleep(Duration::from_millis(10)),

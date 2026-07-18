@@ -349,7 +349,7 @@ impl Repository for GitRepositorySource {
                 command.arg("fetch");
             }
             RepositoryAction::Pull => {
-                command.args(["pull", "--no-edit"]);
+                command.args(["pull", "--ff-only"]);
             }
             RepositoryAction::Push => {
                 command.args(["push", "--porcelain"]);
@@ -367,55 +367,65 @@ impl Repository for GitRepositorySource {
             let stdout = String::from_utf8_lossy(&output.stdout);
             return Err(classify_failure(action, &format!("{stdout}\n{stderr}")));
         }
-        match action {
-            RepositoryAction::Stage(_) | RepositoryAction::StageAll => Ok(OperationResult::Stage),
-            RepositoryAction::Unstage(_) | RepositoryAction::UnstageAll => {
-                Ok(OperationResult::Unstage)
-            }
-            RepositoryAction::Fetch => {
-                let after = self.snapshot().ok().and_then(|snapshot| snapshot.upstream);
-                let updated_refs = usize::from(before_fetch != after);
-                Ok(OperationResult::Fetch { updated_refs })
-            }
-            RepositoryAction::Pull => {
-                let old = before_head.unwrap_or_default();
-                let new = self
-                    .git(&["rev-parse", "HEAD"])
-                    .map_err(|error| {
-                        operation_failure(action, FailureKind::Unknown, &error.to_string())
-                    })
-                    .map(|head| String::from_utf8_lossy(&head).trim().to_owned())?;
-                let range = format!("{old}..{new}");
-                let commits = self
-                    .git(&["rev-list", "--count", &range])
-                    .ok()
-                    .and_then(|count| String::from_utf8(count).ok())
-                    .and_then(|count| count.trim().parse().ok())
-                    .unwrap_or(0);
-                Ok(OperationResult::Pull { commits })
-            }
-            RepositoryAction::Push => {
-                let snapshot = self.snapshot().map_err(|error| {
+        collect_operation_result(self, action, before_head, before_fetch.as_ref())
+    }
+}
+
+fn collect_operation_result(
+    source: &GitRepositorySource,
+    action: &RepositoryAction,
+    before_head: Option<String>,
+    before_fetch: Option<&UpstreamState>,
+) -> std::result::Result<OperationResult, OperationFailure> {
+    match action {
+        RepositoryAction::Stage(_) | RepositoryAction::StageAll => Ok(OperationResult::Stage),
+        RepositoryAction::Unstage(_) | RepositoryAction::UnstageAll => Ok(OperationResult::Unstage),
+        RepositoryAction::Fetch => {
+            let after = source
+                .snapshot()
+                .ok()
+                .and_then(|snapshot| snapshot.upstream);
+            let updated_refs = usize::from(before_fetch != after.as_ref());
+            Ok(OperationResult::Fetch { updated_refs })
+        }
+        RepositoryAction::Pull => {
+            let old = before_head.unwrap_or_default();
+            let new = source
+                .git(&["rev-parse", "HEAD"])
+                .map_err(|error| {
                     operation_failure(action, FailureKind::Unknown, &error.to_string())
-                })?;
-                let hash = snapshot
-                    .recent_commits
-                    .first()
-                    .map_or_else(|| "unknown".to_owned(), |commit| commit.id.clone());
-                let upstream = snapshot
-                    .upstream
-                    .map_or_else(|| "upstream".to_owned(), |upstream| upstream.name);
-                Ok(OperationResult::Push { hash, upstream })
-            }
-            RepositoryAction::Commit(_) => {
-                let hash = self
-                    .git(&["rev-parse", "HEAD"])
-                    .map_err(|error| {
-                        operation_failure(action, FailureKind::Unknown, &error.to_string())
-                    })
-                    .map(|head| String::from_utf8_lossy(&head).trim().to_owned())?;
-                Ok(OperationResult::Commit { hash })
-            }
+                })
+                .map(|head| String::from_utf8_lossy(&head).trim().to_owned())?;
+            let range = format!("{old}..{new}");
+            let commits = source
+                .git(&["rev-list", "--count", &range])
+                .ok()
+                .and_then(|count| String::from_utf8(count).ok())
+                .and_then(|count| count.trim().parse().ok())
+                .unwrap_or(0);
+            Ok(OperationResult::Pull { commits })
+        }
+        RepositoryAction::Push => {
+            let snapshot = source.snapshot().map_err(|error| {
+                operation_failure(action, FailureKind::Unknown, &error.to_string())
+            })?;
+            let hash = snapshot
+                .recent_commits
+                .first()
+                .map_or_else(|| "unknown".to_owned(), |commit| commit.id.clone());
+            let upstream = snapshot
+                .upstream
+                .map_or_else(|| "upstream".to_owned(), |upstream| upstream.name);
+            Ok(OperationResult::Push { hash, upstream })
+        }
+        RepositoryAction::Commit(_) => {
+            let hash = source
+                .git(&["rev-parse", "HEAD"])
+                .map_err(|error| {
+                    operation_failure(action, FailureKind::Unknown, &error.to_string())
+                })
+                .map(|head| String::from_utf8_lossy(&head).trim().to_owned())?;
+            Ok(OperationResult::Commit { hash })
         }
     }
 }
@@ -439,6 +449,11 @@ fn classify_failure(action: &RepositoryAction, output: &str) -> OperationFailure
         || text.contains("remote contains work")
     {
         (FailureKind::PushRejected, "remote changed; pull required")
+    } else if text.contains("not possible to fast-forward") || text.contains("divergent branches") {
+        (
+            FailureKind::Diverged,
+            "branches diverged; merge or rebase required",
+        )
     } else if text.contains("hook declined") || text.contains("pre-receive hook") {
         (FailureKind::HookRejected, "rejected by remote hook")
     } else if text.contains("authentication")
@@ -615,8 +630,11 @@ mod tests {
         process::Command,
     };
 
-    use super::parse_status;
-    use diffo_core::{AccessMode, ChangeKind, Repository, RepositoryAction, RepositorySource};
+    use super::{classify_failure, parse_status};
+    use diffo_core::{
+        AccessMode, ChangeKind, FailureKind, OperationResult, Repository, RepositoryAction,
+        RepositorySource,
+    };
 
     #[test]
     fn parses_branch_files_and_upstream() {
@@ -759,9 +777,10 @@ mod tests {
         git(&seed, &["push", "origin", "HEAD"]);
 
         let source = super::GitRepositorySource::new(&work);
-        source
+        let fetch = source
             .apply(&RepositoryAction::Fetch)
             .expect("fetch remote");
+        assert_eq!(fetch, OperationResult::Fetch { updated_refs: 1 });
         assert_eq!(
             source
                 .snapshot()
@@ -772,7 +791,8 @@ mod tests {
             1
         );
 
-        source.apply(&RepositoryAction::Pull).expect("pull remote");
+        let pull = source.apply(&RepositoryAction::Pull).expect("pull remote");
+        assert_eq!(pull, OperationResult::Pull { commits: 1 });
         assert!(work.join("remote.txt").exists());
         assert_eq!(
             source
@@ -783,6 +803,41 @@ mod tests {
                 .behind,
             0
         );
+    }
+
+    #[test]
+    fn classifies_failures_without_returning_git_secrets() {
+        for (action, output, expected) in [
+            (
+                RepositoryAction::Push,
+                "[rejected] (non-fast-forward)",
+                FailureKind::PushRejected,
+            ),
+            (
+                RepositoryAction::Push,
+                "pre-receive hook declined: token=secret",
+                FailureKind::HookRejected,
+            ),
+            (
+                RepositoryAction::Pull,
+                "CONFLICT in file",
+                FailureKind::MergeConflict,
+            ),
+            (
+                RepositoryAction::Pull,
+                "fatal: Not possible to fast-forward, aborting.",
+                FailureKind::Diverged,
+            ),
+            (
+                RepositoryAction::Fetch,
+                "fatal: could not resolve host",
+                FailureKind::Network,
+            ),
+        ] {
+            let failure = classify_failure(&action, output);
+            assert_eq!(failure.kind, expected);
+            assert!(!failure.detail.contains("secret"));
+        }
     }
 
     fn test_repository() -> tempfile::TempDir {

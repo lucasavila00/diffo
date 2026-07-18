@@ -1,6 +1,6 @@
 # ADR 0020: Operation toasts
 
-Status: Proposed
+Status: Accepted
 
 ## Goal
 
@@ -25,8 +25,8 @@ Change repository actions from `Result<()>` to a structured result:
 OperationResult
   Commit { hash }
   Fetch { updated_refs }
-  Pull { old_head, new_head, commits }
-  Push { hash, remote, branch }
+  Pull { commits }
+  Push { hash, upstream }
   Stage
   Unstage
 ```
@@ -41,6 +41,7 @@ OperationFailure { action: RepositoryAction, kind, summary, detail }
 
 FailureKind
   PullRequired
+  Diverged
   PushRejected
   Authentication
   Network

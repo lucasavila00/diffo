@@ -284,7 +284,7 @@ impl Model {
     pub fn execute_primary_action(&mut self) -> Option<RepositoryAction> {
         let primary = self.primary_action();
         if primary == PrimaryAction::PushAndPull {
-            self.show_operation_failure(OperationFailure {
+            self.show_operation_failure(&OperationFailure {
                 action: RepositoryAction::Push,
                 kind: FailureKind::PullRequired,
                 detail: "pull and merge required".to_owned(),
@@ -613,17 +613,17 @@ impl Model {
         self.error = Some(error.into());
     }
 
-    pub fn complete_operation(&mut self, result: OperationResult, snapshot: RepositorySnapshot) {
+    pub fn complete_operation(&mut self, result: &OperationResult, snapshot: RepositorySnapshot) {
         self.refresh(snapshot);
-        if let Some((kind, title)) = operation_result_toast(&result) {
+        if let Some((kind, title)) = operation_result_toast(result) {
             self.push_toast(kind, title, None);
         }
     }
 
-    pub fn show_operation_failure(&mut self, failure: OperationFailure) {
+    pub fn show_operation_failure(&mut self, failure: &OperationFailure) {
         self.show_error(failure.detail.clone());
         self.error = None;
-        self.push_toast(ToastKind::Error, operation_failure_title(&failure), None);
+        self.push_toast(ToastKind::Error, operation_failure_title(failure), None);
     }
 
     pub fn dismiss_toast(&mut self, id: u64) {
@@ -691,6 +691,7 @@ fn operation_failure_title(failure: &OperationFailure) -> String {
     };
     match failure.kind {
         FailureKind::PullRequired => format!("Push blocked: {}", failure.detail),
+        FailureKind::Diverged => format!("Pull blocked: {}", failure.detail),
         FailureKind::PushRejected | FailureKind::HookRejected => {
             format!("Push rejected: {}", failure.detail)
         }
@@ -892,12 +893,12 @@ mod tests {
     fn queues_replaces_limits_and_dismisses_toasts() {
         let mut app = Model::new(snapshot(), AccessMode::ReadWrite);
         for updated_refs in 1..=4 {
-            app.complete_operation(OperationResult::Fetch { updated_refs }, snapshot());
+            app.complete_operation(&OperationResult::Fetch { updated_refs }, snapshot());
         }
         assert_eq!(app.toasts.len(), 3);
         assert_eq!(app.toasts[0].title, "Fetched 4 refs");
 
-        app.complete_operation(OperationResult::Fetch { updated_refs: 4 }, snapshot());
+        app.complete_operation(&OperationResult::Fetch { updated_refs: 4 }, snapshot());
         assert_eq!(app.toasts.len(), 3);
         assert_eq!(
             app.toasts

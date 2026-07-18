@@ -1,4 +1,4 @@
-.PHONY: diffo install diffo-mock e2e e2e-review
+.PHONY: diffo install diffo-mock e2e e2e-review measure-cpu
 
 # Build and run the diff viewer using Cargo's debug profile.
 diffo:
@@ -17,3 +17,8 @@ e2e:
 
 e2e-review:
 	cargo insta test --package diffo-e2e
+
+# Measure release-build CPU use in deterministic idle and scrolling workloads.
+measure-cpu:
+	cargo build --release --package diffo
+	cargo run --release --package diffo-measure

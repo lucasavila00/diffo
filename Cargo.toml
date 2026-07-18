@@ -9,6 +9,7 @@ members = [
     "crates/diffo-explorer",
     "crates/diffo-git",
     "crates/diffo-highlight",
+    "crates/diffo-measure",
     "crates/diffo-tui",
     "crates/diffo-ui",
     "crates/diffo-watch",

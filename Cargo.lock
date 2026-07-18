@@ -335,6 +335,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "diffo-measure"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "portable-pty",
+ "ron 0.10.1",
+ "serde",
+ "tempfile",
+]
+
+[[package]]
 name = "diffo-tui"
 version = "0.1.0"
 dependencies = [

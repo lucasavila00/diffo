@@ -7,6 +7,7 @@ use std::{
 
 use diffo_core::{ChangeKind, RepositorySnapshot};
 use diffo_highlight::{HighlightedLine, LineRange};
+use ratatui::text::Line;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum GutterMarker {
@@ -19,6 +20,7 @@ pub(crate) enum GutterMarker {
 #[derive(Clone, Debug)]
 pub struct Viewer {
     pub(crate) path: PathBuf,
+    pub(crate) title: Box<Line<'static>>,
     pub(crate) lines: Vec<String>,
     pub(crate) markers: HashMap<usize, GutterMarker>,
     pub(crate) highlighted: HashMap<u32, HighlightedLine>,

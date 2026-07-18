@@ -19,7 +19,7 @@ use diffo_ui::{PaneSplit, design, maximum_scroll, scroll_offset, wheel_scroll_de
 use ratatui::{Frame, layout::Rect};
 
 use model::ExplorerModel;
-use view::{VIEWER_GUTTER_WIDTH, explorer_areas, tree_document, viewer_metrics};
+use view::{VIEWER_GUTTER_WIDTH, entry_label, explorer_areas, tree_document, viewer_metrics};
 pub use worker::{ExplorerOutcome, ExplorerRequest, ExplorerWorker};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -93,15 +93,22 @@ impl ExplorerActivity {
     }
 
     fn request_file(&mut self, path: PathBuf, first_line: usize) {
+        let Some((status, title)) = self
+            .model
+            .entry(&path)
+            .map(|entry| (entry.status, entry_label(entry)))
+        else {
+            return;
+        };
         let id = self.next_id();
         self.latest_file = id;
         self.pending_path = Some(path.clone());
-        let status = self.model.entry(&path).and_then(|entry| entry.status);
         self.queued
             .retain(|request| !matches!(request, ExplorerRequest::File { .. }));
         self.queued.push_back(ExplorerRequest::File {
             id,
             path,
+            title,
             status,
             first_line,
             viewport_rows: self.viewport_rows,
@@ -497,7 +504,7 @@ mod tests {
     use super::model::Viewer;
     use super::*;
     use crossterm::event::MouseEvent;
-    use ratatui::{Terminal, backend::TestBackend};
+    use ratatui::{Terminal, backend::TestBackend, text::Line};
     use std::collections::HashMap;
 
     #[test]
@@ -530,10 +537,21 @@ mod tests {
         let mut explorer = ExplorerActivity::new(RepositorySnapshot::default());
         explorer.latest_file = 2;
         explorer.pending_path = Some(PathBuf::from("new.rs"));
+        explorer.model.viewer = Some(Viewer {
+            path: PathBuf::from("new.rs"),
+            title: Box::new(Line::raw("M new.rs")),
+            lines: vec!["new".to_owned()],
+            markers: HashMap::new(),
+            highlighted: HashMap::new(),
+            coverage: Vec::new(),
+            syntax_eligible: false,
+            message: None,
+        });
         explorer.accept(ExplorerOutcome::File {
             id: 1,
             result: Ok(Viewer {
                 path: PathBuf::from("old.rs"),
+                title: Box::new(Line::raw("M old.rs")),
                 lines: vec!["old".to_owned()],
                 markers: HashMap::new(),
                 highlighted: HashMap::new(),
@@ -542,7 +560,10 @@ mod tests {
                 message: None,
             }),
         });
-        assert!(explorer.model.viewer.is_none());
+        let viewer = explorer.model.viewer.as_ref().unwrap();
+        assert_eq!(viewer.path, PathBuf::from("new.rs"));
+        assert_eq!(*viewer.title, Line::raw("M new.rs"));
+        assert_eq!(viewer.lines, ["new"]);
         assert_eq!(explorer.pending_path, Some(PathBuf::from("new.rs")));
     }
 
@@ -684,6 +705,7 @@ mod tests {
         let mut explorer = ExplorerActivity::new(RepositorySnapshot::default());
         explorer.model.viewer = Some(Viewer {
             path: PathBuf::from("wide.txt"),
+            title: Box::new(Line::raw("  wide.txt")),
             lines: vec!["x".repeat(100)],
             markers: HashMap::new(),
             highlighted: HashMap::new(),
@@ -732,6 +754,7 @@ mod tests {
             .collect::<Vec<_>>();
         explorer.model.viewer = Some(Viewer {
             path: path.clone(),
+            title: Box::new(Line::raw("  large.rs")),
             lines: lines.clone(),
             markers: HashMap::new(),
             highlighted: HashMap::new(),
@@ -750,6 +773,7 @@ mod tests {
             id: request_id,
             result: Ok(Viewer {
                 path,
+                title: Box::new(Line::raw("  large.rs")),
                 lines,
                 markers: HashMap::new(),
                 highlighted: HashMap::new(),
@@ -781,6 +805,9 @@ mod tests {
     fn file_requests_coalesce_to_the_newest_viewport() {
         let mut explorer = ExplorerActivity::new(RepositorySnapshot::default());
         explorer.queued.clear();
+        explorer
+            .model
+            .install_paths(vec![PathBuf::from("large.rs")]);
 
         explorer.request_file(PathBuf::from("large.rs"), 20);
         explorer.request_file(PathBuf::from("large.rs"), 80);

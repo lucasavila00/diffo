@@ -110,33 +110,36 @@ pub(super) fn picker_document<'a>(
 ) -> Document<FileKey> {
     let rows = files
         .map(|file| {
-            let marker = match file.kind {
-                ChangeKind::Added | ChangeKind::Untracked => "A",
-                ChangeKind::Modified => "M",
-                ChangeKind::Deleted => "D",
-                ChangeKind::Renamed => "R",
-                ChangeKind::Copied => "C",
-                ChangeKind::Conflicted => "U",
-            };
             let key = FileKey {
                 path: file.path.clone(),
                 area: change_area,
             };
-            let label = Line::styled(
-                terminal_safe_text(&format!("{marker}  {}", file.path.display())),
-                change_kind_style(file.kind, false),
-            );
             let action = match change_area {
                 ChangeArea::Staged => "[-]",
                 ChangeArea::Unstaged => "[+]",
             };
-            PickerRow::flat(key, label).with_action(action)
+            PickerRow::flat(key, file_label(file)).with_action(action)
         })
         .collect();
     let mut document = Document::flat(title, rows);
     document.panel_action = Some(panel_action.to_owned());
     document.border_style = border_style;
     document
+}
+
+pub(super) fn file_label(file: &FileState) -> Line<'static> {
+    let marker = match file.kind {
+        ChangeKind::Added | ChangeKind::Untracked => "A",
+        ChangeKind::Modified => "M",
+        ChangeKind::Deleted => "D",
+        ChangeKind::Renamed => "R",
+        ChangeKind::Copied => "C",
+        ChangeKind::Conflicted => "U",
+    };
+    Line::styled(
+        terminal_safe_text(&format!("{marker}  {}", file.path.display())),
+        change_kind_style(file.kind, false),
+    )
 }
 
 pub(super) fn render_status(frame: &mut Frame, area: ratatui::layout::Rect, model: &Model) {

@@ -40,12 +40,21 @@ fn delayed_diff_open_commits_only_the_latest_buffer_at_its_first_change() -> Res
         .press(Key::Char('s'))?
         .wait_for(&Selector::selected_row("b-large.txt"))?;
     assert!(screen.contents().contains("SMALL_CHANGED"));
+    assert!(
+        screen
+            .contents()
+            .lines()
+            .next()
+            .unwrap_or_default()
+            .contains("M  a-small.txt")
+    );
     screen
         .press(Key::Char('s'))?
         .wait_for(&Selector::selected_row("c-large.txt"))?;
     assert!(screen.contents().contains("SMALL_CHANGED"));
     screen
         .wait_for_text("C_LARGE_CHANGED")?
+        .wait_for_text("M  c-large.txt")?
         .press(Key::Char('q'))?
         .wait_for_exit()?;
     drop(screen);

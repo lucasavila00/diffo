@@ -74,6 +74,9 @@ impl Renderer {
                 viewport.viewport_rows,
             )
         };
+        let title = self
+            .displayed_key()
+            .map_or_else(|| Line::raw(" File Diff "), |key| key.title.clone());
         let resize_label = if model.resizing_file_pane {
             format!(" · files {}%", model.file_pane_percent)
         } else {
@@ -83,7 +86,11 @@ impl Renderer {
             Block::default()
                 .borders(Borders::ALL)
                 .border_style(resize_border_style(model))
-                .title(format!(" File Diff · {mode}{resize_label} ")),
+                .title(title)
+                .title(
+                    Line::raw(format!(" File Diff · {mode}{resize_label} "))
+                        .alignment(Alignment::Right),
+                ),
             area,
         );
         render_lines(

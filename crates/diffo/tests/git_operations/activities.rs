@@ -92,6 +92,14 @@ fn delayed_explorer_open_commits_only_the_latest_syntax_ready_file() -> Result<(
         .wait_for_text("EXPLORER_BRAVO")?;
 
     assert!(!screen.contents().contains("EXPLORER_ALPHA"));
+    assert!(
+        screen
+            .contents()
+            .lines()
+            .next()
+            .unwrap_or_default()
+            .contains("  b.rs")
+    );
     Ok(())
 }
 

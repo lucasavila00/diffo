@@ -114,6 +114,42 @@ fn file_picker_renders_every_git_change_kind_with_its_status_color() {
 }
 
 #[test]
+fn diff_buffer_title_matches_the_committed_picker_label() {
+    let model = model();
+    let area = Rect::new(0, 0, 100, 30);
+    let mut renderer = Renderer::new();
+    renderer.prepare_frame(&model, area);
+
+    let picker_label = picker_document(
+        "Changes",
+        "[+] Stage All",
+        model.snapshot.files.iter(),
+        ChangeArea::Unstaged,
+        Style::default(),
+    )
+    .rows
+    .remove(0)
+    .label;
+    assert_eq!(renderer.displayed_key().unwrap().title, picker_label);
+
+    let backend = TestBackend::new(area.width, area.height);
+    let mut terminal = Terminal::new(backend).unwrap();
+    terminal
+        .draw(|frame| renderer.render(frame, &model))
+        .unwrap();
+
+    let diff = horizontal_panes(main_area(area), model.file_pane_percent)[1];
+    let title = "M  src/main.rs";
+    for (offset, expected) in title.chars().enumerate() {
+        let offset = u16::try_from(offset).unwrap();
+        let cell = &terminal.backend().buffer()[(diff.x + 1 + offset, diff.y)];
+        assert_eq!(cell.symbol(), expected.to_string());
+        assert_eq!(cell.fg, Color::Yellow);
+        assert_eq!(cell.bg, Color::Reset);
+    }
+}
+
+#[test]
 fn scrollbar_length_is_the_number_of_legal_viewport_positions() {
     assert_eq!(scrollbar_position_count(120, 25), 96);
     assert_eq!(scrollbar_position_count(25, 25), 1);

@@ -64,30 +64,9 @@ pub(crate) fn tree_document(
         .entries
         .iter()
         .map(|entry| {
-            let name = entry
-                .path
-                .file_name()
-                .unwrap_or(entry.path.as_os_str())
-                .to_string_lossy();
-            let prefix = if entry.directory {
-                ""
-            } else {
-                match entry.status {
-                    Some(ChangeKind::Added | ChangeKind::Untracked) => "A ",
-                    Some(ChangeKind::Modified) => "M ",
-                    Some(ChangeKind::Deleted) => "D ",
-                    Some(ChangeKind::Renamed) => "R ",
-                    Some(ChangeKind::Copied) => "C ",
-                    Some(ChangeKind::Conflicted) => "U ",
-                    None => "  ",
-                }
-            };
             PickerRow::tree(
                 entry.path.clone(),
-                Line::styled(
-                    terminal_safe_text(&format!("{prefix}{name}")),
-                    entry_style(entry),
-                ),
+                entry_label(entry),
                 entry.depth,
                 entry.directory,
             )
@@ -99,6 +78,31 @@ pub(crate) fn tree_document(
         "Loading files…".clone_into(&mut document.empty_message);
     }
     document
+}
+
+pub(crate) fn entry_label(entry: &TreeEntry) -> Line<'static> {
+    let name = entry
+        .path
+        .file_name()
+        .unwrap_or(entry.path.as_os_str())
+        .to_string_lossy();
+    let prefix = if entry.directory {
+        ""
+    } else {
+        match entry.status {
+            Some(ChangeKind::Added | ChangeKind::Untracked) => "A ",
+            Some(ChangeKind::Modified) => "M ",
+            Some(ChangeKind::Deleted) => "D ",
+            Some(ChangeKind::Renamed) => "R ",
+            Some(ChangeKind::Copied) => "C ",
+            Some(ChangeKind::Conflicted) => "U ",
+            None => "  ",
+        }
+    };
+    Line::styled(
+        terminal_safe_text(&format!("{prefix}{name}")),
+        entry_style(entry),
+    )
 }
 
 fn entry_style(entry: &TreeEntry) -> Style {
@@ -119,8 +123,8 @@ fn render_viewer(
     skeleton: bool,
 ) {
     let title = model.viewer.as_ref().map_or_else(
-        || " File Viewer ".to_owned(),
-        |viewer| terminal_safe_text(&format!(" {} ", viewer.path.display())),
+        || Line::raw(" File Viewer "),
+        |viewer| viewer.title.as_ref().clone(),
     );
     frame.render_widget(
         Block::default()
@@ -312,10 +316,55 @@ mod tests {
     }
 
     #[test]
+    fn viewer_title_matches_the_committed_tree_label() {
+        let entry = TreeEntry {
+            path: "deleted.rs".into(),
+            depth: 0,
+            directory: false,
+            status: Some(ChangeKind::Deleted),
+        };
+        let title = entry_label(&entry);
+        let mut model = ExplorerModel::new(diffo_core::RepositorySnapshot::default());
+        model.viewer = Some(super::super::model::Viewer {
+            path: "different-path.rs".into(),
+            title: Box::new(title),
+            lines: Vec::new(),
+            markers: HashMap::new(),
+            highlighted: HashMap::new(),
+            coverage: Vec::new(),
+            syntax_eligible: false,
+            message: None,
+        });
+        let backend = TestBackend::new(30, 4);
+        let mut terminal = Terminal::new(backend).unwrap();
+
+        terminal
+            .draw(|frame| render_viewer(frame, frame.area(), &model, Style::default(), false))
+            .unwrap();
+
+        let expected = "D deleted.rs";
+        for (offset, expected) in expected.chars().enumerate() {
+            let cell = &terminal.backend().buffer()[(u16::try_from(offset).unwrap() + 1, 0)];
+            assert_eq!(cell.symbol(), expected.to_string());
+            assert_eq!(cell.fg, Color::LightRed);
+            assert!(cell.modifier.contains(Modifier::CROSSED_OUT));
+        }
+        let screen = terminal
+            .backend()
+            .buffer()
+            .content
+            .iter()
+            .map(ratatui::buffer::Cell::symbol)
+            .collect::<String>();
+        assert!(!screen.contains("different-path.rs"));
+    }
+
+    #[test]
     fn horizontal_pan_keeps_the_gutter_and_renders_control_text_inertly() {
         let mut model = ExplorerModel::new(diffo_core::RepositorySnapshot::default());
         model.viewer = Some(super::super::model::Viewer {
             path: "wide.txt".into(),
+            title: Box::new(Line::raw("  wide.txt")),
             lines: vec!["01234567\x1b[2JPAN_TARGET".to_owned()],
             markers: HashMap::new(),
             highlighted: HashMap::new(),
@@ -361,6 +410,7 @@ mod tests {
         let mut model = ExplorerModel::new(diffo_core::RepositorySnapshot::default());
         model.viewer = Some(super::super::model::Viewer {
             path: "main.rs".into(),
+            title: Box::new(Line::raw("  main.rs")),
             lines: vec![source.to_owned()],
             markers: HashMap::new(),
             highlighted: highlighted.into_iter().collect(),
@@ -395,6 +445,7 @@ mod tests {
         let mut model = ExplorerModel::new(diffo_core::RepositorySnapshot::default());
         model.viewer = Some(super::super::model::Viewer {
             path: "pending.rs".into(),
+            title: Box::new(Line::raw("  pending.rs")),
             lines: vec!["TEXT_MUST_BE_HIDDEN".to_owned()],
             markers: HashMap::from([(1, GutterMarker::Added)]),
             highlighted: HashMap::new(),

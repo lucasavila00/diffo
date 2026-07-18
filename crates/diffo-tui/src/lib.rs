@@ -45,7 +45,7 @@ use diffo_ui::change_kind_style as file_kind_style;
 #[cfg(test)]
 use files::status_line;
 use files::{
-    commit_action_at_position, file_group_areas, file_panel_areas, picker_document,
+    commit_action_at_position, file_group_areas, file_label, file_panel_areas, picker_document,
     render_commit_composer, render_status, resize_border_style, staged_files, unstaged_files,
 };
 #[cfg(test)]
@@ -149,6 +149,7 @@ impl Renderer {
                 );
             Some(DiffKey {
                 file: selected.clone(),
+                title: file_label(file),
                 patch,
                 mark_conflicts: file.kind == ChangeKind::Conflicted,
                 mode: model.diff_view_mode,

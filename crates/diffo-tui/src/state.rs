@@ -8,7 +8,7 @@ use diffo_diff::{DiffDocument, RenderLine, RowKind, SideBySideRow};
 use diffo_file_picker::FilePicker;
 use diffo_highlight::{HighlightedDiff, LineRange, SyntaxHighlighter};
 use diffo_text_view::TextSurfacePreparation;
-use ratatui::layout::Rect;
+use ratatui::{layout::Rect, text::Line};
 
 pub struct Renderer {
     pub(super) highlighter: Arc<SyntaxHighlighter>,
@@ -85,6 +85,7 @@ pub(super) struct ScrollAnchor {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) struct DiffKey {
     pub(super) file: FileKey,
+    pub(super) title: Line<'static>,
     pub(super) patch: Arc<str>,
     pub(super) mark_conflicts: bool,
     pub(super) mode: diffo_app::DiffViewMode,

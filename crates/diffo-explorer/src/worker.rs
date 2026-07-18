@@ -18,6 +18,7 @@ use diffo_highlight::{
     MAX_HIGHLIGHT_FILE_LINES, SyntaxHighlighter,
 };
 use diffo_ui::terminal_safe_text;
+use ratatui::text::Line;
 
 use super::model::{GutterMarker, Viewer};
 
@@ -29,6 +30,7 @@ pub enum ExplorerRequest {
     File {
         id: u64,
         path: PathBuf,
+        title: Line<'static>,
         status: Option<ChangeKind>,
         first_line: usize,
         viewport_rows: usize,
@@ -84,6 +86,7 @@ impl ExplorerWorker {
                     ExplorerRequest::File {
                         id,
                         path,
+                        title,
                         status,
                         first_line,
                         viewport_rows,
@@ -96,6 +99,7 @@ impl ExplorerWorker {
                                 .map(|file| {
                                     prepare_viewer(
                                         path,
+                                        title,
                                         status,
                                         file,
                                         first_line,
@@ -143,6 +147,7 @@ fn preparation_delay_from_environment() -> Duration {
 
 fn prepare_viewer(
     path: PathBuf,
+    title: Line<'static>,
     status: Option<ChangeKind>,
     file: ExplorerFile,
     first_line: usize,
@@ -152,6 +157,7 @@ fn prepare_viewer(
     let ExplorerFileContent::Text(text) = file.content else {
         return Viewer {
             path,
+            title: Box::new(title),
             lines: Vec::new(),
             markers: HashMap::new(),
             highlighted: HashMap::new(),
@@ -188,6 +194,7 @@ fn prepare_viewer(
     };
     Viewer {
         path,
+        title: Box::new(title),
         lines,
         markers,
         highlighted: styles,
@@ -387,6 +394,7 @@ mod tests {
             .join("\n");
         let viewer = prepare_viewer(
             PathBuf::from("source.rs"),
+            Line::raw("  source.rs"),
             None,
             ExplorerFile {
                 content: ExplorerFileContent::Text(text),
@@ -403,6 +411,7 @@ mod tests {
 
         let at_limit = prepare_viewer(
             PathBuf::from("source.rs"),
+            Line::raw("  source.rs"),
             None,
             ExplorerFile {
                 content: ExplorerFileContent::Text("value\n".repeat(10_000)),
@@ -421,6 +430,7 @@ mod tests {
     fn viewer_content_cannot_emit_terminal_control_sequences() {
         let viewer = prepare_viewer(
             PathBuf::from("control.txt"),
+            Line::raw("  control.txt"),
             None,
             ExplorerFile {
                 content: ExplorerFileContent::Text("before\t\x1b[2J\x08after\n".to_owned()),

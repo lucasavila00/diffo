@@ -1,14 +1,14 @@
 use std::{env, process::Command, thread, time::Duration};
 
 use diffo_core::{
-    FailureKind, OperationFailure, OperationResult, Repository, RepositoryAction, RepositorySource,
+    FailureKind, OperationFailure, OperationResult, RepositoryAction, RepositorySource,
     UpstreamState,
 };
 
 use super::GitRepositorySource;
 
-impl Repository for GitRepositorySource {
-    fn apply(
+impl GitRepositorySource {
+    pub(super) fn apply_operation(
         &self,
         action: &RepositoryAction,
     ) -> std::result::Result<OperationResult, OperationFailure> {

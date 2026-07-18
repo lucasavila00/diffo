@@ -6,6 +6,8 @@ use diffo_tui::{
 };
 use ratatui::{Frame, layout::Rect, widgets::Clear};
 
+use crate::explorer::{ExplorerActivity, ExplorerOutcome, ExplorerRequest};
+
 pub(crate) struct Workbench {
     active: Activity,
     diff: DiffActivity,
@@ -19,7 +21,6 @@ struct DiffActivity {
     renderer: Renderer,
 }
 
-struct ExplorerActivity;
 struct SearchActivity;
 
 trait EmptyActivity {
@@ -31,10 +32,10 @@ impl Workbench {
         Self {
             active: Activity::Diff,
             diff: DiffActivity {
-                model: Model::new(snapshot),
+                model: Model::new(snapshot.clone()),
                 renderer: Renderer::new(),
             },
-            explorer: ExplorerActivity,
+            explorer: ExplorerActivity::new(snapshot),
             search: SearchActivity,
             should_quit: false,
         }
@@ -57,15 +58,23 @@ impl Workbench {
     }
 
     pub(crate) fn is_preparing(&self) -> bool {
-        self.active == Activity::Diff && self.diff.renderer.is_preparing()
+        match self.active {
+            Activity::Diff => self.diff.renderer.is_preparing(),
+            Activity::Explorer => self.explorer.is_preparing(),
+            Activity::Search => false,
+        }
     }
 
     pub(crate) fn prepare_frame(&mut self, area: Rect) -> FramePreparation {
-        if self.active != Activity::Diff {
-            return FramePreparation::default();
-        }
         let content = workbench_areas(area).content;
-        self.diff.prepare_frame(content)
+        match self.active {
+            Activity::Diff => self.diff.prepare_frame(content),
+            Activity::Explorer => {
+                self.explorer.prepare_frame(content);
+                FramePreparation::default()
+            }
+            Activity::Search => FramePreparation::default(),
+        }
     }
 
     pub(crate) fn render(&mut self, frame: &mut Frame) {
@@ -115,6 +124,22 @@ impl Workbench {
     ) -> Option<diffo_app::Message> {
         self.diff.renderer.map_event(event, &self.diff.model, area)
     }
+
+    pub(crate) fn handle_explorer_event(&mut self, event: &Event, area: Rect) -> bool {
+        self.explorer.handle_event(event, area)
+    }
+
+    pub(crate) fn take_explorer_request(&mut self) -> Option<ExplorerRequest> {
+        self.explorer.take_request()
+    }
+
+    pub(crate) fn accept_explorer(&mut self, outcome: ExplorerOutcome) {
+        self.explorer.accept(outcome);
+    }
+
+    pub(crate) fn explorer_repository_changed(&mut self, snapshot: RepositorySnapshot) {
+        self.explorer.repository_changed(snapshot);
+    }
 }
 
 impl DiffActivity {
@@ -135,12 +160,6 @@ impl DiffActivity {
 
     fn render(&mut self, frame: &mut Frame, area: Rect) {
         self.renderer.render_in(frame, &self.model, area);
-    }
-}
-
-impl EmptyActivity for ExplorerActivity {
-    fn render(&mut self, frame: &mut Frame, area: Rect) {
-        frame.render_widget(Clear, area);
     }
 }
 
@@ -213,9 +232,9 @@ mod tests {
     }
 
     #[test]
-    fn empty_activities_draw_only_the_activity_bar() {
+    fn empty_search_draws_only_the_activity_bar() {
         let mut workbench = Workbench::new(RepositorySnapshot::default());
-        workbench.active = Activity::Explorer;
+        workbench.active = Activity::Search;
         let backend = TestBackend::new(20, 12);
         let mut terminal = Terminal::new(backend).unwrap();
 

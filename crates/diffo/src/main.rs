@@ -23,9 +23,11 @@ use diffo_git::GitRepositorySource;
 use diffo_watch::{RefreshResult, RefreshService};
 use ratatui::{Terminal, backend::CrosstermBackend};
 
+mod explorer;
 mod frame_trace;
 mod workbench;
 
+use explorer::ExplorerWorker;
 use frame_trace::{FrameRecord, FrameTracer};
 use workbench::Workbench;
 
@@ -62,6 +64,8 @@ fn main() -> Result<()> {
     }
 
     let mut workbench = Workbench::new(snapshot);
+    let explorer_worker = ExplorerWorker::start(Arc::clone(&repository));
+    drain_explorer(&explorer_worker, &mut workbench);
     let mut tracer = FrameTracer::from_environment();
     let mut terminal = ratatui::init();
     execute!(
@@ -76,6 +80,7 @@ fn main() -> Result<()> {
         &shutdown,
         repository.as_ref(),
         refresh.as_ref(),
+        &explorer_worker,
         &mut tracer,
     );
     let mouse_result = execute!(terminal.backend_mut(), DisableMouseCapture)
@@ -142,6 +147,7 @@ fn run(
     shutdown: &AtomicBool,
     repository: &dyn Repository,
     refresh: Option<&RefreshService>,
+    explorer_worker: &ExplorerWorker,
     tracer: &mut FrameTracer,
 ) -> Result<()> {
     let mut generation = 0;
@@ -188,8 +194,9 @@ fn run(
         );
         let update_start_us = tracer.elapsed_us();
         if let Some(refresh) = refresh {
-            drain_refresh(refresh, workbench.diff_model_mut(), &mut generation);
+            drain_refresh(refresh, workbench, &mut generation);
         }
+        drain_explorer(explorer_worker, workbench);
         dispatch_events(&events, terminal, workbench, repository, refresh)?;
         let input_events = events.iter().map(|event| format!("{event:?}")).collect();
         let (preparation, draw_start_us, draw_end_us) = draw_frame(terminal, workbench, tracer)?;
@@ -257,6 +264,10 @@ fn dispatch_events(
     for event in events {
         if workbench.handle_workbench_event(event, area) {
             scroll.flush(workbench.diff_model_mut());
+            continue;
+        }
+        if workbench.active() == Activity::Explorer {
+            let _ = workbench.handle_explorer_event(event, content);
             continue;
         }
         if workbench.active() != Activity::Diff {
@@ -349,7 +360,7 @@ impl PendingScroll {
     }
 }
 
-fn drain_refresh(refresh: &RefreshService, model: &mut Model, generation: &mut u64) {
+fn drain_refresh(refresh: &RefreshService, workbench: &mut Workbench, generation: &mut u64) {
     while let Ok(Some(result)) = refresh.try_recv() {
         let message = match result {
             RefreshResult::Snapshot {
@@ -357,6 +368,7 @@ fn drain_refresh(refresh: &RefreshService, model: &mut Model, generation: &mut u
                 snapshot,
             } if next > *generation => {
                 *generation = next;
+                workbench.explorer_repository_changed(snapshot.clone());
                 Some(Message::SnapshotLoaded(snapshot))
             }
             RefreshResult::Error {
@@ -373,6 +385,7 @@ fn drain_refresh(refresh: &RefreshService, model: &mut Model, generation: &mut u
                 snapshot,
             } if next > *generation => {
                 *generation = next;
+                workbench.explorer_repository_changed(snapshot.clone());
                 Some(Message::OperationCompleted(action, result, snapshot))
             }
             RefreshResult::ActionFailed {
@@ -388,8 +401,17 @@ fn drain_refresh(refresh: &RefreshService, model: &mut Model, generation: &mut u
             | RefreshResult::ActionFailed { .. } => None,
         };
         if let Some(message) = message {
-            let _ = update(model, message);
+            let _ = update(workbench.diff_model_mut(), message);
         }
+    }
+}
+
+fn drain_explorer(worker: &ExplorerWorker, workbench: &mut Workbench) {
+    while let Some(outcome) = worker.try_recv() {
+        workbench.accept_explorer(outcome);
+    }
+    while let Some(request) = workbench.take_explorer_request() {
+        worker.submit(request);
     }
 }
 

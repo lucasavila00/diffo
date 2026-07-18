@@ -58,24 +58,25 @@ use overlays::{
 };
 #[cfg(test)]
 use style::{
-    contrast_ratio, contrasting_foreground, diff_background, diff_background_rgb, row_style,
+    change_kind_style as file_kind_style, contrast_ratio, contrasting_foreground, diff_background,
+    diff_background_rgb, row_style,
 };
-use style::{
-    file_action_style, file_kind_style, inline_line, network_animation_style, side_by_side_line,
-};
+use style::{file_action_style, inline_line, network_animation_style, side_by_side_line};
 
 use state::{
-    AnchorRow, DiffKey, DiffViewportMetrics, HIGHLIGHT_LOOKBEHIND_LINES,
-    HIGHLIGHT_PREFETCH_VIEWPORTS, HighlightCache, HunkButtonMetrics, HunkDirection,
-    MAX_HIGHLIGHT_BYTES_PER_SIDE, MAX_HIGHLIGHT_FILE_LINES, MAX_SYNC_BYTES, MAX_SYNC_LINES,
-    PREPARED_BUFFER_CACHE_SIZE, PrepareCommit, PrepareOutcome, PrepareRequest, ScrollAnchor,
-    ScrollbarAxis, ScrollbarMetrics,
+    AnchorRow, DiffKey, DiffViewportMetrics, HIGHLIGHT_PREFETCH_VIEWPORTS, HighlightCache,
+    HunkButtonMetrics, HunkDirection, MAX_SYNC_BYTES, MAX_SYNC_LINES, PREPARED_BUFFER_CACHE_SIZE,
+    PrepareCommit, PrepareOutcome, PrepareRequest, ScrollAnchor, ScrollbarAxis, ScrollbarMetrics,
 };
 
 pub use activity_bar::{
     ACTIVITY_BAR_WIDTH, WorkbenchAreas, activity_at_position, render_activity_bar, workbench_areas,
 };
-pub use state::{FramePreparation, Renderer, ViewportTransition};
+pub use state::{
+    FramePreparation, HIGHLIGHT_LOOKBEHIND_LINES, MAX_HIGHLIGHT_BYTES_PER_SIDE,
+    MAX_HIGHLIGHT_FILE_LINES, Renderer, ViewportTransition,
+};
+pub use style::{change_kind_style, plain_syntax_spans};
 
 pub use input::map_event;
 

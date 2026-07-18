@@ -3,6 +3,7 @@ use std::path::PathBuf;
 const NO_CHANGE: char = '.';
 
 mod command;
+mod explorer;
 mod operation;
 mod snapshot;
 mod status;

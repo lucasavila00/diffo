@@ -7,7 +7,8 @@ use std::{
 
 use super::{operation::classify_failure, status::parse_status};
 use diffo_core::{
-    ChangeKind, FailureKind, OperationResult, Repository, RepositoryAction, RepositorySource,
+    ChangeKind, ExplorerFileContent, FailureKind, OperationResult, Repository, RepositoryAction,
+    RepositorySource,
 };
 
 #[test]
@@ -191,6 +192,62 @@ fn fetches_and_pulls_from_the_configured_remote() {
             .behind,
         0
     );
+}
+
+#[test]
+fn explorer_lists_unchanged_and_untracked_but_not_ignored_paths() {
+    let repo = test_repository();
+    fs::write(repo.path().join("untracked.txt"), "new\n").expect("write untracked file");
+    fs::write(repo.path().join("ignored.txt"), "ignored\n").expect("write ignored file");
+    fs::write(repo.path().join(".gitignore"), "ignored.txt\n").expect("write ignore file");
+    let source = super::GitRepositorySource::new(repo.path());
+
+    let paths = source.explorer_paths().expect("Explorer paths");
+
+    assert!(paths.contains(&PathBuf::from("tracked.txt")));
+    assert!(paths.contains(&PathBuf::from("untracked.txt")));
+    assert!(paths.contains(&PathBuf::from(".gitignore")));
+    assert!(!paths.contains(&PathBuf::from("ignored.txt")));
+}
+
+#[test]
+fn explorer_reads_worktree_and_deleted_head_contents() {
+    let repo = test_repository();
+    let source = super::GitRepositorySource::new(repo.path());
+    fs::write(repo.path().join("tracked.txt"), "changed\n").expect("modify file");
+
+    let changed = source
+        .explorer_file(Path::new("tracked.txt"))
+        .expect("changed file");
+    assert_eq!(
+        changed.content,
+        ExplorerFileContent::Text("changed\n".to_owned())
+    );
+    assert!(changed.patch.contains("+changed"));
+    assert!(!changed.deleted);
+
+    fs::remove_file(repo.path().join("tracked.txt")).expect("delete file");
+    let deleted = source
+        .explorer_file(Path::new("tracked.txt"))
+        .expect("deleted file");
+    assert_eq!(
+        deleted.content,
+        ExplorerFileContent::Text("base\n".to_owned())
+    );
+    assert!(deleted.deleted);
+}
+
+#[test]
+fn explorer_marks_binary_contents_without_decoding_them() {
+    let repo = test_repository();
+    fs::write(repo.path().join("binary.dat"), [0, 159, 146, 150]).expect("write binary file");
+    let source = super::GitRepositorySource::new(repo.path());
+
+    let file = source
+        .explorer_file(Path::new("binary.dat"))
+        .expect("binary file");
+
+    assert_eq!(file.content, ExplorerFileContent::Binary);
 }
 
 #[test]

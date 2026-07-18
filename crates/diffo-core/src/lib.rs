@@ -43,6 +43,19 @@ pub struct FileDiff {
     pub text: String,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ExplorerFile {
+    pub content: ExplorerFileContent,
+    pub patch: String,
+    pub deleted: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum ExplorerFileContent {
+    Text(String),
+    Binary,
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Commit {
     pub id: String,
@@ -117,6 +130,29 @@ impl std::fmt::Display for OperationFailure {
 impl std::error::Error for OperationFailure {}
 
 pub trait Repository: RepositorySource {
+    /// List tracked and non-ignored untracked repository paths.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when repository paths cannot be read.
+    fn explorer_paths(&self) -> Result<Vec<PathBuf>> {
+        Ok(self
+            .snapshot()?
+            .files
+            .into_iter()
+            .map(|file| file.path)
+            .collect())
+    }
+
+    /// Read one file for Explorer without adding it to the shared snapshot.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the selected file cannot be read.
+    fn explorer_file(&self, _path: &std::path::Path) -> Result<ExplorerFile> {
+        anyhow::bail!("file viewing is unavailable for this repository source")
+    }
+
     /// Change the repository index.
     ///
     /// # Errors

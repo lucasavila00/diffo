@@ -2,7 +2,7 @@ use super::{
     Alignment, Block, Borders, ChangeArea, ChangeKind, Color, Constraint, Direction,
     FileListScroll, FileState, Frame, HighlightSpacing, Layout, Line, List, ListItem, ListState,
     Model, Modifier, Paragraph, Rect, RepositorySnapshot, Scrollbar, ScrollbarOrientation,
-    ScrollbarState, Span, Style, file_action_style, file_kind_style, horizontal_panes, main_area,
+    ScrollbarState, Span, Style, change_kind_style, file_action_style, horizontal_panes, main_area,
     network_animation_style,
 };
 
@@ -272,7 +272,7 @@ pub(super) fn file_item(
         ChangeKind::Conflicted => "U",
     };
     let label = format!("{marker}  {}", file.path.display());
-    let style = file_kind_style(file.kind, selected);
+    let style = change_kind_style(file.kind, selected);
     if width < 3 {
         return ListItem::new(Line::styled(label, style));
     }

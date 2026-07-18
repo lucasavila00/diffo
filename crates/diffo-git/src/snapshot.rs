@@ -51,7 +51,7 @@ impl GitRepositorySource {
         Ok((!text.is_empty()).then_some(FileDiff { text }))
     }
 
-    fn worktree_file_diff(&self, path: &Path) -> Result<FileDiff> {
+    pub(super) fn worktree_file_diff(&self, path: &Path) -> Result<FileDiff> {
         let full_path = self.root.join(path);
         let metadata = fs::symlink_metadata(&full_path)
             .with_context(|| format!("failed to inspect worktree file {}", path.display()))?;

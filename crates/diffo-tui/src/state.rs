@@ -149,10 +149,10 @@ pub(super) enum ScrollbarAxis {
     Horizontal,
 }
 
-pub(super) const MAX_HIGHLIGHT_FILE_LINES: usize = 10_000;
+pub const MAX_HIGHLIGHT_FILE_LINES: usize = 10_000;
 pub(super) const MAX_SYNC_BYTES: usize = 64 * 1024;
 pub(super) const MAX_SYNC_LINES: usize = 500;
-pub(super) const HIGHLIGHT_LOOKBEHIND_LINES: usize = 256;
+pub const HIGHLIGHT_LOOKBEHIND_LINES: usize = 256;
 pub(super) const HIGHLIGHT_PREFETCH_VIEWPORTS: usize = 3;
-pub(super) const MAX_HIGHLIGHT_BYTES_PER_SIDE: usize = 512 * 1024;
+pub const MAX_HIGHLIGHT_BYTES_PER_SIDE: usize = 512 * 1024;
 pub(super) const PREPARED_BUFFER_CACHE_SIZE: usize = 4;

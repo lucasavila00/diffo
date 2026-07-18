@@ -250,6 +250,8 @@ pub fn map_event(event: &Event, model: &Model, area: Rect) -> Option<Message> {
                 KeyCode::Esc => Some(Message::BlurCommitInput),
                 KeyCode::Enter => Some(Message::ExecutePrimaryAction),
                 KeyCode::Backspace => Some(Message::CommitMessageBackspace),
+                KeyCode::Left => Some(Message::CommitMessageCursorLeft),
+                KeyCode::Right => Some(Message::CommitMessageCursorRight),
                 KeyCode::Char(character)
                     if !key
                         .modifiers

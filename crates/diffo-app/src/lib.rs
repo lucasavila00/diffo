@@ -50,6 +50,8 @@ pub enum Message {
     BlurCommitInput,
     CommitMessageInput(char),
     CommitMessageBackspace,
+    CommitMessageCursorLeft,
+    CommitMessageCursorRight,
     ExecutePrimaryAction,
     SnapshotLoaded(RepositorySnapshot),
     OperationFailed(String),
@@ -111,6 +113,8 @@ pub fn update(model: &mut Model, message: Message) -> Option<Effect> {
         Message::BlurCommitInput => model.blur_commit_input(),
         Message::CommitMessageInput(character) => model.commit_message_input(character),
         Message::CommitMessageBackspace => model.commit_message_backspace(),
+        Message::CommitMessageCursorLeft => model.commit_message_cursor_left(),
+        Message::CommitMessageCursorRight => model.commit_message_cursor_right(),
         Message::ExecutePrimaryAction => {
             return model.execute_primary_action().map(Effect::Repository);
         }

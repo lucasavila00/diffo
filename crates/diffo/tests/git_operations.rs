@@ -285,7 +285,7 @@ fn generated_commit_message_commits_staged_changes() -> Result<()> {
     screen
         .wait_for_text("Update 1 file")?
         .wait_for_text("[ Commit ]")?
-        .click(&Selector::dialog_action("Commit message", "Commit"))?;
+        .click(&Selector::text("[ Commit ]"))?;
     wait_for("generated commit message", || {
         Ok(git_output(&repository.worktree, &["log", "-1", "--format=%s"])? == "Update 1 file")
     })?;
@@ -327,7 +327,9 @@ fn commit_modal_closes_on_outside_click_and_restores_its_draft() -> Result<()> {
     screen
         .click(&Selector::text("Update 1 file"))?
         .wait_for_text("Esc: cancel")?
-        .type_text("Draft stays")?
+        .type_text("Draft stas")?
+        .press(Key::Left)?
+        .type_text("y")?
         .click(&Selector::text("Staged"))?
         .wait_for_text_gone("Esc: cancel")?
         .click(&Selector::text("Draft stays"))?
@@ -349,7 +351,7 @@ fn disabled_commit_button_does_not_commit_without_staged_changes() -> Result<()>
     screen
         .click(&Selector::text("Type a message"))?
         .type_text("Must stay uncommitted")?
-        .click(&Selector::text("[ Commit ]"))?;
+        .click(&Selector::dialog_action("Commit message", "Commit"))?;
     thread::sleep(Duration::from_millis(150));
 
     assert_eq!(
@@ -503,6 +505,21 @@ fn horizontal_scrollbar_drags_all_the_way_right() -> Result<()> {
         .wait_for_text("wide-content")?
         .drag_horizontal_scrollbar(0, 100)?
         .wait_for_text("RIGHT_EDGE")?;
+    Ok(())
+}
+
+#[test]
+fn vertical_scrollbar_reaches_its_end_with_the_last_diff_line() -> Result<()> {
+    let repository = TestRepository::new()?;
+    let contents = numbered_lines(120, false)?;
+    fs::write(repository.worktree.join("tracked.txt"), contents)?;
+    let mut screen = repository.screen()?;
+
+    screen
+        .wait_for_text("line 000")?
+        .drag_vertical_scrollbar(0, 100)?
+        .wait_for_text("line 119")?
+        .wait_for(&Selector::vertical_scrollbar_end())?;
     Ok(())
 }
 

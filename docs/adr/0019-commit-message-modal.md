@@ -1,6 +1,6 @@
 # ADR 0019: Commit message modal
 
-Status: Proposed
+Status: Accepted
 
 ## Problem
 

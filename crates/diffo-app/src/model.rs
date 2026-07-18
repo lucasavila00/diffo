@@ -100,6 +100,7 @@ pub struct Model {
     pub help_open: bool,
     pub commit_message: String,
     commit_composer_state: CommitComposerState,
+    commit_message_cursor: usize,
     network_operation: Option<NetworkOperation>,
     expanded_file_pane_percent: u16,
     cursor: usize,
@@ -124,6 +125,7 @@ impl Model {
             help_open: false,
             commit_message: String::new(),
             commit_composer_state: CommitComposerState::Idle,
+            commit_message_cursor: 0,
             network_operation: None,
             expanded_file_pane_percent: 25,
             cursor: 0,
@@ -167,14 +169,42 @@ impl Model {
 
     pub fn commit_message_input(&mut self, character: char) {
         if self.commit_input_focused() && !character.is_control() {
-            self.commit_message.push(character);
+            let byte = byte_index_at_char(&self.commit_message, self.commit_message_cursor);
+            self.commit_message.insert(byte, character);
+            self.commit_message_cursor = self.commit_message_cursor.saturating_add(1);
         }
     }
 
     pub fn commit_message_backspace(&mut self) {
-        if self.commit_input_focused() {
-            self.commit_message.pop();
+        if self.commit_input_focused() && self.commit_message_cursor > 0 {
+            let start = byte_index_at_char(
+                &self.commit_message,
+                self.commit_message_cursor.saturating_sub(1),
+            );
+            let end = byte_index_at_char(&self.commit_message, self.commit_message_cursor);
+            self.commit_message.replace_range(start..end, "");
+            self.commit_message_cursor = self.commit_message_cursor.saturating_sub(1);
         }
+    }
+
+    pub fn commit_message_cursor_left(&mut self) {
+        if self.commit_input_focused() {
+            self.commit_message_cursor = self.commit_message_cursor.saturating_sub(1);
+        }
+    }
+
+    pub fn commit_message_cursor_right(&mut self) {
+        if self.commit_input_focused() {
+            self.commit_message_cursor = self
+                .commit_message_cursor
+                .saturating_add(1)
+                .min(self.commit_message.chars().count());
+        }
+    }
+
+    #[must_use]
+    pub fn commit_message_cursor(&self) -> usize {
+        self.commit_message_cursor
     }
 
     #[must_use]
@@ -515,6 +545,7 @@ impl Model {
         let composer_state = self.commit_composer_state;
         if composer_state == CommitComposerState::Pending(PrimaryAction::Commit) {
             self.commit_message.clear();
+            self.commit_message_cursor = 0;
         }
         self.commit_composer_state = match composer_state {
             CommitComposerState::Focused => CommitComposerState::Focused,
@@ -563,6 +594,12 @@ impl Model {
         self.diff_scroll = 0;
         self.diff_horizontal_scroll = 0;
     }
+}
+
+fn byte_index_at_char(text: &str, character: usize) -> usize {
+    text.char_indices()
+        .nth(character)
+        .map_or(text.len(), |(index, _)| index)
 }
 
 fn file_keys(snapshot: &RepositorySnapshot) -> Vec<FileKey> {
@@ -722,10 +759,30 @@ mod tests {
     }
 
     #[test]
+    fn edits_commit_message_at_a_preserved_character_cursor() {
+        let mut app = Model::new(snapshot(), AccessMode::ReadWrite);
+        app.focus_commit_input();
+        for character in "ac".chars() {
+            app.commit_message_input(character);
+        }
+        app.commit_message_cursor_left();
+        app.commit_message_input('b');
+        app.blur_commit_input();
+        app.focus_commit_input();
+
+        assert_eq!(app.commit_message, "abc");
+        assert_eq!(app.commit_message_cursor(), 2);
+        app.commit_message_backspace();
+        assert_eq!(app.commit_message, "ac");
+    }
+
+    #[test]
     fn read_only_mode_blocks_actions() {
-        let app = Model::new(snapshot(), AccessMode::ReadOnly);
+        let mut app = Model::new(snapshot(), AccessMode::ReadOnly);
 
         assert_eq!(app.stage_selected(), None);
         assert_eq!(app.toggle_stage_all(), None);
+        app.focus_commit_input();
+        assert!(!app.commit_input_focused());
     }
 }

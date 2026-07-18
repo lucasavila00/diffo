@@ -470,7 +470,7 @@ impl Renderer {
                 .begin_symbol(None)
                 .end_symbol(None)
                 .thumb_style(Style::default().fg(Color::Cyan));
-            let mut state = ScrollbarState::new(rows)
+            let mut state = ScrollbarState::new(scrollbar_position_count(rows, viewport_rows))
                 .viewport_content_length(viewport_rows)
                 .position(model.diff_scroll);
             frame.render_stateful_widget(scrollbar, self.scrollbars.vertical_area, &mut state);
@@ -480,9 +480,10 @@ impl Renderer {
                 .begin_symbol(None)
                 .end_symbol(None)
                 .thumb_style(Style::default().fg(Color::Cyan));
-            let mut state = ScrollbarState::new(columns)
-                .viewport_content_length(viewport_columns)
-                .position(model.diff_horizontal_scroll);
+            let mut state =
+                ScrollbarState::new(scrollbar_position_count(columns, viewport_columns))
+                    .viewport_content_length(viewport_columns)
+                    .position(model.diff_horizontal_scroll);
             frame.render_stateful_widget(scrollbar, self.scrollbars.horizontal_area, &mut state);
         }
     }
@@ -756,17 +757,31 @@ fn render_commit_editor(frame: &mut Frame, model: &Model) {
     );
 
     let empty = model.commit_message.is_empty();
-    let message = if empty {
-        model
-            .suggested_commit_message()
-            .unwrap_or_else(|| "Type a message…".to_owned())
-    } else {
-        model.commit_message.clone()
-    };
     let input_block = Block::default()
         .borders(Borders::ALL)
         .border_style(Style::default().fg(Color::LightCyan));
     let input_inner = input_block.inner(input);
+    let field_width = usize::from(input_inner.width);
+    let cursor = model.commit_message_cursor();
+    let (message, cursor_offset) = if empty {
+        (
+            model
+                .suggested_commit_message()
+                .unwrap_or_else(|| "Type a message…".to_owned()),
+            0,
+        )
+    } else {
+        let start = cursor.saturating_sub(field_width.saturating_sub(1));
+        (
+            model
+                .commit_message
+                .chars()
+                .skip(start)
+                .take(field_width)
+                .collect(),
+            cursor.saturating_sub(start),
+        )
+    };
     frame.render_widget(
         Paragraph::new(message).style(if empty {
             Style::default().fg(Color::DarkGray)
@@ -806,11 +821,7 @@ fn render_commit_editor(frame: &mut Frame, model: &Model) {
         footer,
     );
 
-    let cursor_offset = model
-        .commit_message
-        .chars()
-        .count()
-        .min(usize::from(input_inner.width.saturating_sub(1)));
+    let cursor_offset = cursor_offset.min(usize::from(input_inner.width.saturating_sub(1)));
     let cursor_x = input_inner
         .x
         .saturating_add(u16::try_from(cursor_offset).unwrap_or(u16::MAX));
@@ -849,9 +860,9 @@ pub(crate) fn commit_editor_action_at_position(
     column: u16,
     row: u16,
 ) -> Option<diffo_app::Message> {
-    let (modal, _input, commit, cancel, _footer) = commit_editor_layout(area);
+    let (dialog_area, _input, commit, cancel, _footer) = commit_editor_layout(area);
     let position = (column, row).into();
-    if !modal.contains(position) {
+    if !dialog_area.contains(position) {
         return Some(diffo_app::Message::BlurCommitInput);
     }
     if cancel.contains(position) {
@@ -949,6 +960,12 @@ fn scrollbar_position(
         return 0;
     }
     usize::from(coordinate.min(track_length - 1)) * maximum / usize::from(track_length - 1)
+}
+
+fn scrollbar_position_count(content_length: usize, viewport_length: usize) -> usize {
+    content_length
+        .saturating_sub(viewport_length)
+        .saturating_add(1)
 }
 
 pub(crate) fn file_at_position(

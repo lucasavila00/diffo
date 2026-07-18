@@ -54,6 +54,7 @@ pub enum Selector {
         dialog: String,
         action: String,
     },
+    VerticalScrollbarEnd,
 }
 
 impl Selector {
@@ -94,6 +95,11 @@ impl Selector {
             dialog: dialog.into(),
             action: action.into(),
         }
+    }
+
+    #[must_use]
+    pub const fn vertical_scrollbar_end() -> Self {
+        Self::VerticalScrollbarEnd
     }
 }
 
@@ -443,6 +449,17 @@ impl DiffoScreen {
                 .flat_map(|(row, cells)| positions(row, find_in_row(cells, text), text))
                 .collect(),
             Selector::DialogAction { dialog, action } => find_dialog_action(&cells, dialog, action),
+            Selector::VerticalScrollbarEnd => {
+                let row = ROWS.saturating_sub(4);
+                let column = COLUMNS.saturating_sub(2);
+                cells
+                    .get(usize::from(row))
+                    .and_then(|cells| cells.get(usize::from(column)))
+                    .is_some_and(|cell| cell == "█")
+                    .then_some((column, row))
+                    .into_iter()
+                    .collect()
+            }
         };
         match matches.as_slice() {
             [] => Ok(None),

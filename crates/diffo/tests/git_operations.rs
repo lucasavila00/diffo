@@ -637,6 +637,33 @@ fn vertical_scrollbar_reaches_its_end_with_the_last_diff_line() -> Result<()> {
 }
 
 #[test]
+fn large_hunk_buttons_click_between_changes_without_wrapping() -> Result<()> {
+    let repository = TestRepository::new()?;
+    let path = repository.worktree.join("navigation.rs");
+    fs::write(&path, navigation_file(false)?)?;
+    git(&repository.worktree, &["add", "navigation.rs"])?;
+    git(
+        &repository.worktree,
+        &["commit", "-m", "Add hunk navigation fixture"],
+    )?;
+    fs::write(&path, navigation_file(true)?)?;
+
+    let mut screen = repository.screen()?;
+    screen
+        .wait_for_text("FIRST_CHANGE")?
+        .click(&Selector::text("↓ Next change"))?
+        .wait_for_text("MIDDLE_CHANGE")?;
+    assert!(screen.contents().contains("↑ Previous change"));
+    screen
+        .click(&Selector::text("↓ Next change"))?
+        .wait_for_text("LAST_CHANGE")?
+        .wait_for_text_gone("↓ Next change")?
+        .click(&Selector::text("↑ Previous change"))?
+        .wait_for_text("MIDDLE_CHANGE")?;
+    Ok(())
+}
+
+#[test]
 fn every_file_navigation_alias_moves_selection() -> Result<()> {
     let repository = TestRepository::new()?;
     fs::write(repository.worktree.join("tracked.txt"), "changed\n")?;
@@ -911,6 +938,21 @@ fn large_file(prefix: &str, replacement: Option<&str>) -> Result<String> {
         } else {
             writeln!(contents, "{prefix} line {line:03}").context("build large file")?;
         }
+    }
+    Ok(contents)
+}
+
+fn navigation_file(changed: bool) -> Result<String> {
+    let mut contents = String::new();
+    for line in 0..240 {
+        let value = match (changed, line) {
+            (true, 10) => "FIRST_CHANGE".to_owned(),
+            (true, 120) => "MIDDLE_CHANGE".to_owned(),
+            (true, 230) => "LAST_CHANGE".to_owned(),
+            _ => format!("value_{line:03}"),
+        };
+        writeln!(contents, "pub const LINE_{line:03}: &str = \"{value}\";")
+            .context("build hunk navigation file")?;
     }
     Ok(contents)
 }

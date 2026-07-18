@@ -12,9 +12,9 @@ use std::{
 use crossterm::event::{Event, MouseButton, MouseEventKind};
 use diffo_core::{AccessMode, ChangeKind, FileState, RepositorySnapshot};
 use diffo_diff::{
-    DiffDocument, ProjectionOptions, RenderLine, RowKind, SideBySideRow, inline_change_starts,
-    inline_rows_with_options, parse_unified_patch, side_by_side_change_starts,
-    side_by_side_rows_with_options,
+    DiffBlock, DiffDocument, ProjectionOptions, RenderLine, RowKind, SideBySideRow,
+    inline_change_starts, inline_rows_with_options, parse_unified_patch,
+    side_by_side_change_starts, side_by_side_rows_with_options,
 };
 use diffo_highlight::{HighlightedDiff, HighlightedLine, Rgb, StyledSpan, SyntaxHighlighter};
 use ratatui::{
@@ -42,6 +42,8 @@ pub struct Renderer {
     failed: Option<DiffKey>,
     scrollbars: ScrollbarMetrics,
     scrollbar_drag: Option<ScrollbarAxis>,
+    hunk_buttons: HunkButtonMetrics,
+    hovered_hunk_button: Option<HunkDirection>,
     content_revision: u64,
     network_animation_tick: usize,
     #[cfg(test)]
@@ -114,14 +116,38 @@ struct ScrollbarMetrics {
     viewport_columns: usize,
 }
 
+#[derive(Clone, Copy, Debug, Default)]
+struct HunkButtonMetrics {
+    previous: Option<(Rect, usize)>,
+    next: Option<(Rect, usize)>,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct DiffViewportMetrics {
+    content_area: Rect,
+    horizontal_area: Rect,
+    viewport_rows: usize,
+    viewport_columns: usize,
+    rows: usize,
+    columns: usize,
+    maximum_vertical_scroll: usize,
+    previous_change: Option<usize>,
+    next_change: Option<usize>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum HunkDirection {
+    Previous,
+    Next,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum ScrollbarAxis {
     Vertical,
     Horizontal,
 }
 
-const MAX_HIGHLIGHT_BYTES: usize = 256 * 1024;
-const MAX_HIGHLIGHT_LINES: usize = 2_000;
+const MAX_HIGHLIGHT_FILE_LINES: usize = 10_000;
 const MAX_SYNC_BYTES: usize = 64 * 1024;
 const MAX_SYNC_LINES: usize = 500;
 
@@ -171,6 +197,8 @@ impl Renderer {
             failed: None,
             scrollbars: ScrollbarMetrics::default(),
             scrollbar_drag: None,
+            hunk_buttons: HunkButtonMetrics::default(),
+            hovered_hunk_button: None,
             content_revision: 0,
             network_animation_tick: 0,
             #[cfg(test)]
@@ -210,8 +238,6 @@ impl Renderer {
 
     pub fn prepare_frame(&mut self, model: &Model, area: Rect) -> FramePreparation {
         let diff_area = horizontal_panes(main_area(area), model.file_pane_percent)[1];
-        let viewport_rows = usize::from(diff_area.height.saturating_sub(2));
-        let viewport_columns = usize::from(diff_area.width.saturating_sub(2));
         let requested = model.selected.as_ref().and_then(|selected| {
             let file = model
                 .snapshot
@@ -264,20 +290,14 @@ impl Renderer {
                 },
             }
         });
-        let rows = self.displayed_rows(model.diff_view_mode);
-        let maximum_vertical_scroll = rows.saturating_sub(viewport_rows);
         let rendered_vertical_scroll = viewport_transition
             .map_or(model.diff_scroll, |viewport| viewport.vertical)
-            .min(maximum_vertical_scroll);
-        let columns = self.displayed_columns(
-            model.diff_view_mode,
-            viewport_columns,
-            rendered_vertical_scroll,
-            viewport_rows,
-        );
+            .min(self.displayed_rows(model.diff_view_mode));
+        let viewport =
+            self.diff_viewport_metrics(model.diff_view_mode, diff_area, rendered_vertical_scroll);
         FramePreparation {
-            maximum_vertical_scroll,
-            maximum_horizontal_scroll: columns.saturating_sub(viewport_columns),
+            maximum_vertical_scroll: viewport.maximum_vertical_scroll,
+            maximum_horizontal_scroll: viewport.columns.saturating_sub(viewport.viewport_columns),
             content_revision: self.content_revision,
             preparing: self.requested.as_ref() != self.displayed_key(),
             viewport_transition,
@@ -328,6 +348,12 @@ impl Renderer {
             return input::map_event(event, model, area);
         }
         if let Event::Mouse(mouse) = event {
+            self.hovered_hunk_button = self.hunk_button_at(mouse.column, mouse.row);
+            if mouse.kind == MouseEventKind::Down(MouseButton::Left)
+                && let Some(target) = self.hunk_button_target_at(mouse.column, mouse.row)
+            {
+                return Some(diffo_app::Message::SetDiffScroll(target));
+            }
             if mouse.kind == MouseEventKind::Up(MouseButton::Left) {
                 self.scrollbar_drag = None;
             } else if matches!(
@@ -380,6 +406,32 @@ impl Renderer {
                 .copied()
                 .find(|row| *row < model.diff_scroll)
                 .or_else(|| changes.last().copied())
+        }
+    }
+
+    fn hunk_button_at(&self, column: u16, row: u16) -> Option<HunkDirection> {
+        let position = (column, row).into();
+        if self
+            .hunk_buttons
+            .previous
+            .is_some_and(|(area, _)| area.contains(position))
+        {
+            Some(HunkDirection::Previous)
+        } else if self
+            .hunk_buttons
+            .next
+            .is_some_and(|(area, _)| area.contains(position))
+        {
+            Some(HunkDirection::Next)
+        } else {
+            None
+        }
+    }
+
+    fn hunk_button_target_at(&self, column: u16, row: u16) -> Option<usize> {
+        match self.hunk_button_at(column, row)? {
+            HunkDirection::Previous => self.hunk_buttons.previous.map(|(_, target)| target),
+            HunkDirection::Next => self.hunk_buttons.next.map(|(_, target)| target),
         }
     }
 
@@ -578,72 +630,189 @@ impl Renderer {
         }
     }
 
+    fn change_targets(&self, mode: DiffViewMode) -> &[usize] {
+        self.highlighted.as_ref().map_or(&[], |cache| match mode {
+            DiffViewMode::Inline => cache.inline_changes.as_slice(),
+            DiffViewMode::SideBySide => cache.side_by_side_changes.as_slice(),
+        })
+    }
+
+    fn diff_viewport_metrics(
+        &self,
+        mode: DiffViewMode,
+        area: Rect,
+        requested_scroll: usize,
+    ) -> DiffViewportMetrics {
+        let inner = area.inner(ratatui::layout::Margin {
+            vertical: 1,
+            horizontal: 1,
+        });
+        let rows = self.displayed_rows(mode);
+        let changes = self.change_targets(mode);
+        let viewport_columns = usize::from(inner.width);
+        let mut previous_change = None;
+        let mut next_change = None;
+        let mut show_horizontal = false;
+        let mut horizontal_columns = 0;
+
+        for _ in 0..8 {
+            let reserved_rows = usize::from(previous_change.is_some())
+                + usize::from(next_change.is_some())
+                + usize::from(show_horizontal);
+            let viewport_rows = usize::from(inner.height).saturating_sub(reserved_rows);
+            let maximum_vertical_scroll = rows.saturating_sub(viewport_rows);
+            let first_row = requested_scroll.min(maximum_vertical_scroll);
+            let new_previous = changes.iter().rev().copied().find(|row| *row < first_row);
+            let new_next = changes
+                .iter()
+                .copied()
+                .find(|row| *row >= first_row.saturating_add(viewport_rows));
+            let columns = self.displayed_columns(mode, viewport_columns, first_row, viewport_rows);
+            horizontal_columns = horizontal_columns.max(columns);
+            let new_horizontal = show_horizontal || columns > viewport_columns;
+            if new_previous == previous_change
+                && new_next == next_change
+                && new_horizontal == show_horizontal
+            {
+                break;
+            }
+            previous_change = new_previous;
+            next_change = new_next;
+            show_horizontal = new_horizontal;
+        }
+
+        if inner.height < 3 {
+            previous_change = None;
+            next_change = None;
+        }
+        let horizontal_rows = u16::from(show_horizontal && inner.height > 1);
+        let previous_rows = u16::from(previous_change.is_some());
+        let next_rows = u16::from(next_change.is_some());
+        let content_y = inner.y.saturating_add(previous_rows);
+        let content_bottom = inner
+            .bottom()
+            .saturating_sub(horizontal_rows)
+            .saturating_sub(next_rows);
+        let content_area = Rect::new(
+            inner.x,
+            content_y,
+            inner.width,
+            content_bottom.saturating_sub(content_y),
+        );
+        let horizontal_area = if horizontal_rows == 1 {
+            Rect::new(inner.x, inner.bottom().saturating_sub(1), inner.width, 1)
+        } else {
+            Rect::default()
+        };
+        let viewport_rows = usize::from(content_area.height);
+        let maximum_vertical_scroll = rows.saturating_sub(viewport_rows);
+        let first_row = requested_scroll.min(maximum_vertical_scroll);
+        let columns = self
+            .displayed_columns(mode, viewport_columns, first_row, viewport_rows)
+            .max(horizontal_columns);
+        DiffViewportMetrics {
+            content_area,
+            horizontal_area,
+            viewport_rows,
+            viewport_columns,
+            rows,
+            columns,
+            maximum_vertical_scroll,
+            previous_change,
+            next_change,
+        }
+    }
+
     fn render_diff(&mut self, frame: &mut Frame, area: ratatui::layout::Rect, model: &Model) {
         let mode = match model.diff_view_mode {
             DiffViewMode::Inline => "Inline",
             DiffViewMode::SideBySide => "Side by side",
         };
+        let viewport = self.diff_viewport_metrics(model.diff_view_mode, area, model.diff_scroll);
         let lines = self.diff_lines(
             model,
-            area.width.saturating_sub(2),
+            viewport.content_area.width,
             model.diff_scroll,
-            usize::from(area.height.saturating_sub(2)),
+            viewport.viewport_rows,
         );
         let resize_label = if model.resizing_file_pane {
             format!(" · files {}%", model.file_pane_percent)
         } else {
             String::new()
         };
-        let pane = Paragraph::new(lines)
-            .block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .border_style(resize_border_style(model))
-                    .title(format!(" File Diff · {mode}{resize_label} ")),
-            )
-            .scroll((
+        frame.render_widget(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(resize_border_style(model))
+                .title(format!(" File Diff · {mode}{resize_label} ")),
+            area,
+        );
+        frame.render_widget(
+            Paragraph::new(lines).scroll((
                 0,
                 model.diff_horizontal_scroll.try_into().unwrap_or(u16::MAX),
-            ));
-        frame.render_widget(pane, area);
-
-        let viewport_rows = usize::from(area.height.saturating_sub(2));
-        let viewport_columns = usize::from(area.width.saturating_sub(2));
-        let rows = self.displayed_rows(model.diff_view_mode);
-        let columns = self.displayed_columns(
-            model.diff_view_mode,
-            viewport_columns,
-            model.diff_scroll,
-            viewport_rows,
+            )),
+            viewport.content_area,
         );
+        let inner = area.inner(ratatui::layout::Margin {
+            vertical: 1,
+            horizontal: 1,
+        });
+        let previous_area = viewport.previous_change.map(|_| {
+            Rect::new(
+                inner.x,
+                viewport.content_area.y.saturating_sub(1),
+                inner.width,
+                1,
+            )
+        });
+        let next_area = viewport
+            .next_change
+            .map(|_| Rect::new(inner.x, viewport.content_area.bottom(), inner.width, 1));
+        self.hunk_buttons = HunkButtonMetrics {
+            previous: previous_area.zip(viewport.previous_change),
+            next: next_area.zip(viewport.next_change),
+        };
+        if let Some((button, _)) = self.hunk_buttons.previous {
+            render_hunk_button(
+                frame,
+                button,
+                "↑ Previous change",
+                self.hovered_hunk_button == Some(HunkDirection::Previous),
+            );
+        }
+        if let Some((button, _)) = self.hunk_buttons.next {
+            render_hunk_button(
+                frame,
+                button,
+                "↓ Next change",
+                self.hovered_hunk_button == Some(HunkDirection::Next),
+            );
+        }
         self.scrollbars = ScrollbarMetrics {
             vertical_area: Rect::new(
                 area.right().saturating_sub(2),
-                area.y.saturating_add(1),
+                viewport.content_area.y,
                 u16::from(area.width > 2),
-                // Leave the bottom-right corner to the horizontal scrollbar so
-                // its final cell remains reachable with the mouse.
-                area.height.saturating_sub(3),
+                viewport.content_area.height,
             ),
-            horizontal_area: Rect::new(
-                area.x.saturating_add(1),
-                area.bottom().saturating_sub(2),
-                area.width.saturating_sub(2),
-                u16::from(area.height > 2),
-            ),
-            rows,
-            columns,
-            viewport_rows,
-            viewport_columns,
+            horizontal_area: viewport.horizontal_area,
+            rows: viewport.rows,
+            columns: viewport.columns,
+            viewport_rows: viewport.viewport_rows,
+            viewport_columns: viewport.viewport_columns,
         };
-        if rows > viewport_rows {
+        if viewport.rows > viewport.viewport_rows {
             let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
                 .begin_symbol(None)
                 .end_symbol(None)
                 .thumb_style(Style::default().fg(Color::Cyan));
-            let mut state = ScrollbarState::new(scrollbar_position_count(rows, viewport_rows))
-                .viewport_content_length(viewport_rows)
-                .position(model.diff_scroll);
+            let mut state = ScrollbarState::new(scrollbar_position_count(
+                viewport.rows,
+                viewport.viewport_rows,
+            ))
+            .viewport_content_length(viewport.viewport_rows)
+            .position(model.diff_scroll);
             frame.render_stateful_widget(scrollbar, self.scrollbars.vertical_area, &mut state);
             let changes = self
                 .highlighted
@@ -657,21 +826,23 @@ impl Renderer {
                     frame,
                     self.scrollbars.vertical_area,
                     changes,
-                    rows,
+                    viewport.rows,
                     model.diff_scroll,
-                    viewport_rows,
+                    viewport.viewport_rows,
                 );
             }
         }
-        if columns > viewport_columns {
+        if viewport.columns > viewport.viewport_columns {
             let scrollbar = Scrollbar::new(ScrollbarOrientation::HorizontalBottom)
                 .begin_symbol(None)
                 .end_symbol(None)
                 .thumb_style(Style::default().fg(Color::Cyan));
-            let mut state =
-                ScrollbarState::new(scrollbar_position_count(columns, viewport_columns))
-                    .viewport_content_length(viewport_columns)
-                    .position(model.diff_horizontal_scroll);
+            let mut state = ScrollbarState::new(scrollbar_position_count(
+                viewport.columns,
+                viewport.viewport_columns,
+            ))
+            .viewport_content_length(viewport.viewport_columns)
+            .position(model.diff_horizontal_scroll);
             frame.render_stateful_widget(scrollbar, self.scrollbars.horizontal_area, &mut state);
         }
     }
@@ -722,6 +893,23 @@ impl Renderer {
             }
         }
     }
+}
+
+fn render_hunk_button(frame: &mut Frame, area: Rect, label: &str, hovered: bool) {
+    let style = if hovered {
+        Style::default()
+            .fg(Color::Black)
+            .bg(Color::Cyan)
+            .add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().fg(Color::Yellow).bg(Color::Indexed(235))
+    };
+    frame.render_widget(
+        Paragraph::new(label)
+            .alignment(Alignment::Center)
+            .style(style),
+        area,
+    );
 }
 
 fn render_change_markers(
@@ -1246,8 +1434,7 @@ fn prepare_diff(
     highlighter: &SyntaxHighlighter,
 ) -> Option<HighlightCache> {
     let document = parse_unified_patch(&request.key.patch).ok()?;
-    let syntax_highlighted = request.key.patch.len() <= MAX_HIGHLIGHT_BYTES
-        && request.key.patch.lines().count() <= MAX_HIGHLIGHT_LINES;
+    let syntax_highlighted = diff_file_lines(&document) < MAX_HIGHLIGHT_FILE_LINES;
     let syntax_styles = if syntax_highlighted {
         highlighter.highlight(&request.key.file.path, &document)
     } else {
@@ -1271,6 +1458,24 @@ fn prepare_diff(
         #[cfg(test)]
         syntax_highlighted,
     })
+}
+
+fn diff_file_lines(document: &DiffDocument) -> usize {
+    document
+        .hunks
+        .iter()
+        .flat_map(|hunk| &hunk.blocks)
+        .flat_map(|block| match block {
+            DiffBlock::Context(lines) => lines.iter().collect::<Vec<_>>(),
+            DiffBlock::Change { removed, added, .. } => {
+                removed.iter().chain(added).collect::<Vec<_>>()
+            }
+            DiffBlock::Meta(_) => Vec::new(),
+        })
+        .flat_map(|line| [line.old_number, line.new_number])
+        .flatten()
+        .max()
+        .map_or(0, |line| line as usize)
 }
 
 fn preparation_delay_from_environment() -> Duration {
@@ -2012,7 +2217,7 @@ mod rendering_tests {
 
     use super::{
         Renderer, command_palette_layout, contrast_ratio, contrasting_foreground, diff_background,
-        diff_background_rgb, file_kind_style, overview_position, row_style,
+        diff_background_rgb, diff_file_lines, file_kind_style, overview_position, row_style,
         scrollbar_position_count,
     };
 
@@ -2627,6 +2832,114 @@ mod rendering_tests {
     }
 
     #[test]
+    fn large_hunk_buttons_are_fixed_hoverable_and_do_not_wrap() {
+        let mut model = model();
+        let mut patch = String::from("@@ -1,100 +1,100 @@\n");
+        for line in 1..=100 {
+            if matches!(line, 2 | 50 | 90) {
+                writeln!(patch, "-old {line}").unwrap();
+                writeln!(patch, "+new {line}").unwrap();
+            } else if line == 10 {
+                writeln!(patch, " {}", "wide-content-".repeat(20)).unwrap();
+            } else {
+                writeln!(patch, " line {line}").unwrap();
+            }
+        }
+        model.snapshot.files[0].unstaged.as_mut().unwrap().text = patch;
+        let area = Rect::new(0, 0, 100, 30);
+        let mut renderer = Renderer::new();
+        let backend = TestBackend::new(100, 30);
+        let mut terminal = Terminal::new(backend).unwrap();
+        renderer.prepare_frame(&model, area);
+        terminal
+            .draw(|frame| renderer.render(frame, &model))
+            .unwrap();
+
+        assert!(renderer.hunk_buttons.previous.is_none());
+        let (next_area, next_target) = renderer.hunk_buttons.next.expect("next button");
+        assert!(renderer.scrollbars.horizontal_area.height > 0);
+        assert_eq!(next_area.bottom(), renderer.scrollbars.horizontal_area.y);
+        assert_eq!(
+            renderer.map_event(
+                &Event::Mouse(MouseEvent {
+                    kind: MouseEventKind::Down(MouseButton::Left),
+                    column: next_area.x,
+                    row: next_area.y,
+                    modifiers: KeyModifiers::NONE,
+                }),
+                &model,
+                area,
+            ),
+            Some(diffo_app::Message::SetDiffScroll(next_target))
+        );
+
+        model.diff_scroll = next_target;
+        renderer.prepare_frame(&model, area);
+        terminal
+            .draw(|frame| renderer.render(frame, &model))
+            .unwrap();
+        let (previous_area, previous_target) =
+            renderer.hunk_buttons.previous.expect("previous button");
+        assert_eq!(previous_area.y, area.y.saturating_add(1));
+        assert!(renderer.hunk_buttons.next.is_some());
+        assert_eq!(
+            renderer.map_event(
+                &Event::Mouse(MouseEvent {
+                    kind: MouseEventKind::Moved,
+                    column: previous_area.x,
+                    row: previous_area.y,
+                    modifiers: KeyModifiers::NONE,
+                }),
+                &model,
+                area,
+            ),
+            None
+        );
+        assert_eq!(
+            renderer.hovered_hunk_button,
+            Some(super::HunkDirection::Previous)
+        );
+        terminal
+            .draw(|frame| renderer.render(frame, &model))
+            .unwrap();
+        assert_eq!(
+            terminal.backend().buffer()[(previous_area.x, previous_area.y)].bg,
+            Color::Cyan
+        );
+        assert_eq!(
+            renderer.map_event(
+                &Event::Mouse(MouseEvent {
+                    kind: MouseEventKind::Down(MouseButton::Left),
+                    column: previous_area.x,
+                    row: previous_area.y,
+                    modifiers: KeyModifiers::NONE,
+                }),
+                &model,
+                area,
+            ),
+            Some(diffo_app::Message::SetDiffScroll(previous_target))
+        );
+
+        model.diff_scroll = renderer
+            .highlighted
+            .as_ref()
+            .unwrap()
+            .inline_changes
+            .last()
+            .copied()
+            .unwrap();
+        renderer.prepare_frame(&model, area);
+        terminal
+            .draw(|frame| renderer.render(frame, &model))
+            .unwrap();
+        assert!(renderer.hunk_buttons.next.is_none());
+        assert_eq!(
+            renderer.hunk_button_target_at(next_area.x, next_area.y),
+            None
+        );
+    }
+
+    #[test]
     fn renders_command_palette_over_the_diff() {
         let mut model = model();
         model.open_command_palette();
@@ -2693,6 +3006,23 @@ mod rendering_tests {
             .push_str("\\ No newline at end of file\n");
         diff_lines(&mut renderer, &model, 0);
         assert_eq!(renderer.highlight_computations, 2);
+    }
+
+    #[test]
+    fn syntax_highlighting_uses_a_strict_ten_thousand_file_line_limit() {
+        let below_limit = diffo_diff::parse_unified_patch(
+            "@@ -9999 +9999 @@\n-pub const VALUE: usize = 1;\n+pub const VALUE: usize = 2;\n",
+        )
+        .unwrap();
+        let at_limit = diffo_diff::parse_unified_patch(
+            "@@ -10000 +10000 @@\n-pub const VALUE: usize = 1;\n+pub const VALUE: usize = 2;\n",
+        )
+        .unwrap();
+
+        assert_eq!(diff_file_lines(&below_limit), 9_999);
+        assert!(diff_file_lines(&below_limit) < super::MAX_HIGHLIGHT_FILE_LINES);
+        assert_eq!(diff_file_lines(&at_limit), 10_000);
+        assert!(diff_file_lines(&at_limit) >= super::MAX_HIGHLIGHT_FILE_LINES);
     }
 
     #[test]

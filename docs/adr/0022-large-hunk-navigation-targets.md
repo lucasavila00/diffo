@@ -1,6 +1,6 @@
 # ADR 0022: Large hunk navigation targets
 
-Status: Proposed
+Status: Accepted
 
 ## Problem
 
@@ -41,3 +41,20 @@ direction contains another change.
 
 The buttons use up to two rows of diff space. They must not cover file content or
 the horizontal scrollbar.
+
+## Implementation
+
+Derive both button targets from the committed diff projection and the effective
+content viewport. Reserve fixed rows inside the diff border before rendering file
+content. Reserve the horizontal scrollbar independently below the bottom button,
+so none of the three controls overlap.
+
+Click hit-testing uses only the currently rendered button rectangles and their
+non-wrapping targets. Mouse movement updates hover state without changing the
+diff scroll position.
+
+## Tests
+
+- Renderer tests cover fixed placement, hover styling, hidden start/end buttons,
+  non-wrapping clicks, and separation from the horizontal scrollbar.
+- A real-Git PTY test clicks through first, middle, and last changes and back again.

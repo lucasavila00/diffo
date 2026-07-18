@@ -279,9 +279,3 @@ pub(super) fn row_style(kind: RowKind) -> Style {
         RowKind::Context | RowKind::Changed => Style::default(),
     }
 }
-
-pub(super) fn network_animation_style(_tick: usize) -> Style {
-    Style::default()
-        .fg(theme::CHROME)
-        .add_modifier(Modifier::BOLD)
-}

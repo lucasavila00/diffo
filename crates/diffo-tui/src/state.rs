@@ -28,7 +28,6 @@ pub struct Renderer {
     pub(super) unstaged_picker: FilePicker<FileKey>,
     pub(super) hunk_buttons: HunkButtonMetrics,
     pub(super) content_revision: u64,
-    pub(super) network_animation_tick: usize,
     #[cfg(test)]
     pub(super) highlight_computations: usize,
 }

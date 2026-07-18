@@ -1,6 +1,6 @@
 # ADR 0055: Application command queue
 
-Status: Proposed
+Status: Accepted
 
 Refines [ADR 0018](0018-network-operation-feedback.md),
 [ADR 0051](0051-workbench-operation-toasts.md), and
@@ -13,6 +13,17 @@ has a stable identifier, display label, cancellation handle, and result-to-toast
 projection. The queue runs one command at a time in FIFO order and exposes only explicit
 states: `Queued`, `Running`, `Cancelling`, and a terminal result. Synchronous UI actions do
 not enter the queue.
+
+The workbench queue is the only command scheduler. `diffo-repository-service` owns
+the single background repository lane and executes only the active command dispatched
+by the workbench. It serializes that execution with watcher refreshes but does not own,
+copy, or infer command queue state.
+
+Askpass prompts are scoped to the active command ID. The repository service brokers
+their one-shot answers outside its blocked worker lane, but the workbench owns the
+modal and cancellation state. Cancelling a prompt cancels the whole queued command
+through the same cancellation handle. The next command waits for process and prompt
+cleanup to produce the active command's terminal event.
 
 The queue is the only source of command progress. While an item is running or cancelling,
 the workbench automatically:
@@ -30,6 +41,8 @@ Success or failure removes the progress projection and automatically adds the co
 result to the existing workbench toast queue. Success follows normal expiry; failure stays
 until dismissed. A successful cancellation creates no result toast. Queue state survives
 activity changes, and its overlay is rendered and hit-tested by the workbench.
+Failure and cancellation retain the last committed repository snapshot; only successful
+command completion installs a replacement snapshot.
 
 This restores ADR 0018's border gradient as the default loading presentation for every
 queued command and replaces ADR 0052's prohibition on that transient progress color.
@@ -38,6 +51,8 @@ Idle structural chrome remains fixed dark gray.
 ## Verification
 
 Test FIFO execution, single-command exclusivity, cancellation acknowledgement, and
-activity switching. Rendering tests cover the animated gradient, progress toast, and `×`
-hit target. End-to-end tests cancel a delayed Git command and verify that the next queued
-command starts only after cancellation completes.
+activity switching. Test command-scoped sequential prompts, stale prompt rejection, and
+prompt-answer bypass of the worker lane. Rendering tests cover the animated gradient,
+progress toast, modal priority, masked secrets, and `×` hit target. End-to-end tests cancel
+a delayed Git command and verify that the next queued command starts only after process
+and prompt cleanup completes.

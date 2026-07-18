@@ -16,7 +16,7 @@ diffo-core.workspace = true
 diffo-explorer.workspace = true
 diffo-git.workspace = true
 diffo-tui.workspace = true
-diffo-watch.workspace = true
+diffo-repository-service.workspace = true
 diffo-workbench.workspace = true
 ratatui.workspace = true
 ron.workspace = true
@@ -31,6 +31,6 @@ diffo-app.workspace = true
 diffo-core.workspace = true
 diffo-e2e = { path = "../diffo-e2e" }
 diffo-git.workspace = true
-diffo-watch.workspace = true
+diffo-repository-service.workspace = true
 ron.workspace = true
 tempfile.workspace = true

@@ -7,8 +7,8 @@ use std::{
 };
 
 use diffo_core::{
-    FailureKind, OperationFailure, OperationResult, RepositoryAction, RepositoryOperationContext,
-    RepositorySource, UpstreamState,
+    CancellationHandle, FailureKind, OperationFailure, OperationOutcome, OperationResult,
+    RepositoryAction, RepositoryOperationContext, RepositorySource, UpstreamState,
 };
 use nix::{
     sys::signal::{Signal, killpg},
@@ -25,13 +25,20 @@ impl GitRepositorySource {
         &self,
         action: &RepositoryAction,
         context: Option<&RepositoryOperationContext>,
-    ) -> std::result::Result<OperationResult, OperationFailure> {
+    ) -> std::result::Result<OperationOutcome, OperationFailure> {
+        let default_cancellation = CancellationHandle::default();
+        let cancellation = context.map_or(&default_cancellation, |context| &context.cancellation);
         if matches!(
             action,
             RepositoryAction::Fetch | RepositoryAction::Pull | RepositoryAction::Push
         ) && let Some(delay) = e2e_network_delay()
+            && !cancellable_delay(delay, cancellation)
         {
-            thread::sleep(delay);
+            return Ok(OperationOutcome::Cancelled);
+        }
+
+        if cancellation.is_cancelled() {
+            return Ok(OperationOutcome::Cancelled);
         }
 
         let before_head = matches!(action, RepositoryAction::Pull)
@@ -90,20 +97,11 @@ impl GitRepositorySource {
         }
 
         let _bridge = configure_askpass(&mut command, action, context)?;
-        let outcome = match context {
-            Some(context) => run_cancellable(&mut command, &context.cancelled),
-            None => command.output().map(CommandOutcome::Output),
-        }
-        .map_err(|error| operation_failure(action, FailureKind::Unknown, &error.to_string()))?;
+        let outcome = run_cancellable(&mut command, cancellation)
+            .map_err(|error| operation_failure(action, FailureKind::Unknown, &error.to_string()))?;
         let output = match outcome {
             CommandOutcome::Output(output) => output,
-            CommandOutcome::Cancelled => {
-                return Err(operation_failure(
-                    action,
-                    FailureKind::Cancelled,
-                    "cancelled by user",
-                ));
-            }
+            CommandOutcome::Cancelled => return Ok(OperationOutcome::Cancelled),
         };
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -111,7 +109,23 @@ impl GitRepositorySource {
             return Err(classify_failure(action, &format!("{stdout}\n{stderr}")));
         }
         collect_operation_result(self, action, before_head, before_fetch.as_ref())
+            .map(OperationOutcome::Completed)
     }
+}
+
+fn cancellable_delay(duration: Duration, cancellation: &CancellationHandle) -> bool {
+    let deadline = std::time::Instant::now() + duration;
+    while std::time::Instant::now() < deadline {
+        if cancellation.is_cancelled() {
+            return false;
+        }
+        thread::sleep(
+            deadline
+                .saturating_duration_since(std::time::Instant::now())
+                .min(Duration::from_millis(10)),
+        );
+    }
+    !cancellation.is_cancelled()
 }
 
 fn configure_askpass(
@@ -150,7 +164,7 @@ enum CommandOutcome {
 
 fn run_cancellable(
     command: &mut Command,
-    cancelled: &std::sync::atomic::AtomicBool,
+    cancellation: &CancellationHandle,
 ) -> io::Result<CommandOutcome> {
     command
         .process_group(0)
@@ -161,11 +175,12 @@ fn run_cancellable(
     let stderr = child.stderr.take().map(read_output);
     let mut was_cancelled = false;
     let status = loop {
-        if cancelled.load(std::sync::atomic::Ordering::Acquire) && !was_cancelled {
+        if cancellation.is_cancelled() && !was_cancelled {
             was_cancelled = true;
             signal_process_group(child.id(), Signal::SIGTERM);
         }
         if let Some(status) = child.try_wait()? {
+            was_cancelled |= cancellation.is_cancelled();
             break status;
         }
         if was_cancelled {
@@ -350,11 +365,6 @@ fn e2e_network_delay() -> Option<Duration> {
 
 #[cfg(test)]
 mod cancellation_tests {
-    use std::sync::{
-        Arc,
-        atomic::{AtomicBool, Ordering},
-    };
-
     use nix::{errno::Errno, sys::signal::kill};
 
     use super::*;
@@ -364,19 +374,19 @@ mod cancellation_tests {
         let directory = tempfile::tempdir().unwrap();
         let pid_path = directory.path().join("child.pid");
         let script = format!("sleep 30 & echo $! > {}; wait", pid_path.display());
-        let cancelled = Arc::new(AtomicBool::new(false));
+        let cancellation = CancellationHandle::default();
         let trigger = {
-            let cancelled = Arc::clone(&cancelled);
+            let cancellation = cancellation.clone();
             thread::spawn(move || {
                 thread::sleep(Duration::from_millis(100));
-                cancelled.store(true, Ordering::Release);
+                cancellation.cancel();
             })
         };
         let mut command = Command::new("sh");
         command.args(["-c", &script]);
 
         assert!(matches!(
-            run_cancellable(&mut command, &cancelled),
+            run_cancellable(&mut command, &cancellation),
             Ok(CommandOutcome::Cancelled)
         ));
         trigger.join().unwrap();

@@ -51,16 +51,16 @@ use files::{
 #[cfg(test)]
 use geometry::scrollbar_position_count;
 use geometry::{horizontal_panes, main_area, overview_position};
+pub use overlays::{
+    CommandProgress, command_cancel_at_position, render_command_progress, render_toasts,
+    toast_at_position,
+};
 use overlays::{commit_editor_action_at_position, render_commit_editor, render_help};
-pub use overlays::{render_toasts, toast_at_position};
 #[cfg(test)]
 use style::{
     contrast_ratio, contrasting_foreground, diff_background, diff_background_rgb, row_style,
 };
-use style::{
-    inline_line, inline_skeleton_line, network_animation_style, side_by_side_line,
-    side_by_side_skeleton_line,
-};
+use style::{inline_line, inline_skeleton_line, side_by_side_line, side_by_side_skeleton_line};
 
 use state::{
     AnchorRow, DiffKey, DiffViewportMetrics, HIGHLIGHT_PREFETCH_VIEWPORTS, HighlightCache,
@@ -98,11 +98,6 @@ impl Renderer {
     }
 
     pub fn render_in(&mut self, frame: &mut Frame, model: &Model, area: Rect) {
-        if model.network_operation().is_some() {
-            self.network_animation_tick = self.network_animation_tick.wrapping_add(1);
-        } else {
-            self.network_animation_tick = 0;
-        }
         let areas = tool_areas(area);
         let panes = horizontal_panes(areas.content, model.file_pane_percent);
 
@@ -123,19 +118,11 @@ impl Renderer {
                 .is_some_and(|selected| selected.area == ChangeArea::Unstaged),
         );
         self.render_diff(frame, panes[1], model);
-        render_status(frame, areas.status, model, self.network_animation_tick);
+        render_status(frame, areas.status, model);
         render_help(frame, model, area);
         render_commit_editor(frame, model, area);
         self.staged_picker.render_menu(frame);
         self.unstaged_picker.render_menu(frame);
-        if model.network_operation().is_some() {
-            frame.render_widget(
-                Block::default()
-                    .borders(Borders::TOP | Borders::LEFT | Borders::RIGHT)
-                    .border_style(network_animation_style(self.network_animation_tick)),
-                area,
-            );
-        }
     }
 
     pub fn prepare_frame(&mut self, model: &Model, area: Rect) -> FramePreparation {

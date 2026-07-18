@@ -14,7 +14,7 @@ members = [
     "crates/diffo-tui",
     "crates/diffo-text-view",
     "crates/diffo-ui",
-    "crates/diffo-watch",
+    "crates/diffo-repository-service",
     "crates/diffo-workbench",
 ]
 resolver = "3"
@@ -40,7 +40,7 @@ diffo-highlight = { path = "crates/diffo-highlight" }
 diffo-tui = { path = "crates/diffo-tui" }
 diffo-text-view = { path = "crates/diffo-text-view" }
 diffo-ui = { path = "crates/diffo-ui" }
-diffo-watch = { path = "crates/diffo-watch" }
+diffo-repository-service = { path = "crates/diffo-repository-service" }
 diffo-workbench = { path = "crates/diffo-workbench" }
 notify = "8.2"
 nix = { version = "0.28", features = ["process", "signal"] }

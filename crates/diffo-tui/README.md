@@ -4,5 +4,6 @@
 messages.
 
 It owns diff-buffer preparation, viewport transitions, file-panel presentation, and
-overlays. Rendering consumes committed state; repository I/O and top-level terminal
-lifecycle are handled by other crates.
+activity-local overlays. It also provides the shared rendering and hit geometry for
+workbench command progress. Rendering consumes committed state; repository I/O and
+top-level terminal lifecycle are handled by other crates.

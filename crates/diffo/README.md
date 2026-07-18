@@ -4,7 +4,7 @@
 state.
 
 This binary owns the terminal lifecycle and event loop. It connects the Git or
-fixture repository source, background refresh work, and the Diffo workbench while
+fixture repository source, serialized repository service, and the Diffo workbench while
 ensuring that the terminal is restored on exit. The same binary has a private,
 environment-marked askpass startup path used only by Git and SSH network operations.
 

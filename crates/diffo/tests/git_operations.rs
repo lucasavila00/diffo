@@ -86,17 +86,22 @@ fn source_code_containing_git_binary_marker_renders_as_text() -> Result<()> {
     fs::create_dir_all(path.parent().context("source parent")?)?;
     fs::write(
         &path,
-        "fn is_binary(patch: &str) -> bool {\n    patch.contains(\"GIT binary patch\")\n}\n",
+        "before\nGIT binary patch\nBinary files a/x and b/x differ\ndiff --cc file.rs\n@@@ -1 -1 +1 @@@\n<<<<<<< HEAD\n=======\n>>>>>>> branch\n",
     )?;
     git(&repository.worktree, &["add", "."])?;
     git(&repository.worktree, &["commit", "-m", "Add diff parser"])?;
     fs::write(
         &path,
-        "fn is_binary(patch: &str) -> bool {\n    patch.lines().any(|line| line == \"GIT binary patch\")\n}\n",
+        "after\nGIT binary patch\nBinary files a/x and b/x differ\ndiff --cc file.rs\n@@@ -1 -1 +1 @@@\n<<<<<<< HEAD\n=======\n>>>>>>> branch\n",
     )?;
 
     let mut screen = repository.screen()?;
-    screen.wait_for_text("GIT binary patch")?;
+    screen
+        .wait_for_text("GIT binary patch")?
+        .wait_for_text("Binary files a/x and b/x differ")?
+        .wait_for_text("diff --cc file.rs")?
+        .wait_for_text("@@@ -1 -1 +1 @@@")?
+        .wait_for_text("<<<<<<< HEAD")?;
     assert!(!screen.contents().contains("Binary file changed."));
     Ok(())
 }

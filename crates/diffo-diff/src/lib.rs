@@ -64,27 +64,28 @@ pub struct SideBySideRow {
     pub kind: RowKind,
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct ProjectionOptions {
+    pub mark_conflicts: bool,
+}
+
 /// Parse a file-scoped unified Git patch.
 ///
 /// # Errors
 ///
 /// Returns an error when a hunk header is malformed.
 pub fn parse_unified_patch(patch: &str) -> Result<DiffDocument> {
-    if patch
-        .lines()
-        .any(|line| line == "GIT binary patch" || line.starts_with("Binary files "))
-    {
-        return Ok(DiffDocument {
-            binary: true,
-            ..DiffDocument::default()
-        });
-    }
-
     let mut document = DiffDocument::default();
     let mut current = None;
     for line in patch.lines() {
-        if line.starts_with("@@@") || line.starts_with("diff --cc ") {
-            bail!("combined diffs are not supported yet");
+        if current.is_none() {
+            if line == "GIT binary patch" || line.starts_with("Binary files ") {
+                document.binary = true;
+                return Ok(document);
+            }
+            if line.starts_with("@@@") || line.starts_with("diff --cc ") {
+                bail!("combined diffs are not supported yet");
+            }
         }
         if line.starts_with("@@ ") {
             if let Some(hunk) = current.take() {
@@ -104,6 +105,14 @@ pub fn parse_unified_patch(patch: &str) -> Result<DiffDocument> {
 
 #[must_use]
 pub fn inline_rows(document: &DiffDocument) -> Vec<RenderLine> {
+    inline_rows_with_options(document, ProjectionOptions::default())
+}
+
+#[must_use]
+pub fn inline_rows_with_options(
+    document: &DiffDocument,
+    options: ProjectionOptions,
+) -> Vec<RenderLine> {
     let mut rows = Vec::new();
     for hunk in &document.hunks {
         rows.push(RenderLine {
@@ -116,18 +125,18 @@ pub fn inline_rows(document: &DiffDocument) -> Vec<RenderLine> {
                 DiffBlock::Context(lines) => rows.extend(lines.iter().map(|line| RenderLine {
                     number: line.new_number,
                     text: line.text.clone(),
-                    kind: line_kind(&line.text, RowKind::Context),
+                    kind: line_kind(&line.text, RowKind::Context, options),
                 })),
                 DiffBlock::Change { removed, added, .. } => {
                     rows.extend(removed.iter().map(|line| RenderLine {
                         number: line.old_number,
                         text: line.text.clone(),
-                        kind: line_kind(&line.text, RowKind::Removed),
+                        kind: line_kind(&line.text, RowKind::Removed, options),
                     }));
                     rows.extend(added.iter().map(|line| RenderLine {
                         number: line.new_number,
                         text: line.text.clone(),
-                        kind: line_kind(&line.text, RowKind::Added),
+                        kind: line_kind(&line.text, RowKind::Added, options),
                     }));
                 }
                 DiffBlock::Meta(text) => rows.push(RenderLine {
@@ -143,6 +152,14 @@ pub fn inline_rows(document: &DiffDocument) -> Vec<RenderLine> {
 
 #[must_use]
 pub fn side_by_side_rows(document: &DiffDocument) -> Vec<SideBySideRow> {
+    side_by_side_rows_with_options(document, ProjectionOptions::default())
+}
+
+#[must_use]
+pub fn side_by_side_rows_with_options(
+    document: &DiffDocument,
+    options: ProjectionOptions,
+) -> Vec<SideBySideRow> {
     let mut rows = Vec::new();
     for hunk in &document.hunks {
         let header = RenderLine {
@@ -161,12 +178,12 @@ pub fn side_by_side_rows(document: &DiffDocument) -> Vec<SideBySideRow> {
                     old: Some(RenderLine {
                         number: line.old_number,
                         text: line.text.clone(),
-                        kind: line_kind(&line.text, RowKind::Context),
+                        kind: line_kind(&line.text, RowKind::Context, options),
                     }),
                     new: Some(RenderLine {
                         number: line.new_number,
                         text: line.text.clone(),
-                        kind: line_kind(&line.text, RowKind::Context),
+                        kind: line_kind(&line.text, RowKind::Context, options),
                     }),
                     kind: RowKind::Context,
                 })),
@@ -175,12 +192,12 @@ pub fn side_by_side_rows(document: &DiffDocument) -> Vec<SideBySideRow> {
                         old: pair.old.as_ref().map(|line| RenderLine {
                             number: line.old_number,
                             text: line.text.clone(),
-                            kind: line_kind(&line.text, RowKind::Removed),
+                            kind: line_kind(&line.text, RowKind::Removed, options),
                         }),
                         new: pair.new.as_ref().map(|line| RenderLine {
                             number: line.new_number,
                             text: line.text.clone(),
-                            kind: line_kind(&line.text, RowKind::Added),
+                            kind: line_kind(&line.text, RowKind::Added, options),
                         }),
                         kind: RowKind::Changed,
                     }));
@@ -226,11 +243,12 @@ fn change_starts(kinds: impl Iterator<Item = RowKind>) -> Vec<usize> {
     starts
 }
 
-fn line_kind(text: &str, fallback: RowKind) -> RowKind {
-    if text.starts_with("<<<<<<<")
-        || text.starts_with("|||||||")
-        || text.starts_with("=======")
-        || text.starts_with(">>>>>>>")
+fn line_kind(text: &str, fallback: RowKind, options: ProjectionOptions) -> RowKind {
+    if options.mark_conflicts
+        && (text.starts_with("<<<<<<<")
+            || text.starts_with("|||||||")
+            || text.starts_with("=======")
+            || text.starts_with(">>>>>>>"))
     {
         RowKind::Conflict
     } else {
@@ -409,8 +427,9 @@ fn extend_pairs(
 #[cfg(test)]
 mod tests {
     use super::{
-        DiffBlock, RowKind, inline_change_starts, inline_rows, parse_unified_patch,
-        side_by_side_change_starts, side_by_side_rows,
+        DiffBlock, ProjectionOptions, RowKind, inline_change_starts, inline_rows,
+        inline_rows_with_options, parse_unified_patch, side_by_side_change_starts,
+        side_by_side_rows, side_by_side_rows_with_options,
     };
 
     const PATCH: &str = "diff --git a/file.txt b/file.txt\n--- a/file.txt\n+++ b/file.txt\n@@ -1,4 +1,4 @@\n same\n-old one\n-old two\n+new one\n+new two\n end\n";
@@ -480,7 +499,28 @@ mod tests {
                 .expect("binary")
                 .binary
         );
+        assert!(
+            parse_unified_patch("GIT binary patch\nliteral 1\nabc")
+                .expect("binary patch")
+                .binary
+        );
         assert!(parse_unified_patch("diff --cc file\n@@@ -1 -1 +1 @@@").is_err());
+        assert!(parse_unified_patch("@@@ -1 -1 +1 @@@").is_err());
+    }
+
+    #[test]
+    fn near_matches_are_not_git_metadata() {
+        for text in [
+            "prefix GIT binary patch",
+            " GIT binary patch",
+            "Binary file a/x changed",
+            " Binary files a/x and b/x differ",
+            "diff --cached file.rs",
+            "text @@@ -1 -1 +1 @@@",
+        ] {
+            let document = parse_unified_patch(text).expect("near match should be accepted");
+            assert!(!document.binary, "near match: {text}");
+        }
     }
 
     #[test]
@@ -494,11 +534,50 @@ mod tests {
     }
 
     #[test]
+    fn git_metadata_sentinels_are_plain_file_content_inside_hunks() {
+        for sentinel in [
+            "GIT binary patch",
+            "Binary files a/x and b/x differ",
+            "diff --cc file.rs",
+            "@@@ -1 -1 +1 @@@",
+        ] {
+            let patch = format!("@@ -1,2 +1,2 @@\n {sentinel}\n-{sentinel}\n+{sentinel}\n");
+            let document = parse_unified_patch(&patch).expect("content patch should parse");
+
+            assert!(!document.binary, "sentinel: {sentinel}");
+            assert_eq!(document.hunks.len(), 1, "sentinel: {sentinel}");
+            let blocks = &document.hunks[0].blocks;
+            assert!(matches!(blocks[0], DiffBlock::Context(_)));
+            let DiffBlock::Change { removed, added, .. } = &blocks[1] else {
+                panic!("sentinel did not remain change content: {sentinel}");
+            };
+            assert_eq!(removed[0].text, sentinel);
+            assert_eq!(added[0].text, sentinel);
+        }
+    }
+
+    #[test]
+    fn metadata_sentinels_remain_content_across_multiple_hunks() {
+        let patch = "@@ -1 +1 @@\n-GIT binary patch\n+Binary files a/x and b/x differ\n@@ -10 +10 @@\n-diff --cc file.rs\n+@@@ -1 -1 +1 @@@\n";
+
+        let document = parse_unified_patch(patch).expect("two text hunks should parse");
+
+        assert!(!document.binary);
+        assert_eq!(document.hunks.len(), 2);
+    }
+
+    #[test]
     fn promotes_merge_markers_to_conflict_rows() {
         let patch =
             "@@ -1 +1,5 @@\n-old\n+<<<<<<< HEAD\n+ours\n+=======\n+theirs\n+>>>>>>> branch\n";
         let document = parse_unified_patch(patch).expect("conflict patch should parse");
-        let inline = inline_rows(&document);
+        let ordinary = inline_rows(&document);
+        assert!(ordinary.iter().all(|row| row.kind != RowKind::Conflict));
+
+        let options = ProjectionOptions {
+            mark_conflicts: true,
+        };
+        let inline = inline_rows_with_options(&document, options);
 
         let markers = inline
             .iter()
@@ -507,13 +586,38 @@ mod tests {
             .collect::<Vec<_>>();
         assert_eq!(markers, ["<<<<<<< HEAD", "=======", ">>>>>>> branch"]);
         assert_eq!(
-            side_by_side_rows(&document)
+            side_by_side_rows_with_options(&document, options)
                 .iter()
                 .flat_map(|row| [row.old.as_ref(), row.new.as_ref()])
                 .flatten()
                 .filter(|line| line.kind == RowKind::Conflict)
                 .count(),
             3
+        );
+    }
+
+    #[test]
+    fn every_conflict_sentinel_requires_conflicted_projection() {
+        let patch = "@@ -1,4 +1,4 @@\n-<<<<<<< old\n+<<<<<<< new\n-||||||| base\n+=======\n->>>>>>> old\n+>>>>>>> new\n unchanged\n";
+        let document = parse_unified_patch(patch).expect("marker content should parse");
+
+        assert!(
+            inline_rows(&document)
+                .iter()
+                .all(|row| row.kind != RowKind::Conflict)
+        );
+        let marked = inline_rows_with_options(
+            &document,
+            ProjectionOptions {
+                mark_conflicts: true,
+            },
+        );
+        assert_eq!(
+            marked
+                .iter()
+                .filter(|row| row.kind == RowKind::Conflict)
+                .count(),
+            6
         );
     }
 }

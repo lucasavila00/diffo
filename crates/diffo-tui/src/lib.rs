@@ -11,8 +11,9 @@ use std::{
 use crossterm::event::{Event, MouseButton, MouseEventKind};
 use diffo_core::{AccessMode, ChangeKind, FileState, RepositorySnapshot};
 use diffo_diff::{
-    DiffDocument, RenderLine, RowKind, SideBySideRow, inline_change_starts, inline_rows,
-    parse_unified_patch, side_by_side_change_starts, side_by_side_rows,
+    DiffDocument, ProjectionOptions, RenderLine, RowKind, SideBySideRow, inline_change_starts,
+    inline_rows_with_options, parse_unified_patch, side_by_side_change_starts,
+    side_by_side_rows_with_options,
 };
 use diffo_highlight::{HighlightedDiff, HighlightedLine, Rgb, StyledSpan, SyntaxHighlighter};
 use ratatui::{
@@ -35,8 +36,8 @@ pub struct Renderer {
     highlighted: Option<HighlightCache>,
     prepare_tx: SyncSender<PrepareRequest>,
     prepare_rx: Receiver<PrepareOutcome>,
-    pending: Option<(PathBuf, String)>,
-    failed: Option<(PathBuf, String)>,
+    pending: Option<DiffKey>,
+    failed: Option<DiffKey>,
     scrollbars: ScrollbarMetrics,
     scrollbar_drag: Option<ScrollbarAxis>,
     content_revision: u64,
@@ -46,8 +47,7 @@ pub struct Renderer {
 }
 
 struct HighlightCache {
-    path: PathBuf,
-    patch: String,
+    key: DiffKey,
     document: DiffDocument,
     inline: Vec<RenderLine>,
     side_by_side: Vec<SideBySideRow>,
@@ -84,9 +84,15 @@ struct ScrollAnchor {
     rows: Vec<(usize, usize, AnchorRow)>,
 }
 
-struct PrepareRequest {
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct DiffKey {
     path: PathBuf,
     patch: String,
+    mark_conflicts: bool,
+}
+
+struct PrepareRequest {
+    key: DiffKey,
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -110,7 +116,7 @@ const MAX_HIGHLIGHT_LINES: usize = 2_000;
 const MAX_SYNC_BYTES: usize = 64 * 1024;
 const MAX_SYNC_LINES: usize = 500;
 
-type PrepareOutcome = Result<HighlightCache, (PathBuf, String)>;
+type PrepareOutcome = Result<HighlightCache, DiffKey>;
 
 impl Default for Renderer {
     fn default() -> Self {
@@ -134,7 +140,7 @@ impl Renderer {
             .name("diffo-diff-prepare".to_owned())
             .spawn(move || {
                 while let Ok(request) = requests.recv() {
-                    let key = (request.path.clone(), request.patch.clone());
+                    let key = request.key.clone();
                     let result = prepare_diff(request, &worker_highlighter).ok_or(key);
                     if results.send(result).is_err() {
                         break;
@@ -201,17 +207,21 @@ impl Renderer {
                 ChangeArea::Unstaged => file.unstaged.as_ref(),
                 ChangeArea::Staged => file.staged.as_ref(),
             }?;
-            Some((file.path.as_path(), diff.text.as_str()))
+            Some((
+                file.path.as_path(),
+                diff.text.as_str(),
+                file.kind == ChangeKind::Conflicted,
+            ))
         });
         let previous_revision = self.content_revision;
-        let anchor = current_diff.and_then(|(path, _)| {
+        let anchor = current_diff.and_then(|(path, _, _)| {
             self.highlighted
                 .as_ref()
-                .filter(|cache| cache.path == path)
+                .filter(|cache| cache.key.path == path)
                 .map(|cache| ScrollAnchor::capture(cache, model.diff_view_mode, model.diff_scroll))
         });
-        if let Some((path, patch)) = current_diff {
-            self.prepared_diff(path, patch);
+        if let Some((path, patch, mark_conflicts)) = current_diff {
+            self.prepared_diff(path, patch, mark_conflicts);
         }
         let anchored_vertical_scroll = (self.content_revision != previous_revision)
             .then(|| {
@@ -222,10 +232,14 @@ impl Renderer {
                 })
             })
             .flatten();
-        let failed_rows = current_diff.and_then(|(path, patch)| {
+        let failed_rows = current_diff.and_then(|(path, patch, mark_conflicts)| {
             self.failed
                 .as_ref()
-                .is_some_and(|failed| failed.0 == path && failed.1 == patch)
+                .is_some_and(|failed| {
+                    failed.path == path
+                        && failed.patch == patch
+                        && failed.mark_conflicts == mark_conflicts
+                })
                 .then(|| patch.lines().count())
         });
         let (rows, columns) = failed_rows.map_or_else(
@@ -406,17 +420,18 @@ impl Renderer {
         }
     }
 
-    fn prepared_diff(&mut self, path: &Path, source_patch: &str) -> Option<&HighlightCache> {
+    fn prepared_diff(
+        &mut self,
+        path: &Path,
+        source_patch: &str,
+        mark_conflicts: bool,
+    ) -> Option<&HighlightCache> {
         while let Ok(outcome) = self.prepare_rx.try_recv() {
             let outcome_key = match &outcome {
-                Ok(cache) => (&cache.path, &cache.patch),
-                Err(key) => (&key.0, &key.1),
+                Ok(cache) => &cache.key,
+                Err(key) => key,
             };
-            if self
-                .pending
-                .as_ref()
-                .is_some_and(|pending| pending.0 == *outcome_key.0 && pending.1 == *outcome_key.1)
-            {
+            if self.pending.as_ref() == Some(outcome_key) {
                 self.pending = None;
             }
             match outcome {
@@ -431,21 +446,24 @@ impl Renderer {
                 Err(key) => self.failed = Some(key),
             }
         }
+        let request_key = DiffKey {
+            path: path.to_path_buf(),
+            patch: source_patch.to_owned(),
+            mark_conflicts,
+        };
         if self
             .highlighted
             .as_ref()
-            .is_some_and(|cache| cache.path == path && cache.patch == source_patch)
+            .is_some_and(|cache| cache.key == request_key)
         {
             return self.highlighted.as_ref();
         }
-        let request_key = (path.to_path_buf(), source_patch.to_owned());
         if self.failed.as_ref() == Some(&request_key) {
             return None;
         }
         if source_patch.len() <= MAX_SYNC_BYTES && source_patch.lines().count() <= MAX_SYNC_LINES {
             let request = PrepareRequest {
-                path: request_key.0.clone(),
-                patch: request_key.1.clone(),
+                key: request_key.clone(),
             };
             if let Some(cache) = prepare_diff(request, &self.highlighter) {
                 #[cfg(test)]
@@ -460,8 +478,7 @@ impl Renderer {
         }
         if self.pending.as_ref() != Some(&request_key) {
             let request = PrepareRequest {
-                path: request_key.0.clone(),
-                patch: request_key.1.clone(),
+                key: request_key.clone(),
             };
             match self.prepare_tx.try_send(request) {
                 Ok(()) => self.pending = Some(request_key),
@@ -475,7 +492,7 @@ impl Renderer {
         let changed = self
             .highlighted
             .as_ref()
-            .is_none_or(|current| current.path != cache.path || current.patch != cache.patch);
+            .is_none_or(|current| current.key != cache.key);
         self.highlighted = Some(cache);
         if changed {
             self.content_revision = self.content_revision.saturating_add(1);
@@ -605,12 +622,16 @@ impl Renderer {
         let Some(diff) = diff else {
             return vec![Line::raw("No text diff is available for this file.")];
         };
-        let ready = self.prepared_diff(&file.path, &diff.text).is_some();
+        let mark_conflicts = file.kind == ChangeKind::Conflicted;
+        let ready = self
+            .prepared_diff(&file.path, &diff.text, mark_conflicts)
+            .is_some();
         if !ready
-            && self
-                .failed
-                .as_ref()
-                .is_some_and(|failed| failed.0 == file.path && failed.1 == diff.text)
+            && self.failed.as_ref().is_some_and(|failed| {
+                failed.path == file.path
+                    && failed.patch == diff.text
+                    && failed.mark_conflicts == mark_conflicts
+            })
         {
             return diff
                 .text
@@ -1107,26 +1128,28 @@ fn prepare_diff(
     request: PrepareRequest,
     highlighter: &SyntaxHighlighter,
 ) -> Option<HighlightCache> {
-    let document = parse_unified_patch(&request.patch).ok()?;
-    let syntax_highlighted = request.patch.len() <= MAX_HIGHLIGHT_BYTES
-        && request.patch.lines().count() <= MAX_HIGHLIGHT_LINES;
+    let document = parse_unified_patch(&request.key.patch).ok()?;
+    let syntax_highlighted = request.key.patch.len() <= MAX_HIGHLIGHT_BYTES
+        && request.key.patch.lines().count() <= MAX_HIGHLIGHT_LINES;
     let syntax_styles = if syntax_highlighted {
-        highlighter.highlight(&request.path, &document)
+        highlighter.highlight(&request.key.path, &document)
     } else {
         HighlightedDiff::default()
     };
-    let inline = inline_rows(&document);
+    let options = ProjectionOptions {
+        mark_conflicts: request.key.mark_conflicts,
+    };
+    let inline = inline_rows_with_options(&document, options);
     let inline_changes = inline_change_starts(&inline);
     let inline_width = inline
         .iter()
         .map(|row| row.text.chars().count().saturating_add(7))
         .max()
         .unwrap_or(0);
-    let side_by_side = side_by_side_rows(&document);
+    let side_by_side = side_by_side_rows_with_options(&document, options);
     let side_by_side_changes = side_by_side_change_starts(&side_by_side);
     Some(HighlightCache {
-        path: request.path,
-        patch: request.patch,
+        key: request.key,
         document,
         inline,
         side_by_side,
@@ -1920,6 +1943,37 @@ mod rendering_tests {
         assert_eq!(marker.bg, Some(Color::Indexed(58)));
         assert!(marker.add_modifier.contains(Modifier::BOLD));
         assert_eq!(diff_background(RowKind::Conflict).bg, marker.bg);
+    }
+
+    #[test]
+    fn conflict_rows_require_trusted_repository_state() {
+        let mut model = model();
+        model.snapshot.files[0].unstaged.as_mut().unwrap().text =
+            "@@ -1 +1,3 @@\n-old\n+<<<<<<< HEAD\n+ours\n+>>>>>>> branch\n".to_owned();
+        let mut renderer = Renderer::new();
+
+        renderer.diff_lines(&model, 80, 0, 100);
+        assert!(
+            renderer
+                .highlighted
+                .as_ref()
+                .unwrap()
+                .inline
+                .iter()
+                .all(|row| row.kind != RowKind::Conflict)
+        );
+
+        model.snapshot.files[0].kind = ChangeKind::Conflicted;
+        renderer.diff_lines(&model, 80, 0, 100);
+        assert!(
+            renderer
+                .highlighted
+                .as_ref()
+                .unwrap()
+                .inline
+                .iter()
+                .any(|row| row.kind == RowKind::Conflict)
+        );
     }
 
     fn model() -> Model {

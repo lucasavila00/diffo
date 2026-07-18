@@ -22,9 +22,11 @@ use crossterm::{
     terminal::{Clear, ClearType},
 };
 use diffo_app::ToastKind;
-use diffo_core::{Repository, fixture_source::MutableFixtureRepository};
+use diffo_core::{
+    FailureKind, OperationFailure, Repository, fixture_source::MutableFixtureRepository,
+};
 use diffo_git::{GitRepositorySource, run_askpass_if_requested};
-use diffo_watch::{RefreshResult, RefreshService};
+use diffo_repository_service::{RepositoryEvent, RepositoryService};
 use ratatui::{Terminal, backend::CrosstermBackend};
 
 mod frame_trace;
@@ -111,19 +113,10 @@ fn main() -> Result<()> {
     if let Some(path) = env::var_os("DIFFO_DUMP_PATH") {
         return dump_snapshot(Path::new(&path), &snapshot);
     }
-    let refresh = watch_paths
-        .as_deref()
-        .map(|paths| RefreshService::start(Arc::clone(&repository), paths))
-        .transpose()?;
+    let repository_service =
+        RepositoryService::start(Arc::clone(&repository), watch_paths.as_deref())?;
     if let Some(path) = env::var_os("DIFFO_WATCH_DUMP_PATH") {
-        return run_watch_dump(
-            Path::new(&path),
-            &snapshot,
-            refresh
-                .as_ref()
-                .context("watch dump requires a real Git repository")?,
-            &shutdown,
-        );
+        return run_watch_dump(Path::new(&path), &snapshot, &repository_service, &shutdown);
     }
 
     let mut workbench = Workbench::new(snapshot);
@@ -141,11 +134,11 @@ fn main() -> Result<()> {
         &mut terminal,
         &mut workbench,
         &shutdown,
-        repository.as_ref(),
-        refresh.as_ref(),
+        &repository_service,
         &tool_tasks,
         &mut tracer,
     );
+    drop(repository_service);
     let mouse_result = execute!(terminal.backend_mut(), DisableMouseCapture)
         .context("failed to disable mouse capture");
     ratatui::restore();
@@ -178,26 +171,37 @@ fn dump_snapshot_atomic(path: &Path, snapshot: &diffo_core::RepositorySnapshot) 
 fn run_watch_dump(
     path: &Path,
     initial: &diffo_core::RepositorySnapshot,
-    refresh: &RefreshService,
+    repository_service: &RepositoryService,
     shutdown: &AtomicBool,
 ) -> Result<()> {
     dump_snapshot_atomic(path, initial)?;
     let mut generation = 0;
     while !shutdown.load(Ordering::Relaxed) {
-        while let Ok(Some(result)) = refresh.try_recv() {
-            match result {
-                RefreshResult::Snapshot {
+        while let Ok(Some(event)) = repository_service.try_recv() {
+            match event {
+                RepositoryEvent::SnapshotRefreshed {
                     generation: next,
                     snapshot,
                 } if next > generation => {
                     generation = next;
                     dump_snapshot_atomic(path, &snapshot)?;
                 }
-                RefreshResult::Error { message, .. } => eprintln!("{message}"),
-                RefreshResult::Snapshot { .. }
-                | RefreshResult::ActionCompleted { .. }
-                | RefreshResult::ActionFailed { .. }
-                | RefreshResult::Prompt { .. } => {}
+                RepositoryEvent::RefreshFailed { message, .. } => eprintln!("{message}"),
+                RepositoryEvent::Prompt {
+                    command_id,
+                    prompt_id,
+                    ..
+                } => {
+                    let _ = repository_service.answer_prompt(
+                        command_id,
+                        prompt_id,
+                        diffo_core::PromptAnswer::Cancel,
+                    );
+                }
+                RepositoryEvent::SnapshotRefreshed { .. }
+                | RepositoryEvent::CommandCompleted { .. }
+                | RepositoryEvent::CommandFailed { .. }
+                | RepositoryEvent::CommandCancelled { .. } => {}
             }
         }
         std::thread::sleep(Duration::from_millis(10));
@@ -209,8 +213,7 @@ fn run(
     terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
     workbench: &mut Workbench,
     shutdown: &AtomicBool,
-    repository: &dyn Repository,
-    refresh: Option<&RefreshService>,
+    repository_service: &RepositoryService,
     tool_tasks: &ToolTasks,
     tracer: &mut FrameTracer,
 ) -> Result<()> {
@@ -236,8 +239,8 @@ fn run(
     while !workbench.should_quit() && !shutdown.load(Ordering::Relaxed) {
         workbench.tick();
         let poll_timeout = if workbench.is_preparing()
-            || refresh.is_some_and(RefreshService::is_busy)
-            || workbench.diff_model().network_operation().is_some()
+            || repository_service.is_busy()
+            || workbench.has_active_command()
         {
             Duration::from_millis(16)
         } else {
@@ -260,11 +263,9 @@ fn run(
             workbench.diff_model().diff_horizontal_scroll,
         );
         let update_start_us = tracer.elapsed_us();
-        if let Some(refresh) = refresh {
-            drain_refresh(refresh, workbench, &mut generation);
-        }
+        drain_repository_events(repository_service, workbench, &mut generation);
         tool_tasks.drain(workbench);
-        dispatch_events(&events, terminal, workbench, repository, refresh)?;
+        dispatch_events(&events, terminal, workbench, repository_service)?;
         let (preparation, draw_start_us, draw_end_us) = draw_frame(terminal, workbench, tracer)?;
         tracer.record(FrameRecord::new(
             input_events,
@@ -279,8 +280,8 @@ fn run(
         ));
     }
 
-    if let Some(refresh) = refresh {
-        refresh.cancel();
+    if let Some(command_id) = workbench.active_command_id() {
+        let _ = repository_service.cancel_command(command_id);
     }
 
     Ok(())
@@ -314,13 +315,26 @@ fn dispatch_events(
     events: &[crossterm::event::Event],
     terminal: &Terminal<CrosstermBackend<io::Stdout>>,
     workbench: &mut Workbench,
-    repository: &dyn Repository,
-    refresh: Option<&RefreshService>,
+    repository_service: &RepositoryService,
 ) -> Result<()> {
     let size = terminal.size()?;
     let area = ratatui::layout::Rect::new(0, 0, size.width, size.height);
     for effect in workbench.handle_events(events, area) {
-        dispatch_effect(effect, workbench, repository, refresh);
+        dispatch_effect(effect, workbench, repository_service);
+    }
+    while let Some(command) = workbench.take_repository_command() {
+        let id = command.id;
+        let action = command.action;
+        if !repository_service.execute(id, action.clone(), command.cancellation) {
+            workbench.action_failed(
+                id,
+                OperationFailure {
+                    action,
+                    kind: FailureKind::Unknown,
+                    detail: "repository service is unavailable".to_owned(),
+                },
+            );
+        }
     }
     Ok(())
 }
@@ -328,13 +342,9 @@ fn dispatch_events(
 fn dispatch_effect(
     effect: WorkbenchEffect,
     workbench: &mut Workbench,
-    repository: &dyn Repository,
-    refresh: Option<&RefreshService>,
+    repository_service: &RepositoryService,
 ) {
     match effect {
-        WorkbenchEffect::Repository(action) if refresh.is_some() => {
-            refresh.expect("checked above").apply(action);
-        }
         WorkbenchEffect::CopyPath { path, absolute } => {
             match copy_path_to_clipboard(&path, absolute) {
                 Ok(copied) => {
@@ -351,81 +361,91 @@ fn dispatch_effect(
                 }
             }
         }
-        WorkbenchEffect::Prompt { id, response } if refresh.is_some() => {
-            let refresh = refresh.expect("checked above");
+        WorkbenchEffect::Prompt {
+            command_id,
+            prompt_id,
+            response,
+        } => {
             let cancelled = matches!(response, PromptResponse::Cancel);
             let answer = match response {
                 PromptResponse::Text(answer) => diffo_core::PromptAnswer::Text(answer),
                 PromptResponse::Confirm => diffo_core::PromptAnswer::Confirm,
                 PromptResponse::Cancel => diffo_core::PromptAnswer::Cancel,
             };
-            if !refresh.answer_prompt(id, answer) || cancelled {
-                refresh.cancel();
+            if !repository_service.answer_prompt(command_id, prompt_id, answer) || cancelled {
+                let _ = repository_service.cancel_command(command_id);
             }
         }
-        WorkbenchEffect::Prompt { .. } => {}
-        WorkbenchEffect::Repository(action) => execute_effect(repository, workbench, action),
     }
 }
 
-fn drain_refresh(refresh: &RefreshService, workbench: &mut Workbench, generation: &mut u64) {
-    while let Ok(Some(result)) = refresh.try_recv() {
-        match result {
-            RefreshResult::Prompt { id, prompt } => {
-                if !workbench.open_prompt(id, prompt) {
-                    let _ = refresh.answer_prompt(id, diffo_core::PromptAnswer::Cancel);
-                    refresh.cancel();
+fn drain_repository_events(
+    repository_service: &RepositoryService,
+    workbench: &mut Workbench,
+    generation: &mut u64,
+) {
+    while let Ok(Some(event)) = repository_service.try_recv() {
+        match event {
+            RepositoryEvent::Prompt {
+                command_id,
+                prompt_id,
+                prompt,
+            } => {
+                if !workbench.open_prompt(command_id, prompt_id, prompt) {
+                    let _ = repository_service.answer_prompt(
+                        command_id,
+                        prompt_id,
+                        diffo_core::PromptAnswer::Cancel,
+                    );
+                    let _ = repository_service.cancel_command(command_id);
                 }
             }
-            RefreshResult::Snapshot {
+            RepositoryEvent::SnapshotRefreshed {
                 generation: next,
                 snapshot,
             } if next > *generation => {
                 *generation = next;
                 workbench.repository_changed(snapshot);
             }
-            RefreshResult::Error {
+            RepositoryEvent::RefreshFailed {
                 generation: next,
                 message,
             } if next > *generation => {
                 *generation = next;
                 workbench.operation_failed(message);
             }
-            RefreshResult::ActionCompleted {
+            RepositoryEvent::CommandCompleted {
                 generation: next,
+                command_id,
                 action,
                 result,
                 snapshot,
             } if next > *generation => {
                 *generation = next;
-                workbench.operation_completed(action, result, snapshot);
+                workbench.operation_completed(command_id, action, result, snapshot);
             }
-            RefreshResult::ActionFailed {
+            RepositoryEvent::CommandFailed {
                 generation: next,
+                command_id,
                 failure,
             } if next > *generation => {
                 *generation = next;
-                workbench.action_failed(failure);
+                workbench.action_failed(command_id, failure);
             }
-            RefreshResult::Snapshot { .. }
-            | RefreshResult::Error { .. }
-            | RefreshResult::ActionCompleted { .. }
-            | RefreshResult::ActionFailed { .. } => {}
+            RepositoryEvent::CommandCancelled {
+                generation: next,
+                command_id,
+                action,
+            } if next > *generation => {
+                *generation = next;
+                workbench.operation_cancelled(command_id, action);
+            }
+            RepositoryEvent::SnapshotRefreshed { .. }
+            | RepositoryEvent::RefreshFailed { .. }
+            | RepositoryEvent::CommandCompleted { .. }
+            | RepositoryEvent::CommandFailed { .. }
+            | RepositoryEvent::CommandCancelled { .. } => {}
         }
-    }
-}
-
-fn execute_effect(
-    repository: &dyn Repository,
-    workbench: &mut Workbench,
-    action: diffo_core::RepositoryAction,
-) {
-    match repository.apply(&action) {
-        Ok(result) => match repository.snapshot() {
-            Ok(snapshot) => workbench.operation_completed(action, result, snapshot),
-            Err(error) => workbench.operation_failed(error.to_string()),
-        },
-        Err(failure) => workbench.action_failed(failure),
     }
 }
 

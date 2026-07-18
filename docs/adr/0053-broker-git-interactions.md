@@ -94,10 +94,12 @@ waits too.
 
 The in-process socket bridge sends a typed prompt event to the main loop. The main loop
 sends the answer back on a dedicated one-shot channel. Do not put the answer on the
-repository worker's command queue; that queue cannot run until Git returns.
+repository service request lane; that lane cannot run until Git returns. Prompt events
+and answers carry the active application command ID as well as the prompt ID.
 
 Allow one open prompt per operation. Give each prompt an ID. Reject unknown, duplicate,
-stale, or concurrent IDs. More prompts may follow one at a time if Git retries.
+stale, concurrent, or command-mismatched IDs. More prompts may follow one at a time if
+Git retries.
 
 A prompt does not change the repository generation or committed snapshot. On success,
 install the operation result and new snapshot using the existing atomic commit rules. On
@@ -131,6 +133,8 @@ Start Git in its own process group. Cancel, Ctrl+C, and shutdown must:
 3. report cancellation as cancellation, not authentication failure.
 
 This prevents Git, SSH, or an askpass process from surviving after Diffo exits.
+The workbench queue, repository operation context, prompt broker, socket bridge, and
+process-group runner share one cancellation handle for the active command.
 
 ## Out of scope
 

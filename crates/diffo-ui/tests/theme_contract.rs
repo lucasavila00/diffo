@@ -1,6 +1,9 @@
 use std::{fs, path::Path};
 
-use diffo_ui::{design, disabled_control_style, enabled_control_style, interaction, theme};
+use diffo_ui::{
+    command_progress_style, design, disabled_control_style, enabled_control_style, interaction,
+    theme,
+};
 use ratatui::layout::Margin;
 use ratatui::style::{Color, Modifier};
 
@@ -15,6 +18,8 @@ fn semantic_palette_is_fixed() {
     assert_eq!(theme::DANGER, Color::LightRed);
     assert_eq!(theme::CONFLICT_FOREGROUND, Color::LightYellow);
     assert_eq!(theme::CONFLICT_BACKGROUND, Color::Indexed(58));
+    assert_eq!(command_progress_style(0).fg, Some(Color::Indexed(24)));
+    assert_eq!(command_progress_style(4).fg, Some(Color::Indexed(25)));
 }
 
 #[test]

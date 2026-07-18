@@ -15,7 +15,9 @@ use std::{
 };
 
 use anyhow::{Context as _, Result};
-use diffo_core::{GitPrompt, PromptAnswer, PromptId, RepositoryOperationContext, SecretKind};
+use diffo_core::{
+    CancellationHandle, GitPrompt, PromptAnswer, PromptId, RepositoryOperationContext, SecretKind,
+};
 
 pub const ASKPASS_MARKER: &str = "DIFFO_INTERNAL_ASKPASS";
 pub const ASKPASS_SOCKET: &str = "DIFFO_INTERNAL_ASKPASS_SOCKET";
@@ -45,19 +47,19 @@ impl AskpassBridge {
         let stop = Arc::new(AtomicBool::new(false));
         let server_stop = Arc::clone(&stop);
         let prompts = Arc::clone(&context.prompts);
-        let cancelled = Arc::clone(&context.cancelled);
+        let cancellation = context.cancellation.clone();
         let server = thread::Builder::new()
             .name("diffo-askpass".to_owned())
             .spawn(move || {
                 let mut next_id = 1_u64;
-                while !server_stop.load(Ordering::Acquire) && !cancelled.load(Ordering::Acquire) {
+                while !server_stop.load(Ordering::Acquire) && !cancellation.is_cancelled() {
                     match listener.accept() {
                         Ok((stream, _)) => {
                             handle_connection(
                                 stream,
                                 PromptId(next_id),
                                 Arc::clone(&prompts),
-                                &cancelled,
+                                &cancellation,
                             );
                             next_id = next_id.saturating_add(1);
                         }
@@ -95,7 +97,7 @@ fn handle_connection(
     mut stream: UnixStream,
     id: PromptId,
     prompts: Arc<dyn diffo_core::PromptHandler>,
-    cancelled: &AtomicBool,
+    cancellation: &CancellationHandle,
 ) {
     let _ = stream.set_read_timeout(Some(Duration::from_secs(1)));
     let Ok(prompt) = read_prompt(&mut stream) else {
@@ -103,11 +105,10 @@ fn handle_connection(
         return;
     };
     let expected = PromptClass::of(&prompt);
-    let prompt_cancelled = Arc::new(AtomicBool::new(false));
-    let handler_cancelled = Arc::clone(&prompt_cancelled);
+    let handler_cancellation = cancellation.clone();
     let (answer_tx, answer_rx) = std::sync::mpsc::sync_channel(1);
     let handler = thread::spawn(move || {
-        let answer = prompts.prompt(id, prompt, &handler_cancelled);
+        let answer = prompts.prompt(id, prompt, &handler_cancellation);
         let _ = answer_tx.send(answer);
     });
     let _ = stream.set_nonblocking(true);
@@ -119,12 +120,12 @@ fn handle_connection(
                     Err(error) if error.kind() == io::ErrorKind::WouldBlock => false,
                     Ok(_) | Err(_) => true,
                 };
-                if disconnected || cancelled.load(Ordering::Acquire) {
-                    prompt_cancelled.store(true, Ordering::Release);
+                if disconnected {
+                    cancellation.cancel();
                 }
             }
             Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
-                prompt_cancelled.store(true, Ordering::Release);
+                cancellation.cancel();
                 let _ = handler.join();
                 let _ = stream.set_nonblocking(false);
                 let _ = write_cancel(&mut stream);
@@ -134,7 +135,7 @@ fn handle_connection(
     };
     let _ = handler.join();
     let _ = stream.set_nonblocking(false);
-    if cancelled.load(Ordering::Acquire) || prompt_cancelled.load(Ordering::Acquire) {
+    if cancellation.is_cancelled() {
         let _ = write_cancel(&mut stream);
         return;
     }
@@ -441,7 +442,7 @@ mod tests {
             &self,
             _id: PromptId,
             _prompt: GitPrompt,
-            _cancelled: &AtomicBool,
+            _cancellation: &CancellationHandle,
         ) -> PromptAnswer {
             self.0
                 .lock()
@@ -458,9 +459,9 @@ mod tests {
             &self,
             _id: PromptId,
             _prompt: GitPrompt,
-            cancelled: &AtomicBool,
+            cancellation: &CancellationHandle,
         ) -> PromptAnswer {
-            while !cancelled.load(Ordering::Acquire) {
+            while !cancellation.is_cancelled() {
                 thread::sleep(Duration::from_millis(5));
             }
             PromptAnswer::Cancel
@@ -545,12 +546,12 @@ mod tests {
     fn connection_writes_one_answer_or_cancels_without_output() {
         let (mut client, server) = UnixStream::pair().unwrap();
         let handler = Arc::new(Answer(Mutex::new(Some(PromptAnswer::Confirm))));
-        let cancelled = Arc::new(AtomicBool::new(false));
+        let cancellation = CancellationHandle::default();
         let task = {
             let handler = Arc::clone(&handler);
-            let cancelled = Arc::clone(&cancelled);
+            let cancellation = cancellation.clone();
             thread::spawn(move || {
-                handle_connection(server, PromptId(1), handler, &cancelled);
+                handle_connection(server, PromptId(1), handler, &cancellation);
             })
         };
         write_prompt(
@@ -573,7 +574,7 @@ mod tests {
                 server,
                 PromptId(2),
                 Arc::new(Answer(Mutex::new(Some(PromptAnswer::Cancel)))),
-                &AtomicBool::new(false),
+                &CancellationHandle::default(),
             );
         });
         write_prompt(
@@ -598,7 +599,7 @@ mod tests {
                 server,
                 PromptId(1),
                 Arc::new(WaitForDisconnect),
-                &AtomicBool::new(false),
+                &CancellationHandle::default(),
             );
         });
         write_prompt(

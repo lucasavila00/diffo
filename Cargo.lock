@@ -248,8 +248,8 @@ dependencies = [
  "diffo-e2e",
  "diffo-explorer",
  "diffo-git",
+ "diffo-repository-service",
  "diffo-tui",
- "diffo-watch",
  "diffo-workbench",
  "ratatui",
  "ron 0.10.1",
@@ -359,6 +359,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "diffo-repository-service"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "diffo-core",
+ "notify",
+]
+
+[[package]]
 name = "diffo-text-view"
 version = "0.1.0"
 dependencies = [
@@ -390,15 +399,6 @@ dependencies = [
  "diffo-core",
  "diffo-highlight",
  "ratatui",
-]
-
-[[package]]
-name = "diffo-watch"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "diffo-core",
- "notify",
 ]
 
 [[package]]

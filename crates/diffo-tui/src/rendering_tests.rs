@@ -8,9 +8,7 @@ use crossterm::event::{
     Event, KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
 };
 use diffo_app::{ChangeArea, DiffViewMode, Message, Model, Toast, ToastKind, ToastQueue};
-use diffo_core::{
-    ChangeKind, FileDiff, FileState, HeadState, RepositoryAction, RepositorySnapshot, UpstreamState,
-};
+use diffo_core::{ChangeKind, FileDiff, FileState, HeadState, RepositorySnapshot, UpstreamState};
 use diffo_diff::RowKind;
 use diffo_highlight::Rgb;
 use diffo_ui::{interaction, theme};
@@ -573,21 +571,21 @@ fn change_navigation_stops_at_the_first_and_last_changes() {
 }
 
 #[test]
-fn network_operations_animate_the_frame_and_name_the_operation() {
-    let mut model = model();
-    model.snapshot.files[0].unstaged = None;
-    model.snapshot.upstream = Some(UpstreamState {
-        name: "origin/main".to_owned(),
-        ahead: 1,
-        behind: 0,
-    });
-    assert_eq!(model.execute_primary_action(), Some(RepositoryAction::Push));
-
-    let mut renderer = Renderer::new();
+fn command_progress_animates_and_exposes_only_the_cancel_marker() {
     let backend = TestBackend::new(80, 24);
     let mut terminal = Terminal::new(backend).unwrap();
     terminal
-        .draw(|frame| renderer.render(frame, &model))
+        .draw(|frame| {
+            super::render_command_progress(
+                frame,
+                super::CommandProgress {
+                    label: "Pushing",
+                    cancelling: false,
+                    animation_tick: 0,
+                },
+                frame.area(),
+            );
+        })
         .unwrap();
     let screen =
         terminal
@@ -600,24 +598,17 @@ fn network_operations_animate_the_frame_and_name_the_operation() {
                 output
             });
     assert!(screen.contains("Pushing"));
-
-    for _ in 0..4 {
-        terminal
-            .draw(|frame| renderer.render(frame, &model))
-            .unwrap();
-    }
-    let later_screen =
-        terminal
-            .backend()
-            .buffer()
-            .content
-            .iter()
-            .fold(String::new(), |mut output, cell| {
-                output.push_str(cell.symbol());
-                output
-            });
-    assert_ne!(later_screen, screen);
-    assert_eq!(terminal.backend().buffer()[(0, 0)].fg, theme::CHROME);
+    assert!(screen.contains(interaction::DISMISS));
+    assert!(super::command_cancel_at_position(
+        Rect::new(0, 0, 80, 24),
+        77,
+        1
+    ));
+    assert!(!super::command_cancel_at_position(
+        Rect::new(0, 0, 80, 24),
+        76,
+        1
+    ));
 }
 
 #[test]

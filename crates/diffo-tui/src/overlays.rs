@@ -2,7 +2,75 @@ use super::{
     Alignment, Block, Borders, Cell, Clear, Constraint, Frame, Layout, Line, Model, Modifier,
     Paragraph, Rect, Row, Style, Table, Toast, ToastKind, input, terminal_safe_text,
 };
-use diffo_ui::{design, disabled_control_style, enabled_control_style, interaction, theme};
+use diffo_ui::{
+    command_progress_style, design, disabled_control_style, enabled_control_style, interaction,
+    theme,
+};
+
+#[derive(Clone, Copy)]
+pub struct CommandProgress<'a> {
+    pub label: &'a str,
+    pub cancelling: bool,
+    pub animation_tick: usize,
+}
+
+pub fn render_command_progress(
+    frame: &mut Frame,
+    progress: CommandProgress<'_>,
+    content_area: Rect,
+) {
+    const SPINNER: [&str; 4] = ["◐", "◓", "◑", "◒"];
+
+    let Some(area) = command_progress_area(content_area) else {
+        return;
+    };
+    let label = if progress.cancelling {
+        format!("Cancelling {}…", progress.label.to_lowercase())
+    } else {
+        format!(
+            "{} {}…",
+            SPINNER[(progress.animation_tick / 2) % SPINNER.len()],
+            progress.label
+        )
+    };
+    frame.render_widget(Clear, area);
+    frame.render_widget(
+        Paragraph::new(label)
+            .style(command_progress_style(progress.animation_tick))
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(theme::CHROME))
+                    .title(
+                        Line::styled(interaction::DISMISS, enabled_control_style())
+                            .alignment(Alignment::Right),
+                    ),
+            ),
+        area,
+    );
+}
+
+#[must_use]
+pub fn command_cancel_at_position(area: Rect, column: u16, row: u16) -> bool {
+    command_progress_area(area).is_some_and(|progress| {
+        row == progress.y && column == progress.right().saturating_sub(design::INLINE_GAP)
+    })
+}
+
+fn command_progress_area(area: Rect) -> Option<Rect> {
+    let width = design::TOAST_MAX_WIDTH.min(area.width.saturating_sub(design::INLINE_GAP));
+    if width < design::TOAST_MIN_WIDTH || area.height < design::TOAST_MIN_HEIGHT {
+        return None;
+    }
+    Some(Rect::new(
+        area.right()
+            .saturating_sub(design::BORDER_WIDTH)
+            .saturating_sub(width),
+        area.y.saturating_add(design::BORDER_WIDTH),
+        width,
+        design::TOAST_MIN_HEIGHT,
+    ))
+}
 
 pub(super) fn render_help(frame: &mut Frame, model: &Model, content_area: Rect) {
     if !model.help_open {

@@ -28,9 +28,12 @@ worktree or Git event -> debounce -> collect full snapshot -> app message -> ren
 - Keep the last good snapshot when collection fails. Show the error in the status bar.
 - Stop and join the watcher and worker during normal shutdown.
 
-Use a focused `diffo-watch` crate for watching, debounce, generations, and worker
-messages. Keep path discovery and snapshot collection in `diffo-git`. The `diffo`
-binary owns both and forwards results to the pure app update function.
+Use `diffo-repository-service` for the filesystem watcher adapter, debounce,
+generations, and the single serialized repository worker. The same worker executes
+application commands so snapshot collection cannot race a repository mutation; the
+workbench remains the only owner of command scheduling and lifecycle. Keep path
+discovery and repository implementation in `diffo-git`. The `diffo` binary owns the
+service and forwards its events to the workbench.
 
 Mock mode has no filesystem watcher. Its stage actions still refresh its in-memory
 snapshot.

@@ -23,9 +23,10 @@ The palette has exactly two commands:
 - `Git: Fetch`
 - `Git: Pull`
 
-Enter runs the selected command. Run Git through the repository refresh worker. Do
-not block input or rendering. Disable terminal prompts. Refresh the snapshot after
-the command. Show failures in the status bar.
+Enter runs the selected command. Run Git through the serialized repository service
+worker. Do not block input or rendering or give Git the terminal. Network prompts use
+the typed askpass path from ADR 0053. Refresh the snapshot after the command. Show
+failures in the status bar.
 
 ## File actions
 

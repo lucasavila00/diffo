@@ -1,8 +1,7 @@
 use super::{
     Alignment, Block, Borders, ChangeArea, ChangeKind, Constraint, Direction, FileKey, FileState,
     Frame, HeadState, Layout, Line, Model, Modifier, Paragraph, Rect, RepositorySnapshot, Span,
-    Style, change_kind_style, horizontal_panes, main_area, network_animation_style,
-    terminal_safe_text,
+    Style, change_kind_style, horizontal_panes, main_area, terminal_safe_text,
 };
 use diffo_file_picker::{Document, Row as PickerRow};
 use diffo_ui::{design, disabled_control_style, enabled_control_style, interaction, theme};
@@ -140,14 +139,9 @@ pub(super) fn picker_document<'a>(
     document
 }
 
-pub(super) fn render_status(
-    frame: &mut Frame,
-    area: ratatui::layout::Rect,
-    model: &Model,
-    animation_tick: usize,
-) {
+pub(super) fn render_status(frame: &mut Frame, area: ratatui::layout::Rect, model: &Model) {
     frame.render_widget(
-        Paragraph::new(status_line(model, animation_tick, usize::from(area.width))),
+        Paragraph::new(status_line(model, 0, usize::from(area.width))),
         area,
     );
 }
@@ -228,18 +222,8 @@ pub(super) fn status_line(model: &Model, animation_tick: usize, width: usize) ->
     Line::from(spans)
 }
 
-fn transient_status(model: &Model, animation_tick: usize) -> Option<Span<'static>> {
-    if let Some(operation) = model.network_operation() {
-        const SPINNER: [&str; 4] = ["◐", "◓", "◑", "◒"];
-        Some(Span::styled(
-            format!(
-                "{} {}… · Ctrl+C to exit",
-                SPINNER[(animation_tick / 2) % SPINNER.len()],
-                operation.label()
-            ),
-            network_animation_style(animation_tick),
-        ))
-    } else if let Some(error) = model.error.as_deref() {
+fn transient_status(model: &Model, _animation_tick: usize) -> Option<Span<'static>> {
+    if let Some(error) = model.error.as_deref() {
         Some(Span::styled(
             terminal_safe_text(error),
             Style::default().fg(theme::DANGER),

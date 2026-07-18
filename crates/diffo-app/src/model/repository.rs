@@ -87,6 +87,20 @@ impl Model {
         true
     }
 
+    pub fn cancel_operation(&mut self, action: &RepositoryAction) {
+        if self.pending_operation.as_ref() == Some(action) {
+            self.pending_operation = None;
+        }
+        if self
+            .pending_file_action
+            .as_ref()
+            .is_some_and(|pending| pending.matches_repository_action(action))
+        {
+            self.pending_file_action = None;
+        }
+        self.error = None;
+    }
+
     pub fn fail_operation(&mut self, failure: &OperationFailure) -> bool {
         if let Some(pending) = self.pending_operation.as_ref()
             && !same_repository_operation(pending, &failure.action)

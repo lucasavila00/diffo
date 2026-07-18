@@ -35,6 +35,14 @@ pub mod interaction {
     pub const PANE_DRAG: &str = "↔";
 }
 
+#[must_use]
+pub fn command_progress_style(tick: usize) -> Style {
+    const GRADIENT: [u8; 12] = [24, 25, 31, 37, 43, 42, 36, 30, 24, 60, 54, 53];
+    Style::default()
+        .fg(Color::Indexed(GRADIENT[(tick / 4) % GRADIENT.len()]))
+        .add_modifier(Modifier::BOLD)
+}
+
 /// Fixed layout tokens for Diffo's structural chrome.
 pub mod design {
     use ratatui::layout::Margin;

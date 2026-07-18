@@ -6,12 +6,17 @@ use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, 
 use diffo_app::{Effect, Message, Model, ToastKind, ToastQueue, update};
 use diffo_command::{Command, CommandId, CommandPalette, PaletteEvent};
 use diffo_core::{
-    GitPrompt, OperationFailure, OperationResult, PromptId, RepositoryAction, RepositorySnapshot,
+    ApplicationCommandId, GitPrompt, OperationFailure, OperationResult, PromptId, RepositoryAction,
+    RepositorySnapshot,
 };
 use diffo_text_view::{TextRenderMode, TextSurfacePreparation};
-use diffo_tui::{FramePreparation, Renderer, RendererEvent, render_toasts, toast_at_position};
+use diffo_tui::{
+    CommandProgress, FramePreparation, Renderer, RendererEvent, command_cancel_at_position,
+    render_command_progress, render_toasts, toast_at_position,
+};
 use diffo_ui::{
-    PaneSplit, design, enabled_control_style, interaction, terminal_safe_text, theme, tool_areas,
+    PaneSplit, command_progress_style, design, enabled_control_style, interaction,
+    terminal_safe_text, theme, tool_areas,
 };
 use ratatui::{
     Frame,
@@ -23,6 +28,9 @@ use ratatui::{
 use diffo_explorer::{ExplorerActivity, ExplorerEvent, ExplorerOutcome, ExplorerRequest};
 
 mod activity_bar;
+mod command_queue;
+
+pub use command_queue::{ApplicationCommand, CommandQueue, CommandResult, CommandState};
 
 pub use activity_bar::{
     ACTIVITY_BAR_WIDTH, WorkbenchAreas, activity_at_position, render_activity_bar, workbench_areas,
@@ -43,13 +51,13 @@ enum WorkbenchCommand {
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum WorkbenchEffect {
-    Repository(RepositoryAction),
     CopyPath {
         path: std::path::PathBuf,
         absolute: bool,
     },
     Prompt {
-        id: PromptId,
+        command_id: ApplicationCommandId,
+        prompt_id: PromptId,
         response: PromptResponse,
     },
 }
@@ -110,12 +118,15 @@ pub struct Workbench {
     pane_split: PaneSplit,
     toasts: ToastQueue,
     toast_deadlines: HashMap<u64, Instant>,
+    commands: CommandQueue,
+    command_animation_tick: usize,
     should_quit: bool,
     prompt: Option<PromptModal>,
     last_prompt_id: Option<PromptId>,
 }
 
 struct PromptModal {
+    command_id: ApplicationCommandId,
     id: PromptId,
     prompt: GitPrompt,
     input: String,
@@ -192,6 +203,8 @@ impl Workbench {
             pane_split: PaneSplit::default(),
             toasts: ToastQueue::new(),
             toast_deadlines: HashMap::new(),
+            commands: CommandQueue::new(),
+            command_animation_tick: 0,
             should_quit: false,
             prompt: None,
             last_prompt_id: None,
@@ -226,6 +239,21 @@ impl Workbench {
 
     pub fn tick(&mut self) {
         self.expire_toasts();
+        if self.commands.active().is_some() {
+            self.command_animation_tick = self.command_animation_tick.wrapping_add(1);
+        } else {
+            self.command_animation_tick = 0;
+        }
+    }
+
+    #[must_use]
+    pub fn has_active_command(&self) -> bool {
+        self.commands.active().is_some()
+    }
+
+    #[must_use]
+    pub fn active_command_id(&self) -> Option<ApplicationCommandId> {
+        self.commands.active().map(|command| command.id)
     }
 
     #[must_use]
@@ -259,8 +287,27 @@ impl Workbench {
         }
         render_pane_drag_marker(frame, tool_areas(content).content, self.pane_split);
         render_toasts(frame, self.toasts.as_slice(), content);
+        if let Some(command) = self.commands.active() {
+            render_command_progress(
+                frame,
+                CommandProgress {
+                    label: command.label,
+                    cancelling: command.state == CommandState::Cancelling,
+                    animation_tick: self.command_animation_tick,
+                },
+                content,
+            );
+        }
         self.active_palette().render(frame, content);
         render_activity_bar(frame, area, self.active);
+        if self.commands.active().is_some() {
+            frame.render_widget(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_style(command_progress_style(self.command_animation_tick)),
+                area,
+            );
+        }
         if let Some(prompt) = self.prompt.as_ref() {
             render_prompt(frame, prompt, area);
         }
@@ -324,7 +371,7 @@ impl Workbench {
             Activity::Explorer => self.explorer.captures_global_input(),
             Activity::Search => self.search.captures_global_input(),
         };
-        if !tool_captures_global_input && self.dismiss_clicked_toast(event, content) {
+        if !tool_captures_global_input && self.handle_overlay_click(event, content) {
             return None;
         }
         if !tool_captures_global_input
@@ -426,6 +473,25 @@ impl Workbench {
         true
     }
 
+    fn handle_overlay_click(&mut self, event: &Event, area: Rect) -> bool {
+        self.dismiss_clicked_toast(event, area) || self.cancel_clicked_command(event, area)
+    }
+
+    fn cancel_clicked_command(&mut self, event: &Event, area: Rect) -> bool {
+        let Event::Mouse(mouse) = event else {
+            return false;
+        };
+        if mouse.kind != MouseEventKind::Down(MouseButton::Left)
+            || !command_cancel_at_position(area, mouse.column, mouse.row)
+        {
+            return false;
+        }
+        let Some(id) = self.commands.active().map(|command| command.id) else {
+            return false;
+        };
+        self.commands.cancel(id)
+    }
+
     fn sync_diff_pane_state(&mut self) {
         self.diff.model.file_pane_percent = self.pane_split.percent();
         self.diff.model.resizing_file_pane = self.pane_split.is_dragging();
@@ -433,6 +499,17 @@ impl Workbench {
 
     pub fn take_task(&mut self) -> Option<WorkbenchTask> {
         self.explorer.take_request().map(WorkbenchTask::Explorer)
+    }
+
+    pub fn take_repository_command(&mut self) -> Option<ApplicationCommand> {
+        let command = self.commands.start_next()?;
+        self.prompt = None;
+        self.last_prompt_id = None;
+        let _ = self
+            .diff
+            .model
+            .start_repository_action(command.action.clone());
+        Some(command)
     }
 
     pub fn accept_task_result(&mut self, result: WorkbenchTaskResult) {
@@ -449,7 +526,10 @@ impl Workbench {
             _ => {}
         }
         match update(&mut self.diff.model, message) {
-            Some(Effect::Repository(action)) => Some(WorkbenchEffect::Repository(action)),
+            Some(Effect::Repository(action)) => {
+                self.commands.enqueue(action);
+                None
+            }
             Some(Effect::Toast(kind, title)) => {
                 self.show_toast(kind, title);
                 None
@@ -503,11 +583,8 @@ impl Workbench {
             None
         };
         if let Some(action) = action {
-            return self
-                .diff
-                .model
-                .start_repository_action(action)
-                .map(WorkbenchEffect::Repository);
+            self.commands.enqueue(action);
+            return None;
         }
         match self.active {
             Activity::Diff => self.diff.execute_command(command),
@@ -531,32 +608,83 @@ impl Workbench {
 
     pub fn operation_completed(
         &mut self,
+        id: ApplicationCommandId,
         action: RepositoryAction,
         result: OperationResult,
         snapshot: RepositorySnapshot,
     ) {
-        self.prompt = None;
-        self.last_prompt_id = None;
+        if self
+            .commands
+            .acknowledge(id, CommandResult::Succeeded)
+            .is_none()
+        {
+            return;
+        }
+        self.close_prompt(id);
         let _ = self.update_diff(Message::OperationCompleted(action, result, snapshot));
     }
 
-    pub fn action_failed(&mut self, failure: OperationFailure) {
-        self.prompt = None;
-        self.last_prompt_id = None;
+    pub fn action_failed(&mut self, id: ApplicationCommandId, failure: OperationFailure) {
+        if self
+            .commands
+            .acknowledge(id, CommandResult::Failed)
+            .is_none()
+        {
+            return;
+        }
+        self.close_prompt(id);
         let _ = self.update_diff(Message::ActionFailed(failure));
     }
 
-    pub fn open_prompt(&mut self, id: PromptId, prompt: GitPrompt) -> bool {
-        if self.prompt.is_some() || self.last_prompt_id.is_some_and(|last| id.0 <= last.0) {
+    pub fn operation_cancelled(&mut self, id: ApplicationCommandId, action: RepositoryAction) {
+        if self
+            .commands
+            .acknowledge(id, CommandResult::Cancelled)
+            .is_none()
+        {
+            return;
+        }
+        self.close_prompt(id);
+        let _ = self.update_diff(Message::OperationCancelled(action));
+    }
+
+    pub fn open_prompt(
+        &mut self,
+        command_id: ApplicationCommandId,
+        id: PromptId,
+        prompt: GitPrompt,
+    ) -> bool {
+        if self.prompt.is_some()
+            || !self.commands.active().is_some_and(|command| {
+                command.id == command_id
+                    && matches!(
+                        command.state,
+                        CommandState::Running | CommandState::Cancelling
+                    )
+            })
+            || self.last_prompt_id.is_some_and(|last| id.0 <= last.0)
+        {
             return false;
         }
         self.prompt = Some(PromptModal {
+            command_id,
             id,
             prompt,
             input: String::new(),
             confirm_choice: ConfirmChoice::Cancel,
         });
         true
+    }
+
+    fn close_prompt(&mut self, command_id: ApplicationCommandId) {
+        if self
+            .prompt
+            .as_ref()
+            .is_some_and(|prompt| prompt.command_id == command_id)
+        {
+            self.prompt = None;
+        }
+        self.last_prompt_id = None;
     }
 
     fn handle_prompt_event(&mut self, event: &Event, area: Rect) -> Option<WorkbenchEffect> {
@@ -632,8 +760,12 @@ impl Workbench {
         let response = response?;
         let prompt = self.prompt.take()?;
         self.last_prompt_id = Some(prompt.id);
+        if matches!(response, PromptResponse::Cancel) {
+            self.commands.cancel(prompt.command_id);
+        }
         Some(WorkbenchEffect::Prompt {
-            id: prompt.id,
+            command_id: prompt.command_id,
+            prompt_id: prompt.id,
             response,
         })
     }
@@ -1008,6 +1140,20 @@ mod tests {
         Event::Key(KeyEvent::new(code, KeyModifiers::NONE))
     }
 
+    fn start_repository_command(
+        workbench: &mut Workbench,
+        action: RepositoryAction,
+    ) -> ApplicationCommandId {
+        let id = workbench.commands.enqueue(action);
+        assert_eq!(
+            workbench
+                .take_repository_command()
+                .map(|command| command.id),
+            Some(id)
+        );
+        id
+    }
+
     #[test]
     fn tab_cycles_activities_without_changing_diff_state() {
         let mut workbench = Workbench::new(RepositorySnapshot::default());
@@ -1208,15 +1354,76 @@ mod tests {
             let effects =
                 workbench.handle_events(&[key(KeyCode::Char('1')), key(KeyCode::Enter)], area);
 
-            assert_eq!(
-                effects,
-                vec![WorkbenchEffect::Repository(RepositoryAction::Fetch)]
-            );
+            assert!(effects.is_empty());
+            let command = workbench
+                .take_repository_command()
+                .expect("fetch command queued");
+            assert_eq!(command.action, RepositoryAction::Fetch);
             assert_eq!(
                 workbench.diff.model.network_operation(),
                 Some(NetworkOperation::Fetch)
             );
         }
+    }
+
+    #[test]
+    fn command_progress_survives_activity_switching_and_animates_the_app_border() {
+        let mut workbench = Workbench::new(RepositorySnapshot::default());
+        workbench.commands.enqueue(RepositoryAction::Fetch);
+        let _running = workbench
+            .take_repository_command()
+            .expect("fetch command starts");
+        let area = Rect::new(0, 0, 100, 30);
+        let backend = TestBackend::new(area.width, area.height);
+        let mut terminal = Terminal::new(backend).unwrap();
+
+        terminal.draw(|frame| workbench.render(frame)).unwrap();
+        let first_border = terminal.backend().buffer()[(0, 0)].fg;
+        let _ = workbench.handle_event(&key(KeyCode::Tab), area);
+        for _ in 0..4 {
+            workbench.tick();
+        }
+        terminal.draw(|frame| workbench.render(frame)).unwrap();
+
+        let screen = terminal
+            .backend()
+            .buffer()
+            .content
+            .iter()
+            .map(ratatui::buffer::Cell::symbol)
+            .collect::<String>();
+        assert_eq!(workbench.active, Activity::Explorer);
+        assert!(screen.contains("Fetching"));
+        assert!(screen.contains(interaction::DISMISS));
+        assert_ne!(terminal.backend().buffer()[(0, 0)].fg, first_border);
+    }
+
+    #[test]
+    fn clicking_the_progress_marker_requests_cancellation_until_acknowledged() {
+        let mut workbench = Workbench::new(RepositorySnapshot::default());
+        workbench.commands.enqueue(RepositoryAction::Fetch);
+        let running = workbench
+            .take_repository_command()
+            .expect("fetch command starts");
+        let area = Rect::new(0, 0, 100, 30);
+        let content = workbench_areas(area).content;
+        let click = Event::Mouse(MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: content.right().saturating_sub(3),
+            row: content.y.saturating_add(1),
+            modifiers: KeyModifiers::NONE,
+        });
+
+        let _ = workbench.handle_event(&click, area);
+
+        assert!(running.cancellation.is_cancelled());
+        assert_eq!(
+            workbench.commands.active().map(|command| command.state),
+            Some(CommandState::Cancelling)
+        );
+        workbench.operation_cancelled(running.id, RepositoryAction::Fetch);
+        assert!(workbench.commands.active().is_none());
+        assert!(workbench.toasts.as_slice().is_empty());
     }
 
     #[test]
@@ -1231,7 +1438,10 @@ mod tests {
                     .start_repository_action(RepositoryAction::Pull),
                 Some(RepositoryAction::Pull)
             );
+            let id = workbench.commands.enqueue(RepositoryAction::Pull);
+            let _ = workbench.commands.start_next();
             workbench.operation_completed(
+                id,
                 RepositoryAction::Pull,
                 OperationResult::Pull { commits: 1 },
                 RepositorySnapshot::default(),
@@ -1287,6 +1497,8 @@ mod tests {
                 .start_repository_action(RepositoryAction::Fetch),
             Some(RepositoryAction::Fetch)
         );
+        let id = workbench.commands.enqueue(RepositoryAction::Fetch);
+        let _ = workbench.commands.start_next();
         assert_eq!(
             workbench.diff.model.network_operation(),
             Some(NetworkOperation::Fetch)
@@ -1300,6 +1512,7 @@ mod tests {
         );
 
         workbench.operation_completed(
+            id,
             RepositoryAction::Fetch,
             OperationResult::Fetch { updated_refs: 0 },
             RepositorySnapshot::default(),
@@ -1352,14 +1565,9 @@ mod tests {
     fn prompt_modal_has_priority_and_keeps_network_operation_pending() {
         let area = Rect::new(0, 0, 100, 30);
         let mut workbench = Workbench::new(RepositorySnapshot::default());
-        assert_eq!(
-            workbench
-                .diff
-                .model
-                .start_repository_action(RepositoryAction::Fetch),
-            Some(RepositoryAction::Fetch)
-        );
+        let command_id = start_repository_command(&mut workbench, RepositoryAction::Fetch);
         assert!(workbench.open_prompt(
+            command_id,
             PromptId(1),
             GitPrompt::Username {
                 host: "example.com".to_owned()
@@ -1382,7 +1590,8 @@ mod tests {
         assert_eq!(
             effects,
             vec![WorkbenchEffect::Prompt {
-                id: PromptId(1),
+                command_id,
+                prompt_id: PromptId(1),
                 response: PromptResponse::Text("user".to_owned())
             }]
         );
@@ -1396,7 +1605,9 @@ mod tests {
     fn secret_input_is_masked_in_frames_and_debug_output() {
         let area = Rect::new(0, 0, 80, 24);
         let mut workbench = Workbench::new(RepositorySnapshot::default());
+        let command_id = start_repository_command(&mut workbench, RepositoryAction::Fetch);
         assert!(workbench.open_prompt(
+            command_id,
             PromptId(1),
             GitPrompt::Secret {
                 kind: diffo_core::SecretKind::HttpsSecret,
@@ -1442,7 +1653,8 @@ mod tests {
             fingerprint: "SHA256:abc".to_owned(),
         };
         let mut workbench = Workbench::new(RepositorySnapshot::default());
-        assert!(workbench.open_prompt(PromptId(1), prompt()));
+        let command_id = start_repository_command(&mut workbench, RepositoryAction::Fetch);
+        assert!(workbench.open_prompt(command_id, PromptId(1), prompt()));
         assert_eq!(
             workbench.prompt.as_ref().map(|modal| modal.confirm_choice),
             Some(ConfirmChoice::Cancel)
@@ -1450,21 +1662,23 @@ mod tests {
         assert_eq!(
             workbench.handle_events(&[key(KeyCode::Enter)], area),
             vec![WorkbenchEffect::Prompt {
-                id: PromptId(1),
+                command_id,
+                prompt_id: PromptId(1),
                 response: PromptResponse::Cancel,
             }]
         );
 
-        assert!(workbench.open_prompt(PromptId(2), prompt()));
+        assert!(workbench.open_prompt(command_id, PromptId(2), prompt()));
         assert_eq!(
             workbench.handle_events(&[key(KeyCode::Right), key(KeyCode::Enter)], area),
             vec![WorkbenchEffect::Prompt {
-                id: PromptId(2),
+                command_id,
+                prompt_id: PromptId(2),
                 response: PromptResponse::Confirm,
             }]
         );
 
-        assert!(workbench.open_prompt(PromptId(3), prompt()));
+        assert!(workbench.open_prompt(command_id, PromptId(3), prompt()));
         let button = prompt_layout(area).continue_button;
         let click = Event::Mouse(MouseEvent {
             kind: MouseEventKind::Down(MouseButton::Left),
@@ -1475,7 +1689,8 @@ mod tests {
         assert_eq!(
             workbench.handle_events(&[click], area),
             vec![WorkbenchEffect::Prompt {
-                id: PromptId(3),
+                command_id,
+                prompt_id: PromptId(3),
                 response: PromptResponse::Confirm,
             }]
         );
@@ -1485,18 +1700,68 @@ mod tests {
     fn prompt_rejects_concurrent_stale_ids_and_escape_cancels() {
         let area = Rect::new(0, 0, 100, 30);
         let mut workbench = Workbench::new(RepositorySnapshot::default());
+        let command_id = start_repository_command(&mut workbench, RepositoryAction::Fetch);
         let prompt = GitPrompt::Username {
             host: "example.com".to_owned(),
         };
-        assert!(workbench.open_prompt(PromptId(1), prompt.clone()));
-        assert!(!workbench.open_prompt(PromptId(2), prompt.clone()));
+        assert!(workbench.open_prompt(command_id, PromptId(1), prompt.clone()));
+        assert!(!workbench.open_prompt(command_id, PromptId(2), prompt.clone()));
         assert_eq!(
             workbench.handle_events(&[key(KeyCode::Esc)], area),
             vec![WorkbenchEffect::Prompt {
-                id: PromptId(1),
+                command_id,
+                prompt_id: PromptId(1),
                 response: PromptResponse::Cancel,
             }]
         );
-        assert!(!workbench.open_prompt(PromptId(1), prompt));
+        assert!(!workbench.open_prompt(command_id, PromptId(1), prompt));
+        assert_eq!(
+            workbench.commands.active().map(|command| command.state),
+            Some(CommandState::Cancelling)
+        );
+    }
+
+    #[test]
+    fn prompt_ids_are_scoped_to_the_active_command() {
+        let mut workbench = Workbench::new(RepositorySnapshot::default());
+        let first = start_repository_command(&mut workbench, RepositoryAction::Fetch);
+        workbench.commands.enqueue(RepositoryAction::Pull);
+        assert!(workbench.open_prompt(
+            first,
+            PromptId(1),
+            GitPrompt::Username {
+                host: "example.com".to_owned(),
+            },
+        ));
+        assert!(workbench.take_repository_command().is_none());
+        let _ = workbench.handle_events(
+            &[key(KeyCode::Char('u')), key(KeyCode::Enter)],
+            Rect::default(),
+        );
+        workbench.operation_completed(
+            first,
+            RepositoryAction::Fetch,
+            OperationResult::Fetch { updated_refs: 0 },
+            RepositorySnapshot::default(),
+        );
+
+        let second = workbench
+            .take_repository_command()
+            .expect("queued pull starts after fetch completion")
+            .id;
+        assert!(!workbench.open_prompt(
+            first,
+            PromptId(2),
+            GitPrompt::Username {
+                host: "stale.example.com".to_owned(),
+            },
+        ));
+        assert!(workbench.open_prompt(
+            second,
+            PromptId(1),
+            GitPrompt::Username {
+                host: "example.com".to_owned(),
+            },
+        ));
     }
 }

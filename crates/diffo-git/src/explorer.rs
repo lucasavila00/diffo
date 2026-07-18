@@ -1,7 +1,9 @@
 use std::{fs, path::Path, process::Command};
 
 use anyhow::{Context, Result};
-use diffo_core::{ExplorerFile, ExplorerFileContent, Repository};
+use diffo_core::{
+    ExplorerFile, ExplorerFileContent, OperationOutcome, Repository, RepositoryOperationContext,
+};
 
 use super::GitRepositorySource;
 
@@ -109,14 +111,17 @@ impl Repository for GitRepositorySource {
         &self,
         action: &diffo_core::RepositoryAction,
     ) -> std::result::Result<diffo_core::OperationResult, diffo_core::OperationFailure> {
-        self.apply_operation(action, None)
+        match self.apply_operation(action, None)? {
+            OperationOutcome::Completed(result) => Ok(result),
+            OperationOutcome::Cancelled => unreachable!("an uncancellable operation was cancelled"),
+        }
     }
 
     fn apply_with_context(
         &self,
         action: &diffo_core::RepositoryAction,
-        context: &diffo_core::RepositoryOperationContext,
-    ) -> std::result::Result<diffo_core::OperationResult, diffo_core::OperationFailure> {
+        context: &RepositoryOperationContext,
+    ) -> std::result::Result<OperationOutcome, diffo_core::OperationFailure> {
         self.apply_operation(action, Some(context))
     }
 }

@@ -13,7 +13,7 @@ use anyhow::{Context, Result, bail};
 use diffo_app::Model;
 use diffo_core::{Repository, RepositorySnapshot, RepositorySource};
 use diffo_git::GitRepositorySource;
-use diffo_watch::{RefreshResult, RefreshService};
+use diffo_repository_service::{RepositoryEvent, RepositoryService};
 
 #[test]
 fn compiled_binary_refreshes_live_git_state() -> Result<()> {
@@ -99,45 +99,52 @@ fn watcher_refresh_never_resets_scroll_for_the_same_selection() -> Result<()> {
     let paths = source.watch_paths()?;
     let snapshot = source.snapshot()?;
     let repository_source = Arc::clone(&source) as Arc<dyn Repository>;
-    let refresh = RefreshService::start(repository_source, &paths)?;
+    let repository_service = RepositoryService::start(repository_source, Some(&paths))?;
     let mut model = Model::new(snapshot);
     model.diff_scroll = 40;
 
     fs::write(repository.path().join("ignored.tmp"), "ignored\n")?;
-    model.repository_changed(wait_for_refresh(&refresh, deadline, |_| true)?);
+    model.repository_changed(wait_for_snapshot(&repository_service, deadline, |_| true)?);
     assert_eq!(model.diff_scroll, 40);
 
     fs::write(repository.path().join("tracked.txt"), "second change\n")?;
-    model.repository_changed(wait_for_refresh(&refresh, deadline, |snapshot| {
-        snapshot.files.iter().any(|file| {
-            file.unstaged
-                .as_ref()
-                .is_some_and(|diff| diff.text.contains("second change"))
-        })
-    })?);
+    model.repository_changed(wait_for_snapshot(
+        &repository_service,
+        deadline,
+        |snapshot| {
+            snapshot.files.iter().any(|file| {
+                file.unstaged
+                    .as_ref()
+                    .is_some_and(|diff| diff.text.contains("second change"))
+            })
+        },
+    )?);
     assert_eq!(model.diff_scroll, 40);
     Ok(())
 }
 
-fn wait_for_refresh(
-    refresh: &RefreshService,
+fn wait_for_snapshot(
+    repository_service: &RepositoryService,
     deadline: Instant,
     predicate: impl Fn(&RepositorySnapshot) -> bool,
 ) -> Result<RepositorySnapshot> {
     while Instant::now() < deadline {
-        match refresh.try_recv() {
-            Ok(Some(RefreshResult::Snapshot { snapshot, .. })) if predicate(&snapshot) => {
+        match repository_service.try_recv() {
+            Ok(Some(RepositoryEvent::SnapshotRefreshed { snapshot, .. }))
+                if predicate(&snapshot) =>
+            {
                 return Ok(snapshot);
             }
             Ok(Some(
-                RefreshResult::Snapshot { .. }
-                | RefreshResult::ActionCompleted { .. }
-                | RefreshResult::ActionFailed { .. }
-                | RefreshResult::Prompt { .. },
+                RepositoryEvent::Prompt { .. }
+                | RepositoryEvent::SnapshotRefreshed { .. }
+                | RepositoryEvent::CommandCompleted { .. }
+                | RepositoryEvent::CommandFailed { .. }
+                | RepositoryEvent::CommandCancelled { .. },
             )) => {}
-            Ok(Some(RefreshResult::Error { message, .. })) => bail!(message),
+            Ok(Some(RepositoryEvent::RefreshFailed { message, .. })) => bail!(message),
             Ok(None) => thread::sleep(Duration::from_millis(10)),
-            Err(error) => bail!("refresh worker stopped: {error}"),
+            Err(error) => bail!("repository service stopped: {error}"),
         }
     }
     bail!("watcher scroll regression test exceeded its 5-second deadline")

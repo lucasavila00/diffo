@@ -2,7 +2,10 @@
 
 use std::{
     path::PathBuf,
-    sync::{Arc, atomic::AtomicBool},
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
 };
 
 use anyhow::Result;
@@ -115,9 +118,31 @@ pub enum OperationResult {
     Commit { hash: String },
 }
 
+#[derive(Clone, Debug, Default)]
+pub struct CancellationHandle(Arc<AtomicBool>);
+
+impl CancellationHandle {
+    pub fn cancel(&self) {
+        self.0.store(true, Ordering::Release);
+    }
+
+    #[must_use]
+    pub fn is_cancelled(&self) -> bool {
+        self.0.load(Ordering::Acquire)
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum OperationOutcome {
+    Completed(OperationResult),
+    Cancelled,
+}
+
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub struct ApplicationCommandId(pub u64);
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum FailureKind {
-    Cancelled,
     PullRequired,
     Diverged,
     PushRejected,
@@ -153,18 +178,26 @@ pub enum PromptAnswer {
 }
 
 pub trait PromptHandler: Send + Sync {
-    fn prompt(&self, id: PromptId, prompt: GitPrompt, cancelled: &AtomicBool) -> PromptAnswer;
+    fn prompt(
+        &self,
+        id: PromptId,
+        prompt: GitPrompt,
+        cancellation: &CancellationHandle,
+    ) -> PromptAnswer;
 }
 
 pub struct RepositoryOperationContext {
     pub prompts: Arc<dyn PromptHandler>,
-    pub cancelled: Arc<AtomicBool>,
+    pub cancellation: CancellationHandle,
 }
 
 impl RepositoryOperationContext {
     #[must_use]
-    pub fn new(prompts: Arc<dyn PromptHandler>, cancelled: Arc<AtomicBool>) -> Self {
-        Self { prompts, cancelled }
+    pub fn new(prompts: Arc<dyn PromptHandler>, cancellation: CancellationHandle) -> Self {
+        Self {
+            prompts,
+            cancellation,
+        }
     }
 }
 
@@ -224,12 +257,15 @@ pub trait Repository: RepositorySource {
     ///
     /// # Errors
     ///
-    /// Returns an operation failure when the action cannot be applied or is cancelled.
+    /// Returns an operation failure when the action cannot be applied.
     fn apply_with_context(
         &self,
         action: &RepositoryAction,
-        _context: &RepositoryOperationContext,
-    ) -> std::result::Result<OperationResult, OperationFailure> {
-        self.apply(action)
+        context: &RepositoryOperationContext,
+    ) -> std::result::Result<OperationOutcome, OperationFailure> {
+        if context.cancellation.is_cancelled() {
+            return Ok(OperationOutcome::Cancelled);
+        }
+        self.apply(action).map(OperationOutcome::Completed)
     }
 }

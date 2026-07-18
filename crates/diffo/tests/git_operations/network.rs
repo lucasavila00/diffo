@@ -92,6 +92,35 @@ fn palette_search_runs_pull() -> Result<()> {
 }
 
 #[test]
+fn cancelling_a_delayed_command_releases_the_next_queued_command() -> Result<()> {
+    let repository = TestRepository::new()?;
+    repository.commit_remote("remote.txt", "remote\n", "Remote commit")?;
+    let mut screen = repository.screen_with_network_delay()?;
+
+    screen
+        .press(Key::Char('1'))?
+        .type_text("fetch")?
+        .press(Key::Enter)?
+        .wait_for_text("Fetching")?
+        .press(Key::Char('1'))?
+        .type_text("pull")?
+        .press(Key::Enter)?
+        .wait_for_text_gone("Command Palette")?;
+    assert!(screen.contents().contains("Fetching"));
+    assert!(!screen.contents().contains("Pulling"));
+
+    screen
+        .click(&Selector::text("×"))?
+        .wait_for_text("Pulling")?;
+    wait_for("queued pull to update the worktree", || {
+        Ok(repository.worktree.join("remote.txt").exists())
+    })?;
+    screen.wait_for_text("Pulled 1 commit")?;
+    assert!(!screen.contents().contains("Fetch complete"));
+    Ok(())
+}
+
+#[test]
 fn primary_pull_button_shows_loading_and_pulls() -> Result<()> {
     let repository = TestRepository::new()?;
     repository.commit_remote("remote.txt", "remote\n", "Remote commit")?;

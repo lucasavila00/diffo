@@ -727,7 +727,6 @@ impl Renderer {
             unstaged_picker: diffo_file_picker::FilePicker::default(),
             hunk_buttons: HunkButtonMetrics::default(),
             content_revision: 0,
-            network_animation_tick: 0,
             #[cfg(test)]
             highlight_computations: 0,
         }

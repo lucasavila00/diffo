@@ -51,6 +51,7 @@ pub enum Message {
     SnapshotLoaded(RepositorySnapshot),
     OperationFailed(String),
     OperationCompleted(RepositoryAction, OperationResult, RepositorySnapshot),
+    OperationCancelled(RepositoryAction),
     ActionFailed(OperationFailure),
 }
 
@@ -120,6 +121,9 @@ pub fn update(model: &mut Model, message: Message) -> Option<Effect> {
             {
                 return Some(Effect::Toast(kind, title));
             }
+        }
+        Message::OperationCancelled(action) => {
+            model.cancel_operation(&action);
         }
         Message::ActionFailed(failure) => {
             if model.fail_operation(&failure) {

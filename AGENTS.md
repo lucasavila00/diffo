@@ -128,15 +128,13 @@ This repository is a Rust workspace containing small command-line utilities. Eac
 
 ## Validation
 
-Run these commands before considering a change complete:
+`make all` is the only repository validation command. Always run it before
+considering any change complete:
 
 ```sh
-cargo fmt --all --check
-cargo test --workspace
-cargo clippy --workspace --all-targets --all-features -- -D warnings
+make all
 ```
 
-Real Git behavior is snapshot-tested in `diffo-e2e`. Use `make e2e` to check it and
-`make e2e-review` to review intentional snapshot changes with `cargo-insta`.
-
-When changing a single package, targeted commands are useful during development, but the complete workspace checks should still pass before handoff.
+Real Git behavior is snapshot-tested in `diffo-e2e` through `make all`.
+`make e2e-review` reviews intentional snapshot changes with `cargo-insta`. Always
+complete repository validation with `make all`.

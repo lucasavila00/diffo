@@ -1,4 +1,20 @@
-.PHONY: diffo install diffo-mock e2e e2e-review measure-cpu measure-text-readiness
+.PHONY: all check-file-lines diffo install diffo-mock e2e e2e-review measure-cpu measure-text-readiness
+
+all:
+	cargo fmt --all --check
+	cargo test --workspace
+	cargo clippy --workspace --all-targets --all-features -- -D warnings
+	$(MAKE) check-file-lines
+
+check-file-lines:
+	@git ls-files '*.rs' | { failed=; while IFS= read -r file; do \
+		lines=$$(wc -l < "$$file"); \
+		if [ "$$lines" -gt 1000 ]; then \
+			printf '%s has %s lines (maximum 1000)\n' "$$file" "$$lines"; \
+			failed=1; \
+		fi; \
+	done; \
+	test -z "$$failed"; }
 
 # Build and run the diff viewer using Cargo's debug profile.
 diffo:

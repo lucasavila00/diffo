@@ -11,8 +11,7 @@ A Rust workspace for small command-line utilities.
 ```sh
 make diffo
 make diffo-mock
-cargo test --workspace
-cargo clippy --workspace --all-targets --all-features
+make all
 ```
 
 `make diffo` reads the current Git repository. `make diffo-mock` loads a mutable,
@@ -26,6 +25,9 @@ have not been pushed.
 
 Set `DIFFO_MOCK_FILE` directly to preview another RON fixture without changing the normal
 application behavior.
+
+`make all` is the only repository validation command. Always run it before
+considering a change complete; it is the single source of truth for CI checks.
 
 For debugging, `DIFFO_DUMP_PATH=state.ron make diffo` writes one repository snapshot
 and exits without opening the TUI. Diffo has no command-line arguments.

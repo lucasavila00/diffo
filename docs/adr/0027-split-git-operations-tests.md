@@ -1,6 +1,6 @@
 # ADR 0027: Split `diffo/tests/git_operations.rs`
 
-Status: Proposed
+Status: Accepted
 
 ## Decision
 

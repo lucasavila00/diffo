@@ -1,6 +1,6 @@
 # ADR 0030: Split `diffo-tui/src/input.rs`
 
-Status: Proposed
+Status: Accepted
 
 ## Decision
 

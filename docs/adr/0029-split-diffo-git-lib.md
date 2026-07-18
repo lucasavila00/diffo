@@ -1,6 +1,6 @@
 # ADR 0029: Split `diffo-git/src/lib.rs`
 
-Status: Proposed
+Status: Accepted
 
 ## Decision
 

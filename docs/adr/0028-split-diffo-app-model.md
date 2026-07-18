@@ -1,6 +1,6 @@
 # ADR 0028: Split `diffo-app/src/model.rs`
 
-Status: Proposed
+Status: Accepted
 
 ## Decision
 

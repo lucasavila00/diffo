@@ -1,6 +1,6 @@
 # ADR 0026: Split `diffo-tui/src/lib.rs`
 
-Status: Proposed
+Status: Accepted
 
 ## Decision
 

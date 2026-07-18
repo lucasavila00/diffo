@@ -2,6 +2,8 @@
 
 Status: Accepted
 
+Atomic buffer installation is specified by ADR 0024.
+
 ## Decision
 
 Keep parsing, projection, and syntax work out of the input loop for large diffs.

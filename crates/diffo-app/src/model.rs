@@ -381,7 +381,6 @@ impl Model {
         }
         self.cursor = self.cursor.saturating_add(1).min(keys.len() - 1);
         self.selected = keys.get(self.cursor).cloned();
-        self.reset_diff_scroll();
         self.error = None;
     }
 
@@ -389,21 +388,18 @@ impl Model {
         let keys = file_keys(&self.snapshot);
         self.cursor = self.cursor.saturating_sub(1);
         self.selected = keys.get(self.cursor).cloned();
-        self.reset_diff_scroll();
         self.error = None;
     }
 
     pub fn select_first(&mut self) {
         self.cursor = 0;
         self.selected = file_keys(&self.snapshot).into_iter().next();
-        self.reset_diff_scroll();
     }
 
     pub fn select_last(&mut self) {
         let keys = file_keys(&self.snapshot);
         self.cursor = keys.len().saturating_sub(1);
         self.selected = keys.get(self.cursor).cloned();
-        self.reset_diff_scroll();
     }
 
     pub fn select_file(&mut self, file: &FileKey) {
@@ -411,7 +407,6 @@ impl Model {
         if let Some(cursor) = keys.iter().position(|key| key == file) {
             self.cursor = cursor;
             self.selected = keys.get(cursor).cloned();
-            self.reset_diff_scroll();
             self.error = None;
         }
     }
@@ -477,8 +472,9 @@ impl Model {
         self.diff_horizontal_scroll = self.diff_horizontal_scroll.min(maximum_column);
     }
 
-    pub fn anchor_diff_scroll(&mut self, row: usize) {
-        self.diff_scroll = row;
+    pub fn set_diff_viewport(&mut self, vertical: usize, horizontal: usize) {
+        self.diff_scroll = vertical;
+        self.diff_horizontal_scroll = horizontal;
     }
 
     pub fn toggle_diff_view(&mut self) {
@@ -636,13 +632,9 @@ impl Model {
             })
             .unwrap_or_else(|| old_cursor.min(keys.len().saturating_sub(1)));
         let selected = keys.get(cursor).cloned();
-        let preserve_scroll = old_selected == selected && selected.is_some();
         self.snapshot = snapshot;
         self.cursor = cursor;
         self.selected = selected;
-        if !preserve_scroll {
-            self.reset_diff_scroll();
-        }
         self.error = None;
     }
 

@@ -161,7 +161,7 @@ fn run(
         Vec::new(),
         generation,
         model,
-        preparation,
+        &preparation,
         scroll,
         update_start_us,
         None,
@@ -200,7 +200,7 @@ fn run(
             input_events,
             generation,
             model,
-            preparation,
+            &preparation,
             scroll_before,
             update_start_us,
             event_read_us,
@@ -241,8 +241,8 @@ fn draw_frame(
     let size = terminal.size()?;
     let area = ratatui::layout::Rect::new(0, 0, size.width, size.height);
     let preparation = renderer.prepare_frame(model, area);
-    if let Some(row) = preparation.anchored_vertical_scroll {
-        model.anchor_diff_scroll(row);
+    if let Some(viewport) = preparation.viewport_transition {
+        model.set_diff_viewport(viewport.vertical, viewport.horizontal);
     }
     model.clamp_diff_scroll(
         preparation.maximum_vertical_scroll,
@@ -511,6 +511,6 @@ mod tests {
         model.repository_changed(RepositorySnapshot::default());
         pending.flush(&mut model);
 
-        assert_eq!(model.diff_scroll, 4);
+        assert_eq!(model.diff_scroll, 44);
     }
 }

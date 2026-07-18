@@ -688,6 +688,100 @@ fn q_and_control_c_exit_cleanly() -> Result<()> {
 }
 
 #[test]
+fn delayed_diff_open_commits_only_the_latest_buffer_at_its_first_change() -> Result<()> {
+    let repository = TestRepository::new()?;
+    fs::write(repository.worktree.join("a-small.txt"), "small base\n")?;
+    fs::write(
+        repository.worktree.join("b-large.txt"),
+        large_file("b base", None)?,
+    )?;
+    fs::write(
+        repository.worktree.join("c-large.txt"),
+        large_file("c base", None)?,
+    )?;
+    git(&repository.worktree, &["add", "."])?;
+    git(
+        &repository.worktree,
+        &["commit", "-m", "Add navigation fixtures"],
+    )?;
+    fs::write(repository.worktree.join("a-small.txt"), "SMALL_CHANGED\n")?;
+    fs::write(
+        repository.worktree.join("b-large.txt"),
+        large_file("b base", Some("B_LARGE_CHANGED"))?,
+    )?;
+    fs::write(
+        repository.worktree.join("c-large.txt"),
+        large_file("c base", Some("C_LARGE_CHANGED"))?,
+    )?;
+    let trace_path = repository.root.path().join("atomic-open-frames.ronl");
+    let mut screen = DiffoScreen::launch_with_env(
+        env!("CARGO_BIN_EXE_diffo"),
+        &repository.worktree,
+        &[
+            ("DIFFO_TRACE_FRAMES", trace_path.as_os_str()),
+            ("DIFFO_E2E_DIFF_PREP_DELAY_MS", OsStr::new("300")),
+        ],
+    )?;
+    screen
+        .wait_for_text("SMALL_CHANGED")?
+        .press(Key::Char('s'))?
+        .wait_for(&Selector::selected_row("b-large.txt"))?;
+    assert!(screen.contents().contains("SMALL_CHANGED"));
+    screen
+        .press(Key::Char('s'))?
+        .wait_for(&Selector::selected_row("c-large.txt"))?;
+    assert!(screen.contents().contains("SMALL_CHANGED"));
+    screen
+        .wait_for_text("C_LARGE_CHANGED")?
+        .press(Key::Char('q'))?
+        .wait_for_exit()?;
+    drop(screen);
+
+    let trace = fs::read_to_string(&trace_path).context("read atomic-open frame trace")?;
+    let frames = trace
+        .lines()
+        .map(ron::from_str::<BufferFrame>)
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+    let requested_b = "Unstaged:b-large.txt";
+    let requested_c = "Unstaged:c-large.txt";
+    let displayed_a = "Unstaged:a-small.txt";
+    assert!(frames.iter().any(|frame| {
+        frame.requested_diff.as_deref() == Some(requested_b)
+            && frame.displayed_diff.as_deref() == Some(displayed_a)
+            && frame.viewport_transition.is_none()
+    }));
+    assert!(frames.iter().any(|frame| {
+        frame.requested_diff.as_deref() == Some(requested_c)
+            && frame.displayed_diff.as_deref() == Some(displayed_a)
+            && frame.viewport_transition.is_none()
+    }));
+    assert!(
+        frames
+            .iter()
+            .all(|frame| frame.displayed_diff.as_deref() != Some(requested_b)),
+        "stale b-large buffer was displayed:\n{trace}"
+    );
+    let committed = frames
+        .iter()
+        .find(|frame| {
+            frame.displayed_diff.as_deref() == Some(requested_c)
+                && frame.viewport_transition.is_some()
+        })
+        .with_context(|| format!("trace has no atomic c-large commit:\n{trace}"))?;
+    let first_change = committed.viewport_transition.context("commit viewport")?.0;
+    assert!(
+        first_change > 500,
+        "unexpected first change row: {first_change}"
+    );
+    assert_eq!(committed.first_rendered_row, first_change);
+    assert!(frames.iter().all(|frame| {
+        frame.displayed_diff.as_deref() != Some(requested_c)
+            || frame.first_rendered_row == first_change
+    }));
+    Ok(())
+}
+
+#[test]
 fn wheel_burst_is_one_bounded_frame_transition() -> Result<()> {
     let repository = TestRepository::new()?;
     let mut contents = String::new();
@@ -808,6 +902,19 @@ fn numbered_lines(count: usize, change_neighbor: bool) -> Result<String> {
     Ok(contents)
 }
 
+fn large_file(prefix: &str, replacement: Option<&str>) -> Result<String> {
+    let mut contents = String::new();
+    for line in 0..650 {
+        if line == 550 {
+            writeln!(contents, "{}", replacement.unwrap_or(prefix))
+                .context("build large changed line")?;
+        } else {
+            writeln!(contents, "{prefix} line {line:03}").context("build large file")?;
+        }
+    }
+    Ok(contents)
+}
+
 #[derive(Deserialize)]
 struct ScrollFrame {
     input_events: Vec<String>,
@@ -815,6 +922,14 @@ struct ScrollFrame {
     scroll_after: (usize, usize),
     event_read_us: Option<u64>,
     draw_end_us: u64,
+}
+
+#[derive(Deserialize)]
+struct BufferFrame {
+    requested_diff: Option<String>,
+    displayed_diff: Option<String>,
+    viewport_transition: Option<(usize, usize)>,
+    first_rendered_row: usize,
 }
 
 fn changed_repository() -> Result<TestRepository> {

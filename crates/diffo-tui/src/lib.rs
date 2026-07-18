@@ -1,11 +1,12 @@
 use diffo_app::{ChangeArea, DiffViewMode, FileKey, Model, ToastKind};
 use std::{
-    path::{Path, PathBuf},
+    env,
     sync::{
         Arc,
         mpsc::{Receiver, SyncSender, TrySendError, sync_channel},
     },
     thread,
+    time::Duration,
 };
 
 use crossterm::event::{Event, MouseButton, MouseEventKind};
@@ -36,7 +37,8 @@ pub struct Renderer {
     highlighted: Option<HighlightCache>,
     prepare_tx: SyncSender<PrepareRequest>,
     prepare_rx: Receiver<PrepareOutcome>,
-    pending: Option<DiffKey>,
+    submitted: Vec<DiffKey>,
+    requested: Option<DiffKey>,
     failed: Option<DiffKey>,
     scrollbars: ScrollbarMetrics,
     scrollbar_drag: Option<ScrollbarAxis>,
@@ -59,13 +61,21 @@ struct HighlightCache {
     syntax_highlighted: bool,
 }
 
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct FramePreparation {
     pub maximum_vertical_scroll: usize,
     pub maximum_horizontal_scroll: usize,
     pub content_revision: u64,
     pub preparing: bool,
-    pub anchored_vertical_scroll: Option<usize>,
+    pub viewport_transition: Option<ViewportTransition>,
+    pub requested_file: Option<FileKey>,
+    pub displayed_file: Option<FileKey>,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct ViewportTransition {
+    pub vertical: usize,
+    pub horizontal: usize,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -86,7 +96,7 @@ struct ScrollAnchor {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct DiffKey {
-    path: PathBuf,
+    file: FileKey,
     patch: String,
     mark_conflicts: bool,
 }
@@ -136,10 +146,14 @@ impl Renderer {
         let worker_highlighter = Arc::clone(&highlighter);
         let (prepare_tx, requests) = sync_channel::<PrepareRequest>(1);
         let (results, prepare_rx) = sync_channel(1);
+        let prepare_delay = preparation_delay_from_environment();
         thread::Builder::new()
             .name("diffo-diff-prepare".to_owned())
             .spawn(move || {
                 while let Ok(request) = requests.recv() {
+                    if !prepare_delay.is_zero() {
+                        thread::sleep(prepare_delay);
+                    }
                     let key = request.key.clone();
                     let result = prepare_diff(request, &worker_highlighter).ok_or(key);
                     if results.send(result).is_err() {
@@ -153,7 +167,8 @@ impl Renderer {
             highlighted: None,
             prepare_tx,
             prepare_rx,
-            pending: None,
+            submitted: Vec::new(),
+            requested: None,
             failed: None,
             scrollbars: ScrollbarMetrics::default(),
             scrollbar_drag: None,
@@ -198,7 +213,7 @@ impl Renderer {
         let diff_area = horizontal_panes(main_area(area), model.file_pane_percent)[1];
         let viewport_rows = usize::from(diff_area.height.saturating_sub(2));
         let viewport_columns = usize::from(diff_area.width.saturating_sub(2));
-        let current_diff = model.selected.as_ref().and_then(|selected| {
+        let requested = model.selected.as_ref().and_then(|selected| {
             let file = model
                 .snapshot
                 .files
@@ -208,64 +223,63 @@ impl Renderer {
                 ChangeArea::Unstaged => file.unstaged.as_ref(),
                 ChangeArea::Staged => file.staged.as_ref(),
             }?;
-            Some((
-                file.path.as_path(),
-                diff.text.as_str(),
-                file.kind == ChangeKind::Conflicted,
-            ))
+            Some(DiffKey {
+                file: selected.clone(),
+                patch: diff.text.clone(),
+                mark_conflicts: file.kind == ChangeKind::Conflicted,
+            })
         });
-        let previous_revision = self.content_revision;
-        let anchor = current_diff.and_then(|(path, _, _)| {
+        self.requested.clone_from(&requested);
+        let displayed_before = self.displayed_key().cloned();
+        let anchor = requested.as_ref().and_then(|requested| {
             self.highlighted
                 .as_ref()
-                .filter(|cache| cache.key.path == path)
+                .filter(|cache| cache.key.file == requested.file)
                 .map(|cache| ScrollAnchor::capture(cache, model.diff_view_mode, model.diff_scroll))
         });
-        if let Some((path, patch, mark_conflicts)) = current_diff {
-            self.prepared_diff(path, patch, mark_conflicts);
-        }
-        let anchored_vertical_scroll = (self.content_revision != previous_revision)
-            .then(|| {
+        let committed = self.prepare_requested(requested.as_ref());
+        let displayed_after = self.displayed_key().cloned();
+        let viewport_transition = committed.then(|| {
+            let same_file = displayed_before
+                .as_ref()
+                .zip(displayed_after.as_ref())
+                .is_some_and(|(before, after)| before.file == after.file);
+            let vertical = if same_file {
                 self.highlighted.as_ref().and_then(|cache| {
                     anchor
                         .and_then(|anchor| anchor.resolve(cache, model.diff_view_mode))
                         .or_else(|| first_change(cache, model.diff_view_mode))
                 })
-            })
-            .flatten();
-        let failed_rows = current_diff.and_then(|(path, patch, mark_conflicts)| {
-            self.failed
-                .as_ref()
-                .is_some_and(|failed| {
-                    failed.path == path
-                        && failed.patch == patch
-                        && failed.mark_conflicts == mark_conflicts
-                })
-                .then(|| patch.lines().count())
-        });
-        let (rows, columns) = failed_rows.map_or_else(
-            || {
+            } else {
                 self.highlighted
                     .as_ref()
-                    .map_or((0, 0), |cache| match model.diff_view_mode {
-                        DiffViewMode::Inline => (cache.inline.len(), cache.inline_width),
-                        DiffViewMode::SideBySide => (cache.side_by_side.len(), viewport_columns),
-                    })
-            },
-            |rows| (rows, viewport_columns),
-        );
+                    .and_then(|cache| first_change(cache, model.diff_view_mode))
+            }
+            .unwrap_or(0);
+            ViewportTransition {
+                vertical,
+                horizontal: if same_file {
+                    model.diff_horizontal_scroll
+                } else {
+                    0
+                },
+            }
+        });
+        let (rows, columns) = self.displayed_dimensions(model.diff_view_mode, viewport_columns);
         FramePreparation {
             maximum_vertical_scroll: rows.saturating_sub(viewport_rows),
             maximum_horizontal_scroll: columns.saturating_sub(viewport_columns),
             content_revision: self.content_revision,
-            preparing: self.pending.is_some(),
-            anchored_vertical_scroll,
+            preparing: self.requested.as_ref() != self.displayed_key(),
+            viewport_transition,
+            requested_file: self.requested.as_ref().map(|key| key.file.clone()),
+            displayed_file: self.displayed_key().map(|key| key.file.clone()),
         }
     }
 
     #[must_use]
     pub fn is_preparing(&self) -> bool {
-        self.pending.is_some()
+        self.requested.as_ref() != self.displayed_key()
     }
 
     pub fn map_event(
@@ -424,72 +438,75 @@ impl Renderer {
         }
     }
 
-    fn prepared_diff(
-        &mut self,
-        path: &Path,
-        source_patch: &str,
-        mark_conflicts: bool,
-    ) -> Option<&HighlightCache> {
+    fn prepare_requested(&mut self, requested: Option<&DiffKey>) -> bool {
+        let mut matching_outcome = None;
         while let Ok(outcome) = self.prepare_rx.try_recv() {
             let outcome_key = match &outcome {
                 Ok(cache) => &cache.key,
                 Err(key) => key,
             };
-            if self.pending.as_ref() == Some(outcome_key) {
-                self.pending = None;
-            }
-            match outcome {
-                Ok(cache) => {
-                    #[cfg(test)]
-                    if cache.syntax_highlighted {
-                        self.highlight_computations += 1;
-                    }
-                    self.failed = None;
-                    self.install_cache(cache);
-                }
-                Err(key) => self.failed = Some(key),
+            self.submitted.retain(|key| key != outcome_key);
+            if requested == Some(outcome_key) {
+                matching_outcome = Some(outcome);
             }
         }
-        let request_key = DiffKey {
-            path: path.to_path_buf(),
-            patch: source_patch.to_owned(),
-            mark_conflicts,
+        if let Some(outcome) = matching_outcome {
+            self.install_outcome(outcome);
+            return true;
+        }
+        let Some(requested) = requested else {
+            let changed = self.displayed_key().is_some();
+            if changed {
+                self.highlighted = None;
+                self.failed = None;
+                self.content_revision = self.content_revision.saturating_add(1);
+            }
+            return changed;
         };
-        if self
-            .highlighted
-            .as_ref()
-            .is_some_and(|cache| cache.key == request_key)
+        if self.displayed_key() == Some(requested) {
+            return false;
+        }
+        if requested.patch.len() <= MAX_SYNC_BYTES
+            && requested.patch.lines().count() <= MAX_SYNC_LINES
         {
-            return self.highlighted.as_ref();
-        }
-        if self.failed.as_ref() == Some(&request_key) {
-            return None;
-        }
-        if source_patch.len() <= MAX_SYNC_BYTES && source_patch.lines().count() <= MAX_SYNC_LINES {
             let request = PrepareRequest {
-                key: request_key.clone(),
+                key: requested.clone(),
             };
-            if let Some(cache) = prepare_diff(request, &self.highlighter) {
+            let outcome = prepare_diff(request, &self.highlighter).ok_or_else(|| requested.clone());
+            self.install_outcome(outcome);
+            return true;
+        }
+        if !self.submitted.contains(requested) {
+            let request = PrepareRequest {
+                key: requested.clone(),
+            };
+            match self.prepare_tx.try_send(request) {
+                Ok(()) => self.submitted.push(requested.clone()),
+                Err(TrySendError::Full(_) | TrySendError::Disconnected(_)) => {}
+            }
+        }
+        false
+    }
+
+    fn install_outcome(&mut self, outcome: PrepareOutcome) {
+        match outcome {
+            Ok(cache) => {
                 #[cfg(test)]
                 if cache.syntax_highlighted {
                     self.highlight_computations += 1;
                 }
+                self.failed = None;
                 self.install_cache(cache);
-                return self.highlighted.as_ref();
             }
-            self.failed = Some(request_key);
-            return None;
-        }
-        if self.pending.as_ref() != Some(&request_key) {
-            let request = PrepareRequest {
-                key: request_key.clone(),
-            };
-            match self.prepare_tx.try_send(request) {
-                Ok(()) => self.pending = Some(request_key),
-                Err(TrySendError::Full(_) | TrySendError::Disconnected(_)) => {}
+            Err(key) => {
+                let changed = self.displayed_key() != Some(&key);
+                self.highlighted = None;
+                self.failed = Some(key);
+                if changed {
+                    self.content_revision = self.content_revision.saturating_add(1);
+                }
             }
         }
-        None
     }
 
     fn install_cache(&mut self, cache: HighlightCache) {
@@ -500,6 +517,32 @@ impl Renderer {
         self.highlighted = Some(cache);
         if changed {
             self.content_revision = self.content_revision.saturating_add(1);
+        }
+    }
+
+    fn displayed_key(&self) -> Option<&DiffKey> {
+        self.highlighted
+            .as_ref()
+            .map(|cache| &cache.key)
+            .or(self.failed.as_ref())
+    }
+
+    fn displayed_dimensions(&self, mode: DiffViewMode, viewport_columns: usize) -> (usize, usize) {
+        if let Some(cache) = self.highlighted.as_ref() {
+            match mode {
+                DiffViewMode::Inline => (cache.inline.len(), cache.inline_width),
+                DiffViewMode::SideBySide => (cache.side_by_side.len(), viewport_columns),
+            }
+        } else if let Some(failed) = self.failed.as_ref() {
+            let width = failed
+                .patch
+                .lines()
+                .map(|line| line.chars().count())
+                .max()
+                .unwrap_or(0);
+            (failed.patch.lines().count(), width)
+        } else {
+            (0, 0)
         }
     }
 
@@ -534,13 +577,7 @@ impl Renderer {
 
         let viewport_rows = usize::from(area.height.saturating_sub(2));
         let viewport_columns = usize::from(area.width.saturating_sub(2));
-        let (rows, columns) =
-            self.highlighted
-                .as_ref()
-                .map_or((0, 0), |cache| match model.diff_view_mode {
-                    DiffViewMode::Inline => (cache.inline.len(), cache.inline_width),
-                    DiffViewMode::SideBySide => (cache.side_by_side.len(), viewport_columns),
-                });
+        let (rows, columns) = self.displayed_dimensions(model.diff_view_mode, viewport_columns);
         self.scrollbars = ScrollbarMetrics {
             vertical_area: Rect::new(
                 area.right().saturating_sub(2),
@@ -602,43 +639,15 @@ impl Renderer {
     }
 
     fn diff_lines(
-        &mut self,
+        &self,
         model: &Model,
         width: u16,
         first_row: usize,
         row_count: usize,
     ) -> Vec<Line<'static>> {
-        let Some(selected) = model.selected.as_ref() else {
-            return vec![Line::raw("No file selected.")];
-        };
-        let Some(file) = model
-            .snapshot
-            .files
-            .iter()
-            .find(|file| file.path == selected.path)
-        else {
-            return vec![Line::raw("Selected file is no longer available.")];
-        };
-        let diff = match selected.area {
-            ChangeArea::Unstaged => file.unstaged.as_ref(),
-            ChangeArea::Staged => file.staged.as_ref(),
-        };
-        let Some(diff) = diff else {
-            return vec![Line::raw("No text diff is available for this file.")];
-        };
-        let mark_conflicts = file.kind == ChangeKind::Conflicted;
-        let ready = self
-            .prepared_diff(&file.path, &diff.text, mark_conflicts)
-            .is_some();
-        if !ready
-            && self.failed.as_ref().is_some_and(|failed| {
-                failed.path == file.path
-                    && failed.patch == diff.text
-                    && failed.mark_conflicts == mark_conflicts
-            })
-        {
-            return diff
-                .text
+        if let Some(failed) = self.failed.as_ref() {
+            return failed
+                .patch
                 .lines()
                 .skip(first_row)
                 .take(row_count)
@@ -646,7 +655,10 @@ impl Renderer {
                 .collect();
         }
         let Some(cache) = self.highlighted.as_ref() else {
-            return Vec::new();
+            if model.selected.is_some() {
+                return Vec::new();
+            }
+            return vec![Line::raw("No file selected.")];
         };
         if cache.document.binary {
             return vec![Line::raw("Binary file changed.")];
@@ -1196,7 +1208,7 @@ fn prepare_diff(
     let syntax_highlighted = request.key.patch.len() <= MAX_HIGHLIGHT_BYTES
         && request.key.patch.lines().count() <= MAX_HIGHLIGHT_LINES;
     let syntax_styles = if syntax_highlighted {
-        highlighter.highlight(&request.key.path, &document)
+        highlighter.highlight(&request.key.file.path, &document)
     } else {
         HighlightedDiff::default()
     };
@@ -1224,6 +1236,15 @@ fn prepare_diff(
         #[cfg(test)]
         syntax_highlighted,
     })
+}
+
+fn preparation_delay_from_environment() -> Duration {
+    // Developer/test hook for exercising atomic background transitions in a PTY.
+    env::var("DIFFO_E2E_DIFF_PREP_DELAY_MS")
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+        .map(|milliseconds| Duration::from_millis(milliseconds.min(5_000)))
+        .unwrap_or_default()
 }
 
 fn overview_position(content_row: usize, content_rows: usize, track_height: u16) -> u16 {
@@ -2016,7 +2037,7 @@ mod rendering_tests {
             "@@ -1 +1,3 @@\n-old\n+<<<<<<< HEAD\n+ours\n+>>>>>>> branch\n".to_owned();
         let mut renderer = Renderer::new();
 
-        renderer.diff_lines(&model, 80, 0, 100);
+        renderer.prepare_frame(&model, Rect::new(0, 0, 100, 30));
         assert!(
             renderer
                 .highlighted
@@ -2028,7 +2049,7 @@ mod rendering_tests {
         );
 
         model.snapshot.files[0].kind = ChangeKind::Conflicted;
-        renderer.diff_lines(&model, 80, 0, 100);
+        renderer.prepare_frame(&model, Rect::new(0, 0, 100, 30));
         assert!(
             renderer
                 .highlighted
@@ -2065,7 +2086,7 @@ mod rendering_tests {
             "@@ -1,7 +1,7 @@\n one\n-old two\n+new two\n three\n four\n-old five\n+new five\n six\n seven\n"
                 .to_owned();
         let mut renderer = Renderer::new();
-        renderer.diff_lines(&model, 80, 0, 100);
+        renderer.prepare_frame(&model, Rect::new(0, 0, 100, 30));
 
         let first = renderer.change_jump(&model, true).expect("first change");
         model.diff_scroll = first;
@@ -2132,6 +2153,7 @@ mod rendering_tests {
         let mut renderer = Renderer::new();
         let backend = TestBackend::new(100, 30);
         let mut terminal = Terminal::new(backend).unwrap();
+        renderer.prepare_frame(&model, Rect::new(0, 0, 100, 30));
         terminal
             .draw(|frame| renderer.render(frame, &model))
             .unwrap();
@@ -2159,6 +2181,7 @@ mod rendering_tests {
         first_row: usize,
     ) -> Vec<ratatui::text::Line<'static>> {
         for _ in 0..200 {
+            renderer.prepare_frame(model, Rect::new(0, 0, 100, 30));
             let lines = renderer.diff_lines(model, 80, first_row, 100);
             if !renderer.is_preparing() {
                 return lines;
@@ -2171,7 +2194,8 @@ mod rendering_tests {
     #[test]
     fn renders_syntax_foregrounds_over_diff_backgrounds() {
         let mut renderer = Renderer::new();
-        let lines = renderer.diff_lines(&model(), 80, 0, 100);
+        let model = model();
+        let lines = diff_lines(&mut renderer, &model, 0);
         assert!(!lines.is_empty());
         assert!(!renderer.is_preparing());
         let removed = &lines[1];
@@ -2218,6 +2242,7 @@ mod rendering_tests {
         model.snapshot.files[0].unstaged.as_mut().unwrap().text = patch;
         let mut renderer = Renderer::new();
 
+        renderer.prepare_frame(&model, Rect::new(0, 0, 100, 30));
         let pending = renderer.diff_lines(&model, 80, 0, 100);
         assert!(pending.is_empty());
         assert!(renderer.is_preparing());
@@ -2231,17 +2256,104 @@ mod rendering_tests {
     fn keeps_previous_diff_visible_while_preparing() {
         let mut model = model();
         let mut renderer = Renderer::new();
-        let previous = renderer.diff_lines(&model, 80, 0, 100);
+        let previous = diff_lines(&mut renderer, &model, 0);
         let mut patch = String::from("@@ -0,0 +1,501 @@\n");
         for index in 0..501 {
             writeln!(patch, "+line {index}").unwrap();
         }
         model.snapshot.files[0].unstaged.as_mut().unwrap().text = patch;
 
+        renderer.prepare_frame(&model, Rect::new(0, 0, 100, 30));
         let during_transition = renderer.diff_lines(&model, 80, 0, 100);
 
         assert_eq!(during_transition, previous);
         assert!(renderer.is_preparing());
+    }
+
+    #[test]
+    fn commits_a_new_file_and_its_first_change_position_together() {
+        let mut model = model();
+        let previous_file = model.selected.clone().unwrap();
+        let mut patch = String::from("@@ -1,501 +1,501 @@\n");
+        for index in 0..501 {
+            if index == 449 {
+                writeln!(patch, "-old line {index}").unwrap();
+                writeln!(patch, "+new line {index}").unwrap();
+            } else {
+                writeln!(patch, " context line {index}").unwrap();
+            }
+        }
+        model.snapshot.files.push(FileState {
+            path: PathBuf::from("src/second.rs"),
+            old_path: None,
+            kind: ChangeKind::Modified,
+            staged: None,
+            unstaged: Some(FileDiff { text: patch }),
+        });
+        let mut renderer = Renderer::new();
+        let area = Rect::new(0, 0, 100, 30);
+        renderer.prepare_frame(&model, area);
+        let previous = renderer.diff_lines(&model, 80, 0, 100);
+        model.diff_scroll = 7;
+        model.diff_horizontal_scroll = 9;
+        model.select_next();
+
+        let pending = renderer.prepare_frame(&model, area);
+
+        assert!(pending.viewport_transition.is_none());
+        assert_eq!(pending.displayed_file, Some(previous_file));
+        assert_eq!(renderer.diff_lines(&model, 80, 0, 100), previous);
+        assert_eq!((model.diff_scroll, model.diff_horizontal_scroll), (7, 9));
+
+        let committed = (0..200)
+            .find_map(|_| {
+                let preparation = renderer.prepare_frame(&model, area);
+                if preparation.viewport_transition.is_some() {
+                    Some(preparation)
+                } else {
+                    sleep(Duration::from_millis(1));
+                    None
+                }
+            })
+            .expect("second diff preparation timed out");
+        let transition = committed.viewport_transition.unwrap();
+        assert_eq!(committed.displayed_file, model.selected);
+        assert_eq!(transition.vertical, 450);
+        assert_eq!(transition.horizontal, 0);
+        assert!(
+            renderer.diff_lines(&model, 80, transition.vertical, 1)[0]
+                .to_string()
+                .contains("old line 449")
+        );
+    }
+
+    #[test]
+    fn staged_and_unstaged_buffers_of_one_path_have_distinct_identities() {
+        let mut snapshot = model().snapshot;
+        snapshot.files[0].staged = Some(FileDiff {
+            text: "@@ -1,3 +1,3 @@\n-old\n+staged\n context\n context\n".to_owned(),
+        });
+        snapshot.files[0].unstaged = Some(FileDiff {
+            text: "@@ -1,3 +1,3 @@\n context\n context\n-old\n+unstaged\n".to_owned(),
+        });
+        let mut model = Model::new(snapshot, AccessMode::ReadWrite);
+        let mut renderer = Renderer::new();
+        let area = Rect::new(0, 0, 100, 30);
+        let staged = renderer.prepare_frame(&model, area);
+        let staged_revision = staged.content_revision;
+        assert_eq!(staged.viewport_transition.unwrap().vertical, 1);
+        model.diff_scroll = 17;
+        model.diff_horizontal_scroll = 8;
+
+        model.select_next();
+        assert_eq!((model.diff_scroll, model.diff_horizontal_scroll), (17, 8));
+        let unstaged = renderer.prepare_frame(&model, area);
+
+        assert!(unstaged.content_revision > staged_revision);
+        assert_eq!(unstaged.displayed_file, model.selected);
+        let transition = unstaged.viewport_transition.unwrap();
+        assert_eq!(transition.vertical, 3);
+        assert_eq!(transition.horizontal, 0);
     }
 
     #[test]
@@ -2266,7 +2378,7 @@ mod rendering_tests {
         let mut renderer = Renderer::new();
         let area = Rect::new(0, 0, 100, 30);
         let initial = renderer.prepare_frame(&inline_model, area);
-        assert_eq!(initial.anchored_vertical_scroll, Some(1));
+        assert_eq!(initial.viewport_transition.unwrap().vertical, 1);
 
         inline_model.snapshot.files[0]
             .unstaged
@@ -2275,7 +2387,7 @@ mod rendering_tests {
             .text = patch(&["inserted one", "inserted two", "inserted three"]);
         let changed = renderer.prepare_frame(&inline_model, area);
 
-        assert_eq!(changed.anchored_vertical_scroll, Some(15));
+        assert_eq!(changed.viewport_transition.unwrap().vertical, 15);
 
         let mut side_model = model();
         side_model.diff_view_mode = DiffViewMode::SideBySide;
@@ -2288,7 +2400,7 @@ mod rendering_tests {
 
         let side_changed = side_renderer.prepare_frame(&side_model, area);
 
-        assert_eq!(side_changed.anchored_vertical_scroll, Some(15));
+        assert_eq!(side_changed.viewport_transition.unwrap().vertical, 15);
     }
 
     #[test]
@@ -2312,7 +2424,7 @@ mod rendering_tests {
         model.snapshot.files[0].unstaged.as_mut().unwrap().text = patch(Some(11));
         let changed = renderer.prepare_frame(&model, area);
 
-        assert_eq!(changed.anchored_vertical_scroll, Some(11));
+        assert_eq!(changed.viewport_transition.unwrap().vertical, 11);
     }
 
     #[test]
@@ -2322,6 +2434,7 @@ mod rendering_tests {
             "diff --cc src/main.rs\n@@@ malformed\n+raw line\n".to_owned();
         let mut renderer = Renderer::new();
 
+        renderer.prepare_frame(&model, Rect::new(0, 0, 100, 30));
         let lines = renderer.diff_lines(&model, 80, 0, 100);
 
         assert_eq!(lines[0].to_string(), "diff --cc src/main.rs");
@@ -2340,6 +2453,7 @@ mod rendering_tests {
         let mut renderer = Renderer::new();
         let backend = TestBackend::new(100, 30);
         let mut terminal = Terminal::new(backend).unwrap();
+        renderer.prepare_frame(&model, Rect::new(0, 0, 100, 30));
         terminal
             .draw(|frame| renderer.render(frame, &model))
             .unwrap();
@@ -2391,6 +2505,7 @@ mod rendering_tests {
         let mut renderer = Renderer::new();
         let backend = TestBackend::new(100, 30);
         let mut terminal = Terminal::new(backend).unwrap();
+        renderer.prepare_frame(&model, Rect::new(0, 0, 100, 30));
         terminal
             .draw(|frame| renderer.render(frame, &model))
             .unwrap();
@@ -2516,11 +2631,13 @@ mod rendering_tests {
         let mut renderer = Renderer::new();
 
         let started = Instant::now();
+        renderer.prepare_frame(&model, Rect::new(0, 0, 180, 60));
         let loading = renderer.diff_lines(&model, 160, 0, 50);
         let enqueue = started.elapsed();
         assert!(loading.is_empty());
         let started = Instant::now();
         let lines = loop {
+            renderer.prepare_frame(&model, Rect::new(0, 0, 180, 60));
             let lines = renderer.diff_lines(&model, 160, 0, 50);
             if !renderer.is_preparing() {
                 break lines;

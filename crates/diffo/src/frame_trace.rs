@@ -25,9 +25,11 @@ pub struct FrameRecord {
     input_events: Vec<String>,
     refresh_generation: u64,
     selected_file: Option<String>,
+    requested_diff: Option<String>,
+    displayed_diff: Option<String>,
     content_revision: u64,
     preparing: bool,
-    anchored_vertical_scroll: Option<usize>,
+    viewport_transition: Option<(usize, usize)>,
     scroll_before: (usize, usize),
     scroll_after: (usize, usize),
     first_rendered_row: usize,
@@ -43,7 +45,7 @@ impl FrameRecord {
         input_events: Vec<String>,
         refresh_generation: u64,
         model: &Model,
-        preparation: FramePreparation,
+        preparation: &FramePreparation,
         scroll_before: (usize, usize),
         update_start_us: u64,
         event_read_us: Option<u64>,
@@ -58,9 +60,19 @@ impl FrameRecord {
                 .selected
                 .as_ref()
                 .map(|selected| format!("{:?}:{}", selected.area, selected.path.display())),
+            requested_diff: preparation
+                .requested_file
+                .as_ref()
+                .map(|file| format!("{:?}:{}", file.area, file.path.display())),
+            displayed_diff: preparation
+                .displayed_file
+                .as_ref()
+                .map(|file| format!("{:?}:{}", file.area, file.path.display())),
             content_revision: preparation.content_revision,
             preparing: preparation.preparing,
-            anchored_vertical_scroll: preparation.anchored_vertical_scroll,
+            viewport_transition: preparation
+                .viewport_transition
+                .map(|viewport| (viewport.vertical, viewport.horizontal)),
             scroll_before,
             scroll_after: (model.diff_scroll, model.diff_horizontal_scroll),
             first_rendered_row: model.diff_scroll,

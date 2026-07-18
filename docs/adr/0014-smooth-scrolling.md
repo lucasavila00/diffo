@@ -2,6 +2,8 @@
 
 Status: Accepted
 
+Atomic buffer installation is specified by ADR 0024.
+
 ## Problem
 
 Scrolling feels like two systems move the view at different times.

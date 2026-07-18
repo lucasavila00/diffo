@@ -1,57 +1,9 @@
 use super::{
-    ChangeArea, ChangeKind, Color, HighlightedDiff, HighlightedLine, Line, Modifier, RenderLine,
-    Rgb, RowKind, SideBySideRow, Span, Style, StyledSpan,
+    ChangeArea, Color, HighlightedDiff, HighlightedLine, Line, Modifier, RenderLine, Rgb, RowKind,
+    SideBySideRow, Span, Style, StyledSpan,
 };
 
 #[must_use]
-pub fn change_kind_style(kind: ChangeKind, selected: bool) -> Style {
-    let style = match kind {
-        ChangeKind::Added | ChangeKind::Untracked => Style::default().fg(Color::LightGreen),
-        ChangeKind::Modified => Style::default().fg(Color::Yellow),
-        ChangeKind::Deleted => Style::default()
-            .fg(Color::LightRed)
-            .add_modifier(Modifier::CROSSED_OUT),
-        ChangeKind::Renamed | ChangeKind::Copied => Style::default().fg(Color::LightCyan),
-        ChangeKind::Conflicted => Style::default()
-            .fg(Color::LightRed)
-            .add_modifier(Modifier::BOLD),
-    };
-    if selected {
-        style.add_modifier(Modifier::BOLD)
-    } else {
-        style
-    }
-}
-
-#[must_use]
-pub fn plain_syntax_spans(line: &HighlightedLine) -> Vec<Span<'static>> {
-    line.spans
-        .iter()
-        .map(|span| {
-            let mut modifiers = Modifier::empty();
-            if span.bold {
-                modifiers.insert(Modifier::BOLD);
-            }
-            if span.italic {
-                modifiers.insert(Modifier::ITALIC);
-            }
-            if span.underline {
-                modifiers.insert(Modifier::UNDERLINED);
-            }
-            Span::styled(
-                span.text.clone(),
-                Style::default()
-                    .fg(Color::Rgb(
-                        span.foreground.red,
-                        span.foreground.green,
-                        span.foreground.blue,
-                    ))
-                    .add_modifier(modifiers),
-            )
-        })
-        .collect()
-}
-
 pub(super) fn file_action_style(change_area: ChangeArea) -> Style {
     let color = match change_area {
         ChangeArea::Staged => Color::LightRed,

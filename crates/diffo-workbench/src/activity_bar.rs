@@ -1,4 +1,4 @@
-use diffo_app::Activity;
+use crate::Activity;
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Layout, Rect},

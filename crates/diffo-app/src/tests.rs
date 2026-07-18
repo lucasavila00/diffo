@@ -6,17 +6,9 @@ use diffo_core::{
 };
 
 use super::{
-    Activity, ChangeArea, DiffViewMode, Effect, FileKey, Message, Model, NetworkOperation,
-    PrimaryAction, update,
+    ChangeArea, DiffViewMode, Effect, FileKey, Message, Model, NetworkOperation, PrimaryAction,
+    update,
 };
-
-#[test]
-fn activities_cycle_in_fixed_order() {
-    assert_eq!(Activity::default(), Activity::Diff);
-    assert_eq!(Activity::Diff.next(), Activity::Explorer);
-    assert_eq!(Activity::Explorer.next(), Activity::Search);
-    assert_eq!(Activity::Search.next(), Activity::Diff);
-}
 
 fn model() -> Model {
     Model::new(RepositorySnapshot {

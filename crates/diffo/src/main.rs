@@ -17,19 +17,17 @@ use crossterm::{
     execute,
     terminal::{Clear, ClearType},
 };
-use diffo_app::{Activity, Effect, Message, Model, ToastKind, update};
+use diffo_app::{Effect, Message, Model, ToastKind, update};
 use diffo_core::{Repository, fixture_source::MutableFixtureRepository};
 use diffo_git::GitRepositorySource;
 use diffo_watch::{RefreshResult, RefreshService};
 use ratatui::{Terminal, backend::CrosstermBackend};
 
-mod explorer;
 mod frame_trace;
-mod workbench;
 
-use explorer::ExplorerWorker;
+use diffo_explorer::ExplorerWorker;
+use diffo_workbench::{Activity, Workbench};
 use frame_trace::{FrameRecord, FrameTracer};
-use workbench::Workbench;
 
 fn main() -> Result<()> {
     let shutdown = install_signal_handlers()?;
@@ -259,7 +257,7 @@ fn dispatch_events(
 ) -> Result<()> {
     let size = terminal.size()?;
     let area = ratatui::layout::Rect::new(0, 0, size.width, size.height);
-    let content = diffo_tui::workbench_areas(area).content;
+    let content = diffo_workbench::workbench_areas(area).content;
     let mut scroll = PendingScroll::default();
     for event in events {
         if workbench.handle_workbench_event(event, area) {

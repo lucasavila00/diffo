@@ -1,14 +1,37 @@
 use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind};
-use diffo_app::{Activity, Model};
+use diffo_app::Model;
 use diffo_core::RepositorySnapshot;
-use diffo_tui::{
-    FramePreparation, Renderer, activity_at_position, render_activity_bar, workbench_areas,
-};
+use diffo_tui::{FramePreparation, Renderer};
 use ratatui::{Frame, layout::Rect, widgets::Clear};
 
-use crate::explorer::{ExplorerActivity, ExplorerOutcome, ExplorerRequest};
+use diffo_explorer::{ExplorerActivity, ExplorerOutcome, ExplorerRequest};
 
-pub(crate) struct Workbench {
+mod activity_bar;
+
+pub use activity_bar::{
+    ACTIVITY_BAR_WIDTH, WorkbenchAreas, activity_at_position, render_activity_bar, workbench_areas,
+};
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum Activity {
+    #[default]
+    Diff,
+    Explorer,
+    Search,
+}
+
+impl Activity {
+    #[must_use]
+    pub const fn next(self) -> Self {
+        match self {
+            Self::Diff => Self::Explorer,
+            Self::Explorer => Self::Search,
+            Self::Search => Self::Diff,
+        }
+    }
+}
+
+pub struct Workbench {
     active: Activity,
     diff: DiffActivity,
     explorer: ExplorerActivity,
@@ -28,7 +51,7 @@ trait EmptyActivity {
 }
 
 impl Workbench {
-    pub(crate) fn new(snapshot: RepositorySnapshot) -> Self {
+    pub fn new(snapshot: RepositorySnapshot) -> Self {
         Self {
             active: Activity::Diff,
             diff: DiffActivity {
@@ -41,23 +64,23 @@ impl Workbench {
         }
     }
 
-    pub(crate) fn should_quit(&self) -> bool {
+    pub fn should_quit(&self) -> bool {
         self.should_quit || self.diff.model.should_quit
     }
 
-    pub(crate) const fn active(&self) -> Activity {
+    pub const fn active(&self) -> Activity {
         self.active
     }
 
-    pub(crate) const fn diff_model(&self) -> &Model {
+    pub const fn diff_model(&self) -> &Model {
         &self.diff.model
     }
 
-    pub(crate) fn diff_model_mut(&mut self) -> &mut Model {
+    pub fn diff_model_mut(&mut self) -> &mut Model {
         &mut self.diff.model
     }
 
-    pub(crate) fn is_preparing(&self) -> bool {
+    pub fn is_preparing(&self) -> bool {
         match self.active {
             Activity::Diff => self.diff.renderer.is_preparing(),
             Activity::Explorer => self.explorer.is_preparing(),
@@ -65,7 +88,7 @@ impl Workbench {
         }
     }
 
-    pub(crate) fn prepare_frame(&mut self, area: Rect) -> FramePreparation {
+    pub fn prepare_frame(&mut self, area: Rect) -> FramePreparation {
         let content = workbench_areas(area).content;
         match self.active {
             Activity::Diff => self.diff.prepare_frame(content),
@@ -77,7 +100,7 @@ impl Workbench {
         }
     }
 
-    pub(crate) fn render(&mut self, frame: &mut Frame) {
+    pub fn render(&mut self, frame: &mut Frame) {
         let area = frame.area();
         let content = workbench_areas(area).content;
         match self.active {
@@ -88,7 +111,7 @@ impl Workbench {
         render_activity_bar(frame, area, self.active);
     }
 
-    pub(crate) fn handle_workbench_event(&mut self, event: &Event, area: Rect) -> bool {
+    pub fn handle_workbench_event(&mut self, event: &Event, area: Rect) -> bool {
         if let Event::Key(key) = event
             && key.kind == KeyEventKind::Press
             && key.code == KeyCode::Tab
@@ -117,27 +140,23 @@ impl Workbench {
         false
     }
 
-    pub(crate) fn map_diff_event(
-        &mut self,
-        event: &Event,
-        area: Rect,
-    ) -> Option<diffo_app::Message> {
+    pub fn map_diff_event(&mut self, event: &Event, area: Rect) -> Option<diffo_app::Message> {
         self.diff.renderer.map_event(event, &self.diff.model, area)
     }
 
-    pub(crate) fn handle_explorer_event(&mut self, event: &Event, area: Rect) -> bool {
+    pub fn handle_explorer_event(&mut self, event: &Event, area: Rect) -> bool {
         self.explorer.handle_event(event, area)
     }
 
-    pub(crate) fn take_explorer_request(&mut self) -> Option<ExplorerRequest> {
+    pub fn take_explorer_request(&mut self) -> Option<ExplorerRequest> {
         self.explorer.take_request()
     }
 
-    pub(crate) fn accept_explorer(&mut self, outcome: ExplorerOutcome) {
+    pub fn accept_explorer(&mut self, outcome: ExplorerOutcome) {
         self.explorer.accept(outcome);
     }
 
-    pub(crate) fn explorer_repository_changed(&mut self, snapshot: RepositorySnapshot) {
+    pub fn explorer_repository_changed(&mut self, snapshot: RepositorySnapshot) {
         self.explorer.repository_changed(snapshot);
     }
 }
@@ -249,7 +268,7 @@ mod tests {
                 .enumerate()
                 .all(|(index, cell)| {
                     let column = index % 20;
-                    column < usize::from(diffo_tui::ACTIVITY_BAR_WIDTH) || cell.symbol() == " "
+                    column < usize::from(ACTIVITY_BAR_WIDTH) || cell.symbol() == " "
                 })
         );
     }

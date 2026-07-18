@@ -1,0 +1,120 @@
+use diffo_core::ChangeKind;
+use diffo_highlight::HighlightedLine;
+use ratatui::{
+    layout::{Constraint, Layout, Rect},
+    style::{Color, Modifier, Style},
+    text::Span,
+};
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ToolAreas {
+    pub content: Rect,
+    pub status: Rect,
+}
+
+#[must_use]
+pub fn tool_areas(area: Rect) -> ToolAreas {
+    let rows = Layout::vertical([Constraint::Min(3), Constraint::Length(1)]).split(area);
+    ToolAreas {
+        content: rows[0],
+        status: rows[1],
+    }
+}
+
+#[must_use]
+pub fn change_kind_style(kind: ChangeKind, selected: bool) -> Style {
+    let style = match kind {
+        ChangeKind::Added | ChangeKind::Untracked => Style::default().fg(Color::LightGreen),
+        ChangeKind::Modified => Style::default().fg(Color::Yellow),
+        ChangeKind::Deleted => Style::default()
+            .fg(Color::LightRed)
+            .add_modifier(Modifier::CROSSED_OUT),
+        ChangeKind::Renamed | ChangeKind::Copied => Style::default().fg(Color::LightCyan),
+        ChangeKind::Conflicted => Style::default()
+            .fg(Color::LightRed)
+            .add_modifier(Modifier::BOLD),
+    };
+    if selected {
+        style.add_modifier(Modifier::BOLD)
+    } else {
+        style
+    }
+}
+
+#[must_use]
+pub fn plain_syntax_spans(line: &HighlightedLine) -> Vec<Span<'static>> {
+    line.spans
+        .iter()
+        .map(|span| {
+            let mut modifiers = Modifier::empty();
+            if span.bold {
+                modifiers.insert(Modifier::BOLD);
+            }
+            if span.italic {
+                modifiers.insert(Modifier::ITALIC);
+            }
+            if span.underline {
+                modifiers.insert(Modifier::UNDERLINED);
+            }
+            Span::styled(
+                span.text.clone(),
+                Style::default()
+                    .fg(Color::Rgb(
+                        span.foreground.red,
+                        span.foreground.green,
+                        span.foreground.blue,
+                    ))
+                    .add_modifier(modifiers),
+            )
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use diffo_highlight::{HighlightedLine, Rgb, StyledSpan};
+
+    #[test]
+    fn shared_change_styles_cover_neutral_selection_and_git_status() {
+        assert_eq!(
+            change_kind_style(ChangeKind::Added, false).fg,
+            Some(Color::LightGreen)
+        );
+        assert_eq!(
+            change_kind_style(ChangeKind::Modified, false).fg,
+            Some(Color::Yellow)
+        );
+        assert!(
+            change_kind_style(ChangeKind::Deleted, false)
+                .add_modifier
+                .contains(Modifier::CROSSED_OUT)
+        );
+        assert!(
+            change_kind_style(ChangeKind::Conflicted, true)
+                .add_modifier
+                .contains(Modifier::BOLD)
+        );
+    }
+
+    #[test]
+    fn shared_syntax_spans_preserve_terminal_modifiers() {
+        let spans = plain_syntax_spans(&HighlightedLine {
+            spans: vec![StyledSpan {
+                text: "value".to_owned(),
+                foreground: Rgb {
+                    red: 1,
+                    green: 2,
+                    blue: 3,
+                },
+                bold: true,
+                italic: true,
+                underline: true,
+            }],
+        });
+        assert_eq!(spans[0].style.fg, Some(Color::Rgb(1, 2, 3)));
+        assert!(spans[0].style.add_modifier.contains(Modifier::BOLD));
+        assert!(spans[0].style.add_modifier.contains(Modifier::ITALIC));
+        assert!(spans[0].style.add_modifier.contains(Modifier::UNDERLINED));
+    }
+}

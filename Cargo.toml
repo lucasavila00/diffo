@@ -5,10 +5,13 @@ members = [
     "crates/diffo-core",
     "crates/diffo-diff",
     "crates/diffo-e2e",
+    "crates/diffo-explorer",
     "crates/diffo-git",
     "crates/diffo-highlight",
     "crates/diffo-tui",
+    "crates/diffo-ui",
     "crates/diffo-watch",
+    "crates/diffo-workbench",
 ]
 resolver = "3"
 
@@ -24,11 +27,14 @@ base64 = "0.22"
 crossterm = "0.29"
 diffo-core = { path = "crates/diffo-core" }
 diffo-diff = { path = "crates/diffo-diff" }
+diffo-explorer = { path = "crates/diffo-explorer" }
 diffo-app = { path = "crates/diffo-app" }
 diffo-git = { path = "crates/diffo-git" }
 diffo-highlight = { path = "crates/diffo-highlight" }
 diffo-tui = { path = "crates/diffo-tui" }
+diffo-ui = { path = "crates/diffo-ui" }
 diffo-watch = { path = "crates/diffo-watch" }
+diffo-workbench = { path = "crates/diffo-workbench" }
 notify = "8.2"
 portable-pty = "0.9"
 ratatui = "0.29"

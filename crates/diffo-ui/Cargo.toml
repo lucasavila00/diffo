@@ -1,18 +1,14 @@
 [package]
-name = "diffo-tui"
-description = "Terminal UI for Diffo"
+name = "diffo-ui"
+description = "Shared terminal UI primitives for Diffo tools"
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
 version.workspace = true
 
 [dependencies]
-crossterm.workspace = true
-diffo-app.workspace = true
 diffo-core.workspace = true
-diffo-diff.workspace = true
 diffo-highlight.workspace = true
-diffo-ui.workspace = true
 ratatui.workspace = true
 
 [lints]

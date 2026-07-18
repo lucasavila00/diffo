@@ -17,6 +17,7 @@ use diffo_diff::{
     side_by_side_change_starts, side_by_side_rows_with_options,
 };
 use diffo_highlight::{HighlightedDiff, HighlightedLine, Rgb, StyledSpan, SyntaxHighlighter};
+use diffo_ui::tool_areas;
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
@@ -28,7 +29,6 @@ use ratatui::{
     },
 };
 
-mod activity_bar;
 mod diff;
 mod diff_view;
 mod files;
@@ -43,6 +43,7 @@ use diff::first_change;
 use diff::{diff_file_lines, should_syntax_highlight};
 #[cfg(test)]
 use files::status_line;
+use diffo_ui::change_kind_style as file_kind_style;
 use files::{
     FileListMetrics, commit_action_at_position, file_group_areas, file_group_metrics,
     file_panel_areas, prepared_file_list_scroll, render_files, render_status, resize_border_style,
@@ -60,8 +61,7 @@ use overlays::{
 };
 #[cfg(test)]
 use style::{
-    change_kind_style as file_kind_style, contrast_ratio, contrasting_foreground, diff_background,
-    diff_background_rgb, row_style,
+    contrast_ratio, contrasting_foreground, diff_background, diff_background_rgb, row_style,
 };
 use style::{file_action_style, inline_line, network_animation_style, side_by_side_line};
 
@@ -71,14 +71,11 @@ use state::{
     PrepareCommit, PrepareOutcome, PrepareRequest, ScrollAnchor, ScrollbarAxis, ScrollbarMetrics,
 };
 
-pub use activity_bar::{
-    ACTIVITY_BAR_WIDTH, WorkbenchAreas, activity_at_position, render_activity_bar, workbench_areas,
+pub use diffo_highlight::{
+    HIGHLIGHT_LOOKBEHIND_LINES, MAX_HIGHLIGHT_BYTES_PER_SIDE, MAX_HIGHLIGHT_FILE_LINES,
 };
-pub use state::{
-    FramePreparation, HIGHLIGHT_LOOKBEHIND_LINES, MAX_HIGHLIGHT_BYTES_PER_SIDE,
-    MAX_HIGHLIGHT_FILE_LINES, Renderer, ViewportTransition,
-};
-pub use style::{change_kind_style, plain_syntax_spans};
+pub use diffo_ui::{change_kind_style, plain_syntax_spans};
+pub use state::{FramePreparation, Renderer, ViewportTransition};
 
 pub use input::map_event;
 
@@ -93,15 +90,12 @@ impl Renderer {
         } else {
             self.network_animation_tick = 0;
         }
-        let vertical = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([Constraint::Min(3), Constraint::Length(1)])
-            .split(area);
-        let panes = horizontal_panes(vertical[0], model.file_pane_percent);
+        let areas = tool_areas(area);
+        let panes = horizontal_panes(areas.content, model.file_pane_percent);
 
         self.file_lists = render_files(frame, panes[0], model);
         self.render_diff(frame, panes[1], model);
-        render_status(frame, vertical[1], model, self.network_animation_tick);
+        render_status(frame, areas.status, model, self.network_animation_tick);
         render_toasts(frame, model, area);
         render_command_palette(frame, model, area);
         render_help(frame, model, area);

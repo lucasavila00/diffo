@@ -247,10 +247,11 @@ dependencies = [
  "diffo-core",
  "diffo-diff",
  "diffo-e2e",
+ "diffo-explorer",
  "diffo-git",
- "diffo-highlight",
  "diffo-tui",
  "diffo-watch",
+ "diffo-workbench",
  "ratatui",
  "ron 0.10.1",
  "serde",
@@ -297,6 +298,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "diffo-explorer"
+version = "0.1.0"
+dependencies = [
+ "crossterm 0.29.0",
+ "diffo-core",
+ "diffo-diff",
+ "diffo-highlight",
+ "diffo-ui",
+ "ratatui",
+]
+
+[[package]]
 name = "diffo-git"
 version = "0.1.0"
 dependencies = [
@@ -322,6 +335,16 @@ dependencies = [
  "diffo-core",
  "diffo-diff",
  "diffo-highlight",
+ "diffo-ui",
+ "ratatui",
+]
+
+[[package]]
+name = "diffo-ui"
+version = "0.1.0"
+dependencies = [
+ "diffo-core",
+ "diffo-highlight",
  "ratatui",
 ]
 
@@ -332,6 +355,18 @@ dependencies = [
  "anyhow",
  "diffo-core",
  "notify",
+]
+
+[[package]]
+name = "diffo-workbench"
+version = "0.1.0"
+dependencies = [
+ "crossterm 0.29.0",
+ "diffo-app",
+ "diffo-core",
+ "diffo-explorer",
+ "diffo-tui",
+ "ratatui",
 ]
 
 [[package]]

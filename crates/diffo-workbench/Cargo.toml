@@ -1,6 +1,6 @@
 [package]
-name = "diffo-tui"
-description = "Terminal UI for Diffo"
+name = "diffo-workbench"
+description = "Activity composition and global input routing for Diffo"
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
@@ -10,9 +10,8 @@ version.workspace = true
 crossterm.workspace = true
 diffo-app.workspace = true
 diffo-core.workspace = true
-diffo-diff.workspace = true
-diffo-highlight.workspace = true
-diffo-ui.workspace = true
+diffo-explorer.workspace = true
+diffo-tui.workspace = true
 ratatui.workspace = true
 
 [lints]

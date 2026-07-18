@@ -13,15 +13,15 @@ use std::{
 
 use diffo_core::{ChangeKind, ExplorerFile, ExplorerFileContent, Repository};
 use diffo_diff::{DiffBlock, DiffDocument, DiffLine, Hunk, parse_unified_patch};
-use diffo_highlight::{HighlightWindowRequest, LineRange, SyntaxHighlighter};
-use diffo_tui::{
-    HIGHLIGHT_LOOKBEHIND_LINES, MAX_HIGHLIGHT_BYTES_PER_SIDE, MAX_HIGHLIGHT_FILE_LINES,
+use diffo_highlight::{
+    HIGHLIGHT_LOOKBEHIND_LINES, HighlightWindowRequest, LineRange, MAX_HIGHLIGHT_BYTES_PER_SIDE,
+    MAX_HIGHLIGHT_FILE_LINES, SyntaxHighlighter,
 };
 
 use super::model::{GutterMarker, Viewer};
 
 #[derive(Clone, Debug)]
-pub(crate) enum ExplorerRequest {
+pub enum ExplorerRequest {
     Paths {
         id: u64,
     },
@@ -42,7 +42,7 @@ impl ExplorerRequest {
     }
 }
 
-pub(crate) enum ExplorerOutcome {
+pub enum ExplorerOutcome {
     Paths {
         id: u64,
         result: Result<Vec<PathBuf>, String>,
@@ -53,14 +53,14 @@ pub(crate) enum ExplorerOutcome {
     },
 }
 
-pub(crate) struct ExplorerWorker {
+pub struct ExplorerWorker {
     requests: Sender<ExplorerRequest>,
     outcomes: Receiver<ExplorerOutcome>,
     latest_file: Arc<AtomicU64>,
 }
 
 impl ExplorerWorker {
-    pub(crate) fn start(repository: Arc<dyn Repository>) -> Self {
+    pub fn start(repository: Arc<dyn Repository>) -> Self {
         let (request_tx, request_rx) = channel::<ExplorerRequest>();
         let (outcome_tx, outcome_rx) = channel();
         let latest_file = Arc::new(AtomicU64::new(0));
@@ -119,14 +119,14 @@ impl ExplorerWorker {
         }
     }
 
-    pub(crate) fn submit(&self, request: ExplorerRequest) {
+    pub fn submit(&self, request: ExplorerRequest) {
         if let ExplorerRequest::File { id, .. } = &request {
             self.latest_file.store(*id, Ordering::Release);
         }
         let _ = self.requests.send(request);
     }
 
-    pub(crate) fn try_recv(&self) -> Option<ExplorerOutcome> {
+    pub fn try_recv(&self) -> Option<ExplorerOutcome> {
         self.outcomes.try_recv().ok()
     }
 }

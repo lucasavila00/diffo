@@ -1,3 +1,5 @@
+//! Pure Explorer tree and viewer state.
+
 use std::{
     collections::{BTreeSet, HashMap, HashSet},
     path::{Path, PathBuf},
@@ -15,7 +17,7 @@ pub(crate) enum GutterMarker {
 }
 
 #[derive(Clone, Debug)]
-pub(crate) struct Viewer {
+pub struct Viewer {
     pub(crate) path: PathBuf,
     pub(crate) lines: Vec<String>,
     pub(crate) markers: HashMap<usize, GutterMarker>,

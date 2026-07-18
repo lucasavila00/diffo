@@ -1,6 +1,6 @@
 [package]
-name = "diffo-tui"
-description = "Terminal UI for Diffo"
+name = "diffo-explorer"
+description = "Repository tree and file viewer tool for Diffo"
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
@@ -8,7 +8,6 @@ version.workspace = true
 
 [dependencies]
 crossterm.workspace = true
-diffo-app.workspace = true
 diffo-core.workspace = true
 diffo-diff.workspace = true
 diffo-highlight.workspace = true

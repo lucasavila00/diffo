@@ -10,9 +10,9 @@ use ratatui::{Frame, layout::Rect};
 
 use model::ExplorerModel;
 use view::explorer_areas;
-pub(crate) use worker::{ExplorerOutcome, ExplorerRequest, ExplorerWorker};
+pub use worker::{ExplorerOutcome, ExplorerRequest, ExplorerWorker};
 
-pub(crate) struct ExplorerActivity {
+pub struct ExplorerActivity {
     model: ExplorerModel,
     next_id: u64,
     latest_paths: u64,
@@ -25,7 +25,7 @@ pub(crate) struct ExplorerActivity {
 }
 
 impl ExplorerActivity {
-    pub(crate) fn new(snapshot: RepositorySnapshot) -> Self {
+    pub fn new(snapshot: RepositorySnapshot) -> Self {
         let mut activity = Self {
             model: ExplorerModel::new(snapshot),
             next_id: 0,
@@ -71,7 +71,7 @@ impl ExplorerActivity {
         });
     }
 
-    pub(crate) fn repository_changed(&mut self, snapshot: RepositorySnapshot) {
+    pub fn repository_changed(&mut self, snapshot: RepositorySnapshot) {
         if !self.model.repository_changed(snapshot) {
             return;
         }
@@ -81,7 +81,7 @@ impl ExplorerActivity {
         }
     }
 
-    pub(crate) fn prepare_frame(&mut self, area: Rect) {
+    pub fn prepare_frame(&mut self, area: Rect) {
         let areas = explorer_areas(area);
         let tree_rows = usize::from(areas.tree.height.saturating_sub(2));
         self.viewport_rows = usize::from(areas.viewer.height.saturating_sub(2)).max(1);
@@ -95,11 +95,11 @@ impl ExplorerActivity {
         }
     }
 
-    pub(crate) fn render(&self, frame: &mut Frame, area: Rect) {
+    pub fn render(&self, frame: &mut Frame, area: Rect) {
         view::render(frame, area, &self.model);
     }
 
-    pub(crate) fn handle_event(&mut self, event: &Event, area: Rect) -> bool {
+    pub fn handle_event(&mut self, event: &Event, area: Rect) -> bool {
         if let Event::Mouse(mouse) = event
             && mouse.kind == MouseEventKind::Down(MouseButton::Left)
         {
@@ -201,11 +201,11 @@ impl ExplorerActivity {
         }
     }
 
-    pub(crate) fn take_request(&mut self) -> Option<ExplorerRequest> {
+    pub fn take_request(&mut self) -> Option<ExplorerRequest> {
         self.queued.pop_front()
     }
 
-    pub(crate) fn accept(&mut self, outcome: ExplorerOutcome) {
+    pub fn accept(&mut self, outcome: ExplorerOutcome) {
         match outcome {
             ExplorerOutcome::Paths { id, result } if id == self.latest_paths => match result {
                 Ok(paths) => {
@@ -235,7 +235,7 @@ impl ExplorerActivity {
         }
     }
 
-    pub(crate) fn is_preparing(&self) -> bool {
+    pub fn is_preparing(&self) -> bool {
         self.paths_pending || self.pending_path.is_some() || !self.queued.is_empty()
     }
 }

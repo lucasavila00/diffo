@@ -1,5 +1,5 @@
 use diffo_core::ChangeKind;
-use diffo_tui::{change_kind_style, plain_syntax_spans};
+use diffo_ui::{change_kind_style, plain_syntax_spans, tool_areas};
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Rect},
@@ -17,15 +17,15 @@ pub(crate) struct ExplorerAreas {
 }
 
 pub(crate) fn explorer_areas(area: Rect) -> ExplorerAreas {
-    let vertical = Layout::vertical([Constraint::Min(3), Constraint::Length(1)]).split(area);
+    let vertical = tool_areas(area);
     let horizontal = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Percentage(32), Constraint::Percentage(68)])
-        .split(vertical[0]);
+        .split(vertical.content);
     ExplorerAreas {
         tree: horizontal[0],
         viewer: horizontal[1],
-        status: vertical[1],
+        status: vertical.status,
     }
 }
 

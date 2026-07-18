@@ -1,4 +1,5 @@
 use std::{
+    fmt::Write as _,
     fs,
     io::{Read as _, Write as _},
     path::{Path, PathBuf},
@@ -76,7 +77,7 @@ fn main() -> Result<()> {
     );
 
     if std::env::args().any(|argument| argument == "--text-readiness") {
-        return measure_text_readiness(&binary, &fixture);
+        return measure_text_readiness(&binary);
     }
 
     let ticks_per_second = clock_ticks_per_second()?;
@@ -97,9 +98,11 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn measure_text_readiness(binary: &Path, fixture: &Path) -> Result<()> {
+fn measure_text_readiness(binary: &Path) -> Result<()> {
     println!("Diffo text readiness: release, 100x30 PTY, deterministic input");
-    println!("surface workload total skeleton episodes p50_us p95_us longest_us discarded");
+    println!(
+        "surface workload total text_skel syntax_skel episodes p50_us p95_us longest_us discarded"
+    );
     for surface in ["diff", "explorer"] {
         for (workload, input) in [
             ("slow-wheel", b"\x1b[<65;75;10M".as_slice()),
@@ -114,11 +117,12 @@ fn measure_text_readiness(binary: &Path, fixture: &Path) -> Result<()> {
             ),
             ("hunk-jump", b"]".as_slice()),
         ] {
-            let report = readiness_once(surface, input, binary, fixture)?;
+            let report = readiness_once(surface, input, binary)?;
             println!(
-                "{surface:<8} {workload:<14} {:>5} {:>8} {:>8} {:>6} {:>6} {:>10} {:>9}",
+                "{surface:<8} {workload:<14} {:>5} {:>9} {:>11} {:>8} {:>6} {:>6} {:>10} {:>9}",
                 report.total,
-                report.skeleton,
+                report.text_skeleton,
+                report.syntax_skeleton,
                 report.episodes,
                 percentile(&report.episode_us, 50),
                 percentile(&report.episode_us, 95),
@@ -132,19 +136,16 @@ fn measure_text_readiness(binary: &Path, fixture: &Path) -> Result<()> {
 
 struct ReadinessReport {
     total: usize,
-    skeleton: usize,
+    text_skeleton: usize,
+    syntax_skeleton: usize,
     episodes: usize,
     episode_us: Vec<u64>,
     discarded: usize,
 }
 
-fn readiness_once(
-    surface: &str,
-    input: &[u8],
-    binary: &Path,
-    fixture: &Path,
-) -> Result<ReadinessReport> {
+fn readiness_once(surface: &str, input: &[u8], binary: &Path) -> Result<ReadinessReport> {
     let temporary = tempfile::tempdir().context("create readiness directory")?;
+    prepare_readiness_repository(temporary.path())?;
     let trace = temporary.path().join("frames.ron");
     let pair = native_pty_system()
         .openpty(PtySize {
@@ -166,7 +167,6 @@ fn readiness_once(
     let mut command = CommandBuilder::new(binary.as_os_str());
     command.cwd(temporary.path().as_os_str());
     command.env("TERM", "xterm-256color");
-    command.env("DIFFO_MOCK_FILE", fixture.as_os_str());
     command.env("DIFFO_TRACE_FRAMES", trace.as_os_str());
     let mut child = pair
         .slave
@@ -175,9 +175,13 @@ fn readiness_once(
     drop(pair.slave);
     thread::sleep(SETTLE_TIME);
     if surface == "explorer" {
-        writer.write_all(b"\t").context("open Explorer")?;
-        thread::sleep(Duration::from_millis(250));
+        writer.write_all(b"\t").context("open Explorer fixture")?;
+        writer.flush().context("flush Explorer fixture open")?;
     }
+    thread::sleep(Duration::from_millis(1_500));
+    writer.write_all(b"z").context("mark readiness start")?;
+    writer.flush().context("flush readiness start")?;
+    thread::sleep(Duration::from_millis(100));
     for _ in 0..12 {
         writer.write_all(input).context("send readiness input")?;
         writer.flush().context("flush readiness input")?;
@@ -195,6 +199,46 @@ fn readiness_once(
     readiness_report(&trace)
 }
 
+fn prepare_readiness_repository(path: &Path) -> Result<()> {
+    run_git(path, &["init", "--quiet"])?;
+    run_git(path, &["config", "user.email", "readiness@example.invalid"])?;
+    run_git(path, &["config", "user.name", "Diffo Readiness"])?;
+    let original = (1_usize..=3_000).fold(String::new(), |mut text, line| {
+        writeln!(text, "pub const LINE_{line}: usize = {line};")
+            .expect("writing to a String cannot fail");
+        text
+    });
+    fs::write(path.join("readiness.rs"), original).context("write readiness baseline")?;
+    run_git(path, &["add", "readiness.rs"])?;
+    run_git(path, &["commit", "--quiet", "-m", "readiness baseline"])?;
+    let changed = (1_usize..=3_000).fold(String::new(), |mut text, line| {
+        writeln!(
+            text,
+            "pub const LINE_{line}: usize = {};",
+            line.saturating_add(1)
+        )
+        .expect("writing to a String cannot fail");
+        text
+    });
+    fs::write(path.join("readiness.rs"), changed).context("write readiness change")?;
+    Ok(())
+}
+
+fn run_git(path: &Path, arguments: &[&str]) -> Result<()> {
+    let output = Command::new("git")
+        .args(arguments)
+        .current_dir(path)
+        .output()
+        .with_context(|| format!("run git {}", arguments.join(" ")))?;
+    ensure!(
+        output.status.success(),
+        "git {} failed: {}",
+        arguments.join(" "),
+        String::from_utf8_lossy(&output.stderr).trim()
+    );
+    Ok(())
+}
+
 fn readiness_report(path: &Path) -> Result<ReadinessReport> {
     let contents = fs::read_to_string(path).context("read readiness trace")?;
     let frames: Vec<FrameRecord> = contents
@@ -202,9 +246,28 @@ fn readiness_report(path: &Path) -> Result<ReadinessReport> {
         .map(ron::from_str)
         .collect::<std::result::Result<_, _>>()
         .context("parse readiness trace")?;
+    let start = frames
+        .iter()
+        .position(|frame| {
+            frame
+                .input_events
+                .iter()
+                .any(|event| event.contains("Char('z')"))
+        })
+        .context("readiness trace has no start marker")?;
+    let frames = frames[start.saturating_add(1)..]
+        .iter()
+        .take_while(|frame| {
+            !frame
+                .input_events
+                .iter()
+                .any(|event| event.contains("Char('q')"))
+        })
+        .collect::<Vec<_>>();
     let mut starts = None;
     let mut episode_us = Vec::new();
-    let mut skeleton = 0;
+    let mut text_skeleton = 0;
+    let mut syntax_skeleton = 0;
     let mut discarded = 0;
     for frame in &frames {
         let Some(surface) = &frame.text_surface else {
@@ -212,7 +275,8 @@ fn readiness_report(path: &Path) -> Result<ReadinessReport> {
         };
         discarded += usize::from(surface.stale_discarded);
         if surface.render_mode != "Full" {
-            skeleton += 1;
+            text_skeleton += usize::from(surface.render_mode == "TextSkeleton");
+            syntax_skeleton += usize::from(surface.render_mode == "SyntaxSkeleton");
             starts.get_or_insert(frame.draw_start_us);
         } else if let Some(start) = starts.take() {
             episode_us.push(frame.draw_end_us.saturating_sub(start));
@@ -226,7 +290,8 @@ fn readiness_report(path: &Path) -> Result<ReadinessReport> {
             .iter()
             .filter(|frame| frame.text_surface.is_some())
             .count(),
-        skeleton,
+        text_skeleton,
+        syntax_skeleton,
         episodes: episode_us.len(),
         episode_us,
         discarded,

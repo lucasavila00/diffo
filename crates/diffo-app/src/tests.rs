@@ -213,26 +213,6 @@ fn scrolls_by_a_page() {
 }
 
 #[test]
-fn scrolls_file_lists_independently_without_changing_selection() {
-    let mut model = model();
-    let selected = model.selected.clone();
-
-    update(&mut model, Message::ScrollFileListBy(ChangeArea::Staged, 4));
-    update(
-        &mut model,
-        Message::SetFileListScroll(ChangeArea::Unstaged, 9),
-    );
-    update(
-        &mut model,
-        Message::ScrollFileListBy(ChangeArea::Staged, -1),
-    );
-
-    assert_eq!(model.file_list_scroll.staged, 3);
-    assert_eq!(model.file_list_scroll.unstaged, 9);
-    assert_eq!(model.selected, selected);
-}
-
-#[test]
 fn resizes_and_toggles_the_file_pane() {
     let mut model = model();
 
@@ -345,29 +325,6 @@ fn selects_semantic_file_key() {
     update(&mut model, Message::SelectFile(staged.clone()));
 
     assert_eq!(model.selected, Some(staged));
-}
-
-#[test]
-fn file_context_menu_returns_copy_effects_and_closes() {
-    let mut model = model();
-    let file = FileKey {
-        path: PathBuf::from("file.txt"),
-        area: ChangeArea::Unstaged,
-    };
-
-    update(
-        &mut model,
-        Message::OpenFileContextMenu(file.clone(), 10, 12),
-    );
-    assert_eq!(model.selected, Some(file));
-    assert_eq!(
-        update(&mut model, Message::CopyAbsolutePath),
-        Some(Effect::CopyPath {
-            path: PathBuf::from("file.txt"),
-            absolute: true,
-        })
-    );
-    assert!(model.file_context_menu.is_none());
 }
 
 #[test]

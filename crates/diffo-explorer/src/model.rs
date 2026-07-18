@@ -1,7 +1,7 @@
 //! Pure Explorer tree and viewer state.
 
 use std::{
-    collections::{BTreeSet, HashMap, HashSet},
+    collections::{BTreeSet, HashMap},
     path::{Path, PathBuf},
 };
 
@@ -22,7 +22,7 @@ pub struct Viewer {
     pub(crate) lines: Vec<String>,
     pub(crate) markers: HashMap<usize, GutterMarker>,
     pub(crate) highlighted: HashMap<u32, HighlightedLine>,
-    pub(crate) coverage: Option<LineRange>,
+    pub(crate) coverage: Vec<LineRange>,
     pub(crate) syntax_eligible: bool,
     pub(crate) message: Option<String>,
 }
@@ -32,17 +32,13 @@ pub(crate) struct TreeEntry {
     pub(crate) path: PathBuf,
     pub(crate) depth: usize,
     pub(crate) directory: bool,
-    pub(crate) expanded: bool,
     pub(crate) status: Option<ChangeKind>,
 }
 
 pub(crate) struct ExplorerModel {
     snapshot: RepositorySnapshot,
     paths: Vec<PathBuf>,
-    expanded: HashSet<PathBuf>,
-    pub(crate) visible: Vec<TreeEntry>,
-    pub(crate) selected: usize,
-    pub(crate) tree_scroll: usize,
+    pub(crate) entries: Vec<TreeEntry>,
     pub(crate) viewer_scroll: usize,
     pub(crate) viewer_horizontal_scroll: usize,
     pub(crate) viewer: Option<Viewer>,
@@ -54,10 +50,7 @@ impl ExplorerModel {
         Self {
             snapshot,
             paths: Vec::new(),
-            expanded: HashSet::new(),
-            visible: Vec::new(),
-            selected: 0,
-            tree_scroll: 0,
+            entries: Vec::new(),
             viewer_scroll: 0,
             viewer_horizontal_scroll: 0,
             viewer: None,
@@ -83,7 +76,6 @@ impl ExplorerModel {
     }
 
     fn rebuild(&mut self) {
-        let selected_path = self.selected_entry().map(|entry| entry.path.clone());
         let statuses = self
             .snapshot
             .files
@@ -95,7 +87,6 @@ impl ExplorerModel {
             .into_iter()
             .map(|path| TreeEntry {
                 depth: path.components().count().saturating_sub(1),
-                expanded: self.expanded.contains(&path),
                 path,
                 directory: true,
                 status: None,
@@ -105,18 +96,10 @@ impl ExplorerModel {
                 status: statuses.get(&path).copied(),
                 path,
                 directory: false,
-                expanded: false,
             }))
             .collect::<Vec<_>>();
         entries.sort_by(|left, right| left.path.cmp(&right.path));
-        self.visible = entries
-            .into_iter()
-            .filter(|entry| self.ancestors_expanded(&entry.path))
-            .collect();
-        self.selected = selected_path
-            .as_ref()
-            .and_then(|path| self.visible.iter().position(|entry| &entry.path == path))
-            .unwrap_or_else(|| self.selected.min(self.visible.len().saturating_sub(1)));
+        self.entries = entries;
     }
 
     fn directory_paths(&self) -> BTreeSet<PathBuf> {
@@ -131,76 +114,8 @@ impl ExplorerModel {
         directories
     }
 
-    fn ancestors_expanded(&self, path: &Path) -> bool {
-        let mut parent = path.parent();
-        while let Some(path) = parent.filter(|path| !path.as_os_str().is_empty()) {
-            if !self.expanded.contains(path) {
-                return false;
-            }
-            parent = path.parent();
-        }
-        true
-    }
-
-    pub(crate) fn selected_entry(&self) -> Option<&TreeEntry> {
-        self.visible.get(self.selected)
-    }
-
-    pub(crate) fn selected_file(&self) -> Option<&Path> {
-        self.selected_entry()
-            .filter(|entry| !entry.directory)
-            .map(|entry| entry.path.as_path())
-    }
-
-    pub(crate) fn select_by(&mut self, amount: i64) {
-        if amount < 0 {
-            self.selected = self
-                .selected
-                .saturating_sub(usize::try_from(amount.unsigned_abs()).unwrap_or(usize::MAX));
-        } else {
-            self.selected = self
-                .selected
-                .saturating_add(usize::try_from(amount).unwrap_or(usize::MAX))
-                .min(self.visible.len().saturating_sub(1));
-        }
-    }
-
-    pub(crate) fn select(&mut self, index: usize) {
-        self.selected = index.min(self.visible.len().saturating_sub(1));
-    }
-
-    pub(crate) fn toggle_selected_directory(&mut self) {
-        let Some(entry) = self.selected_entry().filter(|entry| entry.directory) else {
-            return;
-        };
-        let path = entry.path.clone();
-        if !self.expanded.remove(&path) {
-            self.expanded.insert(path);
-        }
-        self.rebuild();
-    }
-
-    pub(crate) fn collapse_all(&mut self) {
-        self.expanded.clear();
-        self.rebuild();
-    }
-
-    pub(crate) fn expand_all(&mut self) {
-        self.expanded = self.directory_paths().into_iter().collect();
-        self.rebuild();
-    }
-
-    pub(crate) fn ensure_tree_selection_visible(&mut self, rows: usize) {
-        if rows == 0 {
-            self.tree_scroll = 0;
-        } else if self.selected < self.tree_scroll {
-            self.tree_scroll = self.selected;
-        } else if self.selected >= self.tree_scroll.saturating_add(rows) {
-            self.tree_scroll = self.selected.saturating_add(1).saturating_sub(rows);
-        }
-        self.tree_scroll = self
-            .tree_scroll
-            .min(self.visible.len().saturating_sub(rows));
+    pub(crate) fn entry(&self, path: &Path) -> Option<&TreeEntry> {
+        self.entries.iter().find(|entry| entry.path == path)
     }
 }
 
@@ -210,7 +125,7 @@ mod tests {
     use diffo_core::{FileDiff, FileState};
 
     #[test]
-    fn builds_and_expands_tree_with_merged_status() {
+    fn builds_hierarchy_with_merged_status() {
         let snapshot = RepositorySnapshot {
             files: vec![FileState {
                 path: PathBuf::from("src/changed.rs"),
@@ -230,17 +145,15 @@ mod tests {
             PathBuf::from("src/unchanged.rs"),
         ]);
 
-        assert_eq!(model.visible.len(), 2);
-        model.select(1);
-        model.toggle_selected_directory();
-
-        assert_eq!(model.visible.len(), 4);
-        assert_eq!(model.visible[2].status, Some(ChangeKind::Modified));
-        assert_eq!(model.visible[3].status, None);
-
-        model.collapse_all();
-        assert_eq!(model.visible.len(), 2);
-        model.expand_all();
-        assert_eq!(model.visible.len(), 4);
+        assert_eq!(model.entries.len(), 4);
+        assert_eq!(
+            model.entry(Path::new("src/changed.rs")).unwrap().status,
+            Some(ChangeKind::Modified)
+        );
+        assert_eq!(
+            model.entry(Path::new("src/unchanged.rs")).unwrap().status,
+            None
+        );
+        assert!(model.entry(Path::new("src")).unwrap().directory);
     }
 }

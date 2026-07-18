@@ -11,46 +11,16 @@ mod staging;
 mod toast;
 
 use navigation::file_keys;
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum ChangeArea {
     Unstaged,
     Staged,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct FileKey {
     pub path: PathBuf,
     pub area: ChangeArea,
-}
-
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub struct FileListScroll {
-    pub staged: usize,
-    pub unstaged: usize,
-}
-
-impl FileListScroll {
-    #[must_use]
-    pub const fn get(self, area: ChangeArea) -> usize {
-        match area {
-            ChangeArea::Staged => self.staged,
-            ChangeArea::Unstaged => self.unstaged,
-        }
-    }
-
-    pub fn set(&mut self, area: ChangeArea, position: usize) {
-        match area {
-            ChangeArea::Staged => self.staged = position,
-            ChangeArea::Unstaged => self.unstaged = position,
-        }
-    }
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct FileContextMenu {
-    pub file: FileKey,
-    pub column: u16,
-    pub row: u16,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -162,11 +132,9 @@ pub struct Model {
     pub diff_scroll: usize,
     pub diff_horizontal_scroll: usize,
     pub diff_view_mode: DiffViewMode,
-    pub file_list_scroll: FileListScroll,
     pub file_pane_percent: u16,
     pub resizing_file_pane: bool,
     pub help_open: bool,
-    pub file_context_menu: Option<FileContextMenu>,
     pub commit_message: String,
     pub toasts: Vec<Toast>,
     commit_composer_state: CommitComposerState,
@@ -195,11 +163,9 @@ impl Model {
             diff_scroll: 0,
             diff_horizontal_scroll: 0,
             diff_view_mode: DiffViewMode::default(),
-            file_list_scroll: FileListScroll::default(),
             file_pane_percent: 25,
             resizing_file_pane: false,
             help_open: false,
-            file_context_menu: None,
             commit_message: String::new(),
             toasts: Vec::new(),
             commit_composer_state: CommitComposerState::Idle,

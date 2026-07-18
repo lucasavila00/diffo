@@ -1,31 +1,31 @@
 use std::sync::{
     Arc,
-    mpsc::{Receiver, SyncSender},
+    mpsc::{Receiver, Sender},
 };
 
-use diffo_app::{ChangeArea, FileKey, FileListScroll};
+use diffo_app::FileKey;
 use diffo_diff::{DiffDocument, RenderLine, RowKind, SideBySideRow};
+use diffo_file_picker::FilePicker;
 use diffo_highlight::{HighlightedDiff, LineRange, SyntaxHighlighter};
 use diffo_text_view::TextSurfacePreparation;
 use ratatui::layout::Rect;
-
-use crate::files::FileListMetrics;
 
 pub struct Renderer {
     pub(super) highlighter: Arc<SyntaxHighlighter>,
     pub(super) highlighted: Option<HighlightCache>,
     pub(super) prepared_cache: Vec<HighlightCache>,
-    pub(super) prepare_tx: SyncSender<PrepareRequest>,
+    pub(super) prepare_tx: Sender<PrepareRequest>,
     pub(super) prepare_rx: Receiver<PrepareOutcome>,
     pub(super) submitted: Vec<(DiffKey, Option<usize>)>,
     pub(super) requested: Option<DiffKey>,
     pub(super) requested_navigation_target: Option<usize>,
     pub(super) diff_viewport_rows: usize,
+    pub(super) previous_diff_scroll: usize,
     pub(super) failed: Option<DiffKey>,
     pub(super) scrollbars: ScrollbarMetrics,
     pub(super) scrollbar_drag: Option<ScrollbarAxis>,
-    pub(super) file_lists: FileListMetrics,
-    pub(super) file_scrollbar_drag: Option<ChangeArea>,
+    pub(super) staged_picker: FilePicker<FileKey>,
+    pub(super) unstaged_picker: FilePicker<FileKey>,
     pub(super) hunk_buttons: HunkButtonMetrics,
     pub(super) content_revision: u64,
     pub(super) network_animation_tick: usize,
@@ -58,7 +58,6 @@ pub struct FramePreparation {
     pub viewport_transition: Option<ViewportTransition>,
     pub requested_file: Option<FileKey>,
     pub displayed_file: Option<FileKey>,
-    pub file_list_scroll: FileListScroll,
     pub text_surface: Option<TextSurfacePreparation>,
 }
 
@@ -97,6 +96,7 @@ pub(super) struct PrepareRequest {
     pub(super) viewport_rows: usize,
     pub(super) mode: diffo_app::DiffViewMode,
     pub(super) target_scroll: Option<usize>,
+    pub(super) prefetch_viewports: usize,
 }
 
 pub(super) struct PrepareOutcome {

@@ -2,16 +2,18 @@ use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, 
 use diffo_app::{Message, Model};
 use ratatui::layout::Rect;
 
-use crate::{
-    commit_action_at_position, commit_editor_action_at_position, file_action_at_position,
-    file_at_position, file_group_at_position, file_pane_percent_at, is_file_pane_splitter_at,
-};
+use crate::{commit_action_at_position, commit_editor_action_at_position};
 
 mod bindings;
 mod keyboard;
 mod mouse;
 
-pub(crate) use bindings::help_rows;
+pub(crate) fn help_rows() -> Vec<(String, &'static str)> {
+    diffo_file_picker::help_rows()
+        .into_iter()
+        .chain(bindings::help_rows())
+        .collect()
+}
 
 #[cfg(test)]
 use bindings::KEY_BINDINGS;

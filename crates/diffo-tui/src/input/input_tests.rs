@@ -4,7 +4,7 @@ use crossterm::event::{
     Event, KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers, MouseButton, MouseEvent,
     MouseEventKind,
 };
-use diffo_app::{ChangeArea, FileKey, Message, Model};
+use diffo_app::{Message, Model};
 use diffo_core::{ChangeKind, FileDiff, FileState, RepositorySnapshot};
 use ratatui::layout::Rect;
 
@@ -106,7 +106,7 @@ fn uppercase_characters_and_d_are_not_shortcuts() {
 }
 
 #[test]
-fn maps_control_c_and_file_click() {
+fn maps_control_c() {
     let model = model();
     assert_eq!(
         map_event(
@@ -115,42 +115,6 @@ fn maps_control_c_and_file_click() {
             Rect::default(),
         ),
         Some(Message::Quit)
-    );
-    assert_eq!(
-        map_event(
-            &Event::Mouse(MouseEvent {
-                kind: MouseEventKind::Down(MouseButton::Left),
-                column: 4,
-                row: 19,
-                modifiers: KeyModifiers::NONE,
-            }),
-            &model,
-            Rect::new(0, 0, 100, 30),
-        ),
-        Some(Message::SelectFile(FileKey {
-            path: PathBuf::from("file.txt"),
-            area: ChangeArea::Unstaged,
-        }))
-    );
-    assert_eq!(
-        map_event(
-            &Event::Mouse(MouseEvent {
-                kind: MouseEventKind::Down(MouseButton::Right),
-                column: 4,
-                row: 19,
-                modifiers: KeyModifiers::NONE,
-            }),
-            &model,
-            Rect::new(0, 0, 100, 30),
-        ),
-        Some(Message::OpenFileContextMenu(
-            FileKey {
-                path: PathBuf::from("file.txt"),
-                area: ChangeArea::Unstaged,
-            },
-            4,
-            19,
-        ))
     );
 }
 
@@ -428,23 +392,5 @@ fn maps_mouse_wheel_to_diff_scrolling() {
     assert_eq!(
         map_event(&mouse(MouseEventKind::ScrollDown), &model, Rect::default()),
         Some(Message::ScrollDiffVerticalBy(1))
-    );
-
-    let file_wheel = |kind, row| {
-        Event::Mouse(MouseEvent {
-            kind,
-            column: 4,
-            row,
-            modifiers: KeyModifiers::NONE,
-        })
-    };
-    let area = Rect::new(0, 0, 100, 30);
-    assert_eq!(
-        map_event(&file_wheel(MouseEventKind::ScrollUp, 7), &model, area),
-        Some(Message::ScrollFileListBy(ChangeArea::Staged, -1))
-    );
-    assert_eq!(
-        map_event(&file_wheel(MouseEventKind::ScrollDown, 19), &model, area),
-        Some(Message::ScrollFileListBy(ChangeArea::Unstaged, 1))
     );
 }

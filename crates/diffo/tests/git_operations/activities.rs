@@ -89,7 +89,7 @@ fn delayed_explorer_open_commits_only_the_latest_syntax_ready_file() -> Result<(
     screen
         .press(Key::Tab)?
         .wait_for_text("a.rs")?
-        .press(Key::Char('j'))?
+        .press(Key::Char('k'))?
         .wait_for_text("EXPLORER_BRAVO")?;
 
     assert!(!screen.contents().contains("EXPLORER_ALPHA"));

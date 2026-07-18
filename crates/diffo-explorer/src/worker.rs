@@ -155,7 +155,7 @@ fn prepare_viewer(
             lines: Vec::new(),
             markers: HashMap::new(),
             highlighted: HashMap::new(),
-            coverage: None,
+            coverage: Vec::new(),
             syntax_eligible: false,
             message: Some("Binary or non-UTF-8 file.".to_owned()),
         };
@@ -191,7 +191,7 @@ fn prepare_viewer(
         lines,
         markers,
         highlighted: styles,
-        coverage: range,
+        coverage: range.into_iter().collect(),
         syntax_eligible,
         message: None,
     }
@@ -398,7 +398,7 @@ mod tests {
             &highlighter,
         );
         assert!(viewer.syntax_eligible);
-        assert!(viewer.coverage.is_some_and(|range| range.end >= 20));
+        assert!(viewer.coverage.iter().any(|range| range.end >= 20));
         assert!(viewer.highlighted.contains_key(&1));
 
         let at_limit = prepare_viewer(

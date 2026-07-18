@@ -52,23 +52,6 @@ pub(super) static KEY_BINDINGS: &[KeyBinding] = &[
         description: "Quit",
     },
     KeyBinding {
-        keys: &[
-            KeyChord::plain(KeyCode::Char('j')),
-            KeyChord::plain(KeyCode::Char('w')),
-        ],
-        message: Message::SelectPreviousFile,
-        description: "Previous file",
-    },
-    KeyBinding {
-        keys: &[
-            KeyChord::plain(KeyCode::Char('k')),
-            KeyChord::plain(KeyCode::Char('l')),
-            KeyChord::plain(KeyCode::Char('s')),
-        ],
-        message: Message::SelectNextFile,
-        description: "Next file",
-    },
-    KeyBinding {
         keys: &[KeyChord::plain(KeyCode::Up)],
         message: Message::ScrollDiffVerticalBy(-LINE_SCROLL_ROWS),
         description: "Scroll diff up by four lines",
@@ -117,19 +100,6 @@ pub(super) static KEY_BINDINGS: &[KeyBinding] = &[
         keys: &[KeyChord::plain(KeyCode::Char('e'))],
         message: Message::ToggleFilePane,
         description: "Show / hide file list",
-    },
-    KeyBinding {
-        keys: &[
-            KeyChord::plain(KeyCode::Home),
-            KeyChord::plain(KeyCode::Char('g')),
-        ],
-        message: Message::SelectFirstFile,
-        description: "First file",
-    },
-    KeyBinding {
-        keys: &[KeyChord::plain(KeyCode::End)],
-        message: Message::SelectLastFile,
-        description: "Last file",
     },
     KeyBinding {
         keys: &[KeyChord::plain(KeyCode::Char(' '))],

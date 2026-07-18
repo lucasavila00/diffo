@@ -1,11 +1,11 @@
 use super::{
     Alignment, Block, Borders, ChangeArea, ChangeKind, Constraint, Direction, FileKey, FileState,
     Frame, HeadState, Layout, Line, Model, Modifier, Paragraph, Rect, RepositorySnapshot, Span,
-    Style, change_kind_style, file_action_style, horizontal_panes, main_area,
-    network_animation_style, terminal_safe_text,
+    Style, change_kind_style, horizontal_panes, main_area, network_animation_style,
+    terminal_safe_text,
 };
 use diffo_file_picker::{Document, Row as PickerRow};
-use diffo_ui::{design, theme};
+use diffo_ui::{design, disabled_control_style, enabled_control_style, interaction, theme};
 
 pub(super) fn file_panel_areas(area: Rect) -> std::rc::Rc<[Rect]> {
     Layout::vertical([
@@ -45,18 +45,19 @@ pub(super) fn render_commit_composer(frame: &mut Frame, area: Rect, model: &Mode
                 Block::default()
                     .borders(Borders::ALL)
                     .border_style(resize_border_style(model))
-                    .title(" Commit message · click to edit "),
+                    .title(" Commit message ")
+                    .title(
+                        Line::styled(interaction::EDIT, enabled_control_style())
+                            .alignment(Alignment::Right),
+                    ),
             ),
         sections[0],
     );
     let action = model.primary_action();
-    let style = if model.primary_action_enabled() {
-        Style::default()
-            .bg(theme::SELECTION_BACKGROUND)
-            .fg(theme::TEXT)
-            .add_modifier(Modifier::BOLD)
+    let style = if primary_action_clickable(model) {
+        enabled_control_style().bg(theme::SELECTION_BACKGROUND)
     } else {
-        Style::default().fg(theme::CHROME)
+        disabled_control_style()
     };
     frame.render_widget(
         Paragraph::new(format!("[ {} ]", action.label()))
@@ -78,13 +79,15 @@ pub(crate) fn commit_action_at_position(
     if sections[0].contains((column, row).into()) {
         return Some(diffo_app::Message::FocusCommitInput);
     }
-    if sections[1].contains((column, row).into())
-        && (model.primary_action_enabled()
-            || model.primary_action() == diffo_app::PrimaryAction::PushAndPull)
-    {
+    if sections[1].contains((column, row).into()) && primary_action_clickable(model) {
         return Some(diffo_app::Message::ExecutePrimaryAction);
     }
     None
+}
+
+fn primary_action_clickable(model: &Model) -> bool {
+    model.primary_action_enabled()
+        || model.primary_action() == diffo_app::PrimaryAction::PushAndPull
 }
 
 pub(super) fn file_group_areas(
@@ -128,7 +131,7 @@ pub(super) fn picker_document<'a>(
                 ChangeArea::Staged => "[-]",
                 ChangeArea::Unstaged => "[+]",
             };
-            PickerRow::flat(key, label).with_action(action, file_action_style(change_area))
+            PickerRow::flat(key, label).with_action(action)
         })
         .collect();
     let mut document = Document::flat(title, rows);

@@ -1,7 +1,7 @@
 #![doc = include_str!("../README.md")]
 
 use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind};
-use diffo_ui::{design, theme};
+use diffo_ui::{design, enabled_control_style, theme};
 use ratatui::{
     Frame,
     layout::{Constraint, Layout, Rect},
@@ -106,8 +106,10 @@ impl CommandPalette {
             let (_, results) = command_palette_layout(area);
             if results.contains((mouse.column, mouse.row).into()) {
                 let index = usize::from(mouse.row.saturating_sub(results.y));
-                self.select(index);
-                return Some(self.execute_selected());
+                if index < self.matches().len() {
+                    self.select(index);
+                    return Some(self.execute_selected());
+                }
             }
             return Some(PaletteEvent::Consumed);
         }
@@ -190,15 +192,12 @@ impl CommandPalette {
         } else {
             commands
                 .iter()
-                .map(|command| ListItem::new(command.label))
+                .map(|command| ListItem::new(command.label).style(enabled_control_style()))
                 .collect()
         };
-        let list = List::new(items).highlight_symbol("› ").highlight_style(
-            Style::default()
-                .bg(theme::SELECTION_BACKGROUND)
-                .fg(theme::TEXT)
-                .add_modifier(Modifier::BOLD),
-        );
+        let list = List::new(items)
+            .highlight_symbol("› ")
+            .highlight_style(enabled_control_style().bg(theme::SELECTION_BACKGROUND));
         let mut state = ListState::default().with_selected(
             (!commands.is_empty()).then_some(self.selected.min(commands.len().saturating_sub(1))),
         );
@@ -395,6 +394,27 @@ mod tests {
             .collect::<String>();
         assert!(screen.contains("Command Palette"));
         assert!(screen.contains("Git: Pull"));
+        let command = terminal
+            .backend()
+            .buffer()
+            .content
+            .iter()
+            .find(|cell| cell.symbol() == "G")
+            .expect("command action");
+        assert_eq!(command.fg, theme::TEXT);
+        assert!(command.modifier.contains(Modifier::BOLD));
+
+        let blank = Event::Mouse(crossterm::event::MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: results_area.x,
+            row: results_area.y.saturating_add(5),
+            modifiers: KeyModifiers::NONE,
+        });
+        assert_eq!(
+            palette.handle_event(&blank, area),
+            Some(PaletteEvent::Consumed)
+        );
+        assert!(palette.is_open());
 
         let event = Event::Mouse(crossterm::event::MouseEvent {
             kind: MouseEventKind::Down(MouseButton::Left),

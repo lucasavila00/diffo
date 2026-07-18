@@ -58,8 +58,8 @@ use style::{
     contrast_ratio, contrasting_foreground, diff_background, diff_background_rgb, row_style,
 };
 use style::{
-    file_action_style, inline_line, inline_skeleton_line, network_animation_style,
-    side_by_side_line, side_by_side_skeleton_line,
+    inline_line, inline_skeleton_line, network_animation_style, side_by_side_line,
+    side_by_side_skeleton_line,
 };
 
 use state::{

@@ -1,9 +1,9 @@
 use crate::Activity;
-use diffo_ui::{design, theme};
+use diffo_ui::{design, enabled_control_style, theme};
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Layout, Rect},
-    style::{Modifier, Style},
+    style::Style,
     widgets::{Block, Borders, Paragraph},
 };
 
@@ -74,13 +74,7 @@ pub fn render_activity_bar(frame: &mut Frame, area: Rect, active: Activity) {
             design::ACTIVITY_CONTROL_HEIGHT.min(bar.bottom().saturating_sub(y)),
         );
         let selected = activity == active;
-        let style = if selected {
-            Style::default()
-                .fg(theme::TEXT)
-                .add_modifier(Modifier::BOLD)
-        } else {
-            Style::default().fg(theme::CHROME)
-        };
+        let style = enabled_control_style();
         frame.render_widget(
             Paragraph::new(icon)
                 .alignment(Alignment::Center)
@@ -113,7 +107,7 @@ pub fn render_activity_bar(frame: &mut Frame, area: Rect, active: Activity) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ratatui::{Terminal, backend::TestBackend};
+    use ratatui::{Terminal, backend::TestBackend, style::Modifier};
 
     #[test]
     fn reserves_the_full_left_edge_and_maps_buttons() {
@@ -151,10 +145,12 @@ mod tests {
                 .unwrap()
         };
 
-        assert_eq!(cell("▤").fg, theme::CHROME);
-        assert_eq!(cell("≠").fg, theme::CHROME);
+        assert_eq!(cell("▤").fg, theme::TEXT);
+        assert_eq!(cell("≠").fg, theme::TEXT);
         assert_eq!(cell("▌").fg, theme::TEXT);
         assert_eq!(cell("⌕").fg, theme::TEXT);
+        assert!(cell("▤").modifier.contains(Modifier::BOLD));
+        assert!(cell("≠").modifier.contains(Modifier::BOLD));
         assert!(cell("⌕").modifier.contains(Modifier::BOLD));
         assert_eq!(buffer[(4, 0)].fg, theme::CHROME);
     }

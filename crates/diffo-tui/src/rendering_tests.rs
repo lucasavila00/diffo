@@ -13,7 +13,7 @@ use diffo_core::{
 };
 use diffo_diff::RowKind;
 use diffo_highlight::Rgb;
-use diffo_ui::theme;
+use diffo_ui::{interaction, theme};
 use ratatui::{
     Terminal,
     backend::TestBackend,
@@ -103,6 +103,16 @@ fn file_picker_renders_every_git_change_kind_with_its_status_color() {
     }
     assert!(buffer[(3, 3)].modifier.contains(Modifier::CROSSED_OUT));
     assert!(buffer[(3, 7)].modifier.contains(Modifier::BOLD));
+    let controls = buffer
+        .content
+        .iter()
+        .filter(|cell| cell.symbol() == "+")
+        .collect::<Vec<_>>();
+    assert_eq!(controls.len(), kinds.len() + 1);
+    for control in controls {
+        assert_eq!(control.fg, theme::TEXT);
+        assert!(control.modifier.contains(Modifier::BOLD));
+    }
 }
 
 #[test]
@@ -631,6 +641,87 @@ fn commit_message_and_file_diff_boxes_share_the_chrome_border() {
 }
 
 #[test]
+fn commit_composer_panel_action_uses_the_enabled_control_style() {
+    let model = model();
+    let backend = TestBackend::new(20, 6);
+    let mut terminal = Terminal::new(backend).unwrap();
+    terminal
+        .draw(|frame| super::render_commit_composer(frame, frame.area(), &model))
+        .unwrap();
+
+    let edit_control = terminal
+        .backend()
+        .buffer()
+        .content
+        .iter()
+        .find(|cell| cell.symbol() == interaction::EDIT)
+        .expect("click-to-edit control");
+    assert_eq!(edit_control.fg, theme::TEXT);
+    assert!(edit_control.modifier.contains(Modifier::BOLD));
+}
+
+#[test]
+fn blocked_sync_is_visually_clickable_because_it_opens_feedback() {
+    let mut model = model();
+    model.snapshot.upstream = Some(UpstreamState {
+        name: "origin/main".to_owned(),
+        ahead: 1,
+        behind: 1,
+    });
+    let backend = TestBackend::new(40, 6);
+    let mut terminal = Terminal::new(backend).unwrap();
+    terminal
+        .draw(|frame| super::render_commit_composer(frame, frame.area(), &model))
+        .unwrap();
+
+    let action = terminal
+        .backend()
+        .buffer()
+        .content
+        .iter()
+        .find(|cell| cell.symbol() == "[")
+        .expect("blocked sync action");
+    assert_eq!(action.fg, theme::TEXT);
+    assert!(action.modifier.contains(Modifier::BOLD));
+}
+
+#[test]
+fn commit_dialog_actions_use_the_enabled_control_style() {
+    let mut model = model();
+    model.snapshot.files[0].staged = Some(FileDiff {
+        text: String::new(),
+    });
+    model.focus_commit_input();
+    model.commit_message_input('x');
+    let area = Rect::new(0, 0, 80, 24);
+    let backend = TestBackend::new(area.width, area.height);
+    let mut terminal = Terminal::new(backend).unwrap();
+    terminal
+        .draw(|frame| super::render_commit_editor(frame, &model, frame.area()))
+        .unwrap();
+
+    let actions = terminal
+        .backend()
+        .buffer()
+        .content
+        .iter()
+        .filter(|cell| cell.symbol() == "[")
+        .collect::<Vec<_>>();
+    assert_eq!(actions.len(), 2);
+    for action in actions {
+        assert_eq!(action.fg, theme::TEXT);
+        assert!(action.modifier.contains(Modifier::BOLD));
+    }
+    let footer = super::overlays::commit_editor_layout(area).4;
+    let footer_control = (footer.x..footer.right())
+        .map(|column| &terminal.backend().buffer()[(column, footer.y)])
+        .find(|cell| cell.symbol() != " ")
+        .expect("outside-click instruction");
+    assert_eq!(footer_control.fg, theme::TEXT);
+    assert!(footer_control.modifier.contains(Modifier::BOLD));
+}
+
+#[test]
 fn renders_and_hit_tests_a_bottom_right_toast() {
     let mut toasts = ToastQueue::new();
     toasts.show(ToastKind::Success, "Committed a1b2c3d");
@@ -648,6 +739,15 @@ fn renders_and_hit_tests_a_bottom_right_toast() {
             .iter()
             .any(|cell| { cell.symbol().contains("Committed") || cell.fg == Color::LightGreen })
     );
+    let dismiss = terminal
+        .backend()
+        .buffer()
+        .content
+        .iter()
+        .find(|cell| cell.symbol() == interaction::DISMISS)
+        .expect("toast dismiss control");
+    assert_eq!(dismiss.fg, theme::TEXT);
+    assert!(dismiss.modifier.contains(Modifier::BOLD));
 
     assert_eq!(
         super::toast_at_position(toasts.as_slice(), Rect::new(0, 0, 100, 30), 70, 26),
@@ -1233,6 +1333,9 @@ fn large_hunk_buttons_are_fixed_and_do_not_wrap() {
     assert!(renderer.hunk_buttons.previous.is_none());
     assert!(buffer_text(terminal.backend().buffer()).contains("Next change (n)"));
     let (next_area, next_target) = renderer.hunk_buttons.next.expect("next button");
+    let next_control = &terminal.backend().buffer()[(next_area.x, next_area.y)];
+    assert_eq!(next_control.fg, theme::TEXT);
+    assert!(next_control.modifier.contains(Modifier::BOLD));
     assert!(renderer.scrollbars.horizontal_area.height > 0);
     assert_eq!(next_area.bottom(), renderer.scrollbars.horizontal_area.y);
     assert_eq!(

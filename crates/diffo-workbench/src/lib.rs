@@ -8,8 +8,12 @@ use diffo_command::{Command, CommandId, CommandPalette, PaletteEvent};
 use diffo_core::{OperationFailure, OperationResult, RepositoryAction, RepositorySnapshot};
 use diffo_text_view::{TextRenderMode, TextSurfacePreparation};
 use diffo_tui::{FramePreparation, Renderer, RendererEvent, render_toasts, toast_at_position};
-use diffo_ui::{PaneSplit, tool_areas};
-use ratatui::{Frame, layout::Rect, widgets::Clear};
+use diffo_ui::{PaneSplit, enabled_control_style, interaction, tool_areas};
+use ratatui::{
+    Frame,
+    layout::Rect,
+    widgets::{Clear, Paragraph},
+};
 
 use diffo_explorer::{ExplorerActivity, ExplorerEvent, ExplorerOutcome, ExplorerRequest};
 
@@ -192,6 +196,7 @@ impl Workbench {
             Activity::Explorer => self.explorer.render(frame, content, self.pane_split),
             Activity::Search => self.search.render(frame, content, self.pane_split),
         }
+        render_pane_drag_marker(frame, tool_areas(content).content, self.pane_split);
         render_toasts(frame, self.toasts.as_slice(), content);
         self.active_palette().render(frame, content);
         render_activity_bar(frame, area, self.active);
@@ -484,6 +489,16 @@ impl Workbench {
     }
 }
 
+fn render_pane_drag_marker(frame: &mut Frame, area: Rect, split: PaneSplit) {
+    let marker = split.seam_marker_area(area);
+    if !marker.is_empty() {
+        frame.render_widget(
+            Paragraph::new(interaction::PANE_DRAG).style(enabled_control_style()),
+            marker,
+        );
+    }
+}
+
 #[derive(Default)]
 struct PendingScroll {
     vertical: i64,
@@ -674,7 +689,8 @@ mod tests {
     use crossterm::event::{KeyEvent, KeyEventState, MouseEvent};
     use diffo_app::NetworkOperation;
     use diffo_explorer::COLLAPSE_ALL_COMMAND;
-    use ratatui::{Terminal, backend::TestBackend};
+    use diffo_ui::theme;
+    use ratatui::{Terminal, backend::TestBackend, style::Modifier};
 
     fn key(code: KeyCode) -> Event {
         Event::Key(KeyEvent::new(code, KeyModifiers::NONE))
@@ -831,6 +847,16 @@ mod tests {
         assert_eq!(
             terminal.backend().buffer()[(seam, pane_area.y)].symbol(),
             "┌"
+        );
+        let marker = workbench.pane_split.seam_marker_area(pane_area);
+        let marker_cell = &terminal.backend().buffer()[(marker.x, marker.y)];
+        assert_eq!(marker_cell.symbol(), interaction::PANE_DRAG);
+        assert_eq!(marker_cell.fg, theme::TEXT);
+        assert!(marker_cell.modifier.contains(Modifier::BOLD));
+        assert!(
+            workbench
+                .pane_split
+                .contains_seam(pane_area, marker.x, marker.y)
         );
     }
 

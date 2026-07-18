@@ -643,13 +643,16 @@ impl Model {
                 | OperationResult::Push { .. }
                 | OperationResult::Commit { .. }
         );
-        let finishes_pending = match (self.pending_operation.as_ref(), result) {
+        let finishes_pending = matches!(
+            (self.pending_operation.as_ref(), result),
             (Some(RepositoryAction::Fetch), OperationResult::Fetch { .. })
-            | (Some(RepositoryAction::Pull), OperationResult::Pull { .. })
-            | (Some(RepositoryAction::Push), OperationResult::Push { .. })
-            | (Some(RepositoryAction::Commit(_)), OperationResult::Commit { .. }) => true,
-            _ => false,
-        };
+                | (Some(RepositoryAction::Pull), OperationResult::Pull { .. })
+                | (Some(RepositoryAction::Push), OperationResult::Push { .. })
+                | (
+                    Some(RepositoryAction::Commit(_)),
+                    OperationResult::Commit { .. }
+                )
+        );
         if is_async_result && !finishes_pending {
             self.install_snapshot(snapshot, false);
             return;

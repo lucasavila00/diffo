@@ -68,6 +68,7 @@ impl DiffoScreen {
         let writer = pair.master.take_writer().context("open Diffo PTY writer")?;
         let mut command = CommandBuilder::new(binary.as_ref().as_os_str());
         command.cwd(worktree.as_ref().as_os_str());
+        command.env_remove("NO_COLOR");
         command.env("TERM", "xterm-256color");
         command.env("GIT_TERMINAL_PROMPT", "0");
         for (key, value) in environment {

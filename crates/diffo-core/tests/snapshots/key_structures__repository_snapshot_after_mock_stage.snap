@@ -3,8 +3,9 @@ source: crates/diffo-core/tests/key_structures.rs
 expression: "repository.snapshot().expect(\"snapshot after mock stage\")"
 ---
 RepositorySnapshot(
-  branch: BranchState(
-    name: Some("feature/syntax-highlighting"),
+  head: Named(
+    name: "feature/syntax-highlighting",
+    commit: "7bd31d2",
   ),
   files: [
     FileState(

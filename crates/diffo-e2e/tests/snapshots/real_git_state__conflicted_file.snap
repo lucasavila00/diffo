@@ -3,8 +3,9 @@ source: crates/diffo-e2e/tests/real_git_state.rs
 expression: collect(&repo.worktree)?
 ---
 RepositorySnapshot(
-  branch: BranchState(
-    name: Some("main"),
+  head: Named(
+    name: "main",
+    commit: "cd7cdc6bb20e7734bb385385ac9c9b66b2355091",
   ),
   files: [
     FileState(

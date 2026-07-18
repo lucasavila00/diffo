@@ -3,8 +3,9 @@ source: crates/diffo-core/tests/key_structures.rs
 expression: snapshot
 ---
 RepositorySnapshot(
-  branch: BranchState(
-    name: Some("feature/syntax-highlighting"),
+  head: Named(
+    name: "feature/syntax-highlighting",
+    commit: "7bd31d2",
   ),
   files: [
     FileState(

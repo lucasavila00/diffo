@@ -14,25 +14,26 @@ use tempfile::TempDir;
 fn clean_repository() -> Result<()> {
     let repo = TestRepository::new()?;
 
-    insta::assert_ron_snapshot!(collect(&repo.worktree)?, @r###"
-RepositorySnapshot(
-  branch: BranchState(
-    name: Some("main"),
-  ),
-  files: [],
-  recent_commits: [
-    Commit(
-      id: "4808d4013094be7c3fb50d5089f8e72193967c32",
-      summary: "Base commit",
-    ),
-  ],
-  upstream: Some(UpstreamState(
-    name: "origin/main",
-    ahead: 0,
-    behind: 0,
-  )),
-)
-"###);
+    insta::assert_ron_snapshot!(collect(&repo.worktree)?, @r#"
+    RepositorySnapshot(
+      head: Named(
+        name: "main",
+        commit: "4808d4013094be7c3fb50d5089f8e72193967c32",
+      ),
+      files: [],
+      recent_commits: [
+        Commit(
+          id: "4808d4013094be7c3fb50d5089f8e72193967c32",
+          summary: "Base commit",
+        ),
+      ],
+      upstream: Some(UpstreamState(
+        name: "origin/main",
+        ahead: 0,
+        behind: 0,
+      )),
+    )
+    "#);
     Ok(())
 }
 
@@ -60,26 +61,26 @@ fn unborn_repository_with_untracked_file() -> Result<()> {
     git(root.path(), &["init", "--initial-branch=main"])?;
     write(&root.path().join("first file.txt"), "not committed\n")?;
 
-    insta::assert_ron_snapshot!(collect(root.path())?, @r###"
-RepositorySnapshot(
-  branch: BranchState(
-    name: Some("main"),
-  ),
-  files: [
-    FileState(
-      path: "first file.txt",
-      old_path: None,
-      kind: Untracked,
-      staged: None,
-      unstaged: Some(FileDiff(
-        text: "@@ -0,0 +1,1 @@\n+not committed\n",
-      )),
-    ),
-  ],
-  recent_commits: [],
-  upstream: None,
-)
-"###);
+    insta::assert_ron_snapshot!(collect(root.path())?, @r#"
+    RepositorySnapshot(
+      head: Unborn(
+        name: "main",
+      ),
+      files: [
+        FileState(
+          path: "first file.txt",
+          old_path: None,
+          kind: Untracked,
+          staged: None,
+          unstaged: Some(FileDiff(
+            text: "@@ -0,0 +1,1 @@\n+not committed\n",
+          )),
+        ),
+      ],
+      recent_commits: [],
+      upstream: None,
+    )
+    "#);
     Ok(())
 }
 
@@ -126,29 +127,30 @@ fn local_branch_is_ahead_and_behind_upstream() -> Result<()> {
     repo.commit_remote("remote.txt", "remote\n", "Remote commit")?;
     git(&repo.worktree, &["fetch", "origin"])?;
 
-    insta::assert_ron_snapshot!(collect(&repo.worktree)?, @r###"
-RepositorySnapshot(
-  branch: BranchState(
-    name: Some("main"),
-  ),
-  files: [],
-  recent_commits: [
-    Commit(
-      id: "43d9e3e5b952193a00febda8eabb8fda9b45306f",
-      summary: "Local commit",
-    ),
-    Commit(
-      id: "4808d4013094be7c3fb50d5089f8e72193967c32",
-      summary: "Base commit",
-    ),
-  ],
-  upstream: Some(UpstreamState(
-    name: "origin/main",
-    ahead: 1,
-    behind: 1,
-  )),
-)
-"###);
+    insta::assert_ron_snapshot!(collect(&repo.worktree)?, @r#"
+    RepositorySnapshot(
+      head: Named(
+        name: "main",
+        commit: "43d9e3e5b952193a00febda8eabb8fda9b45306f",
+      ),
+      files: [],
+      recent_commits: [
+        Commit(
+          id: "43d9e3e5b952193a00febda8eabb8fda9b45306f",
+          summary: "Local commit",
+        ),
+        Commit(
+          id: "4808d4013094be7c3fb50d5089f8e72193967c32",
+          summary: "Base commit",
+        ),
+      ],
+      upstream: Some(UpstreamState(
+        name: "origin/main",
+        ahead: 1,
+        behind: 1,
+      )),
+    )
+    "#);
     Ok(())
 }
 
@@ -157,29 +159,30 @@ fn local_branch_is_ahead_of_upstream() -> Result<()> {
     let repo = TestRepository::new()?;
     repo.commit_local("local.txt", "local\n", "Local commit")?;
 
-    insta::assert_ron_snapshot!(collect(&repo.worktree)?, @r###"
-RepositorySnapshot(
-  branch: BranchState(
-    name: Some("main"),
-  ),
-  files: [],
-  recent_commits: [
-    Commit(
-      id: "43d9e3e5b952193a00febda8eabb8fda9b45306f",
-      summary: "Local commit",
-    ),
-    Commit(
-      id: "4808d4013094be7c3fb50d5089f8e72193967c32",
-      summary: "Base commit",
-    ),
-  ],
-  upstream: Some(UpstreamState(
-    name: "origin/main",
-    ahead: 1,
-    behind: 0,
-  )),
-)
-"###);
+    insta::assert_ron_snapshot!(collect(&repo.worktree)?, @r#"
+    RepositorySnapshot(
+      head: Named(
+        name: "main",
+        commit: "43d9e3e5b952193a00febda8eabb8fda9b45306f",
+      ),
+      files: [],
+      recent_commits: [
+        Commit(
+          id: "43d9e3e5b952193a00febda8eabb8fda9b45306f",
+          summary: "Local commit",
+        ),
+        Commit(
+          id: "4808d4013094be7c3fb50d5089f8e72193967c32",
+          summary: "Base commit",
+        ),
+      ],
+      upstream: Some(UpstreamState(
+        name: "origin/main",
+        ahead: 1,
+        behind: 0,
+      )),
+    )
+    "#);
     Ok(())
 }
 
@@ -189,25 +192,26 @@ fn local_branch_is_behind_upstream() -> Result<()> {
     repo.commit_remote("remote.txt", "remote\n", "Remote commit")?;
     git(&repo.worktree, &["fetch", "origin"])?;
 
-    insta::assert_ron_snapshot!(collect(&repo.worktree)?, @r###"
-RepositorySnapshot(
-  branch: BranchState(
-    name: Some("main"),
-  ),
-  files: [],
-  recent_commits: [
-    Commit(
-      id: "4808d4013094be7c3fb50d5089f8e72193967c32",
-      summary: "Base commit",
-    ),
-  ],
-  upstream: Some(UpstreamState(
-    name: "origin/main",
-    ahead: 0,
-    behind: 1,
-  )),
-)
-"###);
+    insta::assert_ron_snapshot!(collect(&repo.worktree)?, @r#"
+    RepositorySnapshot(
+      head: Named(
+        name: "main",
+        commit: "4808d4013094be7c3fb50d5089f8e72193967c32",
+      ),
+      files: [],
+      recent_commits: [
+        Commit(
+          id: "4808d4013094be7c3fb50d5089f8e72193967c32",
+          summary: "Base commit",
+        ),
+      ],
+      upstream: Some(UpstreamState(
+        name: "origin/main",
+        ahead: 0,
+        behind: 1,
+      )),
+    )
+    "#);
     Ok(())
 }
 
@@ -216,21 +220,21 @@ fn detached_head() -> Result<()> {
     let repo = TestRepository::new()?;
     git(&repo.worktree, &["checkout", "--detach"])?;
 
-    insta::assert_ron_snapshot!(collect(&repo.worktree)?, @r###"
-RepositorySnapshot(
-  branch: BranchState(
-    name: None,
-  ),
-  files: [],
-  recent_commits: [
-    Commit(
-      id: "4808d4013094be7c3fb50d5089f8e72193967c32",
-      summary: "Base commit",
-    ),
-  ],
-  upstream: None,
-)
-"###);
+    insta::assert_ron_snapshot!(collect(&repo.worktree)?, @r#"
+    RepositorySnapshot(
+      head: Detached(
+        commit: "4808d4013094be7c3fb50d5089f8e72193967c32",
+      ),
+      files: [],
+      recent_commits: [
+        Commit(
+          id: "4808d4013094be7c3fb50d5089f8e72193967c32",
+          summary: "Base commit",
+        ),
+      ],
+      upstream: None,
+    )
+    "#);
     Ok(())
 }
 
@@ -267,29 +271,30 @@ fn ignored_file_is_not_reported() -> Result<()> {
     git(&repo.worktree, &["commit", "-m", "Add ignore rule"])?;
     write(&repo.worktree.join("ignored.log"), "ignored\n")?;
 
-    insta::assert_ron_snapshot!(collect(&repo.worktree)?, @r###"
-RepositorySnapshot(
-  branch: BranchState(
-    name: Some("main"),
-  ),
-  files: [],
-  recent_commits: [
-    Commit(
-      id: "2f2f621b6b19ec8f7a241b03b37eeb2c1c3cb2bd",
-      summary: "Add ignore rule",
-    ),
-    Commit(
-      id: "4808d4013094be7c3fb50d5089f8e72193967c32",
-      summary: "Base commit",
-    ),
-  ],
-  upstream: Some(UpstreamState(
-    name: "origin/main",
-    ahead: 1,
-    behind: 0,
-  )),
-)
-"###);
+    insta::assert_ron_snapshot!(collect(&repo.worktree)?, @r#"
+    RepositorySnapshot(
+      head: Named(
+        name: "main",
+        commit: "2f2f621b6b19ec8f7a241b03b37eeb2c1c3cb2bd",
+      ),
+      files: [],
+      recent_commits: [
+        Commit(
+          id: "2f2f621b6b19ec8f7a241b03b37eeb2c1c3cb2bd",
+          summary: "Add ignore rule",
+        ),
+        Commit(
+          id: "4808d4013094be7c3fb50d5089f8e72193967c32",
+          summary: "Base commit",
+        ),
+      ],
+      upstream: Some(UpstreamState(
+        name: "origin/main",
+        ahead: 1,
+        behind: 0,
+      )),
+    )
+    "#);
     Ok(())
 }
 

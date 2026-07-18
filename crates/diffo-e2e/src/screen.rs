@@ -184,8 +184,8 @@ impl DiffoScreen {
         if from_percent > 100 || to_percent > 100 {
             bail!("scrollbar percentages must be between 0 and 100");
         }
-        let track_start = 2_u16;
-        let track_length = ROWS.saturating_sub(4);
+        let track_start = 3_u16;
+        let track_length = ROWS.saturating_sub(6);
         let position =
             |percent: u16| track_start.saturating_add(track_length.saturating_mul(percent) / 100);
         let from = position(from_percent);

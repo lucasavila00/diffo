@@ -2,6 +2,9 @@
 
 Status: Accepted
 
+Refined by [ADR 0063](0063-real-loopback-askpass-e2e.md), which verifies this path
+through real Git and OpenSSH processes.
+
 Supersedes [ADR 0060](0060-lazy-askpass-image.md) and refines
 [ADR 0053](0053-broker-git-interactions.md) and
 [ADR 0056](0056-own-deferred-execution-dependencies.md).

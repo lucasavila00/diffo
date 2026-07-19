@@ -20,6 +20,9 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
+      - name: Install OpenSSH server
+        run: sudo apt-get update && sudo apt-get install --yes openssh-server
+
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:

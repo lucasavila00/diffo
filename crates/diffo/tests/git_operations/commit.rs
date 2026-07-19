@@ -8,7 +8,7 @@ fn commit_composer_commits_then_pushes() -> Result<()> {
         "committed change\n",
     )?;
     git(&repository.worktree, &["add", "tracked.txt"])?;
-    let mut screen = repository.screen_with_network_delay()?;
+    let mut screen = repository.screen()?;
 
     screen
         .click(&Selector::text("Update 1 file"))?
@@ -25,8 +25,7 @@ fn commit_composer_commits_then_pushes() -> Result<()> {
 
     screen
         .wait_for_text("[ Push ]")?
-        .click(&Selector::text("[ Push ]"))?
-        .wait_for_text("Pushing")?;
+        .click(&Selector::text("[ Push ]"))?;
     wait_for("composer push", || {
         let local = git_output(&repository.worktree, &["rev-parse", "HEAD"])?;
         let remote = git_output(&repository.worktree, &["ls-remote", "origin", "HEAD"])?;

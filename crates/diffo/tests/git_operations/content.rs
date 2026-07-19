@@ -1,18 +1,28 @@
 use super::support::*;
 
 #[test]
-fn mock_renamed_file_renders_unchanged_content() -> Result<()> {
-    let fixture =
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("../diffo-core/fixtures/repository-state.ron");
-    let mut screen = DiffoScreen::launch_with_env(
-        env!("CARGO_BIN_EXE_diffo"),
-        Path::new(env!("CARGO_MANIFEST_DIR")),
-        &[("DIFFO_MOCK_FILE", fixture.as_os_str())],
+fn real_renamed_file_renders_unchanged_content() -> Result<()> {
+    let repository = TestRepository::new()?;
+    let source = repository.worktree.join("src/content-before-rename.rs");
+    fs::create_dir_all(source.parent().context("source parent")?)?;
+    fs::write(
+        &source,
+        "pub struct RenamedFile {\n    pub path: &'static str,\n}\n// Content is unchanged by the rename.\n",
     )?;
+    git(&repository.worktree, &["add", "."])?;
+    git(&repository.worktree, &["commit", "-m", "Add source file"])?;
+    git(
+        &repository.worktree,
+        &[
+            "mv",
+            "src/content-before-rename.rs",
+            "src/content-and-renamed.rs",
+        ],
+    )?;
+    let mut screen = repository.screen()?;
 
     screen
-        .wait_for_text("src/empty-...")?
-        .click(&Selector::text("src/conten..."))?
+        .wait_for_text("src/content-and-renamed.rs")?
         .wait_for_text("pub struct RenamedFile")?
         .wait_for_text("Content is unchanged by the rename")?;
     Ok(())

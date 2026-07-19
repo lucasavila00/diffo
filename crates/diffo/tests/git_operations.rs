@@ -14,6 +14,8 @@ mod network;
 mod overlays;
 #[path = "git_operations/scrolling.rs"]
 mod scrolling;
+#[path = "git_operations/ssh.rs"]
+mod ssh;
 #[path = "git_operations/staging.rs"]
 mod staging;
 #[path = "git_operations/support.rs"]

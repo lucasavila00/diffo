@@ -149,7 +149,7 @@ impl TestRepository {
         DiffoScreen::launch(env!("CARGO_BIN_EXE_diffo"), &self.worktree)
     }
 
-    pub(super) fn screen_with_network_delay(&self) -> Result<DiffoScreen> {
+    pub(super) fn screen_with_operation_delay(&self) -> Result<DiffoScreen> {
         DiffoScreen::launch_with_env(
             env!("CARGO_BIN_EXE_diffo"),
             &self.worktree,

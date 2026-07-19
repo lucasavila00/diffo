@@ -306,14 +306,9 @@ fn parse_prompt(raw: &str, ssh_prompt: Option<&str>) -> Option<GitPrompt> {
     }
     match ssh_prompt {
         Some("confirm") => {
-            if raw
-                .chars()
-                .any(|character| character.is_control() && character != '\n')
-            {
-                return None;
-            }
-            return parse_host_confirmation(raw);
+            return parse_host_confirmation_prompt(raw);
         }
+        None if raw.contains('\n') => return parse_host_confirmation_prompt(raw),
         Some("none") | None => {}
         Some(_) => return None,
     }
@@ -408,6 +403,16 @@ fn parse_host_confirmation(raw: &str) -> Option<GitPrompt> {
         host: host.to_owned(),
         fingerprint: fingerprint.to_owned(),
     })
+}
+
+fn parse_host_confirmation_prompt(raw: &str) -> Option<GitPrompt> {
+    if raw
+        .chars()
+        .any(|character| character.is_control() && character != '\n')
+    {
+        return None;
+    }
+    parse_host_confirmation(raw)
 }
 
 fn valid_host(host: &str) -> bool {
@@ -507,6 +512,26 @@ mod tests {
             Some(GitPrompt::ConfirmSshHost {
                 host: "git.example.com".to_owned(),
                 fingerprint: "SHA256:Abcdefghijklmnopqrstuvwxyz0123456789+/=".to_owned()
+            })
+        );
+        let loopback_confirmation = concat!(
+            "The authenticity of host 'diffo-e2e ([127.0.0.1]:39397)' can't be established.\n",
+            "ED25519 key fingerprint is SHA256:y4V5owxERf/fLbZfbkglknok7xY1IkZvRs+x9hOGGzE.\n",
+            "This key is not known by any other names.\n",
+            "Are you sure you want to continue connecting (yes/no/[fingerprint])? "
+        );
+        assert_eq!(
+            parse_prompt(loopback_confirmation, Some("confirm")),
+            Some(GitPrompt::ConfirmSshHost {
+                host: "diffo-e2e".to_owned(),
+                fingerprint: "SHA256:y4V5owxERf/fLbZfbkglknok7xY1IkZvRs+x9hOGGzE".to_owned()
+            })
+        );
+        assert_eq!(
+            parse_prompt(loopback_confirmation, None),
+            Some(GitPrompt::ConfirmSshHost {
+                host: "diffo-e2e".to_owned(),
+                fingerprint: "SHA256:y4V5owxERf/fLbZfbkglknok7xY1IkZvRs+x9hOGGzE".to_owned()
             })
         );
     }

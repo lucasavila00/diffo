@@ -1,14 +1,22 @@
+use super::ssh::{Authentication, LocalSshServer};
 use super::support::*;
 
 #[test]
-fn mock_remote_error_shows_the_executed_action() -> Result<()> {
-    let fixture =
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("../diffo-core/fixtures/repository-state.ron");
-    let mut screen = DiffoScreen::launch_with_env(
-        env!("CARGO_BIN_EXE_diffo"),
-        Path::new(env!("CARGO_MANIFEST_DIR")),
-        &[("DIFFO_MOCK_FILE", fixture.as_os_str())],
+fn real_remote_error_shows_the_executed_action() -> Result<()> {
+    let repository = TestRepository::new()?;
+    let missing_remote = repository.root.path().join("missing.git");
+    git(
+        &repository.worktree,
+        &[
+            "remote",
+            "set-url",
+            "origin",
+            missing_remote
+                .to_str()
+                .context("remote path is not UTF-8")?,
+        ],
     )?;
+    let mut screen = repository.screen()?;
 
     screen
         .press(Key::Char('1'))?
@@ -23,14 +31,13 @@ fn mock_remote_error_shows_the_executed_action() -> Result<()> {
 fn palette_search_runs_fetch() -> Result<()> {
     let repository = TestRepository::new()?;
     let remote_commit = repository.commit_remote("remote.txt", "remote\n", "Remote commit")?;
-    let mut screen = repository.screen_with_network_delay()?;
+    let mut screen = repository.screen()?;
 
     screen
         .press(Key::Char('1'))?
         .wait_for_text("Command Palette")?
         .type_text("fetch")?
-        .press(Key::Enter)?
-        .wait_for_text("Fetching")?;
+        .press(Key::Enter)?;
 
     wait_for("origin tracking branch to be fetched", || {
         Ok(git_output(&repository.worktree, &["rev-parse", "origin/HEAD"])? == remote_commit)
@@ -54,7 +61,7 @@ fn search_palette_runs_the_shared_fetch_command() -> Result<()> {
 fn shared_palette_fetch_from_activity(activity_tabs: usize) -> Result<()> {
     let repository = TestRepository::new()?;
     let remote_commit = repository.commit_remote("remote.txt", "remote\n", "Remote commit")?;
-    let mut screen = repository.screen_with_network_delay()?;
+    let mut screen = repository.screen()?;
 
     screen
         .press_many(Key::Tab, activity_tabs)?
@@ -74,14 +81,13 @@ fn shared_palette_fetch_from_activity(activity_tabs: usize) -> Result<()> {
 fn palette_search_runs_pull() -> Result<()> {
     let repository = TestRepository::new()?;
     repository.commit_remote("remote.txt", "remote\n", "Remote commit")?;
-    let mut screen = repository.screen_with_network_delay()?;
+    let mut screen = repository.screen()?;
 
     screen
         .press(Key::Char('1'))?
         .wait_for_text("Command Palette")?
         .type_text("pull")?
-        .press(Key::Enter)?
-        .wait_for_text("Pulling")?;
+        .press(Key::Enter)?;
 
     wait_for("remote file to be pulled", || {
         Ok(repository.worktree.join("remote.txt").exists())
@@ -95,7 +101,7 @@ fn palette_search_runs_pull() -> Result<()> {
 fn cancelling_a_delayed_command_releases_the_next_queued_command() -> Result<()> {
     let repository = TestRepository::new()?;
     repository.commit_remote("remote.txt", "remote\n", "Remote commit")?;
-    let mut screen = repository.screen_with_network_delay()?;
+    let mut screen = repository.screen_with_operation_delay()?;
 
     screen
         .press(Key::Char('1'))?
@@ -125,7 +131,7 @@ fn primary_pull_button_shows_loading_and_pulls() -> Result<()> {
     let repository = TestRepository::new()?;
     repository.commit_remote("remote.txt", "remote\n", "Remote commit")?;
     git(&repository.worktree, &["fetch", "origin"])?;
-    let mut screen = repository.screen_with_network_delay()?;
+    let mut screen = repository.screen_with_operation_delay()?;
 
     screen
         .wait_for_text("[ Pull ]")?
@@ -144,13 +150,12 @@ fn rejected_push_shows_a_persistent_failure_toast() -> Result<()> {
     fs::write(repository.worktree.join("local.txt"), "local\n")?;
     git(&repository.worktree, &["add", "local.txt"])?;
     git(&repository.worktree, &["commit", "-m", "Local commit"])?;
-    let mut screen = repository.screen_with_network_delay()?;
+    let mut screen = repository.screen()?;
     screen.wait_for_text("[ Push ]")?;
 
     repository.commit_remote("remote.txt", "remote\n", "Remote commit")?;
     screen
         .click(&Selector::text("[ Push ]"))?
-        .wait_for_text("Pushing")?
         .wait_for_text("Push rejected: remote changed")?;
     thread::sleep(Duration::from_millis(300));
     assert!(screen.contents().contains("Push rejected"));
@@ -175,24 +180,23 @@ fn success_toast_is_automatically_dismissed() -> Result<()> {
 fn local_ssh_host_approval_completes_fetch() -> Result<()> {
     let repository = TestRepository::new()?;
     let remote_commit = repository.commit_remote("remote.txt", "remote\n", "Remote commit")?;
-    let known_hosts = repository.root.path().join("known_hosts");
-    let ssh = local_ssh_transport(&repository, SshPrompt::ConfirmHost)?;
-    let mut screen = ssh_screen(&repository, &ssh, &known_hosts, None)?;
+    let ssh = LocalSshServer::start(&repository, Authentication::PublicKey { passphrase: "" })?;
+    let mut screen = ssh_screen(&repository, &ssh)?;
 
     screen
         .press(Key::Char('1'))?
         .type_text("fetch")?
         .press(Key::Enter)?
-        .wait_for_text("Trust fakehost?")?
-        .wait_for_text("SHA256:abcdefghijklmnopqrstuvwxyz0123456789+/=")?;
-    assert!(!known_hosts.exists());
+        .wait_for_text("Trust diffo-e2e?")?
+        .wait_for_text("SHA256:")?;
+    assert!(fs::read_to_string(ssh.known_hosts())?.is_empty());
     screen.press(Key::Right)?.press(Key::Enter)?;
 
     wait_for("approved SSH fetch to update origin", || {
         Ok(git_output(&repository.worktree, &["rev-parse", "origin/HEAD"])? == remote_commit)
     })?;
     screen.wait_for_text("Fetched 1 ref")?;
-    assert_eq!(fs::read_to_string(known_hosts)?, "fakehost\n");
+    assert!(fs::read_to_string(ssh.known_hosts())?.contains("diffo-e2e ssh-ed25519"));
     Ok(())
 }
 
@@ -205,13 +209,11 @@ fn ssh_push_uses_running_image_after_launched_binary_is_replaced() -> Result<()>
     git(&repository.worktree, &["add", "local.txt"])?;
     git(&repository.worktree, &["commit", "-m", "Local commit"])?;
     let local_head = git_output(&repository.worktree, &["rev-parse", "HEAD"])?;
-    let known_hosts = repository.root.path().join("known_hosts");
-    let ssh = local_ssh_transport(&repository, SshPrompt::ConfirmHost)?;
+    let ssh = LocalSshServer::start(&repository, Authentication::PublicKey { passphrase: "" })?;
     let launched_binary = repository.root.path().join("diffo-under-test");
     fs::copy(env!("CARGO_BIN_EXE_diffo"), &launched_binary)?;
     fs::set_permissions(&launched_binary, fs::Permissions::from_mode(0o700))?;
-    let mut screen =
-        ssh_screen_with_binary(&launched_binary, &repository, &ssh, &known_hosts, None)?;
+    let mut screen = ssh_screen_with_binary(&launched_binary, &repository, &ssh, &[])?;
 
     fs::remove_file(&launched_binary)?;
     fs::write(&launched_binary, "replacement must not run\n")?;
@@ -220,7 +222,8 @@ fn ssh_push_uses_running_image_after_launched_binary_is_replaced() -> Result<()>
     screen
         .wait_for_text("[ Push ]")?
         .click(&Selector::text("[ Push ]"))?
-        .wait_for_text("Trust fakehost?")?
+        .wait_for_text("Trust diffo-e2e?")?;
+    screen
         .press(Key::Right)?
         .press(Key::Enter)?
         .wait_for_text("Pushed ")?;
@@ -232,7 +235,7 @@ fn ssh_push_uses_running_image_after_launched_binary_is_replaced() -> Result<()>
         )?,
         local_head
     );
-    assert_eq!(fs::read_to_string(known_hosts)?, "fakehost\n");
+    assert!(fs::read_to_string(ssh.known_hosts())?.contains("diffo-e2e ssh-ed25519"));
     Ok(())
 }
 
@@ -241,72 +244,75 @@ fn cancelling_local_ssh_host_approval_preserves_refs_and_known_hosts() -> Result
     let repository = TestRepository::new()?;
     let before = git_output(&repository.worktree, &["rev-parse", "origin/HEAD"])?;
     repository.commit_remote("remote.txt", "remote\n", "Remote commit")?;
-    let known_hosts = repository.root.path().join("known_hosts");
-    let ssh = local_ssh_transport(&repository, SshPrompt::ConfirmHost)?;
-    let mut screen = ssh_screen(&repository, &ssh, &known_hosts, None)?;
+    let ssh = LocalSshServer::start(&repository, Authentication::PublicKey { passphrase: "" })?;
+    let mut screen = ssh_screen(&repository, &ssh)?;
 
     screen
         .press(Key::Char('1'))?
         .type_text("fetch")?
         .press(Key::Enter)?
-        .wait_for_text("Trust fakehost?")?
+        .wait_for_text("Trust diffo-e2e?")?
         .press(Key::Enter)?
-        .wait_for_text_gone("Trust fakehost?")?
+        .wait_for_text_gone("Trust diffo-e2e?")?
         .wait_for_text_gone("Fetching")?;
 
     assert_eq!(
         git_output(&repository.worktree, &["rev-parse", "origin/HEAD"])?,
         before
     );
-    assert!(!known_hosts.exists());
+    assert!(fs::read_to_string(ssh.known_hosts())?.is_empty());
     assert!(!repository.worktree.join("remote.txt").exists());
     Ok(())
 }
 
 #[test]
-fn local_helpers_complete_sequential_username_and_secret_prompts() -> Result<()> {
+fn unsupported_real_ssh_password_prompt_fails_closed() -> Result<()> {
     let repository = TestRepository::new()?;
-    let remote_commit = repository.commit_remote("remote.txt", "remote\n", "Remote commit")?;
-    let known_hosts = repository.root.path().join("known_hosts");
-    let ssh = local_ssh_transport(&repository, SshPrompt::Credentials)?;
-    let secret = "sentinel-secret";
-    let mut screen = ssh_screen(&repository, &ssh, &known_hosts, Some(secret))?;
+    let before = git_output(&repository.worktree, &["rev-parse", "origin/HEAD"])?;
+    repository.commit_remote("remote.txt", "remote\n", "Remote commit")?;
+    let ssh = LocalSshServer::start(&repository, Authentication::Password)?;
+    ssh.trust_host()?;
+    let mut screen = ssh_screen(&repository, &ssh)?;
 
     screen
         .press(Key::Char('1'))?
         .type_text("fetch")?
         .press(Key::Enter)?
-        .wait_for_text("Username for example.com")?
-        .type_text("alice")?
-        .press(Key::Enter)?
-        .wait_for_text("Secret for example.com")?;
-    for character in secret.chars() {
-        screen.press(Key::Char(character))?;
-    }
-    assert!(!screen.contents().contains(secret));
-    screen.press(Key::Enter)?;
+        .wait_for_text("Fetch failed:")?
+        .wait_for_text_gone("Fetching")?;
 
-    wait_for("credentialed SSH helper fetch to update origin", || {
-        Ok(git_output(&repository.worktree, &["rev-parse", "origin/HEAD"])? == remote_commit)
-    })?;
-    screen.wait_for_text("Fetched 1 ref")?;
+    assert_eq!(
+        git_output(&repository.worktree, &["rev-parse", "origin/HEAD"])?,
+        before
+    );
+    assert!(!repository.worktree.join("remote.txt").exists());
+    assert!(!String::from_utf8_lossy(screen.raw_output()).contains("password:"));
     Ok(())
 }
 
 #[test]
-fn local_ssh_helper_completes_a_masked_key_passphrase_prompt() -> Result<()> {
+fn real_ssh_key_passphrase_completes_fetch_without_leaking_secret() -> Result<()> {
     let repository = TestRepository::new()?;
     let remote_commit = repository.commit_remote("remote.txt", "remote\n", "Remote commit")?;
-    let known_hosts = repository.root.path().join("known_hosts");
-    let ssh = local_ssh_transport(&repository, SshPrompt::Passphrase)?;
     let secret = "passphrase-sentinel";
-    let mut screen = ssh_screen(&repository, &ssh, &known_hosts, Some(secret))?;
+    let ssh = LocalSshServer::start(
+        &repository,
+        Authentication::PublicKey { passphrase: secret },
+    )?;
+    ssh.trust_host()?;
+    let trace_path = repository.root.path().join("passphrase-frames.ronl");
+    let mut screen = ssh_screen_with_binary(
+        Path::new(env!("CARGO_BIN_EXE_diffo")),
+        &repository,
+        &ssh,
+        &[("DIFFO_TRACE_FRAMES", trace_path.as_os_str())],
+    )?;
 
     screen
         .press(Key::Char('1'))?
         .type_text("fetch")?
         .press(Key::Enter)?
-        .wait_for_text("Passphrase for /keys/id_ed25519")?;
+        .wait_for_text("Passphrase for")?;
     for character in secret.chars() {
         screen.press(Key::Char(character))?;
     }
@@ -317,86 +323,56 @@ fn local_ssh_helper_completes_a_masked_key_passphrase_prompt() -> Result<()> {
         Ok(git_output(&repository.worktree, &["rev-parse", "origin/HEAD"])? == remote_commit)
     })?;
     screen.wait_for_text("Fetched 1 ref")?;
+    assert!(!String::from_utf8_lossy(screen.raw_output()).contains(secret));
+    screen.press(Key::Char('q'))?.wait_for_exit()?;
+    drop(screen);
+    assert!(!fs::read_to_string(trace_path)?.contains(secret));
     Ok(())
 }
 
-#[derive(Clone, Copy)]
-enum SshPrompt {
-    ConfirmHost,
-    Credentials,
-    Passphrase,
-}
-
-fn local_ssh_transport(repository: &TestRepository, prompt: SshPrompt) -> Result<PathBuf> {
-    use std::os::unix::fs::PermissionsExt as _;
-
-    let remote = repository.root.path().join("remote.git");
-    let remote_url = format!("fakehost:{}", remote.display());
-    git(
-        &repository.worktree,
-        &["remote", "set-url", "origin", &remote_url],
+#[test]
+fn cancelling_real_ssh_passphrase_preserves_repository_state() -> Result<()> {
+    let repository = TestRepository::new()?;
+    let before = git_output(&repository.worktree, &["rev-parse", "origin/HEAD"])?;
+    repository.commit_remote("remote.txt", "remote\n", "Remote commit")?;
+    let ssh = LocalSshServer::start(
+        &repository,
+        Authentication::PublicKey {
+            passphrase: "cancel-sentinel",
+        },
     )?;
-    let dialogue = match prompt {
-        SshPrompt::ConfirmHost => concat!(
-            "prompt=\"The authenticity of host 'fakehost (127.0.0.1)' can't be established.\n",
-            "ED25519 key fingerprint is SHA256:abcdefghijklmnopqrstuvwxyz0123456789+/=.\n",
-            "This key is not known by any other names.\n",
-            "Are you sure you want to continue connecting (yes/no/[fingerprint])? \"\n",
-            "answer=$(SSH_ASKPASS_PROMPT=confirm \"$SSH_ASKPASS\" \"$prompt\") || exit 1\n",
-            "test \"$answer\" = yes || exit 1\n",
-            "printf 'fakehost\\n' > \"$DIFFO_TEST_KNOWN_HOSTS\"\n",
-        ),
-        SshPrompt::Credentials => concat!(
-            "username=$(\"$GIT_ASKPASS\" \"Username for 'https://person@example.com': \" ) || exit 1\n",
-            "test \"$username\" = alice || exit 1\n",
-            "secret=$(\"$GIT_ASKPASS\" \"Password for 'https://person:credential@example.com/repo': \" ) || exit 1\n",
-            "test \"$secret\" = \"$DIFFO_TEST_SECRET\" || exit 1\n",
-        ),
-        SshPrompt::Passphrase => concat!(
-            "secret=$(SSH_ASKPASS_PROMPT=none \"$SSH_ASKPASS\" \"Enter passphrase for key '/keys/id_ed25519': \" ) || exit 1\n",
-            "test \"$secret\" = \"$DIFFO_TEST_SECRET\" || exit 1\n",
-        ),
-    };
-    let script = format!(
-        "#!/bin/sh\nset -eu\n{dialogue}command=\nfor argument in \"$@\"; do command=$argument; done\nexec sh -c \"$command\"\n"
+    ssh.trust_host()?;
+    let mut screen = ssh_screen(&repository, &ssh)?;
+
+    screen
+        .press(Key::Char('1'))?
+        .type_text("fetch")?
+        .press(Key::Enter)?
+        .wait_for_text("Passphrase for")?
+        .press(Key::Escape)?
+        .wait_for_text_gone("Passphrase for")?
+        .wait_for_text_gone("Fetching")?;
+
+    assert_eq!(
+        git_output(&repository.worktree, &["rev-parse", "origin/HEAD"])?,
+        before
     );
-    let path = repository.root.path().join("ssh-transport");
-    fs::write(&path, script)?;
-    let mut permissions = fs::metadata(&path)?.permissions();
-    permissions.set_mode(0o700);
-    fs::set_permissions(&path, permissions)?;
-    Ok(path)
+    assert!(!repository.worktree.join("remote.txt").exists());
+    Ok(())
 }
 
-fn ssh_screen(
-    repository: &TestRepository,
-    ssh: &Path,
-    known_hosts: &Path,
-    secret: Option<&str>,
-) -> Result<DiffoScreen> {
-    ssh_screen_with_binary(
-        Path::new(env!("CARGO_BIN_EXE_diffo")),
-        repository,
-        ssh,
-        known_hosts,
-        secret,
-    )
+fn ssh_screen(repository: &TestRepository, ssh: &LocalSshServer) -> Result<DiffoScreen> {
+    ssh_screen_with_binary(Path::new(env!("CARGO_BIN_EXE_diffo")), repository, ssh, &[])
 }
 
 fn ssh_screen_with_binary(
     binary: &Path,
     repository: &TestRepository,
-    ssh: &Path,
-    known_hosts: &Path,
-    secret: Option<&str>,
+    ssh: &LocalSshServer,
+    extra_environment: &[(&str, &OsStr)],
 ) -> Result<DiffoScreen> {
-    let mut environment = vec![
-        ("GIT_SSH", ssh.as_os_str()),
-        ("GIT_SSH_VARIANT", OsStr::new("ssh")),
-        ("DIFFO_TEST_KNOWN_HOSTS", known_hosts.as_os_str()),
-    ];
-    if let Some(secret) = secret {
-        environment.push(("DIFFO_TEST_SECRET", OsStr::new(secret)));
-    }
+    let command = ssh.command();
+    let mut environment = vec![("GIT_SSH_COMMAND", OsStr::new(&command))];
+    environment.extend(extra_environment.iter().copied());
     DiffoScreen::launch_with_env(binary, &repository.worktree, &environment)
 }

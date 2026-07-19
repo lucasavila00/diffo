@@ -1,9 +1,12 @@
 .PHONY: all check-file-lines diffo install diffo-mock e2e e2e-review measure-cpu measure-text-readiness
 
+# Run every automated repository check once. Workspace tests include the black-box
+# diffo-e2e package and the diffo integration tests.
 all:
 	cargo fmt --all --check
 	cargo test --workspace
 	cargo clippy --workspace --all-targets --all-features -- -D warnings
+	cargo doc --workspace --no-deps
 	$(MAKE) check-file-lines
 
 check-file-lines:
@@ -28,8 +31,10 @@ install:
 diffo-mock:
 	DIFFO_MOCK_FILE=crates/diffo-core/fixtures/repository-state.ron cargo run --package diffo
 
+# Run only the compiled-binary black-box suites during focused E2E development.
 e2e:
 	cargo test --package diffo-e2e
+	cargo test --package diffo --test git_operations
 
 e2e-review:
 	cargo insta test --package diffo-e2e

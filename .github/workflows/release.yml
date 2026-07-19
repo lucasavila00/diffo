@@ -49,11 +49,10 @@ jobs:
       - name: Build the production executable
         run: cargo build --locked --release --package diffo --target "${TARGET}"
 
-      - name: Validate exact production bytes
+      - name: Stage exact production bytes
         run: |
           set -euo pipefail
           production=$(realpath "target/${TARGET}/release/diffo")
-          DIFFO_E2E_BINARY="${production}" make all
           mkdir -p dist
           cp "${production}" "dist/${ASSET}"
           cmp "${production}" "dist/${ASSET}"

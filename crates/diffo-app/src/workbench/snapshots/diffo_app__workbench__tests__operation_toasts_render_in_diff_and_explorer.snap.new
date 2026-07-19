@@ -7,12 +7,11 @@ expression: rendered
     (
         Diff,
         Buffer {
-            area: Rect { x: 0, y: 0, width: 44, height: 4 },
+            area: Rect { x: 0, y: 0, width: 44, height: 3 },
             content: [
                 "┌─────────────────────────────────────────×┐",
                 "│Pulled 1 commit                           │",
                 "└──────────────────────────────────────────┘",
-                "────────────────────────────────────────────",
             ],
             styles: [
                 x: 0, y: 0, fg: DarkGray, bg: Reset, underline: Reset, modifier: NONE,
@@ -26,12 +25,11 @@ expression: rendered
     (
         Explorer,
         Buffer {
-            area: Rect { x: 0, y: 0, width: 44, height: 4 },
+            area: Rect { x: 0, y: 0, width: 44, height: 3 },
             content: [
                 "┌─────────────────────────────────────────×┐",
                 "│Pulled 1 commit                           │",
                 "└──────────────────────────────────────────┘",
-                "────────────────────────────────────────────",
             ],
             styles: [
                 x: 0, y: 0, fg: DarkGray, bg: Reset, underline: Reset, modifier: NONE,

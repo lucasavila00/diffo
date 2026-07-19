@@ -1,0 +1,18 @@
+---
+source: crates/diffo-git/src/git_tests.rs
+assertion_line: 43
+expression: "(&file.state, file.index_status, file.worktree_status)"
+---
+(
+    FileState {
+        path: "new.txt",
+        old_path: Some(
+            "old.txt",
+        ),
+        kind: Renamed,
+        staged: None,
+        unstaged: None,
+    },
+    'R',
+    '.',
+)

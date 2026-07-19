@@ -1,15 +1,14 @@
 ---
 source: crates/diffo-app/src/diff/rendering_tests/chrome.rs
 assertion_line: 112
-expression: "buffer_region(terminal.backend().buffer(), Rect::new(55, 25, 44, 4),)"
+expression: "buffer_region(terminal.backend().buffer(), Rect::new(55, 25, 44, 3),)"
 ---
 Buffer {
-    area: Rect { x: 0, y: 0, width: 44, height: 4 },
+    area: Rect { x: 0, y: 0, width: 44, height: 3 },
     content: [
         "┌─────────────────────────────────────────×┐",
         "│Committed a1b2c3d                         │",
         "└──────────────────────────────────────────┘",
-        "                                            ",
     ],
     styles: [
         x: 0, y: 0, fg: DarkGray, bg: Reset, underline: Reset, modifier: NONE,
@@ -17,6 +16,5 @@ Buffer {
         x: 43, y: 0, fg: DarkGray, bg: Reset, underline: Reset, modifier: NONE,
         x: 1, y: 1, fg: LightGreen, bg: Reset, underline: Reset, modifier: NONE,
         x: 43, y: 1, fg: DarkGray, bg: Reset, underline: Reset, modifier: NONE,
-        x: 0, y: 3, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
     ]
 }

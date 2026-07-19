@@ -7,8 +7,8 @@ use std::{
 
 use super::{operation::classify_failure, status::parse_status};
 use diffo_core::{
-    ChangeKind, ExplorerFileContent, FailureKind, HeadState, OperationResult, Repository,
-    RepositoryAction, RepositorySource,
+    ChangeKind, ExplorerFileContent, FailureKind, OperationResult, Repository, RepositoryAction,
+    RepositorySource,
 };
 
 #[test]
@@ -25,17 +25,12 @@ fn parses_branch_files_and_upstream() {
 
     let parsed = parse_status(status).expect("status should parse");
 
-    assert_eq!(
-        parsed.head,
-        HeadState::Named {
-            name: "feature".to_owned(),
-            commit: "abcdef0123456789".to_owned(),
-        }
-    );
-    assert_eq!(parsed.upstream.expect("upstream should exist").ahead, 2);
-    assert_eq!(parsed.files.len(), 2);
-    assert_eq!(parsed.files[0].state.path, PathBuf::from("file.txt"));
-    assert_eq!(parsed.files[1].state.kind, ChangeKind::Untracked);
+    let files = parsed
+        .files
+        .iter()
+        .map(|file| (&file.state, file.index_status, file.worktree_status))
+        .collect::<Vec<_>>();
+    insta::assert_debug_snapshot!((&parsed.head, &parsed.upstream, files));
 }
 
 #[test]
@@ -44,32 +39,17 @@ fn parses_rename_with_old_path() {
 
     let parsed = parse_status(status).expect("status should parse");
 
-    assert_eq!(parsed.files[0].state.kind, ChangeKind::Renamed);
-    assert_eq!(
-        parsed.files[0].state.old_path,
-        Some(PathBuf::from("old.txt"))
-    );
+    let file = &parsed.files[0];
+    insta::assert_debug_snapshot!((&file.state, file.index_status, file.worktree_status));
 }
 
 #[test]
 fn distinguishes_unborn_and_detached_head() {
     let unborn = parse_status(b"# branch.oid (initial)\0# branch.head main\0")
         .expect("unborn status should parse");
-    assert_eq!(
-        unborn.head,
-        HeadState::Unborn {
-            name: "main".to_owned(),
-        }
-    );
-
     let detached = parse_status(b"# branch.oid 123456789abcdef\0# branch.head (detached)\0")
         .expect("detached status should parse");
-    assert_eq!(
-        detached.head,
-        HeadState::Detached {
-            commit: "123456789abcdef".to_owned(),
-        }
-    );
+    insta::assert_debug_snapshot!([unborn.head, detached.head]);
 }
 
 #[test]

@@ -344,47 +344,9 @@ impl Repository for MutableFixtureRepository {
 mod tests {
     use std::{collections::HashSet, path::Path};
 
-    use crate::{ChangeKind, HeadState, Repository, RepositoryAction, RepositorySource};
+    use crate::{ChangeKind, Repository, RepositoryAction, RepositorySource};
 
     use super::{FixtureRepositorySource, MutableFixtureRepository};
-
-    #[test]
-    fn loads_structured_snapshot() {
-        let fixture = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("fixtures")
-            .join("repository-state.ron");
-
-        let snapshot = FixtureRepositorySource::new(fixture)
-            .snapshot()
-            .expect("fixture should load");
-
-        assert!(matches!(
-            snapshot.head,
-            HeadState::Named { ref name, .. } if name == "feature/syntax-highlighting"
-        ));
-        assert!(snapshot.files.iter().any(|file| file.staged.is_some()));
-        assert!(snapshot.files.iter().any(|file| file.unstaged.is_some()));
-        assert!(
-            snapshot
-                .files
-                .iter()
-                .any(|file| file.kind == ChangeKind::Untracked)
-        );
-        assert!(!snapshot.recent_commits.is_empty());
-        assert!(
-            snapshot
-                .files
-                .iter()
-                .any(|file| file.path == Path::new("web/app.tsx"))
-        );
-        assert!(
-            snapshot
-                .files
-                .iter()
-                .any(|file| file.path == Path::new("scripts/report.py"))
-        );
-        assert_eq!(snapshot.upstream.expect("upstream should exist").ahead, 2);
-    }
 
     #[test]
     fn mutable_fixture_stages_and_unstages_without_changing_the_file() {

@@ -98,23 +98,20 @@ mod tests {
     use ratatui::text::Line;
 
     #[test]
-    fn matches_file_name_before_extension() {
-        assert_eq!(file_icon(Path::new("package.json")), "");
-        assert_eq!(file_icon(Path::new("other.json")), "");
-    }
+    fn maps_names_extensions_and_fallbacks() {
+        let mappings = [
+            "package.json",
+            "other.json",
+            "view.blade.php",
+            "view.php",
+            "types.d.ts",
+            "main.rs",
+            "unknown.custom",
+            "no-extension",
+        ]
+        .map(|path| format!("{path}: {}", file_icon(Path::new(path))));
 
-    #[test]
-    fn matches_compound_then_final_extension() {
-        assert_eq!(file_icon(Path::new("view.blade.php")), "");
-        assert_eq!(file_icon(Path::new("view.php")), "");
-        assert_eq!(file_icon(Path::new("types.d.ts")), "");
-        assert_eq!(file_icon(Path::new("main.rs")), "");
-    }
-
-    #[test]
-    fn unknown_files_use_the_generic_icon() {
-        assert_eq!(file_icon(Path::new("unknown.custom")), GENERIC_FILE);
-        assert_eq!(file_icon(Path::new("no-extension")), GENERIC_FILE);
+        insta::assert_debug_snapshot!(mappings);
     }
 
     #[test]

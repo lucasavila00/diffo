@@ -1,0 +1,15 @@
+---
+source: crates/diffo-ui/src/file_icons.rs
+assertion_line: 114
+expression: mappings
+---
+[
+    "package.json: \u{e718}",
+    "other.json: \u{e60b}",
+    "view.blade.php: \u{f2f7}",
+    "view.php: \u{e608}",
+    "types.d.ts: \u{e628}",
+    "main.rs: \u{e7a8}",
+    "unknown.custom: \u{f15b}",
+    "no-extension: \u{f15b}",
+]

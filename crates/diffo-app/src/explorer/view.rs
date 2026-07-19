@@ -322,7 +322,7 @@ mod tests {
     use std::collections::HashMap;
 
     #[test]
-    fn tree_picker_shows_git_colors_without_status_letters() {
+    fn tree_picker_shows_non_deleted_git_colors_without_status_letters() {
         let mut model = ExplorerModel::new(RepositorySnapshot {
             files: vec![
                 FileState {
@@ -335,18 +335,18 @@ mod tests {
                     }),
                 },
                 FileState {
-                    path: "deleted.rs".into(),
+                    path: "modified.rs".into(),
                     old_path: None,
-                    kind: ChangeKind::Deleted,
+                    kind: ChangeKind::Modified,
                     staged: None,
                     unstaged: Some(FileDiff {
                         text: String::new(),
                     }),
                 },
                 FileState {
-                    path: "src/deleted.rs".into(),
+                    path: "src/added.rs".into(),
                     old_path: None,
-                    kind: ChangeKind::Deleted,
+                    kind: ChangeKind::Added,
                     staged: None,
                     unstaged: Some(FileDiff {
                         text: String::new(),
@@ -355,7 +355,11 @@ mod tests {
             ],
             ..RepositorySnapshot::default()
         });
-        model.install_paths(Vec::new());
+        model.install_paths(vec![
+            "conflicted.rs".into(),
+            "modified.rs".into(),
+            "src/added.rs".into(),
+        ]);
         let mut picker = FilePicker::default();
         picker.prepare(
             Rect::new(0, 0, 30, 5),
@@ -373,7 +377,7 @@ mod tests {
             content: [
                 "┌ Explorer ───────────[-] [+]┐",
                 "│  conflicted.rs            │",
-                "│  deleted.rs               │",
+                "│  modified.rs              │",
                 "│▸ src                      │",
                 "└────────────────────────────┘",
             ],
@@ -386,11 +390,11 @@ mod tests {
                 x: 1, y: 1, fg: White, bg: Reset, underline: Reset, modifier: BOLD,
                 x: 3, y: 1, fg: LightRed, bg: Reset, underline: Reset, modifier: BOLD,
                 x: 29, y: 1, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
-                x: 1, y: 2, fg: White, bg: Reset, underline: Reset, modifier: BOLD | CROSSED_OUT,
-                x: 3, y: 2, fg: LightRed, bg: Reset, underline: Reset, modifier: CROSSED_OUT,
+                x: 1, y: 2, fg: White, bg: Reset, underline: Reset, modifier: BOLD,
+                x: 3, y: 2, fg: Yellow, bg: Reset, underline: Reset, modifier: NONE,
                 x: 29, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
                 x: 1, y: 3, fg: White, bg: Reset, underline: Reset, modifier: BOLD,
-                x: 3, y: 3, fg: LightRed, bg: Reset, underline: Reset, modifier: NONE,
+                x: 3, y: 3, fg: LightGreen, bg: Reset, underline: Reset, modifier: NONE,
                 x: 29, y: 3, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
             ]
         }

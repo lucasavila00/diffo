@@ -118,8 +118,10 @@ fn explorer_removes_a_deleted_file_without_showing_head_content() -> Result<()> 
     screen
         .press(Key::Tab)?
         .wait_for_text("Explorer")?
+        .wait_for_text("keep.txt")?
+        .click(&Selector::text("keep.txt"))?
         .wait_for_text("KEEP_CONTENT")?
-        .press(Key::Char('k'))?
+        .click(&Selector::text("removed.txt"))?
         .wait_for_text("REMOVED_CONTENT")?;
 
     fs::remove_file(repository.worktree.join("removed.txt"))?;

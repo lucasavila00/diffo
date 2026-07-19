@@ -19,7 +19,7 @@ vt100.workspace = true
 
 [dev-dependencies]
 diffo-core.workspace = true
-insta = { version = "1.48", features = ["ron"] }
+insta = { workspace = true, features = ["ron"] }
 ron.workspace = true
 tempfile.workspace = true
 

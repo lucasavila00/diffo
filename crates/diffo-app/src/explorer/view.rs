@@ -2,7 +2,8 @@ use diffo_ui::file_picker::{Document as PickerDocument, FilePicker, TreeNode as 
 use diffo_ui::text_view::render_lines;
 use diffo_ui::text_view::{Viewport, ViewportMetrics, render_scrollbars, viewport_metrics};
 use diffo_ui::{
-    PaneSplit, design, file_icons, plain_syntax_spans, terminal_safe_text, theme, tool_areas,
+    PaneSplit, change_kind_style, design, file_icons, plain_syntax_spans, terminal_safe_text,
+    theme, tool_areas,
 };
 use ratatui::{
     Frame,
@@ -69,7 +70,10 @@ pub(crate) fn tree_document(
 }
 
 fn picker_tree_node(entry: &TreeEntry) -> PickerTreeNode<EntryId> {
-    let label = entry_label(entry);
+    let label = Line::styled(
+        terminal_safe_text(&entry_name(entry)),
+        picker_entry_style(entry),
+    );
     if entry.directory() {
         PickerTreeNode::branch(
             entry.id.clone(),
@@ -78,6 +82,18 @@ fn picker_tree_node(entry: &TreeEntry) -> PickerTreeNode<EntryId> {
         )
     } else {
         PickerTreeNode::leaf(entry.id.clone(), label)
+    }
+}
+
+fn picker_entry_style(entry: &TreeEntry) -> Style {
+    let Some(status) = entry.status else {
+        return Style::default().fg(theme::TEXT);
+    };
+    let status_style = change_kind_style(status, false);
+    if entry.directory() {
+        Style::default().fg(status_style.fg.unwrap_or(theme::TEXT))
+    } else {
+        status_style
     }
 }
 
@@ -249,41 +265,79 @@ mod tests {
     use std::collections::HashMap;
 
     #[test]
-    fn tree_picker_omits_the_file_status_letter_and_color() {
+    fn tree_picker_shows_git_colors_without_status_letters() {
         let mut model = ExplorerModel::new(RepositorySnapshot {
-            files: vec![FileState {
-                path: "changed.rs".into(),
-                old_path: None,
-                kind: ChangeKind::Modified,
-                staged: None,
-                unstaged: Some(FileDiff {
-                    text: String::new(),
-                }),
-            }],
+            files: vec![
+                FileState {
+                    path: "conflicted.rs".into(),
+                    old_path: None,
+                    kind: ChangeKind::Conflicted,
+                    staged: None,
+                    unstaged: Some(FileDiff {
+                        text: String::new(),
+                    }),
+                },
+                FileState {
+                    path: "deleted.rs".into(),
+                    old_path: None,
+                    kind: ChangeKind::Deleted,
+                    staged: None,
+                    unstaged: Some(FileDiff {
+                        text: String::new(),
+                    }),
+                },
+                FileState {
+                    path: "src/deleted.rs".into(),
+                    old_path: None,
+                    kind: ChangeKind::Deleted,
+                    staged: None,
+                    unstaged: Some(FileDiff {
+                        text: String::new(),
+                    }),
+                },
+            ],
             ..RepositorySnapshot::default()
         });
         model.install_paths(Vec::new());
         let mut picker = FilePicker::default();
         picker.prepare(
-            Rect::new(0, 0, 30, 4),
+            Rect::new(0, 0, 30, 5),
             tree_document(&model, Style::default(), false),
             None,
         );
-        let backend = TestBackend::new(30, 4);
+        let backend = TestBackend::new(30, 5);
         let mut terminal = Terminal::new(backend).unwrap();
 
         terminal.draw(|frame| picker.render(frame, false)).unwrap();
 
-        let buffer = terminal.backend().buffer();
-        assert_eq!(buffer[(1, 1)].symbol(), " ");
-        assert_eq!(buffer[(2, 1)].symbol(), " ");
-        let icon = &buffer[(3, 1)];
-        assert_eq!(
-            icon.symbol(),
-            file_icons::file_icon(std::path::Path::new("changed.rs"))
-        );
-        assert_eq!(icon.fg, theme::TEXT);
-        assert_eq!(buffer[(4, 1)].symbol(), "c");
+        insta::assert_debug_snapshot!(terminal.backend().buffer(), @r#"
+        Buffer {
+            area: Rect { x: 0, y: 0, width: 30, height: 5 },
+            content: [
+                "┌ Explorer ───────────[-] [+]┐",
+                "│  conflicted.rs            │",
+                "│  deleted.rs               │",
+                "│▸ src                      │",
+                "└────────────────────────────┘",
+            ],
+            styles: [
+                x: 0, y: 0, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+                x: 1, y: 0, fg: White, bg: Reset, underline: Reset, modifier: NONE,
+                x: 11, y: 0, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+                x: 22, y: 0, fg: White, bg: Reset, underline: Reset, modifier: BOLD,
+                x: 29, y: 0, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+                x: 1, y: 1, fg: White, bg: Reset, underline: Reset, modifier: BOLD,
+                x: 3, y: 1, fg: LightRed, bg: Reset, underline: Reset, modifier: BOLD,
+                x: 29, y: 1, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+                x: 1, y: 2, fg: White, bg: Reset, underline: Reset, modifier: BOLD | CROSSED_OUT,
+                x: 3, y: 2, fg: LightRed, bg: Reset, underline: Reset, modifier: CROSSED_OUT,
+                x: 29, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+                x: 1, y: 3, fg: White, bg: Reset, underline: Reset, modifier: BOLD,
+                x: 3, y: 3, fg: LightRed, bg: Reset, underline: Reset, modifier: NONE,
+                x: 29, y: 3, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+            ]
+        }
+        "#);
     }
 
     #[test]

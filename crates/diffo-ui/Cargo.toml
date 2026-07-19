@@ -13,5 +13,8 @@ diffo-core.workspace = true
 diffo-highlight.workspace = true
 ratatui.workspace = true
 
+[dev-dependencies]
+insta.workspace = true
+
 [lints]
 workspace = true

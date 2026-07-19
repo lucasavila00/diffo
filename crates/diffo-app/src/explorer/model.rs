@@ -140,10 +140,14 @@ impl TreeBuilder {
             .into_iter()
             .map(|(name, directory)| {
                 let path = parent.join(name);
+                let children = directory.finish(&path);
                 TreeEntry {
-                    id: EntryId::Directory(path.clone()),
-                    status: None,
-                    children: directory.finish(&path),
+                    id: EntryId::Directory(path),
+                    status: children
+                        .iter()
+                        .filter_map(|entry| entry.status)
+                        .max_by_key(|status| status_priority(*status)),
+                    children,
                 }
             })
             .chain(self.files.into_iter().map(|(name, status)| TreeEntry {
@@ -159,6 +163,16 @@ impl TreeBuilder {
                 .then_with(|| right.directory().cmp(&left.directory()))
         });
         entries
+    }
+}
+
+const fn status_priority(status: ChangeKind) -> u8 {
+    match status {
+        ChangeKind::Conflicted => 5,
+        ChangeKind::Deleted => 4,
+        ChangeKind::Modified => 3,
+        ChangeKind::Renamed | ChangeKind::Copied => 2,
+        ChangeKind::Added | ChangeKind::Untracked => 1,
     }
 }
 
@@ -178,7 +192,7 @@ mod tests {
     use diffo_core::{FileDiff, FileState};
 
     #[test]
-    fn builds_hierarchy_with_merged_status() {
+    fn builds_hierarchy_bubbles_status_and_clears_on_refresh() {
         let snapshot = RepositorySnapshot {
             files: vec![FileState {
                 path: PathBuf::from("src/changed.rs"),
@@ -214,6 +228,55 @@ mod tests {
             None
         );
         assert!(matches!(model.entries[1].id, EntryId::Directory(_)));
+        assert_eq!(model.entries[1].status, Some(ChangeKind::Modified));
+
+        assert!(model.repository_changed(RepositorySnapshot::default()));
+        assert_eq!(model.entries[1].status, None);
+        assert_eq!(
+            model
+                .file_entry(Path::new("src/changed.rs"))
+                .unwrap()
+                .status,
+            None
+        );
+    }
+
+    #[test]
+    fn nested_directories_bubble_the_strongest_descendant_status() {
+        let mut tree = TreeBuilder::default();
+        for (path, status) in [
+            ("src/conflicted.rs", ChangeKind::Conflicted),
+            ("src/deleted.rs", ChangeKind::Deleted),
+            ("src/nested/deleted.rs", ChangeKind::Deleted),
+            ("src/nested/modified.rs", ChangeKind::Modified),
+            ("src/low/modified.rs", ChangeKind::Modified),
+            ("src/low/renamed.rs", ChangeKind::Renamed),
+            ("src/low/info/copied.rs", ChangeKind::Copied),
+            ("src/low/info/added.rs", ChangeKind::Added),
+        ] {
+            tree.insert(Path::new(path), Some(status));
+        }
+        let entries = tree.finish(Path::new(""));
+
+        assert_eq!(entries[0].status, Some(ChangeKind::Conflicted));
+        assert_eq!(
+            find_entry(&entries, &EntryId::Directory("src/nested".into()))
+                .unwrap()
+                .status,
+            Some(ChangeKind::Deleted)
+        );
+        assert_eq!(
+            find_entry(&entries, &EntryId::Directory("src/low".into()))
+                .unwrap()
+                .status,
+            Some(ChangeKind::Modified)
+        );
+        assert!(matches!(
+            find_entry(&entries, &EntryId::Directory("src/low/info".into()))
+                .unwrap()
+                .status,
+            Some(ChangeKind::Renamed | ChangeKind::Copied)
+        ));
     }
 
     #[test]

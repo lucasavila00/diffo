@@ -264,6 +264,7 @@ dependencies = [
  "diffo-diff",
  "diffo-highlight",
  "diffo-ui",
+ "insta",
  "ratatui",
 ]
 

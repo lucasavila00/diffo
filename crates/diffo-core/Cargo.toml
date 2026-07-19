@@ -13,7 +13,7 @@ ron.workspace = true
 serde.workspace = true
 
 [dev-dependencies]
-insta = { version = "1.48", features = ["ron"] }
+insta = { workspace = true, features = ["ron"] }
 
 [lints]
 workspace = true

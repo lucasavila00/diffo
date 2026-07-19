@@ -30,6 +30,7 @@ diffo-git = { path = "crates/diffo-git" }
 diffo-highlight = { path = "crates/diffo-highlight" }
 diffo-ui = { path = "crates/diffo-ui" }
 diffo-repository-service = { path = "crates/diffo-repository-service" }
+insta = "1.48"
 notify = "8.2"
 nix = { version = "0.28", features = ["process", "signal"] }
 portable-pty = "0.9"

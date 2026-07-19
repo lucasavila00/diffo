@@ -19,7 +19,7 @@ fn command_progress_animates_and_exposes_only_the_cancel_marker() {
         .unwrap();
     insta::assert_debug_snapshot!(buffer_region(
         terminal.backend().buffer(),
-        Rect::new(39, 1, 40, 3),
+        Rect::new(35, 1, 44, 3),
     ));
     assert!(crate::diff::command_cancel_at_position(
         Rect::new(0, 0, 80, 24),
@@ -111,7 +111,7 @@ fn renders_and_hit_tests_a_bottom_right_toast() {
         .unwrap();
     insta::assert_debug_snapshot!(buffer_region(
         terminal.backend().buffer(),
-        Rect::new(59, 25, 40, 4),
+        Rect::new(55, 25, 44, 4),
     ));
 
     assert_eq!(
@@ -140,7 +140,7 @@ fn error_toasts_render_embedded_newlines_as_inert_text() {
     assert!(!screen.chars().any(char::is_control));
     insta::assert_debug_snapshot!(buffer_region(
         terminal.backend().buffer(),
-        Rect::new(59, 24, 40, 5),
+        Rect::new(55, 24, 44, 5),
     ));
     assert_eq!(
         crate::diff::toast_at_position(&toasts, area, 70, 26),

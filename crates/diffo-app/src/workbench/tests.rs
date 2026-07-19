@@ -241,7 +241,7 @@ fn command_progress_survives_activity_switching_and_animates_the_app_border() {
     assert_eq!(workbench.active, Activity::Explorer);
     insta::assert_debug_snapshot!(buffer_region(
         terminal.backend().buffer(),
-        Rect::new(59, 1, 40, 3),
+        Rect::new(55, 1, 44, 3),
     ));
     assert_ne!(terminal.backend().buffer()[(0, 0)].fg, first_border);
 }
@@ -303,7 +303,7 @@ fn operation_toasts_render_in_diff_and_explorer() {
         terminal.draw(|frame| workbench.render(frame)).unwrap();
         rendered.push((
             activity,
-            buffer_region(terminal.backend().buffer(), Rect::new(59, 25, 40, 4)),
+            buffer_region(terminal.backend().buffer(), Rect::new(55, 25, 44, 4)),
         ));
     }
     insta::assert_debug_snapshot!(rendered);
@@ -391,7 +391,7 @@ fn explorer_palette_combines_shared_and_explorer_commands() {
         .active_palette()
         .matches()
         .into_iter()
-        .map(|command| (command.id, command.label))
+        .map(|command| format!("{}: {}", command.id.as_str(), command.label))
         .collect::<Vec<_>>();
 
     insta::assert_debug_snapshot!(commands);

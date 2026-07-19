@@ -352,6 +352,8 @@ mod tests {
         let patch = "@@ -1,4 +1,4 @@\n same\n-old\n+new\n-gone\n tail\n+added\n";
         let lines = ["same", "new", "tail", "added"].map(str::to_owned);
         let markers = change_markers(patch, false, Some(ChangeKind::Modified), &lines);
+        let mut markers = markers.into_iter().collect::<Vec<_>>();
+        markers.sort_by_key(|(line, _)| *line);
         insta::assert_debug_snapshot!(markers);
     }
 
@@ -363,6 +365,8 @@ mod tests {
             Some(ChangeKind::Deleted),
             &["one".to_owned(), "two".to_owned()],
         );
+        let mut markers = markers.into_iter().collect::<Vec<_>>();
+        markers.sort_by_key(|(line, _)| *line);
         insta::assert_debug_snapshot!(markers);
     }
 
@@ -377,6 +381,8 @@ mod tests {
         ]
         .map(str::to_owned);
         let markers = change_markers("", false, Some(ChangeKind::Conflicted), &lines);
+        let mut markers = markers.into_iter().collect::<Vec<_>>();
+        markers.sort_by_key(|(line, _)| *line);
         insta::assert_debug_snapshot!(markers);
     }
 

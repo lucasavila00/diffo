@@ -29,16 +29,26 @@ fn enabled_controls_are_distinct_from_chrome() {
 
 #[test]
 fn structural_geometry_is_fixed() {
-    insta::assert_debug_snapshot!((
-        design::BORDER_WIDTH,
-        design::PANEL_INSET,
-        design::DIALOG_INSET,
-        design::ACTIVITY_RAIL_WIDTH,
-        design::COMMAND_PALETTE_WIDTH.resolve(100),
-        design::COMMAND_PALETTE_WIDTH.resolve(20),
-        design::HELP_WIDTH.resolve(200),
-        design::COMMIT_EDITOR_WIDTH.resolve(100),
-    ));
+    let geometry = [
+        format!("border width: {}", design::BORDER_WIDTH),
+        format!("panel inset: {:?}", design::PANEL_INSET),
+        format!("dialog inset: {:?}", design::DIALOG_INSET),
+        format!("activity rail width: {}", design::ACTIVITY_RAIL_WIDTH),
+        format!(
+            "command palette width at 100: {}",
+            design::COMMAND_PALETTE_WIDTH.resolve(100)
+        ),
+        format!(
+            "command palette width at 20: {}",
+            design::COMMAND_PALETTE_WIDTH.resolve(20)
+        ),
+        format!("help width at 200: {}", design::HELP_WIDTH.resolve(200)),
+        format!(
+            "commit editor width at 100: {}",
+            design::COMMIT_EDITOR_WIDTH.resolve(100)
+        ),
+    ];
+    insta::assert_debug_snapshot!(geometry);
 }
 
 #[test]

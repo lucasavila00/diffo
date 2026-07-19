@@ -44,24 +44,23 @@ The full-screen buffer has no workbench decoration:
 
 Keep syntax highlighting. Styling does not add copied characters.
 
-Explorer shows the committed file lines. Keep the same syntax highlighting. Keep
-the normal vertical and horizontal scroll controls. Do not show Explorer line
-numbers, change gutters, tree state, or file actions.
+Explorer shows the committed file lines. Keep the same syntax highlighting. Do not
+show scrollbars, line numbers, change gutters, tree state, or file actions.
 
 Diff shows raw unified hunks. Show hunk headers, context lines, removed lines, added
 lines, and hunk metadata. Keep the current diff backgrounds and syntax highlighting.
 Do not show the inline line-number projection or the side-by-side projection. Keep
-the normal vertical and horizontal scroll controls. Do not show change buttons or
-the hunk-marker rail.
+keyboard, page, wheel, and horizontal-pan scrolling. Do not show scrollbars, change
+buttons, or the hunk-marker rail.
 
-Keep buffer characters. Do not add characters for layout or state. Scroll controls
-use their own edge cells and are not part of buffer lines.
+Keep buffer characters. Do not add characters for layout or state. Leave cells
+after each line blank. Do not draw scrollbar characters in the copy surface.
 
 Dragging buffer cells does not change application state. Mouse capture remains on
-for `X`, wheel, and scrollbar input. Use the terminal's selection modifier when the
-terminal requires one for copy.
+for `X` and wheel input. Use the terminal's selection modifier when the terminal
+requires one for copy.
 
-Arrow, page, wheel, and scrollbar scrolling still work. Entering and leaving
+Arrow, page, wheel, and horizontal-pan scrolling still work. Entering and leaving
 full-screen mode keeps the same open buffer and scroll position. The change happens
 in one frame.
 
@@ -73,17 +72,17 @@ palette, menu, or text input keeps input priority. In text input, `f` remains te
 
 ## Verification
 
-- Press `f` in Explorer. The header, syntax-highlighted file text, and scroll
-  controls remain. Workbench chrome, line numbers, and gutters disappear.
+- Press `f` in Explorer. The header and syntax-highlighted file text remain.
+  Workbench chrome, scrollbars, line numbers, and gutters disappear.
 - Click `` on the normal Explorer or Diff buffer. Full-screen mode opens.
-- Press `f` in Diff. The header, styled raw hunks, and scroll controls remain.
-  Inline and side-by-side layout marks disappear.
+- Press `f` in Diff. The header and styled raw hunks remain. Scrollbars, inline
+  layout marks, and side-by-side layout marks disappear.
 - Press `f` again. The normal page returns with the same buffer and scroll position.
 - Click `X`. The normal page returns.
 - Compare the normal and full-screen titles. Text and style are identical.
 - Copy several buffer lines. The copy contains only buffer characters.
 - Test syntax and diff styles in both modes.
-- Test arrow, page, wheel, and scrollbar scrolling.
+- Test arrow, page, wheel, and horizontal-pan scrolling.
 - Test that borders, gutters, marker rails, change buttons, and status text are
   absent.
 - Test atomic entry with delayed syntax coverage.

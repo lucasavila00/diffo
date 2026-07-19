@@ -201,6 +201,7 @@ impl ExplorerActivity {
     }
 
     pub fn prepare_full_screen(&mut self, area: Rect) -> TextSurfacePreparation {
+        self.scrollbar_drag = None;
         let metrics = self
             .model
             .viewer
@@ -359,34 +360,6 @@ impl ExplorerActivity {
     }
 
     pub fn handle_full_screen_event(&mut self, event: &Event, area: Rect) -> Option<ExplorerEvent> {
-        if let Event::Mouse(mouse) = event {
-            if mouse.kind == MouseEventKind::Up(MouseButton::Left) && self.scrollbar_drag.is_some()
-            {
-                self.scrollbar_drag = None;
-                return Some(ExplorerEvent::Consumed);
-            }
-            if let Some(metrics) = self
-                .model
-                .viewer
-                .as_ref()
-                .map(|viewer| full_screen_viewer_metrics(area, &self.model, viewer))
-            {
-                let areas = scrollbar_areas(area, metrics);
-                let axis = if mouse.kind == MouseEventKind::Down(MouseButton::Left) {
-                    scrollbar_axis_at(areas, metrics, mouse.column, mouse.row)
-                } else if mouse.kind == MouseEventKind::Drag(MouseButton::Left) {
-                    self.scrollbar_drag
-                } else {
-                    None
-                };
-                if let Some(axis) = axis {
-                    self.scrollbar_drag = Some(axis);
-                    let command = scrollbar_command(axis, areas, metrics, mouse.column, mouse.row);
-                    self.apply_viewer_command(command, metrics);
-                    return Some(ExplorerEvent::Consumed);
-                }
-            }
-        }
         let amount = match event {
             Event::Key(key)
                 if key.kind == KeyEventKind::Press && key.modifiers == KeyModifiers::NONE =>

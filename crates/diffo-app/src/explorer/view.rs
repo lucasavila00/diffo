@@ -82,15 +82,6 @@ pub(crate) fn render_full_screen(
             .collect()
     };
     render_lines(frame, metrics.area, lines, model.viewer_horizontal_scroll);
-    render_scrollbars(
-        frame,
-        area,
-        metrics,
-        Viewport {
-            vertical: model.viewer_scroll,
-            horizontal: model.viewer_horizontal_scroll,
-        },
-    );
 }
 
 pub(crate) fn full_screen_viewer_metrics(
@@ -98,18 +89,12 @@ pub(crate) fn full_screen_viewer_metrics(
     model: &ExplorerModel,
     viewer: &super::model::Viewer,
 ) -> ViewportMetrics {
-    let text_area = Rect::new(
-        area.x,
-        area.y,
-        area.width.saturating_sub(design::BORDER_WIDTH),
-        area.height,
-    );
     let widths = viewer
         .lines
         .iter()
         .map(|line| Span::raw(terminal_safe_text(line)).width())
         .collect::<Vec<_>>();
-    viewport_metrics(text_area, &widths, model.viewer_scroll, true)
+    viewport_metrics(area, &widths, model.viewer_scroll, false)
 }
 
 pub(crate) fn tree_document(
@@ -563,7 +548,7 @@ mod tests {
     }
 
     #[test]
-    fn full_screen_file_text_keeps_the_vertical_scroll_control() {
+    fn full_screen_file_text_has_no_scroll_controls() {
         let mut model = ExplorerModel::new(diffo_core::RepositorySnapshot::default());
         model.viewer = Some(super::super::model::Viewer {
             path: "many.txt".into(),
@@ -583,10 +568,16 @@ mod tests {
             .unwrap();
 
         assert_eq!(terminal.backend().buffer()[(0, 0)].symbol(), "l");
-        assert!(matches!(
-            terminal.backend().buffer()[(19, 0)].symbol(),
-            "█" | "║"
-        ));
+        let screen = terminal
+            .backend()
+            .buffer()
+            .content
+            .iter()
+            .map(ratatui::buffer::Cell::symbol)
+            .collect::<String>();
+        assert!(!screen.contains('█'));
+        assert!(!screen.contains('║'));
+        assert!(!screen.contains('═'));
     }
 
     #[test]

@@ -39,7 +39,8 @@ fn full_screen_diff_shows_raw_hunks_and_exits_by_key_or_x() -> Result<()> {
     screen
         .press(Key::Char('f'))?
         .wait_for_text_gone("Changes")?
-        .wait_for_text("@@ -1 +1 @@")?;
+        .wait_for_text("@@ -1 +1 @@")?
+        .wait_for_text_gone("branch master")?;
     let contents = screen.contents();
     assert!(contents.contains("-base"));
     assert!(contents.contains("+changed"));
@@ -59,23 +60,38 @@ fn full_screen_diff_shows_raw_hunks_and_exits_by_key_or_x() -> Result<()> {
 }
 
 #[test]
-fn full_screen_explorer_shows_only_the_open_file_and_scroll_controls() -> Result<()> {
+fn full_screen_explorer_shows_only_scrollable_file_text() -> Result<()> {
     let repository = TestRepository::new()?;
+    fs::write(
+        repository.worktree.join("tracked.txt"),
+        (0..40)
+            .map(|line| format!("line {line}"))
+            .collect::<Vec<_>>()
+            .join("\n"),
+    )?;
     let mut screen = repository.screen()?;
 
     screen
         .press(Key::Tab)?
         .wait_for_text("Explorer")?
-        .wait_for_text("base")?
+        .wait_for_text("line 0")?
         .click(&Selector::text(""))?
         .wait_for_text_gone("Explorer")?
-        .wait_for_text("base")?;
+        .wait_for_text_gone("previous")?
+        .wait_for_text("line 0")?;
     let contents = screen.contents();
     assert!(contents.contains("tracked.txt"));
     assert!(!contents.contains("previous"));
     assert!(!contents.contains("branch master"));
+    assert!(!contents.contains('█'));
+    assert!(!contents.contains('║'));
+    assert!(!contents.contains('═'));
 
-    screen.press(Key::Char('f'))?.wait_for_text("Explorer")?;
+    screen
+        .press(Key::Down)?
+        .wait_for_text("line 4")?
+        .press(Key::Char('f'))?
+        .wait_for_text("Explorer")?;
     Ok(())
 }
 

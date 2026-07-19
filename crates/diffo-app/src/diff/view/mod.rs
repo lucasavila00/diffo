@@ -64,22 +64,13 @@ impl Renderer {
             Vec::new()
         };
         render_lines(frame, metrics.area, lines, model.diff_horizontal_scroll);
-        let areas = render_scrollbars(
-            frame,
-            area,
-            metrics,
-            Viewport {
-                vertical: model.diff_scroll,
-                horizontal: model.diff_horizontal_scroll,
-            },
-        );
+        self.scrollbar_drag = None;
         self.scrollbars = ScrollbarMetrics {
-            vertical_area: areas.vertical,
-            horizontal_area: areas.horizontal,
             rows: metrics.rows,
             columns: metrics.columns,
             viewport_columns: metrics.viewport_columns,
             maximum_vertical_scroll: metrics.maximum_vertical,
+            ..ScrollbarMetrics::default()
         };
     }
 
@@ -89,53 +80,24 @@ impl Renderer {
         requested_scroll: usize,
     ) -> ViewportMetrics {
         let rows = self.full_screen_rows();
-        let text_area = Rect::new(
-            area.x,
-            area.y,
-            area.width.saturating_sub(design::BORDER_WIDTH),
-            area.height,
-        );
-        let viewport_columns = usize::from(text_area.width);
-        let mut horizontal = false;
-        let mut columns = 0;
-        for _ in 0..2 {
-            let viewport_rows =
-                usize::from(text_area.height).saturating_sub(usize::from(horizontal));
-            let maximum_vertical = diffo_ui::maximum_scroll(rows, viewport_rows);
-            let first = requested_scroll.min(maximum_vertical);
-            columns = self
-                .full_screen_lines(first, viewport_rows)
-                .iter()
-                .map(Line::width)
-                .max()
-                .unwrap_or(0);
-            horizontal = columns > viewport_columns;
-        }
-        let horizontal_rows = u16::from(horizontal);
-        let content = Rect::new(
-            text_area.x,
-            text_area.y,
-            text_area.width,
-            text_area.height.saturating_sub(horizontal_rows),
-        );
-        let viewport_rows = usize::from(content.height);
+        let viewport_rows = usize::from(area.height);
+        let viewport_columns = usize::from(area.width);
+        let maximum_vertical = diffo_ui::maximum_scroll(rows, viewport_rows);
+        let first = requested_scroll.min(maximum_vertical);
+        let columns = self
+            .full_screen_lines(first, viewport_rows)
+            .iter()
+            .map(Line::width)
+            .max()
+            .unwrap_or(0);
         ViewportMetrics {
-            area: content,
-            horizontal_scrollbar: if horizontal {
-                Rect::new(
-                    text_area.x,
-                    text_area.bottom().saturating_sub(design::BORDER_WIDTH),
-                    text_area.width,
-                    design::BORDER_WIDTH,
-                )
-            } else {
-                Rect::default()
-            },
+            area,
+            horizontal_scrollbar: Rect::default(),
             rows,
             columns,
             viewport_rows,
             viewport_columns,
-            maximum_vertical: diffo_ui::maximum_scroll(rows, viewport_rows),
+            maximum_vertical,
             maximum_horizontal: diffo_ui::maximum_scroll(columns, viewport_columns),
         }
     }

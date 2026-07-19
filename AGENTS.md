@@ -131,7 +131,7 @@ This repository is a Rust workspace containing small command-line utilities. Eac
 - Preserve the strict 10,000-line syntax eligibility boundary and the sub-100 ms 9,999-line reference benchmark unless a newer ADR replaces that contract.
 - Drain and install background diff results only during frame preparation. Rendering must consume committed state only, and stale results must never supply content, navigation targets, or scroll metrics.
 - Keep the vertical scrollbar and hunk-marker rail visually and interactively separate; neither control may overwrite or capture the other control's cells.
-- Add deterministic state-transition tests and a delayed PTY regression whenever changing asynchronous diff preparation, buffer opening, first-hunk navigation, or scrollbar markers.
+- Add deterministic state-transition tests and a frame-traced PTY regression whenever changing asynchronous diff preparation, buffer opening, first-hunk navigation, or scrollbar markers. Never use sleeps or delay environment hooks to create the asynchronous boundary.
 - Keep mock repository states in `crates/diffo-core/fixtures/`; do not add mock-only behavior to the real Git data path.
 
 ## Development workflows

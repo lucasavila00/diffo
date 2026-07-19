@@ -28,5 +28,5 @@ Use indexed colors so the animation works through SSH and `xterm-256color`.
   Pulling, and Pushing before success.
 - Compiled PTY tests verify disabled Commit and Push + Pull buttons cannot mutate Git.
 
-`DIFFO_E2E_NETWORK_DELAY_MS` is a bounded test hook. It makes real local Git network
-operations observable. It is not user configuration.
+End-to-end tests coordinate real Git processes with test-owned gates. Production code
+does not delay Git to make operations observable.

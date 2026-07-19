@@ -15,13 +15,13 @@ path = "tests/real_git_state.rs"
 [dependencies]
 anyhow.workspace = true
 portable-pty.workspace = true
+tempfile.workspace = true
 vt100.workspace = true
 
 [dev-dependencies]
 diffo-core.workspace = true
 insta = { workspace = true, features = ["ron"] }
 ron.workspace = true
-tempfile.workspace = true
 
 [lints]
 workspace = true

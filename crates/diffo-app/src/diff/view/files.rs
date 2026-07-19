@@ -316,6 +316,13 @@ fn head_label(head: &HeadState) -> String {
     }
 }
 
+pub(crate) fn head_control_at_position(model: &Model, area: Rect, column: u16, row: u16) -> bool {
+    row == area.y
+        && column >= area.x
+        && usize::from(column.saturating_sub(area.x))
+            < Line::raw(head_label(&model.snapshot.head)).width()
+}
+
 fn short_commit(commit: &str) -> String {
     commit.chars().take(7).collect()
 }

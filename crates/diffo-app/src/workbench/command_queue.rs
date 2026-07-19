@@ -21,7 +21,7 @@ pub enum CommandResult {
 pub struct ApplicationCommand {
     pub id: ApplicationCommandId,
     pub action: RepositoryAction,
-    pub label: &'static str,
+    pub label: String,
     pub cancellation: CancellationHandle,
     pub state: CommandState,
 }
@@ -100,14 +100,22 @@ impl CommandQueue {
     }
 }
 
-fn command_label(action: &RepositoryAction) -> &'static str {
+fn command_label(action: &RepositoryAction) -> String {
     match action {
-        RepositoryAction::Stage(_) | RepositoryAction::StageAll => "Staging",
-        RepositoryAction::Unstage(_) | RepositoryAction::UnstageAll => "Unstaging",
-        RepositoryAction::Fetch => "Fetching",
-        RepositoryAction::Pull => "Pulling",
-        RepositoryAction::Push => "Pushing",
-        RepositoryAction::Commit(_) => "Committing",
+        RepositoryAction::Stage(_) | RepositoryAction::StageAll => "Staging".to_owned(),
+        RepositoryAction::Unstage(_) | RepositoryAction::UnstageAll => "Unstaging".to_owned(),
+        RepositoryAction::Fetch => "Fetching".to_owned(),
+        RepositoryAction::Pull => "Pulling".to_owned(),
+        RepositoryAction::Push => "Pushing".to_owned(),
+        RepositoryAction::Commit(_) => "Committing".to_owned(),
+        RepositoryAction::Checkout(target) => format!(
+            "Checking out {}",
+            target
+                .full_ref
+                .strip_prefix("refs/heads/")
+                .or_else(|| target.full_ref.strip_prefix("refs/remotes/"))
+                .unwrap_or(&target.full_ref)
+        ),
     }
 }
 

@@ -7,13 +7,11 @@ pub use model::{
     Toast, ToastKind, ToastQueue, update,
 };
 use std::{
-    env,
     sync::{
         Arc,
         mpsc::{channel, sync_channel},
     },
     thread,
-    time::Duration,
 };
 
 use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind};
@@ -45,6 +43,7 @@ pub(crate) use view::overlays::render_commit_editor;
 #[cfg(test)]
 #[cfg(test)]
 use prepare::{diff_file_lines, should_syntax_highlight};
+pub(crate) use view::files::head_control_at_position;
 #[cfg(test)]
 use view::files::status_line;
 use view::files::{

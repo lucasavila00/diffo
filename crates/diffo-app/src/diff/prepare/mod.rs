@@ -1,10 +1,10 @@
 use super::{
-    Arc, DiffBlock, DiffDocument, DiffKey, DiffViewMode, Duration, HIGHLIGHT_LOOKBEHIND_LINES,
+    Arc, DiffBlock, DiffDocument, DiffKey, DiffViewMode, HIGHLIGHT_LOOKBEHIND_LINES,
     HighlightCache, HighlightedDiff, HunkButtonMetrics, MAX_HIGHLIGHT_BYTES_PER_SIDE,
     MAX_HIGHLIGHT_FILE_LINES, MAX_SYNC_BYTES, MAX_SYNC_LINES, Model, PREPARED_BUFFER_CACHE_SIZE,
     PrepareCommit, PrepareOutcome, PrepareRequest, ProjectionOptions, RenderLine, Renderer,
     RowKind, ScrollAnchor, ScrollbarMetrics, Span, SyntaxHighlighter, ViewportTransition, channel,
-    env, inline_change_starts, inline_rows_with_options, parse_unified_patch,
+    inline_change_starts, inline_rows_with_options, parse_unified_patch,
     side_by_side_change_starts, side_by_side_rows_with_options, sync_channel, terminal_safe_text,
     thread,
 };
@@ -218,15 +218,6 @@ pub(in crate::diff) fn diff_file_lines(document: &DiffDocument) -> usize {
         }
     }
     maximum
-}
-
-pub(in crate::diff) fn preparation_delay_from_environment() -> Duration {
-    // Developer/test hook for exercising atomic background transitions in a PTY.
-    env::var("DIFFO_E2E_DIFF_PREP_DELAY_MS")
-        .ok()
-        .and_then(|value| value.parse::<u64>().ok())
-        .map(|milliseconds| Duration::from_millis(milliseconds.min(5_000)))
-        .unwrap_or_default()
 }
 
 impl Renderer {
@@ -587,16 +578,12 @@ impl Renderer {
         let worker_highlighter = Arc::clone(&highlighter);
         let (prepare_tx, requests) = channel::<PrepareRequest>();
         let (results, prepare_rx) = sync_channel(1);
-        let prepare_delay = preparation_delay_from_environment();
         thread::Builder::new()
             .name("diffo-diff-prepare".to_owned())
             .spawn(move || {
                 while let Ok(mut request) = requests.recv() {
                     while let Ok(newer) = requests.try_recv() {
                         request = newer;
-                    }
-                    if !prepare_delay.is_zero() {
-                        thread::sleep(prepare_delay);
                     }
                     let key = request.key.clone();
                     let target_scroll = request.target_scroll;

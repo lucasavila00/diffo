@@ -136,7 +136,9 @@ fn wait_for_snapshot(
                 return Ok(snapshot);
             }
             Ok(Some(
-                RepositoryEvent::Prompt { .. }
+                RepositoryEvent::BranchesLoaded { .. }
+                | RepositoryEvent::BranchesLoadFailed { .. }
+                | RepositoryEvent::Prompt { .. }
                 | RepositoryEvent::SnapshotRefreshed { .. }
                 | RepositoryEvent::CommandCompleted { .. }
                 | RepositoryEvent::CommandFailed { .. }

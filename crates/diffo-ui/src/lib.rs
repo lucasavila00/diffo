@@ -4,6 +4,7 @@ pub mod command_palette;
 pub mod file_icons;
 pub mod file_picker;
 mod scrollbar;
+pub mod search_picker;
 pub mod text_view;
 
 pub use scrollbar::render_scrollbar;
@@ -15,6 +16,7 @@ use ratatui::{
     layout::{Constraint, Layout, Rect},
     style::{Color, Modifier, Style},
     text::Span,
+    widgets::{Block, Borders},
 };
 
 /// Fixed semantic colors for Diffo's application chrome.
@@ -122,6 +124,9 @@ pub mod design {
     pub const COMMIT_EDITOR_WIDTH: ResponsiveWidth = ResponsiveWidth::new(70, 34, 84);
     pub const COMMIT_EDITOR_MAX_HEIGHT: u16 = 11;
     pub const PROMPT_MESSAGE_HEIGHT: u16 = 2;
+    pub const SEARCH_PICKER_WIDTH: ResponsiveWidth = ResponsiveWidth::new(70, 30, 80);
+    pub const SEARCH_PICKER_TOP_PERCENT: u16 = 20;
+    pub const SEARCH_PICKER_MAX_HEIGHT: u16 = 18;
 
     pub const TOAST_MAX_WIDTH: u16 = 44;
     pub const TOAST_MIN_WIDTH: u16 = 4;
@@ -145,6 +150,43 @@ pub mod design {
     pub const fn panel_content_extent(outer: u16) -> u16 {
         outer.saturating_sub(PANEL_BORDER_OVERHEAD)
     }
+}
+
+#[must_use]
+pub fn modal_block(title: impl Into<String>) -> Block<'static> {
+    let title = terminal_safe_text(&title.into());
+    Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(theme::CHROME))
+        .title(format!(" {title} "))
+}
+
+pub(crate) fn fuzzy_score(candidate: &str, query: &str) -> Option<i64> {
+    if query.is_empty() {
+        return Some(0);
+    }
+    let candidate = candidate.as_bytes();
+    let mut cursor = 0;
+    let mut previous_match = None;
+    let mut score = 0_i64;
+    for needle in query.bytes().map(|byte| byte.to_ascii_lowercase()) {
+        let offset = candidate[cursor..]
+            .iter()
+            .position(|byte| byte.to_ascii_lowercase() == needle)?;
+        let index = cursor + offset;
+        let boundary = index == 0 || !candidate[index - 1].is_ascii_alphanumeric();
+        score += if previous_match == Some(index.saturating_sub(1)) {
+            100
+        } else if boundary {
+            40
+        } else {
+            10
+        };
+        score -= i64::try_from(offset).unwrap_or(i64::MAX);
+        previous_match = Some(index);
+        cursor = index + 1;
+    }
+    Some(score - i64::try_from(candidate.len()).unwrap_or(i64::MAX) / 10)
 }
 
 const WHEEL_SCROLL_ROWS: i64 = 1;

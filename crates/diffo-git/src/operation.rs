@@ -1,5 +1,5 @@
 use std::{
-    env, io,
+    io,
     os::unix::process::CommandExt as _,
     process::{Command, Output, Stdio},
     thread,
@@ -7,8 +7,9 @@ use std::{
 };
 
 use diffo_core::{
-    CancellationHandle, FailureKind, OperationFailure, OperationOutcome, OperationResult,
-    RepositoryAction, RepositoryOperationContext, RepositorySource, UpstreamState,
+    BranchKind, CancellationHandle, CheckoutTarget, FailureKind, OperationFailure,
+    OperationOutcome, OperationResult, RepositoryAction, RepositoryOperationContext,
+    RepositorySource, UpstreamState,
 };
 use nix::{
     sys::signal::{Signal, killpg},
@@ -28,15 +29,6 @@ impl GitRepositorySource {
     ) -> std::result::Result<OperationOutcome, OperationFailure> {
         let default_cancellation = CancellationHandle::default();
         let cancellation = context.map_or(&default_cancellation, |context| &context.cancellation);
-        if matches!(
-            action,
-            RepositoryAction::Fetch | RepositoryAction::Pull | RepositoryAction::Push
-        ) && let Some(delay) = e2e_network_delay()
-            && !cancellable_delay(delay, cancellation)
-        {
-            return Ok(OperationOutcome::Cancelled);
-        }
-
         if cancellation.is_cancelled() {
             return Ok(OperationOutcome::Cancelled);
         }
@@ -94,6 +86,9 @@ impl GitRepositorySource {
             RepositoryAction::Commit(message) => {
                 command.args(["commit", "-m", message]);
             }
+            RepositoryAction::Checkout(target) => {
+                configure_checkout(self, &mut command, action, target)?;
+            }
         }
 
         let _bridge = configure_askpass(&mut command, action, context, self)?;
@@ -111,21 +106,6 @@ impl GitRepositorySource {
         collect_operation_result(self, action, before_head, before_fetch.as_ref())
             .map(OperationOutcome::Completed)
     }
-}
-
-fn cancellable_delay(duration: Duration, cancellation: &CancellationHandle) -> bool {
-    let deadline = std::time::Instant::now() + duration;
-    while std::time::Instant::now() < deadline {
-        if cancellation.is_cancelled() {
-            return false;
-        }
-        thread::sleep(
-            deadline
-                .saturating_duration_since(std::time::Instant::now())
-                .min(Duration::from_millis(10)),
-        );
-    }
-    !cancellation.is_cancelled()
 }
 
 fn configure_askpass(
@@ -302,7 +282,131 @@ fn collect_operation_result(
                 .map(|head| String::from_utf8_lossy(&head).trim().to_owned())?;
             Ok(OperationResult::Commit { hash })
         }
+        RepositoryAction::Checkout(target) => Ok(OperationResult::Checkout {
+            branch: checkout_local_name(action, target)?,
+        }),
     }
+}
+
+fn configure_checkout(
+    source: &GitRepositorySource,
+    command: &mut Command,
+    action: &RepositoryAction,
+    target: &CheckoutTarget,
+) -> std::result::Result<(), OperationFailure> {
+    verify_checkout_target(source, action, target)?;
+    let local_name = checkout_local_name(action, target)?;
+    match target.kind {
+        BranchKind::Local => {
+            command.args(["checkout", "--no-guess", &local_name]);
+        }
+        BranchKind::Remote => {
+            let local_ref = format!("refs/heads/{local_name}");
+            if ref_exists(source, &local_ref).map_err(|error| {
+                operation_failure(action, FailureKind::Unknown, &error.to_string())
+            })? {
+                let upstream = source
+                    .git(&[
+                        "for-each-ref",
+                        "--format=%(upstream)",
+                        "--count=1",
+                        &local_ref,
+                    ])
+                    .map_err(|error| {
+                        operation_failure(action, FailureKind::Unknown, &error.to_string())
+                    })?;
+                let upstream = String::from_utf8(upstream)
+                    .map_err(|_| {
+                        operation_failure(
+                            action,
+                            FailureKind::Unknown,
+                            "git returned a non-UTF-8 upstream",
+                        )
+                    })?
+                    .trim()
+                    .to_owned();
+                if upstream != target.full_ref {
+                    return Err(operation_failure(
+                        action,
+                        FailureKind::BranchConflict,
+                        "a local branch with that name tracks a different upstream",
+                    ));
+                }
+                command.args(["checkout", "--no-guess", &local_name]);
+            } else {
+                command.args([
+                    "checkout",
+                    "--no-guess",
+                    "--track",
+                    "-b",
+                    &local_name,
+                    &target.full_ref,
+                ]);
+            }
+        }
+    }
+    Ok(())
+}
+
+fn verify_checkout_target(
+    source: &GitRepositorySource,
+    action: &RepositoryAction,
+    target: &CheckoutTarget,
+) -> std::result::Result<(), OperationFailure> {
+    let expected_prefix = match target.kind {
+        BranchKind::Local => "refs/heads/",
+        BranchKind::Remote => "refs/remotes/",
+    };
+    if !target.full_ref.starts_with(expected_prefix) {
+        return Err(operation_failure(
+            action,
+            FailureKind::RefChanged,
+            "selected branch is no longer available; reopen the checkout picker",
+        ));
+    }
+    let object_id = source
+        .git(&["show-ref", "--verify", "--hash", &target.full_ref])
+        .ok()
+        .and_then(|output| String::from_utf8(output).ok())
+        .map(|output| output.trim().to_owned());
+    if object_id.as_deref() != Some(target.object_id.as_str()) {
+        return Err(operation_failure(
+            action,
+            FailureKind::RefChanged,
+            "selected branch changed; reopen the checkout picker",
+        ));
+    }
+    Ok(())
+}
+
+fn checkout_local_name(
+    action: &RepositoryAction,
+    target: &CheckoutTarget,
+) -> std::result::Result<String, OperationFailure> {
+    let name = match target.kind {
+        BranchKind::Local => target.full_ref.strip_prefix("refs/heads/"),
+        BranchKind::Remote => target
+            .full_ref
+            .strip_prefix("refs/remotes/")
+            .and_then(|name| name.split_once('/').map(|(_, branch)| branch)),
+    };
+    name.filter(|name| !name.is_empty())
+        .map(str::to_owned)
+        .ok_or_else(|| {
+            operation_failure(
+                action,
+                FailureKind::RefChanged,
+                "selected branch ref is invalid",
+            )
+        })
+}
+
+fn ref_exists(source: &GitRepositorySource, full_ref: &str) -> io::Result<bool> {
+    Command::new("git")
+        .args(["show-ref", "--verify", "--quiet", full_ref])
+        .current_dir(&source.root)
+        .status()
+        .map(|status| status.success())
 }
 
 fn operation_failure(
@@ -357,15 +461,6 @@ pub(super) fn classify_failure(action: &RepositoryAction, output: &str) -> Opera
         (FailureKind::Unknown, "Git operation failed")
     };
     operation_failure(action, kind, detail)
-}
-
-fn e2e_network_delay() -> Option<Duration> {
-    let milliseconds = env::var("DIFFO_E2E_NETWORK_DELAY_MS")
-        .ok()?
-        .parse::<u64>()
-        .ok()?
-        .min(2_000);
-    Some(Duration::from_millis(milliseconds))
 }
 
 #[cfg(test)]

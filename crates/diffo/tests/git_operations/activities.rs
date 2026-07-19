@@ -76,7 +76,7 @@ fn empty_activity_keeps_quit_available() -> Result<()> {
 }
 
 #[test]
-fn delayed_explorer_open_commits_only_the_latest_syntax_ready_file() -> Result<()> {
+fn rapid_explorer_open_commits_only_the_latest_syntax_ready_file() -> Result<()> {
     let repository = TestRepository::new()?;
     std::fs::write(
         repository.worktree.join("a.rs"),
@@ -91,7 +91,7 @@ fn delayed_explorer_open_commits_only_the_latest_syntax_ready_file() -> Result<(
         &repository.worktree,
         &["commit", "-m", "Add Explorer files"],
     )?;
-    let mut screen = repository.screen_with_explorer_delay()?;
+    let mut screen = repository.screen()?;
 
     screen
         .press(Key::Tab)?
@@ -121,7 +121,7 @@ fn explorer_removes_a_deleted_file_without_showing_head_content() -> Result<()> 
         &repository.worktree,
         &["commit", "-m", "Add Explorer files"],
     )?;
-    let mut screen = repository.screen_with_explorer_delay()?;
+    let mut screen = repository.screen()?;
 
     screen
         .press(Key::Tab)?

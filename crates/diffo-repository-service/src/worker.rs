@@ -9,7 +9,7 @@ use std::{
 
 use diffo_core::{
     ApplicationCommandId, CancellationHandle, OperationFailure, OperationOutcome, Repository,
-    RepositoryAction, RepositoryOperationContext,
+    RepositoryAction, RepositoryOperationContext, RepositoryQueryId,
 };
 
 use crate::service::{PromptBroker, RepositoryEvent};
@@ -25,6 +25,9 @@ const DEBOUNCE: Duration = Duration::from_millis(100);
 
 pub(super) enum WorkerRequest {
     RefreshRequested,
+    LoadBranches {
+        query_id: RepositoryQueryId,
+    },
     Execute {
         id: ApplicationCommandId,
         action: RepositoryAction,
@@ -36,6 +39,9 @@ pub(super) enum WorkerRequest {
 
 enum DebouncedRequest {
     Refresh,
+    LoadBranches {
+        query_id: RepositoryQueryId,
+    },
     Execute {
         id: ApplicationCommandId,
         action: RepositoryAction,
@@ -60,6 +66,12 @@ pub(super) fn worker_loop(
                 refresh_pending.store(false, Ordering::Release);
                 match debounce(requests, refresh_pending) {
                     DebouncedRequest::Refresh => Some(collect_refresh(repository, &mut generation)),
+                    DebouncedRequest::LoadBranches { query_id } => {
+                        if events.send(collect_branches(repository, query_id)).is_err() {
+                            break;
+                        }
+                        Some(collect_refresh(repository, &mut generation))
+                    }
                     DebouncedRequest::Execute {
                         id,
                         action,
@@ -87,6 +99,9 @@ pub(super) fn worker_loop(
                 &mut generation,
                 prompts,
             )),
+            WorkerRequest::LoadBranches { query_id } => {
+                Some(collect_branches(repository, query_id))
+            }
             WorkerRequest::WatchFailed(message) => {
                 generation = generation.saturating_add(1);
                 Some(RepositoryEvent::RefreshFailed {
@@ -123,12 +138,25 @@ fn debounce(requests: &Receiver<WorkerRequest>, refresh_pending: &AtomicBool) ->
                     cancellation,
                 };
             }
+            Ok(WorkerRequest::LoadBranches { query_id }) => {
+                return DebouncedRequest::LoadBranches { query_id };
+            }
             Ok(WorkerRequest::WatchFailed(_)) => {}
             Ok(WorkerRequest::Shutdown) | Err(mpsc::RecvTimeoutError::Disconnected) => {
                 return DebouncedRequest::Shutdown;
             }
             Err(mpsc::RecvTimeoutError::Timeout) => return DebouncedRequest::Refresh,
         }
+    }
+}
+
+fn collect_branches(repository: &dyn Repository, query_id: RepositoryQueryId) -> RepositoryEvent {
+    match repository.branches() {
+        Ok(branches) => RepositoryEvent::BranchesLoaded { query_id, branches },
+        Err(error) => RepositoryEvent::BranchesLoadFailed {
+            query_id,
+            message: error.to_string(),
+        },
     }
 }
 
@@ -217,6 +245,10 @@ mod tests {
     }
 
     impl Repository for FakeRepository {
+        fn branches(&self) -> Result<Vec<diffo_core::BranchRef>> {
+            Ok(Vec::new())
+        }
+
         fn apply(
             &self,
             _action: &RepositoryAction,
@@ -294,6 +326,48 @@ mod tests {
             RepositoryEvent::SnapshotRefreshed { generation: 1, .. }
         ));
         assert_eq!(repository.collections.load(Ordering::Relaxed), 1);
+        requests.send(WorkerRequest::Shutdown).unwrap();
+        worker.join().unwrap();
+    }
+
+    #[test]
+    fn discovery_during_refresh_debounce_preserves_both_ordered_results() {
+        let repository = Arc::new(FakeRepository {
+            collections: AtomicUsize::new(0),
+        });
+        let (requests, request_rx) = mpsc::channel();
+        let (events, event_rx) = mpsc::channel();
+        let prompts = Arc::new(PromptBroker::new(events.clone()));
+        let worker_repository = Arc::clone(&repository) as Arc<dyn Repository>;
+        let worker = thread::spawn(move || {
+            worker_loop(
+                &*worker_repository,
+                &request_rx,
+                &events,
+                &AtomicBool::new(false),
+                &AtomicBool::new(false),
+                &prompts,
+            );
+        });
+
+        requests.send(WorkerRequest::RefreshRequested).unwrap();
+        requests
+            .send(WorkerRequest::LoadBranches {
+                query_id: RepositoryQueryId(7),
+            })
+            .unwrap();
+
+        assert!(matches!(
+            event_rx.recv_timeout(Duration::from_secs(1)).unwrap(),
+            RepositoryEvent::BranchesLoaded {
+                query_id: RepositoryQueryId(7),
+                ..
+            }
+        ));
+        assert!(matches!(
+            event_rx.recv_timeout(Duration::from_secs(1)).unwrap(),
+            RepositoryEvent::SnapshotRefreshed { generation: 1, .. }
+        ));
         requests.send(WorkerRequest::Shutdown).unwrap();
         worker.join().unwrap();
     }

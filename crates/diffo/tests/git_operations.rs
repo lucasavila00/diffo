@@ -2,6 +2,8 @@
 mod activities;
 #[path = "git_operations/async_diff.rs"]
 mod async_diff;
+#[path = "git_operations/checkout.rs"]
+mod checkout;
 #[path = "git_operations/commit.rs"]
 mod commit;
 #[path = "git_operations/content.rs"]

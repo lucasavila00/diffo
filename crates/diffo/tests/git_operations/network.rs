@@ -98,16 +98,24 @@ fn palette_search_runs_pull() -> Result<()> {
 }
 
 #[test]
-fn cancelling_a_delayed_command_releases_the_next_queued_command() -> Result<()> {
+fn cancelling_a_blocked_git_client_releases_the_next_queued_command() -> Result<()> {
     let repository = TestRepository::new()?;
     repository.commit_remote("remote.txt", "remote\n", "Remote commit")?;
-    let mut screen = repository.screen_with_operation_delay()?;
+    let gate = diffo_e2e::GitProxy::new("fetch", diffo_e2e::GitGatePhase::Before)?;
+    let path = gate.path()?;
+    let mut screen = DiffoScreen::launch_with_env(
+        env!("CARGO_BIN_EXE_diffo"),
+        &repository.worktree,
+        &[("PATH", path.as_os_str())],
+    )?;
 
     screen
         .press(Key::Char('1'))?
         .type_text("fetch")?
         .press(Key::Enter)?
-        .wait_for_text("Fetching")?
+        .wait_for_text("Fetching")?;
+    gate.wait_until_blocked()?;
+    screen
         .press(Key::Char('1'))?
         .type_text("pull")?
         .press(Key::Enter)?
@@ -127,11 +135,11 @@ fn cancelling_a_delayed_command_releases_the_next_queued_command() -> Result<()>
 }
 
 #[test]
-fn primary_pull_button_shows_loading_and_pulls() -> Result<()> {
+fn primary_pull_button_shows_progress_and_pulls() -> Result<()> {
     let repository = TestRepository::new()?;
     repository.commit_remote("remote.txt", "remote\n", "Remote commit")?;
     git(&repository.worktree, &["fetch", "origin"])?;
-    let mut screen = repository.screen_with_operation_delay()?;
+    let mut screen = repository.screen()?;
 
     screen
         .wait_for_text("[ Pull ]")?

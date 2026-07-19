@@ -10,7 +10,7 @@ use crate::diff::{Effect, Message, Model, ToastKind, ToastQueue, update};
 use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind};
 use diffo_core::{
     ApplicationCommandId, GitPrompt, OperationFailure, OperationResult, PromptId, RepositoryAction,
-    RepositorySnapshot,
+    RepositoryQueryId, RepositorySnapshot,
 };
 use diffo_ui::command_palette::{Command, CommandId};
 use diffo_ui::text_view::{TextRenderMode, TextSurfacePreparation};
@@ -24,6 +24,7 @@ use ratatui::{
 use crate::explorer::{ExplorerActivity, ExplorerEvent, ExplorerOutcome, ExplorerRequest};
 
 mod activity_bar;
+mod checkout_picker;
 mod command_queue;
 mod full_screen;
 mod help;
@@ -131,6 +132,8 @@ pub struct Workbench {
     full_screen_pending: bool,
     modal: Option<Modal>,
     last_prompt_id: Option<PromptId>,
+    pending_branch_query: Option<RepositoryQueryId>,
+    next_query_id: u64,
 }
 
 struct DiffActivity {
@@ -142,8 +145,9 @@ struct SearchActivity;
 
 const FETCH_COMMAND: CommandId = CommandId::new("git.fetch");
 const PULL_COMMAND: CommandId = CommandId::new("git.pull");
+const CHECKOUT_COMMAND: CommandId = CommandId::new("git.checkout_to");
 
-const SHARED_COMMANDS: [Command; 2] = [
+const SHARED_COMMANDS: [Command; 3] = [
     Command {
         id: FETCH_COMMAND,
         label: "Git: Fetch",
@@ -151,6 +155,10 @@ const SHARED_COMMANDS: [Command; 2] = [
     Command {
         id: PULL_COMMAND,
         label: "Git: Pull",
+    },
+    Command {
+        id: CHECKOUT_COMMAND,
+        label: "Git: Checkout to...",
     },
 ];
 
@@ -198,6 +206,8 @@ impl Workbench {
             full_screen_pending: false,
             modal: None,
             last_prompt_id: None,
+            pending_branch_query: None,
+            next_query_id: 1,
         }
     }
 
@@ -248,15 +258,6 @@ impl Workbench {
     }
 
     #[must_use]
-    pub fn is_preparing(&self) -> bool {
-        match self.active {
-            Activity::Diff => self.diff.is_preparing(),
-            Activity::Explorer => self.explorer.is_preparing(),
-            Activity::Search => self.search.is_preparing(),
-        }
-    }
-
-    #[must_use]
     pub const fn full_screen(&self) -> bool {
         self.full_screen
     }
@@ -295,7 +296,7 @@ impl Workbench {
             render_command_progress(
                 frame,
                 CommandProgress {
-                    label: command.label,
+                    label: &command.label,
                     cancelling: command.state == CommandState::Cancelling,
                     animation_tick: self.command_animation_tick,
                 },
@@ -347,6 +348,9 @@ impl Workbench {
             return None;
         }
         let content = workbench_areas(area).content;
+        if self.open_checkout_from_head_click(event, content) {
+            return None;
+        }
         let tool_captures_global_input = match self.active {
             Activity::Diff => self.diff.captures_global_input(),
             Activity::Explorer => self.explorer.captures_global_input(),
@@ -493,10 +497,6 @@ impl Workbench {
         }
     }
 
-    pub fn take_task(&mut self) -> Option<WorkbenchTask> {
-        self.explorer.take_request().map(WorkbenchTask::Explorer)
-    }
-
     pub fn take_repository_command(&mut self) -> Option<ApplicationCommand> {
         let command = self.commands.start_next()?;
         self.last_prompt_id = None;
@@ -589,6 +589,9 @@ impl Workbench {
             Some(RepositoryAction::Fetch)
         } else if command == PULL_COMMAND {
             Some(RepositoryAction::Pull)
+        } else if command == CHECKOUT_COMMAND {
+            self.open_checkout_picker();
+            return None;
         } else {
             None
         };
@@ -606,10 +609,6 @@ impl Workbench {
 
     pub fn show_toast(&mut self, kind: ToastKind, message: impl Into<String>) {
         self.toasts.show(kind, message);
-    }
-
-    pub fn repository_changed(&mut self, snapshot: RepositorySnapshot) {
-        let _ = self.update_diff(Message::SnapshotLoaded(snapshot));
     }
 
     pub fn operation_failed(&mut self, message: String) {

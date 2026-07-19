@@ -72,6 +72,10 @@ impl GitRepositorySource {
 }
 
 impl Repository for GitRepositorySource {
+    fn branches(&self) -> Result<Vec<diffo_core::BranchRef>> {
+        self.branch_refs()
+    }
+
     fn explorer_paths(&self) -> Result<Vec<std::path::PathBuf>> {
         let output = self.git(&[
             "ls-files",

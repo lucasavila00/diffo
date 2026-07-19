@@ -1,13 +1,13 @@
 //! Command palette state, input handling, layout, and rendering.
 
-use crate::{design, enabled_control_style, theme};
+use crate::{design, enabled_control_style, fuzzy_score, modal_block, theme};
 use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind};
 use ratatui::{
     Frame,
     layout::{Constraint, Layout, Rect},
     style::{Modifier, Style},
     text::Line,
-    widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph},
+    widgets::{Clear, List, ListItem, ListState, Paragraph},
 };
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -165,13 +165,7 @@ impl CommandPalette {
         let commands = self.matches();
         let (area, _) = command_palette_layout(content_area);
         frame.render_widget(Clear, area);
-        frame.render_widget(
-            Block::default()
-                .borders(Borders::ALL)
-                .border_style(Style::default().fg(theme::CHROME))
-                .title(" Command Palette "),
-            area,
-        );
+        frame.render_widget(modal_block("Command Palette"), area);
         let inner = area.inner(design::DIALOG_INSET);
         let sections = command_palette_sections(inner);
         frame.render_widget(
@@ -253,34 +247,6 @@ fn command_palette_sections(area: Rect) -> std::rc::Rc<[Rect]> {
         Constraint::Length(design::SINGLE_LINE_HEIGHT),
     ])
     .split(area)
-}
-
-fn fuzzy_score(candidate: &str, query: &str) -> Option<i64> {
-    if query.is_empty() {
-        return Some(0);
-    }
-    let candidate = candidate.as_bytes();
-    let mut cursor = 0;
-    let mut previous_match = None;
-    let mut score = 0_i64;
-    for needle in query.bytes().map(|byte| byte.to_ascii_lowercase()) {
-        let offset = candidate[cursor..]
-            .iter()
-            .position(|byte| byte.to_ascii_lowercase() == needle)?;
-        let index = cursor + offset;
-        let boundary = index == 0 || !candidate[index - 1].is_ascii_alphanumeric();
-        score += if previous_match == Some(index.saturating_sub(1)) {
-            100
-        } else if boundary {
-            40
-        } else {
-            10
-        };
-        score -= i64::try_from(offset).unwrap_or(i64::MAX);
-        previous_match = Some(index);
-        cursor = index + 1;
-    }
-    Some(score - i64::try_from(candidate.len()).unwrap_or(i64::MAX) / 10)
 }
 
 #[cfg(test)]

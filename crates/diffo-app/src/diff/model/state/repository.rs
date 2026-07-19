@@ -68,6 +68,7 @@ impl Model {
                 | OperationResult::Pull { .. }
                 | OperationResult::Push { .. }
                 | OperationResult::Commit { .. }
+                | OperationResult::Checkout { .. }
         );
         let finishes_pending = self.pending_operation.as_ref() == Some(action);
         if is_async_result && !finishes_pending {
@@ -163,5 +164,6 @@ pub(super) fn same_repository_operation(left: &RepositoryAction, right: &Reposit
             | (RepositoryAction::Unstage(_), RepositoryAction::Unstage(_))
             | (RepositoryAction::StageAll, RepositoryAction::StageAll)
             | (RepositoryAction::UnstageAll, RepositoryAction::UnstageAll)
+            | (RepositoryAction::Checkout(_), RepositoryAction::Checkout(_))
     )
 }

@@ -1,6 +1,6 @@
 # ADR 0037: Check out branches from Diffo
 
-Status: Proposed
+Status: Accepted
 
 Depends on [ADR 0036](0036-git-branch-status.md). Refines
 [ADR 0013](0013-command-and-file-actions.md),
@@ -65,4 +65,6 @@ Put shared types in `diffo-core`. Keep picker code out of activities and
 
 Test picker behavior, stale loads, worker ordering, and no discovery toast. Use real
 Git tests for checkout, conflicts, changed refs, HEAD states, cancellation, and dirty
-trees. Use delayed PTY tests for atomic display and no lost work.
+trees. Use an E2E-only Git proxy with explicit gates for deterministic PTY ordering;
+production code must not contain timing hooks. The proxy delegates to real Git, and
+real-Git tests cover cancellation while Git is blocked before mutation.

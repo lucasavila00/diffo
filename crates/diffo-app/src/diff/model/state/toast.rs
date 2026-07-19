@@ -59,6 +59,7 @@ pub(crate) fn operation_result_toast(result: &OperationResult) -> Option<(ToastK
             format!("Pushed {} to {upstream}", short_hash(hash))
         }
         OperationResult::Commit { hash } => format!("Committed {}", short_hash(hash)),
+        OperationResult::Checkout { branch } => format!("Checked out {branch}"),
     };
     Some((ToastKind::Success, title))
 }
@@ -71,6 +72,7 @@ pub(crate) fn operation_failure_title(failure: &OperationFailure) -> String {
         RepositoryAction::Pull => "Pull",
         RepositoryAction::Push => "Push",
         RepositoryAction::Commit(_) => "Commit",
+        RepositoryAction::Checkout(_) => "Checkout",
     };
     match failure.kind {
         FailureKind::PullRequired => format!("Push blocked: {}", failure.detail),

@@ -1,8 +1,24 @@
 use super::{
     Clear, Command, CommandId, DiffActivity, Event, ExplorerActivity, ExplorerEvent, Frame,
     FramePreparation, PaneSplit, Rect, RendererEvent, SearchActivity, TextRenderMode,
-    TextSurfacePreparation, Tool, WorkbenchCommand, WorkbenchEffect, tool_areas,
+    TextSurfacePreparation, Tool, Workbench, WorkbenchCommand, WorkbenchEffect, WorkbenchTask,
+    tool_areas,
 };
+
+impl Workbench {
+    #[must_use]
+    pub fn is_preparing(&self) -> bool {
+        match self.active {
+            super::Activity::Diff => self.diff.is_preparing(),
+            super::Activity::Explorer => self.explorer.is_preparing(),
+            super::Activity::Search => self.search.is_preparing(),
+        }
+    }
+
+    pub fn take_task(&mut self) -> Option<WorkbenchTask> {
+        self.explorer.take_request().map(WorkbenchTask::Explorer)
+    }
+}
 
 impl Tool for DiffActivity {
     fn handle_event(

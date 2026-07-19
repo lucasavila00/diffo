@@ -320,7 +320,10 @@ impl Repository for MutableFixtureRepository {
                         hash: "mock-commit".to_owned(),
                     })
                 }
-                RepositoryAction::Fetch | RepositoryAction::Pull | RepositoryAction::Push => {
+                RepositoryAction::Fetch
+                | RepositoryAction::Pull
+                | RepositoryAction::Push
+                | RepositoryAction::Checkout(_) => {
                     bail!("mock repository cannot execute {action:?}: no remote configured")
                 }
             }

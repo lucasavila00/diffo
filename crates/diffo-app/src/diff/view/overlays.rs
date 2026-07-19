@@ -33,6 +33,7 @@ pub fn render_command_progress(
             progress.label
         )
     };
+    let label = terminal_safe_text(&label);
     frame.render_widget(Clear, area);
     frame.render_widget(
         Paragraph::new(label)

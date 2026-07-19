@@ -2,11 +2,16 @@ use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers};
 use diffo_ui::command_palette::{Command, CommandPalette, PaletteEvent};
 use ratatui::{Frame, layout::Rect};
 
-use super::{PromptModal, Workbench, WorkbenchCommand, help, render_prompt};
+use super::{
+    PromptModal, Workbench, WorkbenchCommand,
+    checkout_picker::{CheckoutPicker, CheckoutPickerEvent},
+    help, render_prompt,
+};
 
 pub(super) enum Modal {
     Help,
     CommandPalette(CommandPalette),
+    CheckoutPicker(CheckoutPicker),
     CommitEditor,
     GitPrompt(PromptModal),
 }
@@ -24,10 +29,16 @@ impl Workbench {
         self.dismiss_active_popover();
         self.full_screen = false;
         self.full_screen_pending = false;
+        if matches!(self.modal, Some(Modal::CheckoutPicker(_))) {
+            self.pending_branch_query = None;
+        }
         self.modal = Some(modal);
     }
 
     pub(super) fn close_modal(&mut self) {
+        if matches!(self.modal, Some(Modal::CheckoutPicker(_))) {
+            self.pending_branch_query = None;
+        }
         self.modal = None;
     }
 
@@ -35,6 +46,7 @@ impl Workbench {
         match self.modal.as_ref() {
             Some(Modal::Help) => help::render(frame, content, self.active_help_rows()),
             Some(Modal::CommandPalette(palette)) => palette.render(frame, content),
+            Some(Modal::CheckoutPicker(picker)) => picker.render(frame, area),
             Some(Modal::CommitEditor) => {
                 crate::diff::render_commit_editor(frame, &self.diff.model, content);
             }
@@ -51,11 +63,34 @@ impl Workbench {
         match self.modal.as_ref()? {
             Modal::Help => self.handle_help_event(event),
             Modal::CommandPalette(_) => self.handle_palette_event(event, area),
+            Modal::CheckoutPicker(_) => self.handle_checkout_picker_event(event, area),
             Modal::CommitEditor => self.handle_commit_editor_event(event, area),
             Modal::GitPrompt(_) => self
                 .handle_prompt_event(event, area)
                 .map(WorkbenchCommand::Effect),
         }
+    }
+
+    fn handle_checkout_picker_event(
+        &mut self,
+        event: &Event,
+        area: Rect,
+    ) -> Option<WorkbenchCommand> {
+        let picker_event = match self.modal.as_mut() {
+            Some(Modal::CheckoutPicker(picker)) => picker.handle_event(event, area),
+            _ => return None,
+        };
+        match picker_event {
+            CheckoutPickerEvent::Close => self.close_modal(),
+            CheckoutPickerEvent::Checkout(target) => {
+                self.close_modal();
+                self.commands
+                    .enqueue(diffo_core::RepositoryAction::Checkout(Box::new(target)));
+            }
+            CheckoutPickerEvent::Quit => self.should_quit = true,
+            CheckoutPickerEvent::Consumed => {}
+        }
+        None
     }
 
     fn handle_help_event(&mut self, event: &Event) -> Option<WorkbenchCommand> {
@@ -125,7 +160,7 @@ mod tests {
     use crossterm::event::{KeyEvent, MouseButton, MouseEvent, MouseEventKind};
     use diffo_core::{
         FailureKind, FileDiff, FileState, GitPrompt, OperationFailure, PromptId, RepositoryAction,
-        RepositorySnapshot,
+        RepositoryQueryId, RepositorySnapshot,
     };
     use diffo_ui::tool_areas;
 
@@ -187,6 +222,7 @@ mod tests {
         for modal in [
             Modal::Help,
             Modal::command_palette(Vec::new()),
+            Modal::CheckoutPicker(CheckoutPicker::loading(RepositoryQueryId(1))),
             Modal::CommitEditor,
         ] {
             let help = matches!(modal, Modal::Help);

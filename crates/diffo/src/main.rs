@@ -199,6 +199,8 @@ fn run_watch_dump(
                     );
                 }
                 RepositoryEvent::SnapshotRefreshed { .. }
+                | RepositoryEvent::BranchesLoaded { .. }
+                | RepositoryEvent::BranchesLoadFailed { .. }
                 | RepositoryEvent::CommandCompleted { .. }
                 | RepositoryEvent::CommandFailed { .. }
                 | RepositoryEvent::CommandCancelled { .. } => {}
@@ -322,6 +324,11 @@ fn dispatch_events(
     for effect in workbench.handle_events(events, area) {
         dispatch_effect(effect, workbench, repository_service);
     }
+    while let Some(query_id) = workbench.take_branch_query() {
+        if !repository_service.load_branches(query_id) {
+            workbench.branches_load_failed(query_id, "repository service is unavailable");
+        }
+    }
     while let Some(command) = workbench.take_repository_command() {
         let id = command.id;
         let action = command.action;
@@ -386,6 +393,12 @@ fn drain_repository_events(
 ) {
     while let Ok(Some(event)) = repository_service.try_recv() {
         match event {
+            RepositoryEvent::BranchesLoaded { query_id, branches } => {
+                workbench.branches_loaded(query_id, branches);
+            }
+            RepositoryEvent::BranchesLoadFailed { query_id, message } => {
+                workbench.branches_load_failed(query_id, &message);
+            }
             RepositoryEvent::Prompt {
                 command_id,
                 prompt_id,

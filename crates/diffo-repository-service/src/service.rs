@@ -11,8 +11,9 @@ use std::{
 
 use anyhow::{Context, Result};
 use diffo_core::{
-    ApplicationCommandId, CancellationHandle, GitPrompt, OperationFailure, OperationResult,
-    PromptAnswer, PromptHandler, PromptId, Repository, RepositoryAction, RepositorySnapshot,
+    ApplicationCommandId, BranchRef, CancellationHandle, GitPrompt, OperationFailure,
+    OperationResult, PromptAnswer, PromptHandler, PromptId, Repository, RepositoryAction,
+    RepositoryQueryId, RepositorySnapshot,
 };
 
 use crate::{
@@ -22,6 +23,14 @@ use crate::{
 
 #[derive(Debug)]
 pub enum RepositoryEvent {
+    BranchesLoaded {
+        query_id: RepositoryQueryId,
+        branches: Vec<BranchRef>,
+    },
+    BranchesLoadFailed {
+        query_id: RepositoryQueryId,
+        message: String,
+    },
     Prompt {
         command_id: ApplicationCommandId,
         prompt_id: PromptId,
@@ -306,6 +315,13 @@ impl RepositoryService {
             return false;
         }
         true
+    }
+
+    #[must_use]
+    pub fn load_branches(&self, query_id: RepositoryQueryId) -> bool {
+        self.requests
+            .send(WorkerRequest::LoadBranches { query_id })
+            .is_ok()
     }
 
     #[must_use]

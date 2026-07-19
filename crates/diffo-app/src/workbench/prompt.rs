@@ -1,6 +1,6 @@
 use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind};
 use diffo_core::{ApplicationCommandId, GitPrompt, PromptId};
-use diffo_ui::{design, enabled_control_style, terminal_safe_text, theme};
+use diffo_ui::{design, enabled_control_style, modal_block, terminal_safe_text, theme};
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Layout, Rect},
@@ -205,13 +205,7 @@ pub(super) fn prompt_layout(area: Rect) -> PromptLayout {
 pub(super) fn render_prompt(frame: &mut Frame, modal: &PromptModal, area: Rect) {
     let layout = prompt_layout(area);
     frame.render_widget(Clear, layout.modal);
-    frame.render_widget(
-        Block::default()
-            .borders(Borders::ALL)
-            .border_style(Style::default().fg(theme::CHROME))
-            .title(" Git prompt "),
-        layout.modal,
-    );
+    frame.render_widget(modal_block("Git prompt"), layout.modal);
     let (message, secret) = match &modal.prompt {
         GitPrompt::Username { host } => {
             (format!("Username for {}", terminal_safe_text(host)), false)

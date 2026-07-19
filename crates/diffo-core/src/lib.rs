@@ -86,6 +86,27 @@ pub struct UpstreamState {
     pub behind: usize,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum BranchKind {
+    Local,
+    Remote,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct BranchRef {
+    pub kind: BranchKind,
+    pub name: String,
+    pub full_ref: String,
+    pub object_id: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CheckoutTarget {
+    pub kind: BranchKind,
+    pub full_ref: String,
+    pub object_id: String,
+}
+
 pub trait RepositorySource: Send + Sync {
     /// Build the current repository snapshot.
     ///
@@ -105,6 +126,7 @@ pub enum RepositoryAction {
     Pull,
     Push,
     Commit(String),
+    Checkout(Box<CheckoutTarget>),
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -115,6 +137,7 @@ pub enum OperationResult {
     Pull { commits: usize },
     Push { hash: String, upstream: String },
     Commit { hash: String },
+    Checkout { branch: String },
 }
 
 #[derive(Clone, Debug, Default)]
@@ -140,6 +163,9 @@ pub enum OperationOutcome {
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct ApplicationCommandId(pub u64);
 
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub struct RepositoryQueryId(pub u64);
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum FailureKind {
     PullRequired,
@@ -149,6 +175,8 @@ pub enum FailureKind {
     Network,
     MergeConflict,
     DirtyWorktree,
+    RefChanged,
+    BranchConflict,
     HookRejected,
     NoRemote,
     Unknown,
@@ -216,6 +244,15 @@ impl std::fmt::Display for OperationFailure {
 impl std::error::Error for OperationFailure {}
 
 pub trait Repository: RepositorySource {
+    /// List local and remote branches known to the repository.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when branch references cannot be read or parsed.
+    fn branches(&self) -> Result<Vec<BranchRef>> {
+        anyhow::bail!("branch discovery is unavailable for this repository source")
+    }
+
     /// List tracked and non-ignored untracked repository paths.
     ///
     /// # Errors

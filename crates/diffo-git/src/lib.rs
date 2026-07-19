@@ -8,6 +8,7 @@ use std::{
 const NO_CHANGE: char = '.';
 
 mod askpass;
+mod branches;
 mod command;
 mod explorer;
 mod operation;

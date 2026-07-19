@@ -150,22 +150,6 @@ impl TestRepository {
         DiffoScreen::launch(env!("CARGO_BIN_EXE_diffo"), &self.worktree)
     }
 
-    pub(super) fn screen_with_operation_delay(&self) -> Result<DiffoScreen> {
-        DiffoScreen::launch_with_env(
-            env!("CARGO_BIN_EXE_diffo"),
-            &self.worktree,
-            &[("DIFFO_E2E_NETWORK_DELAY_MS", OsStr::new("300"))],
-        )
-    }
-
-    pub(super) fn screen_with_explorer_delay(&self) -> Result<DiffoScreen> {
-        DiffoScreen::launch_with_env(
-            env!("CARGO_BIN_EXE_diffo"),
-            &self.worktree,
-            &[("DIFFO_E2E_EXPLORER_PREP_DELAY_MS", OsStr::new("300"))],
-        )
-    }
-
     pub(super) fn commit_remote(
         &self,
         path: &str,

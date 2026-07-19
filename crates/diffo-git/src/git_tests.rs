@@ -1,14 +1,19 @@
 use std::{
     fmt::Write as _,
     fs,
+    os::unix::fs::PermissionsExt as _,
     path::{Path, PathBuf},
     process::Command,
+    sync::Arc,
+    thread,
+    time::{Duration, Instant},
 };
 
 use super::{operation::classify_failure, status::parse_status};
 use diffo_core::{
-    ChangeKind, ExplorerFileContent, FailureKind, OperationResult, Repository, RepositoryAction,
-    RepositorySource,
+    BranchKind, CancellationHandle, ChangeKind, CheckoutTarget, ExplorerFileContent, FailureKind,
+    GitPrompt, HeadState, OperationOutcome, OperationResult, PromptAnswer, PromptHandler, PromptId,
+    Repository, RepositoryAction, RepositoryOperationContext, RepositorySource,
 };
 
 #[test]
@@ -50,6 +55,251 @@ fn distinguishes_unborn_and_detached_head() {
     let detached = parse_status(b"# branch.oid 123456789abcdef\0# branch.head (detached)\0")
         .expect("detached status should parse");
     insta::assert_debug_snapshot!([unborn.head, detached.head]);
+}
+
+#[test]
+fn discovers_and_checks_out_a_local_branch_by_typed_ref() {
+    let repo = test_repository();
+    git(repo.path(), &["branch", "topic"]);
+    let source = super::GitRepositorySource::new(repo.path());
+    let branches = source.branches().expect("branches");
+    let topic = branches
+        .iter()
+        .find(|branch| branch.kind == BranchKind::Local && branch.name == "topic")
+        .expect("topic branch");
+
+    let result = source
+        .apply(&RepositoryAction::Checkout(Box::new(CheckoutTarget {
+            kind: topic.kind,
+            full_ref: topic.full_ref.clone(),
+            object_id: topic.object_id.clone(),
+        })))
+        .expect("checkout topic");
+
+    assert_eq!(
+        result,
+        OperationResult::Checkout {
+            branch: "topic".to_owned()
+        }
+    );
+    assert!(matches!(
+        source.snapshot().unwrap().head,
+        HeadState::Named { name, .. } if name == "topic"
+    ));
+}
+
+#[test]
+fn remote_checkout_creates_reuses_and_rejects_a_conflicting_local_branch() {
+    let root = tempfile::tempdir().expect("test directory");
+    git(
+        root.path(),
+        &["init", "--bare", "--initial-branch=main", "remote.git"],
+    );
+    git(root.path(), &["clone", "remote.git", "seed"]);
+    let seed = root.path().join("seed");
+    git(&seed, &["config", "user.name", "Diffo Test"]);
+    git(&seed, &["config", "user.email", "diffo@example.invalid"]);
+    fs::write(seed.join("file.txt"), "base\n").unwrap();
+    git(&seed, &["add", "."]);
+    git(&seed, &["commit", "-m", "base"]);
+    git(&seed, &["push", "-u", "origin", "HEAD"]);
+    git(&seed, &["switch", "-c", "feature/nested"]);
+    fs::write(seed.join("file.txt"), "feature\n").unwrap();
+    git(&seed, &["commit", "-am", "feature"]);
+    git(&seed, &["push", "-u", "origin", "HEAD"]);
+    git(&seed, &["push", "origin", "HEAD:refs/heads/conflict"]);
+    git(root.path(), &["clone", "remote.git", "work"]);
+    let work = root.path().join("work");
+    let source = super::GitRepositorySource::new(&work);
+    let branches = source.branches().unwrap();
+    assert!(branches.iter().all(|branch| branch.name != "origin/HEAD"));
+    let remote = branches
+        .iter()
+        .find(|branch| branch.name == "origin/feature/nested")
+        .unwrap();
+    let action = RepositoryAction::Checkout(Box::new(CheckoutTarget {
+        kind: remote.kind,
+        full_ref: remote.full_ref.clone(),
+        object_id: remote.object_id.clone(),
+    }));
+
+    assert!(matches!(
+        source.apply(&action),
+        Ok(OperationResult::Checkout { branch }) if branch == "feature/nested"
+    ));
+    assert_eq!(
+        source.snapshot().unwrap().upstream.unwrap().name,
+        "origin/feature/nested"
+    );
+    git(&work, &["checkout", "main"]);
+    assert!(matches!(
+        source.apply(&action),
+        Ok(OperationResult::Checkout { branch }) if branch == "feature/nested"
+    ));
+
+    git(&work, &["checkout", "main"]);
+    git(&work, &["branch", "conflict"]);
+    let conflicting_remote = branches
+        .iter()
+        .find(|branch| branch.name == "origin/conflict")
+        .unwrap();
+    let failure = source
+        .apply(&RepositoryAction::Checkout(Box::new(CheckoutTarget {
+            kind: conflicting_remote.kind,
+            full_ref: conflicting_remote.full_ref.clone(),
+            object_id: conflicting_remote.object_id.clone(),
+        })))
+        .unwrap_err();
+
+    assert_eq!(failure.kind, FailureKind::BranchConflict);
+    assert!(matches!(
+        source.snapshot().unwrap().head,
+        HeadState::Named { name, .. } if name == "main"
+    ));
+}
+
+#[test]
+fn checkout_rejects_a_ref_that_changed_after_discovery() {
+    let repo = test_repository();
+    git(repo.path(), &["branch", "topic"]);
+    let source = super::GitRepositorySource::new(repo.path());
+    let topic = source
+        .branches()
+        .unwrap()
+        .into_iter()
+        .find(|branch| branch.name == "topic")
+        .unwrap();
+    fs::write(repo.path().join("next.txt"), "next\n").unwrap();
+    git(repo.path(), &["add", "."]);
+    git(repo.path(), &["commit", "-m", "next"]);
+    git(repo.path(), &["branch", "-f", "topic", "HEAD"]);
+
+    let failure = source
+        .apply(&RepositoryAction::Checkout(Box::new(CheckoutTarget {
+            kind: topic.kind,
+            full_ref: topic.full_ref,
+            object_id: topic.object_id,
+        })))
+        .unwrap_err();
+
+    assert_eq!(failure.kind, FailureKind::RefChanged);
+    assert!(matches!(
+        source.snapshot().unwrap().head,
+        HeadState::Named { name, .. } if name == "main"
+    ));
+}
+
+#[test]
+fn checkout_maps_overwritten_local_changes_to_dirty_worktree() {
+    let repo = test_repository();
+    git(repo.path(), &["switch", "-c", "topic"]);
+    fs::write(repo.path().join("tracked.txt"), "topic\n").unwrap();
+    git(repo.path(), &["commit", "-am", "topic"]);
+    git(repo.path(), &["switch", "main"]);
+    let source = super::GitRepositorySource::new(repo.path());
+    let topic = source
+        .branches()
+        .unwrap()
+        .into_iter()
+        .find(|branch| branch.name == "topic")
+        .unwrap();
+    fs::write(repo.path().join("tracked.txt"), "local\n").unwrap();
+
+    let failure = source
+        .apply(&RepositoryAction::Checkout(Box::new(CheckoutTarget {
+            kind: topic.kind,
+            full_ref: topic.full_ref,
+            object_id: topic.object_id,
+        })))
+        .unwrap_err();
+
+    assert_eq!(failure.kind, FailureKind::DirtyWorktree);
+}
+
+struct CancelPrompts;
+
+impl PromptHandler for CancelPrompts {
+    fn prompt(
+        &self,
+        _id: PromptId,
+        _prompt: GitPrompt,
+        _cancellation: &CancellationHandle,
+    ) -> PromptAnswer {
+        PromptAnswer::Cancel
+    }
+}
+
+#[test]
+fn cancelling_real_checkout_blocked_inside_fsmonitor_preserves_head_and_worktree() {
+    let repo = test_repository();
+    git(repo.path(), &["switch", "-c", "topic"]);
+    fs::write(repo.path().join("tracked.txt"), "topic\n").unwrap();
+    git(repo.path(), &["commit", "-am", "topic"]);
+    git(repo.path(), &["switch", "main"]);
+    let source = super::GitRepositorySource::new(repo.path());
+    let topic = source
+        .branches()
+        .unwrap()
+        .into_iter()
+        .find(|branch| branch.name == "topic")
+        .unwrap();
+    let gate = repo.path().join("fsmonitor-release");
+    assert!(
+        Command::new("mkfifo")
+            .arg(&gate)
+            .status()
+            .unwrap()
+            .success()
+    );
+    let marker = repo.path().join("fsmonitor-started");
+    let hook = repo.path().join("fsmonitor-hook");
+    fs::write(
+        &hook,
+        format!(
+            "#!/bin/sh\nprintf started > '{}'\nIFS= read -r release < '{}'\nprintf 'token\\n'\n",
+            marker.display(),
+            gate.display()
+        ),
+    )
+    .unwrap();
+    fs::set_permissions(&hook, fs::Permissions::from_mode(0o755)).unwrap();
+    git(
+        repo.path(),
+        &["config", "core.fsmonitor", hook.to_str().unwrap()],
+    );
+    let cancellation = CancellationHandle::default();
+    let worker_cancellation = cancellation.clone();
+    let root = repo.path().to_owned();
+    let operation = thread::spawn(move || {
+        let source = super::GitRepositorySource::new(root);
+        let action = RepositoryAction::Checkout(Box::new(CheckoutTarget {
+            kind: topic.kind,
+            full_ref: topic.full_ref,
+            object_id: topic.object_id,
+        }));
+        let context = RepositoryOperationContext::new(Arc::new(CancelPrompts), worker_cancellation);
+        source.apply_with_context(&action, &context)
+    });
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while !marker.exists() && Instant::now() < deadline {
+        thread::sleep(Duration::from_millis(10));
+    }
+    assert!(marker.exists(), "checkout did not enter the fsmonitor hook");
+
+    cancellation.cancel();
+    assert!(matches!(
+        operation.join().unwrap(),
+        Ok(OperationOutcome::Cancelled)
+    ));
+    git(repo.path(), &["config", "--unset", "core.fsmonitor"]);
+    assert_eq!(
+        String::from_utf8_lossy(&fs::read(repo.path().join("tracked.txt")).unwrap()),
+        "base\n"
+    );
+    assert!(matches!(
+        super::GitRepositorySource::new(repo.path()).snapshot().unwrap().head,
+        HeadState::Named { name, .. } if name == "main"
+    ));
 }
 
 #[test]

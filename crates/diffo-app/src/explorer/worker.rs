@@ -1,6 +1,5 @@
 use std::{
     collections::HashMap,
-    env,
     path::PathBuf,
     sync::{
         Arc,
@@ -8,7 +7,6 @@ use std::{
         mpsc::{Receiver, Sender, channel},
     },
     thread,
-    time::Duration,
 };
 
 use diffo_core::{ChangeKind, ExplorerFile, ExplorerFileContent, Repository};
@@ -90,26 +88,23 @@ impl ExplorerWorker {
                         status,
                         first_line,
                         viewport_rows,
-                    } => {
-                        thread::sleep(preparation_delay_from_environment());
-                        ExplorerOutcome::File {
-                            id,
-                            result: repository
-                                .explorer_file(&path)
-                                .map(|file| {
-                                    prepare_viewer(
-                                        path,
-                                        title,
-                                        status,
-                                        file,
-                                        first_line,
-                                        viewport_rows,
-                                        &highlighter,
-                                    )
-                                })
-                                .map_err(|error| error.to_string()),
-                        }
-                    }
+                    } => ExplorerOutcome::File {
+                        id,
+                        result: repository
+                            .explorer_file(&path)
+                            .map(|file| {
+                                prepare_viewer(
+                                    path,
+                                    title,
+                                    status,
+                                    file,
+                                    first_line,
+                                    viewport_rows,
+                                    &highlighter,
+                                )
+                            })
+                            .map_err(|error| error.to_string()),
+                    },
                 };
                 let stale = matches!(outcome, ExplorerOutcome::File { id, .. } if id != worker_latest.load(Ordering::Acquire));
                 if !stale && outcome_tx.send(outcome).is_err() {
@@ -135,14 +130,6 @@ impl ExplorerWorker {
     pub fn try_recv(&self) -> Option<ExplorerOutcome> {
         self.outcomes.try_recv().ok()
     }
-}
-
-fn preparation_delay_from_environment() -> Duration {
-    env::var("DIFFO_E2E_EXPLORER_PREP_DELAY_MS")
-        .ok()
-        .and_then(|value| value.parse::<u64>().ok())
-        .map(|milliseconds| Duration::from_millis(milliseconds.min(5_000)))
-        .unwrap_or_default()
 }
 
 fn prepare_viewer(

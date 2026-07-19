@@ -1,7 +1,7 @@
 use super::support::*;
 
 #[test]
-fn delayed_diff_open_commits_only_the_latest_buffer_at_its_first_change() -> Result<()> {
+fn rapid_diff_open_commits_only_the_latest_buffer_at_its_first_change() -> Result<()> {
     let repository = TestRepository::new()?;
     fs::write(repository.worktree.join("a-small.txt"), "small base\n")?;
     fs::write(
@@ -30,10 +30,7 @@ fn delayed_diff_open_commits_only_the_latest_buffer_at_its_first_change() -> Res
     let mut screen = DiffoScreen::launch_with_env(
         env!("CARGO_BIN_EXE_diffo"),
         &repository.worktree,
-        &[
-            ("DIFFO_TRACE_FRAMES", trace_path.as_os_str()),
-            ("DIFFO_E2E_DIFF_PREP_DELAY_MS", OsStr::new("300")),
-        ],
+        &[("DIFFO_TRACE_FRAMES", trace_path.as_os_str())],
     )?;
     screen
         .wait_for_text("SMALL_CHANGED")?

@@ -5,12 +5,10 @@ use ratatui::{
     layout::Rect,
     style::Style,
     text::Line,
-    widgets::{Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState},
+    widgets::{Paragraph, ScrollbarOrientation},
 };
 
-use crate::{
-    design, maximum_scroll, scroll_offset, scrollbar_position, scrollbar_position_count, theme,
-};
+use crate::{design, maximum_scroll, render_scrollbar, scroll_offset, scrollbar_position, theme};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum TextSurface {
@@ -143,29 +141,26 @@ pub fn render_scrollbars(
     let areas = scrollbar_areas(outer, metrics);
     let style = Style::default().fg(theme::CHROME);
     if metrics.maximum_vertical > 0 {
-        let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
-            .begin_symbol(None)
-            .end_symbol(None)
-            .track_style(style)
-            .thumb_style(style);
-        let mut state = ScrollbarState::new(metrics.maximum_vertical.saturating_add(1))
-            .viewport_content_length(metrics.viewport_rows)
-            .position(viewport.vertical);
-        frame.render_stateful_widget(scrollbar, areas.vertical, &mut state);
+        render_scrollbar(
+            frame,
+            areas.vertical,
+            &ScrollbarOrientation::VerticalRight,
+            metrics.rows,
+            metrics.viewport_rows,
+            viewport.vertical,
+            style,
+        );
     }
     if metrics.maximum_horizontal > 0 {
-        let scrollbar = Scrollbar::new(ScrollbarOrientation::HorizontalBottom)
-            .begin_symbol(None)
-            .end_symbol(None)
-            .track_style(style)
-            .thumb_style(style);
-        let mut state = ScrollbarState::new(scrollbar_position_count(
+        render_scrollbar(
+            frame,
+            areas.horizontal,
+            &ScrollbarOrientation::HorizontalBottom,
             metrics.columns,
             metrics.viewport_columns,
-        ))
-        .viewport_content_length(metrics.viewport_columns)
-        .position(viewport.horizontal);
-        frame.render_stateful_widget(scrollbar, areas.horizontal, &mut state);
+            viewport.horizontal,
+            style,
+        );
     }
     areas
 }
@@ -307,7 +302,7 @@ mod tests {
     #[test]
     fn scrollbar_final_cell_maps_to_maximum() {
         assert_eq!(scrollbar_position(9, 10, 37), 37);
-        assert_eq!(scrollbar_position_count(120, 25), 96);
+        assert_eq!(crate::scrollbar_position_count(120, 25), 96);
     }
 
     #[test]

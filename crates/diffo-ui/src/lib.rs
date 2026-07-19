@@ -2,7 +2,10 @@
 
 pub mod command_palette;
 pub mod file_picker;
+mod scrollbar;
 pub mod text_view;
+
+pub use scrollbar::render_scrollbar;
 
 use crossterm::event::MouseEventKind;
 use diffo_core::ChangeKind;

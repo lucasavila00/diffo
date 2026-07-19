@@ -5,8 +5,8 @@ use std::hash::Hash;
 
 use crate::interaction;
 use crate::{
-    design, enabled_control_style, maximum_scroll, scroll_offset, scrollbar_position,
-    scrollbar_position_count, terminal_safe_text, theme, wheel_scroll_delta,
+    design, enabled_control_style, maximum_scroll, render_scrollbar, scroll_offset,
+    scrollbar_position, terminal_safe_text, theme, wheel_scroll_delta,
 };
 use crossterm::event::{
     Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind,
@@ -16,10 +16,7 @@ use ratatui::{
     layout::{Alignment, Rect},
     style::{Modifier, Style},
     text::{Line, Span},
-    widgets::{
-        Block, Borders, List, ListItem, ListState, Paragraph, Scrollbar, ScrollbarOrientation,
-        ScrollbarState,
-    },
+    widgets::{Block, Borders, List, ListItem, ListState, Paragraph, ScrollbarOrientation},
 };
 
 mod actions;
@@ -197,18 +194,15 @@ where
         let mut state = ListState::default().with_selected(selected);
         frame.render_stateful_widget(list, self.metrics.list_area, &mut state);
         if self.metrics.maximum_offset > 0 && !self.metrics.scrollbar_area.is_empty() {
-            let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
-                .begin_symbol(None)
-                .end_symbol(None)
-                .track_style(Style::default().fg(theme::CHROME))
-                .thumb_style(Style::default().fg(theme::CHROME));
-            let mut state = ScrollbarState::new(scrollbar_position_count(
+            render_scrollbar(
+                frame,
+                self.metrics.scrollbar_area,
+                &ScrollbarOrientation::VerticalRight,
                 self.visible.len(),
                 usize::from(self.metrics.list_area.height),
-            ))
-            .viewport_content_length(usize::from(self.metrics.list_area.height))
-            .position(self.metrics.offset);
-            frame.render_stateful_widget(scrollbar, self.metrics.scrollbar_area, &mut state);
+                self.metrics.offset,
+                Style::default().fg(theme::CHROME),
+            );
         }
     }
 

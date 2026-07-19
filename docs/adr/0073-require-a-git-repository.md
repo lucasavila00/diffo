@@ -19,10 +19,12 @@ discovery.
 
 ## Decision
 
-Resolve the worktree root before terminal initialization. Repository discovery
-classifies Git's fixed, C-locale "not a git repository" and "must be run in a work
-tree" failures as a typed `NotRepository` error. Other discovery failures keep their
-diagnostic context.
+Resolve the worktree root before terminal initialization and store that top-level path
+as the repository source root. Run subsequent Git commands and resolve every
+root-relative status path from that discovered root, regardless of the directory from
+which Diffo was launched. Repository discovery classifies Git's fixed, C-locale "not
+a git repository" and "must be run in a work tree" failures as a typed
+`NotRepository` error. Other discovery failures keep their diagnostic context.
 
 When the no-argument application entry path receives `NotRepository`, exit
 unsuccessfully and print exactly:
@@ -56,6 +58,8 @@ actionable.
 
 - A black-box launcher test runs the real Diffo binary in a temporary non-repository
   directory and asserts failure, empty standard output, and the exact message.
+- A black-box launcher test runs the real binary from a nested worktree directory,
+  dumps a repository snapshot, and verifies a root-relative nested file is present.
 - Existing launcher tests continue to prove invalid arguments and `update` dispatch
   before repository discovery.
 - Repository-backed integration tests continue to launch from valid worktrees.

@@ -38,6 +38,49 @@ fn application_requires_a_git_repository() -> Result<()> {
 }
 
 #[test]
+fn application_opens_from_a_nested_repository_directory() -> Result<()> {
+    let repository = tempfile::tempdir().context("create repository")?;
+    let git = Command::new("git")
+        .args(["init", "--initial-branch=main"])
+        .current_dir(repository.path())
+        .output()
+        .context("initialize repository")?;
+    ensure!(
+        git.status.success(),
+        "git init failed: {}",
+        String::from_utf8_lossy(&git.stderr)
+    );
+    let nested = repository.path().join("docs/adr");
+    fs::create_dir_all(&nested).context("create nested repository directory")?;
+    fs::write(nested.join("decision.md"), "decision\n").context("write nested file")?;
+    let dump_directory = tempfile::tempdir().context("create dump directory")?;
+    let dump = dump_directory.path().join("snapshot.ron");
+
+    let output = Command::new(diffo_e2e::diffo_binary(env!("CARGO_BIN_EXE_diffo"))?)
+        .current_dir(&nested)
+        .env("DIFFO_DUMP_PATH", &dump)
+        .output()
+        .context("run Diffo from a nested repository directory")?;
+
+    ensure!(
+        output.status.success(),
+        "Diffo failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let snapshot = fs::read_to_string(&dump).context("read repository snapshot")?;
+    let snapshot = ron::from_str::<diffo_core::RepositorySnapshot>(&snapshot)
+        .context("parse repository snapshot")?;
+    ensure!(
+        snapshot
+            .files
+            .iter()
+            .any(|file| file.path == std::path::Path::new("docs/adr/decision.md")),
+        "nested file was absent from the snapshot"
+    );
+    Ok(())
+}
+
+#[test]
 fn invalid_arguments_are_rejected_before_repository_discovery() -> Result<()> {
     let directory = tempfile::tempdir().context("create non-repository directory")?;
     for arguments in [&["--help"][..], &["update", "extra"][..]] {

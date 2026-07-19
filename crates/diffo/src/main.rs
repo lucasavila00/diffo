@@ -165,7 +165,7 @@ fn run_application() -> Result<()> {
                 None,
             )
         } else {
-            let repository = Arc::new(GitRepositorySource::with_askpass("."));
+            let repository = Arc::new(GitRepositorySource::discover_with_askpass(".")?);
             let paths = repository.watch_paths()?;
             (repository, Some(paths))
         };

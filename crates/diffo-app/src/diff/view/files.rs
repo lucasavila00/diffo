@@ -310,7 +310,9 @@ fn repository_status(snapshot: &RepositorySnapshot) -> RepositoryStatus {
 
 fn head_label(head: &HeadState) -> String {
     match head {
-        HeadState::Named { name, .. } => format!(" branch {name}"),
+        HeadState::Named { name, commit } => {
+            format!(" branch {name} · {}", short_commit(commit))
+        }
         HeadState::Unborn { name } => format!(" branch {name} (unborn)"),
         HeadState::Detached { commit } => format!(" detached {}", short_commit(commit)),
     }

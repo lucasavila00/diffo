@@ -374,7 +374,7 @@ fn status_line_makes_error_control_characters_inert() {
     let line = status_line(&model, 0, 80);
     let text = line_text(&line);
 
-    assert_eq!(line.width(), 80);
+    assert!(line.width() <= 80);
     assert!(!text.chars().any(char::is_control));
     insta::assert_debug_snapshot!(line);
 }

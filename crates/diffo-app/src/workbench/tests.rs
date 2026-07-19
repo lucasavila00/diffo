@@ -77,7 +77,7 @@ fn every_activity_renders_the_same_repository_footer() {
         .iter()
         .map(ratatui::buffer::Cell::symbol)
         .collect::<String>();
-    assert!(text.starts_with(" branch main · clean"), "{text}");
+    assert!(text.starts_with(" branch main · 1234567 · clean"), "{text}");
     assert!(text.ends_with("1/f1: commands  2/f2: help "), "{text}");
 }
 

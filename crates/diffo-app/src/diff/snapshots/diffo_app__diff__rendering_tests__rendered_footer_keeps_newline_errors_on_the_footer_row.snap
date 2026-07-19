@@ -16,7 +16,7 @@ Buffer {
         "└──────────────────┘│                                                          │",
         "┌ Changes [+] Stage┐│                                                          │",
         "└──────────────────┘└──────────────────────────────────────────────────────────┘",
-        " branch main  Fetch failed␊SSH host is unknown       1/f1: commands  2/f2: help ",
+        " branch main · 1234567  Fetch failed␊SSH host is unknown                        ",
     ],
     styles: [
         x: 0, y: 0, fg: DarkGray, bg: Reset, underline: Reset, modifier: NONE,
@@ -51,8 +51,8 @@ Buffer {
         x: 21, y: 9, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
         x: 79, y: 9, fg: DarkGray, bg: Reset, underline: Reset, modifier: NONE,
         x: 0, y: 11, fg: White, bg: Reset, underline: Reset, modifier: BOLD,
-        x: 12, y: 11, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
-        x: 14, y: 11, fg: LightRed, bg: Reset, underline: Reset, modifier: NONE,
-        x: 46, y: 11, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 22, y: 11, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 24, y: 11, fg: LightRed, bg: Reset, underline: Reset, modifier: NONE,
+        x: 56, y: 11, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
     ]
 }

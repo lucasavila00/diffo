@@ -49,7 +49,7 @@ fn highlights_old_and_new_rust_lines() {
 #[test]
 fn supports_bat_curated_syntaxes() {
     let highlighter = SyntaxHighlighter::new();
-    let mut highlighted = Vec::new();
+    let mut cases = Vec::new();
     for (path, code) in [
         ("app.tsx", "const view = <main>Hello</main>;"),
         ("script.py", "def hello(): return True"),
@@ -59,9 +59,9 @@ fn supports_bat_curated_syntaxes() {
         let patch = format!("@@ -0,0 +1 @@\n+{code}\n");
         let document = parse_unified_patch(&patch).expect("valid patch");
         let result = highlighter.highlight(Path::new(path), &document);
-        highlighted.push((path, compact_line(&result.new[&1])));
+        cases.push((path, compact_line(&result.new[&1])));
     }
-    insta::assert_debug_snapshot!(highlighted);
+    insta::assert_debug_snapshot!(cases);
 }
 
 #[test]

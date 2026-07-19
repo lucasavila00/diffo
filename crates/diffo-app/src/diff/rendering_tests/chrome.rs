@@ -95,8 +95,11 @@ fn commit_dialog_actions_use_the_enabled_control_style() {
         .draw(|frame| crate::diff::render_commit_editor(frame, &model, frame.area()))
         .unwrap();
 
-    let modal = crate::diff::view::overlays::commit_editor_layout(area).0;
-    insta::assert_debug_snapshot!(buffer_region(terminal.backend().buffer(), modal));
+    let editor_area = crate::diff::view::overlays::commit_editor_layout(area).0;
+    insta::assert_debug_snapshot!(buffer_region(
+        terminal.backend().buffer(),
+        editor_area
+    ));
 }
 
 #[test]

@@ -4,7 +4,7 @@ use std::sync::{
 };
 
 use crate::diff::FileKey;
-use diffo_diff::{DiffDocument, RenderLine, RowKind, SideBySideRow};
+use diffo_diff::{ChangeRegion, DiffDocument, RenderLine, RowKind, SideBySideRow};
 use diffo_highlight::{HighlightedDiff, LineRange, SyntaxHighlighter};
 use diffo_ui::file_picker::FilePicker;
 use diffo_ui::text_view::TextSurfacePreparation;
@@ -37,8 +37,8 @@ pub(in crate::diff) struct HighlightCache {
     pub(in crate::diff) document: DiffDocument,
     pub(in crate::diff) inline: Vec<RenderLine>,
     pub(in crate::diff) side_by_side: Vec<SideBySideRow>,
-    pub(in crate::diff) inline_changes: Vec<usize>,
-    pub(in crate::diff) side_by_side_changes: Vec<usize>,
+    pub(in crate::diff) inline_changes: Vec<ChangeRegion>,
+    pub(in crate::diff) side_by_side_changes: Vec<ChangeRegion>,
     pub(in crate::diff) highlighted: HighlightedDiff,
     pub(in crate::diff) syntax_highlighted: bool,
     pub(in crate::diff) highlighted_old_coverage: Vec<LineRange>,
@@ -121,8 +121,8 @@ pub(in crate::diff) struct ScrollbarMetrics {
 
 #[derive(Clone, Copy, Debug, Default)]
 pub(in crate::diff) struct HunkButtonMetrics {
-    pub(in crate::diff) previous: Option<(Rect, usize)>,
-    pub(in crate::diff) next: Option<(Rect, usize)>,
+    pub(in crate::diff) previous: Option<Rect>,
+    pub(in crate::diff) next: Option<Rect>,
 }
 
 #[derive(Clone, Copy, Debug)]

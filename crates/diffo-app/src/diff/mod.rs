@@ -17,9 +17,9 @@ use std::{
 use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind};
 use diffo_core::{ChangeKind, FileState, HeadState, RepositorySnapshot};
 use diffo_diff::{
-    DiffBlock, DiffDocument, ProjectionOptions, RenderLine, RowKind, SideBySideRow,
-    inline_change_starts, inline_rows_with_options, parse_unified_patch,
-    side_by_side_change_starts, side_by_side_rows_with_options,
+    ChangeRegion, DiffBlock, DiffDocument, ProjectionOptions, RenderLine, RowKind, SideBySideRow,
+    inline_change_regions, inline_rows_with_options, parse_unified_patch,
+    side_by_side_change_regions, side_by_side_rows_with_options,
 };
 use diffo_highlight::{HighlightedDiff, HighlightedLine, Rgb, StyledSpan, SyntaxHighlighter};
 use diffo_ui::file_picker::{Navigation as PickerNavigation, Outcome as PickerOutcome};
@@ -429,16 +429,17 @@ impl Renderer {
         if let Some(outcome) = self.map_picker_input(event, model, area) {
             return Some(outcome);
         }
+        let mut change_button_action = None;
         if let Event::Mouse(mouse) = event {
             if mouse.kind == MouseEventKind::Down(MouseButton::Left)
-                && let Some(target) = self.hunk_button_target_at(mouse.column, mouse.row)
+                && let Some(next) = self.hunk_button_direction_at(mouse.column, mouse.row)
             {
-                self.requested_navigation_target = Some(target);
-                return Some(RendererEvent::Message(
-                    crate::diff::Message::JumpDiffToPosition(target),
-                ));
-            }
-            if mouse.kind == MouseEventKind::Up(MouseButton::Left) {
+                change_button_action = Some(if next {
+                    crate::diff::Message::JumpToNextChange
+                } else {
+                    crate::diff::Message::JumpToPreviousChange
+                });
+            } else if mouse.kind == MouseEventKind::Up(MouseButton::Left) {
                 self.scrollbar_drag = None;
             } else if matches!(
                 mouse.kind,
@@ -467,15 +468,15 @@ impl Renderer {
                 }
             }
         }
-        let message = match input::map_event(event, model, area) {
+        let message = match change_button_action.or_else(|| input::map_event(event, model, area)) {
             Some(crate::diff::Message::JumpToPreviousChange) => {
-                self.change_jump(model, false).map(|target| {
+                self.change_jump(model, area, false).map(|target| {
                     self.requested_navigation_target = Some(target);
                     crate::diff::Message::JumpDiffToPosition(target)
                 })
             }
             Some(crate::diff::Message::JumpToNextChange) => {
-                self.change_jump(model, true).map(|target| {
+                self.change_jump(model, area, true).map(|target| {
                     self.requested_navigation_target = Some(target);
                     crate::diff::Message::JumpDiffToPosition(target)
                 })

@@ -214,6 +214,73 @@ fn n_and_p_move_between_changes_with_the_keyboard() -> Result<()> {
 }
 
 #[test]
+fn delayed_next_change_commits_the_target_and_syntax_atomically() -> Result<()> {
+    let repository = TestRepository::new()?;
+    let path = repository.worktree.join("delayed-navigation.rs");
+    fs::write(&path, delayed_navigation_file(false)?)?;
+    git(&repository.worktree, &["add", "delayed-navigation.rs"])?;
+    git(
+        &repository.worktree,
+        &["commit", "-m", "Add delayed navigation fixture"],
+    )?;
+    fs::write(&path, delayed_navigation_file(true)?)?;
+    let trace_path = repository.root.path().join("atomic-navigation-frames.ronl");
+    let mut screen = DiffoScreen::launch_with_env(
+        env!("CARGO_BIN_EXE_diffo"),
+        &repository.worktree,
+        &[
+            ("DIFFO_TRACE_FRAMES", trace_path.as_os_str()),
+            ("DIFFO_E2E_DIFF_PREP_DELAY_MS", OsStr::new("250")),
+        ],
+    )?;
+    screen
+        .wait_for_text("FIRST_DELAYED_CHANGE")?
+        .press(Key::Char('n'))?
+        .wait_for_text("MIDDLE_DELAYED_CHANGE")?
+        .press(Key::Char('q'))?
+        .wait_for_exit()?;
+    drop(screen);
+
+    let trace = fs::read_to_string(&trace_path).context("read atomic navigation frame trace")?;
+    let frames = trace
+        .lines()
+        .map(ron::from_str::<BufferFrame>)
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+    let input_index = frames
+        .iter()
+        .position(|frame| {
+            frame
+                .input_events
+                .iter()
+                .any(|event| event.contains("Char('n')"))
+        })
+        .with_context(|| format!("trace has no next-change input frame:\n{trace}"))?;
+    let input = &frames[input_index];
+    let old_scroll = input.scroll_before.0;
+    assert_eq!(input.viewport_transition, None);
+    assert_eq!(input.scroll_after.0, old_scroll);
+    assert_eq!(input.first_rendered_row, old_scroll);
+    let commit_offset = frames[input_index + 1..]
+        .iter()
+        .position(|frame| frame.viewport_transition.is_some())
+        .with_context(|| format!("trace has no navigation commit:\n{trace}"))?;
+    let commit_index = input_index + 1 + commit_offset;
+    assert!(frames[input_index..commit_index].iter().all(|frame| {
+        frame.viewport_transition.is_none() && frame.first_rendered_row == old_scroll
+    }));
+    let committed = &frames[commit_index];
+    let target = committed
+        .viewport_transition
+        .context("navigation target")?
+        .0;
+    assert!(target > 300, "unexpected navigation target: {target}");
+    assert!(committed.syntax_ready);
+    assert_eq!(committed.first_rendered_row, target);
+    assert_eq!(committed.scroll_after.0, target);
+    Ok(())
+}
+
+#[test]
 fn cold_large_file_open_commits_at_a_syntax_ready_first_change() -> Result<()> {
     let repository = TestRepository::new()?;
     let path = repository.worktree.join("large-syntax.rs");
@@ -312,6 +379,21 @@ fn middle_syntax_file(changed: bool) -> Result<String> {
             writeln!(contents, "pub const LINE_{line:04}: usize = {line};")
                 .context("build middle syntax fixture")?;
         }
+    }
+    Ok(contents)
+}
+
+fn delayed_navigation_file(changed: bool) -> Result<String> {
+    let mut contents = String::new();
+    for line in 0..700 {
+        let value = match (changed, line) {
+            (true, 10) => "FIRST_DELAYED_CHANGE".to_owned(),
+            (true, 350) => "MIDDLE_DELAYED_CHANGE".to_owned(),
+            (true, 690) => "LAST_DELAYED_CHANGE".to_owned(),
+            _ => format!("value_{line:03}"),
+        };
+        writeln!(contents, "pub const DELAYED_{line:03}: &str = \"{value}\";")
+            .context("build delayed navigation file")?;
     }
     Ok(contents)
 }

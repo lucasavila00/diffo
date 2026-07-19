@@ -61,6 +61,12 @@ pub struct SideBySideRow {
     pub kind: RowKind,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ChangeRegion {
+    pub first: usize,
+    pub last: usize,
+}
+
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct ProjectionOptions {
     pub mark_conflicts: bool,

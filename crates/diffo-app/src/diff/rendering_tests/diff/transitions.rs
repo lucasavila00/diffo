@@ -43,8 +43,8 @@ fn passive_mouse_movement_does_not_change_hunk_buttons_or_request_actions() {
         .draw(|frame| renderer.render(frame, &model))
         .unwrap();
 
-    let previous = renderer.hunk_buttons.previous.expect("previous button").0;
-    let next = renderer.hunk_buttons.next.expect("next button").0;
+    let previous = renderer.hunk_buttons.previous.expect("previous button");
+    let next = renderer.hunk_buttons.next.expect("next button");
     let before_movement = terminal.backend().buffer().clone();
     let positions = [
         previous,

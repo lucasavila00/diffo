@@ -46,31 +46,35 @@ pub(in crate::diff) fn horizontal_panes(
 }
 
 impl Renderer {
-    pub(in crate::diff) fn change_jump(&self, model: &Model, next: bool) -> Option<usize> {
-        let cache = self.highlighted.as_ref()?;
-        let scroll = model.diff_scroll;
-        let changes = match cache.key.mode {
-            DiffViewMode::Inline => &cache.inline_changes,
-            DiffViewMode::SideBySide => &cache.side_by_side_changes,
-        };
+    pub(in crate::diff) fn change_jump(
+        &self,
+        model: &Model,
+        area: Rect,
+        next: bool,
+    ) -> Option<usize> {
+        let mode = self.displayed_mode(model.diff_view_mode);
+        let diff_area = horizontal_panes(main_area(area), model.file_pane_percent)[1];
+        let viewport = self.diff_viewport_metrics(mode, diff_area, model.diff_scroll);
         if next {
-            changes.iter().copied().find(|row| *row > scroll)
+            viewport.next_change
         } else {
-            changes.iter().rev().copied().find(|row| *row < scroll)
+            viewport.previous_change
         }
     }
 
-    pub(in crate::diff) fn hunk_button_target_at(&self, column: u16, row: u16) -> Option<usize> {
+    pub(in crate::diff) fn hunk_button_direction_at(&self, column: u16, row: u16) -> Option<bool> {
         let position = (column, row).into();
-        if let Some((area, target)) = self.hunk_buttons.previous
-            && area.contains(position)
+        if self
+            .hunk_buttons
+            .previous
+            .is_some_and(|area| area.contains(position))
         {
-            return Some(target);
+            return Some(false);
         }
         self.hunk_buttons
             .next
-            .filter(|(area, _)| area.contains(position))
-            .map(|(_, target)| target)
+            .is_some_and(|area| area.contains(position))
+            .then_some(true)
     }
 
     pub(in crate::diff) fn change_at_marker(
@@ -88,7 +92,7 @@ impl Renderer {
             DiffViewMode::Inline => &cache.inline_changes,
             DiffViewMode::SideBySide => &cache.side_by_side_changes,
         };
-        changes.iter().copied().find(|change| {
+        changes.iter().map(|change| change.first).find(|change| {
             let marker_row = self
                 .scrollbars
                 .vertical_area
@@ -177,11 +181,8 @@ impl Renderer {
             let viewport_rows = usize::from(inner.height).saturating_sub(reserved_rows);
             let maximum_vertical_scroll = maximum_scroll(rows, viewport_rows);
             let first_row = requested_scroll.min(maximum_vertical_scroll);
-            let new_previous = changes.iter().rev().copied().find(|row| *row < first_row);
-            let new_next = changes
-                .iter()
-                .copied()
-                .find(|row| *row >= first_row.saturating_add(viewport_rows));
+            let new_previous = previous_change_target(changes, first_row, viewport_rows);
+            let new_next = next_change_target(changes, first_row, viewport_rows);
             let columns = self.displayed_columns(mode, viewport_columns, first_row, viewport_rows);
             horizontal_columns = horizontal_columns.max(columns);
             let new_horizontal = show_horizontal || columns > viewport_columns;
@@ -242,5 +243,84 @@ impl Renderer {
             previous_change,
             next_change,
         }
+    }
+}
+
+fn next_change_target(
+    changes: &[crate::diff::ChangeRegion],
+    first_row: usize,
+    viewport_rows: usize,
+) -> Option<usize> {
+    if viewport_rows == 0 {
+        return None;
+    }
+    let first_below = first_row.saturating_add(viewport_rows);
+    changes
+        .iter()
+        .find(|change| change.last >= first_below)
+        .map(|change| change.first.max(first_below))
+}
+
+fn previous_change_target(
+    changes: &[crate::diff::ChangeRegion],
+    first_row: usize,
+    viewport_rows: usize,
+) -> Option<usize> {
+    if viewport_rows == 0 {
+        return None;
+    }
+    changes
+        .iter()
+        .rev()
+        .find(|change| change.first < first_row)
+        .map(|change| {
+            if change.last >= first_row {
+                change.first.max(first_row.saturating_sub(viewport_rows))
+            } else {
+                change.first
+            }
+        })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{next_change_target, previous_change_target};
+    use crate::diff::ChangeRegion;
+
+    const CHANGES: &[ChangeRegion] = &[
+        ChangeRegion { first: 2, last: 3 },
+        ChangeRegion { first: 6, last: 7 },
+        ChangeRegion {
+            first: 10,
+            last: 30,
+        },
+        ChangeRegion {
+            first: 34,
+            last: 35,
+        },
+    ];
+
+    #[test]
+    fn skips_fully_visible_changes_in_both_directions() {
+        assert_eq!(next_change_target(CHANGES, 1, 8), Some(10));
+        assert_eq!(previous_change_target(CHANGES, 4, 8), Some(2));
+    }
+
+    #[test]
+    fn regions_crossing_viewport_edges_remain_targets() {
+        assert_eq!(next_change_target(CHANGES, 4, 3), Some(7));
+        assert_eq!(previous_change_target(CHANGES, 7, 3), Some(6));
+    }
+
+    #[test]
+    fn region_taller_than_the_viewport_moves_one_viewport_at_a_time() {
+        assert_eq!(next_change_target(CHANGES, 12, 5), Some(17));
+        assert_eq!(previous_change_target(CHANGES, 20, 5), Some(15));
+    }
+
+    #[test]
+    fn first_and_last_targets_do_not_wrap() {
+        assert_eq!(previous_change_target(CHANGES, 0, 5), None);
+        assert_eq!(next_change_target(CHANGES, 34, 5), None);
     }
 }

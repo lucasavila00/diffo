@@ -75,8 +75,11 @@ fn projection_len(cache: &HighlightCache, mode: DiffViewMode) -> usize {
 
 pub(super) fn first_change(cache: &HighlightCache, mode: DiffViewMode) -> Option<usize> {
     match mode {
-        DiffViewMode::Inline => cache.inline_changes.first().copied(),
-        DiffViewMode::SideBySide => cache.side_by_side_changes.first().copied(),
+        DiffViewMode::Inline => cache.inline_changes.first().map(|change| change.first),
+        DiffViewMode::SideBySide => cache
+            .side_by_side_changes
+            .first()
+            .map(|change| change.first),
     }
 }
 

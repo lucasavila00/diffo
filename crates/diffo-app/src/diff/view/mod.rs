@@ -24,12 +24,12 @@ pub(in crate::diff) fn render_hunk_button(frame: &mut Frame, area: Rect, label: 
 pub(in crate::diff) fn render_change_markers(
     frame: &mut Frame,
     area: Rect,
-    changes: &[usize],
+    changes: &[crate::diff::ChangeRegion],
     rows: usize,
     first_visible: usize,
     viewport_rows: usize,
 ) {
-    for &change in changes {
+    for change in changes.iter().map(|change| change.first) {
         let visible =
             change >= first_visible && change < first_visible.saturating_add(viewport_rows);
         let marker = Rect::new(
@@ -285,13 +285,13 @@ impl Renderer {
             )
         });
         self.hunk_buttons = HunkButtonMetrics {
-            previous: previous_area.zip(viewport.previous_change),
-            next: next_area.zip(viewport.next_change),
+            previous: previous_area,
+            next: next_area,
         };
-        if let Some((button, _)) = self.hunk_buttons.previous {
+        if let Some(button) = self.hunk_buttons.previous {
             render_hunk_button(frame, button, "↑ Previous change (p)");
         }
-        if let Some((button, _)) = self.hunk_buttons.next {
+        if let Some(button) = self.hunk_buttons.next {
             render_hunk_button(frame, button, "↓ Next change (n)");
         }
     }

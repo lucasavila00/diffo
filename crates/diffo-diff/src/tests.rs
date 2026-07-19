@@ -1,7 +1,7 @@
 use super::{
-    DiffBlock, ProjectionOptions, RenderLine, RowKind, SideBySideRow, inline_change_starts,
-    inline_rows, inline_rows_with_options, parse_unified_patch, side_by_side_change_starts,
-    side_by_side_rows, side_by_side_rows_with_options,
+    ChangeRegion, DiffBlock, ProjectionOptions, RenderLine, RowKind, SideBySideRow,
+    inline_change_regions, inline_rows, inline_rows_with_options, parse_unified_patch,
+    side_by_side_change_regions, side_by_side_rows, side_by_side_rows_with_options,
 };
 
 const PATCH: &str = "diff --git a/file.txt b/file.txt\n--- a/file.txt\n+++ b/file.txt\n@@ -1,4 +1,4 @@\n same\n-old one\n-old two\n+new one\n+new two\n end\n";
@@ -51,8 +51,20 @@ fn keeps_separate_change_blocks_as_navigation_targets() {
     let inline = inline_rows(&document);
     let side = side_by_side_rows(&document);
 
-    assert_eq!(inline_change_starts(&inline).len(), 2);
-    assert_eq!(side_by_side_change_starts(&side).len(), 2);
+    assert_eq!(
+        inline_change_regions(&inline),
+        vec![
+            ChangeRegion { first: 2, last: 3 },
+            ChangeRegion { first: 6, last: 7 },
+        ]
+    );
+    assert_eq!(
+        side_by_side_change_regions(&side),
+        vec![
+            ChangeRegion { first: 2, last: 2 },
+            ChangeRegion { first: 5, last: 5 },
+        ]
+    );
 }
 
 #[test]

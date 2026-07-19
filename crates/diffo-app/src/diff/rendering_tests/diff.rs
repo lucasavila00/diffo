@@ -383,7 +383,7 @@ fn uncached_scroll_uses_one_viewport_and_skeleton_until_syntax_is_ready() {
     let changes = &renderer.highlighted.as_ref().unwrap().inline_changes;
     let marker_row = renderer.scrollbars.vertical_area.y
         + overview_position(
-            changes[1],
+            changes[1].first,
             renderer.scrollbars.rows,
             renderer.scrollbars.vertical_area.height,
         );
@@ -431,7 +431,7 @@ fn hunk_markers_have_a_separate_clickable_rail_beside_the_scrollbar() {
         .unwrap();
 
     let changes = &renderer.highlighted.as_ref().unwrap().inline_changes;
-    let target = changes[1];
+    let target = changes[1].first;
     let marker_column = renderer.scrollbars.vertical_area.x.saturating_add(1);
     let marker_row = renderer.scrollbars.vertical_area.y
         + overview_position(
@@ -495,22 +495,29 @@ fn large_hunk_buttons_are_fixed_and_do_not_wrap() {
         .unwrap();
 
     assert!(renderer.hunk_buttons.previous.is_none());
-    let (next_area, next_target) = renderer.hunk_buttons.next.expect("next button");
+    let next_area = renderer.hunk_buttons.next.expect("next button");
+    let next_target = renderer
+        .change_jump(&model, area, true)
+        .expect("next target");
+    assert_jump_event(
+        &mut renderer,
+        &Event::Key(KeyEvent::new(KeyCode::Char('n'), KeyModifiers::NONE)),
+        &model,
+        area,
+        next_target,
+    );
     insta::assert_debug_snapshot!(
         "next_button",
         buffer_region(terminal.backend().buffer(), next_area)
     );
     assert!(renderer.scrollbars.horizontal_area.height > 0);
     assert_eq!(next_area.bottom(), renderer.scrollbars.horizontal_area.y);
-    assert_eq!(
-        renderer.map_event(
-            &mouse_at(MouseEventKind::Down(MouseButton::Left), next_area),
-            &model,
-            area,
-        ),
-        Some(RendererEvent::Message(
-            crate::diff::Message::JumpDiffToPosition(next_target)
-        ))
+    assert_jump_event(
+        &mut renderer,
+        &mouse_at(MouseEventKind::Down(MouseButton::Left), next_area),
+        &model,
+        area,
+        next_target,
     );
 
     let transition = renderer
@@ -525,22 +532,22 @@ fn large_hunk_buttons_are_fixed_and_do_not_wrap() {
     terminal
         .draw(|frame| renderer.render(frame, &model))
         .unwrap();
-    let (previous_area, previous_target) = renderer.hunk_buttons.previous.expect("previous button");
+    let previous_area = renderer.hunk_buttons.previous.expect("previous button");
+    let previous_target = renderer
+        .change_jump(&model, area, false)
+        .expect("previous target");
     insta::assert_debug_snapshot!(
         "previous_button",
         buffer_region(terminal.backend().buffer(), previous_area)
     );
     assert_eq!(previous_area.y, area.y.saturating_add(1));
     assert!(renderer.hunk_buttons.next.is_some());
-    assert_eq!(
-        renderer.map_event(
-            &mouse_at(MouseEventKind::Down(MouseButton::Left), previous_area),
-            &model,
-            area,
-        ),
-        Some(RendererEvent::Message(
-            crate::diff::Message::JumpDiffToPosition(previous_target)
-        ))
+    assert_jump_event(
+        &mut renderer,
+        &mouse_at(MouseEventKind::Down(MouseButton::Left), previous_area),
+        &model,
+        area,
+        previous_target,
     );
 
     model.diff_scroll = renderer
@@ -549,7 +556,7 @@ fn large_hunk_buttons_are_fixed_and_do_not_wrap() {
         .unwrap()
         .inline_changes
         .last()
-        .copied()
+        .map(|change| change.first)
         .unwrap();
     let end_preparation = renderer.prepare_frame(&model, area);
     let end_viewport =
@@ -564,23 +571,65 @@ fn large_hunk_buttons_are_fixed_and_do_not_wrap() {
     );
     assert_eq!(top_viewport.content_area.y, middle_viewport.content_area.y);
     assert_eq!(middle_viewport.content_area.y, end_viewport.content_area.y);
-    let content_and_horizontal_bottom = |viewport: crate::diff::DiffViewportMetrics| {
-        viewport
-            .content_area
-            .bottom()
-            .saturating_add(viewport.horizontal_area.height)
-    };
     assert_eq!(
-        content_and_horizontal_bottom(top_viewport),
-        content_and_horizontal_bottom(middle_viewport)
+        viewport_control_bottom(top_viewport),
+        viewport_control_bottom(middle_viewport)
     );
     assert_eq!(
-        content_and_horizontal_bottom(middle_viewport),
-        content_and_horizontal_bottom(end_viewport)
+        viewport_control_bottom(middle_viewport),
+        viewport_control_bottom(end_viewport)
     );
     assert_eq!(
-        renderer.hunk_button_target_at(next_area.x, next_area.y),
+        renderer.hunk_button_direction_at(next_area.x, next_area.y),
         None
+    );
+}
+
+#[test]
+fn inline_and_side_by_side_navigation_use_their_own_region_bounds() {
+    let mut patch = String::from("@@ -1,20 +1,20 @@\n context\n");
+    for line in 0..10 {
+        writeln!(patch, "-old {line}").unwrap();
+    }
+    for line in 0..10 {
+        writeln!(patch, "+new {line}").unwrap();
+    }
+    for line in 0..9 {
+        writeln!(patch, " context {line}").unwrap();
+    }
+    let area = Rect::new(0, 0, 100, 16);
+
+    let mut inline_model = model();
+    inline_model.snapshot.files[0]
+        .unstaged
+        .as_mut()
+        .unwrap()
+        .text = patch.clone();
+    let mut inline_renderer = Renderer::new();
+    inline_renderer.prepare_frame(&inline_model, area);
+    let inline = inline_renderer.diff_viewport_metrics_at(DiffViewMode::Inline, area, 0);
+
+    let mut side_model = model();
+    side_model.diff_view_mode = DiffViewMode::SideBySide;
+    side_model.snapshot.files[0].unstaged.as_mut().unwrap().text = patch;
+    let mut side_renderer = Renderer::new();
+    side_renderer.prepare_frame(&side_model, area);
+    let side = side_renderer.diff_viewport_metrics_at(DiffViewMode::SideBySide, area, 0);
+
+    assert_eq!(inline.viewport_rows, side.viewport_rows);
+    assert!(inline.next_change.is_some());
+    assert_eq!(side.next_change, None);
+    assert_eq!(
+        inline_renderer.highlighted.as_ref().unwrap().inline_changes[0],
+        diffo_diff::ChangeRegion { first: 2, last: 21 }
+    );
+    assert_eq!(
+        side_renderer
+            .highlighted
+            .as_ref()
+            .unwrap()
+            .side_by_side_changes[0],
+        diffo_diff::ChangeRegion { first: 2, last: 11 }
     );
 }
 

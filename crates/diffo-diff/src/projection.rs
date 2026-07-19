@@ -1,4 +1,6 @@
-use crate::{DiffBlock, DiffDocument, ProjectionOptions, RenderLine, RowKind, SideBySideRow};
+use crate::{
+    ChangeRegion, DiffBlock, DiffDocument, ProjectionOptions, RenderLine, RowKind, SideBySideRow,
+};
 
 #[must_use]
 pub fn inline_rows(document: &DiffDocument) -> Vec<RenderLine> {
@@ -115,29 +117,38 @@ pub fn side_by_side_rows_with_options(
 }
 
 #[must_use]
-pub fn inline_change_starts(rows: &[RenderLine]) -> Vec<usize> {
-    change_starts(rows.iter().map(|row| row.kind))
+pub fn inline_change_regions(rows: &[RenderLine]) -> Vec<ChangeRegion> {
+    change_regions(rows.iter().map(|row| row.kind))
 }
 
 #[must_use]
-pub fn side_by_side_change_starts(rows: &[SideBySideRow]) -> Vec<usize> {
-    change_starts(rows.iter().map(|row| row.kind))
+pub fn side_by_side_change_regions(rows: &[SideBySideRow]) -> Vec<ChangeRegion> {
+    change_regions(rows.iter().map(|row| row.kind))
 }
 
-fn change_starts(kinds: impl Iterator<Item = RowKind>) -> Vec<usize> {
-    let mut inside_change = false;
-    let mut starts = Vec::new();
+fn change_regions(kinds: impl Iterator<Item = RowKind>) -> Vec<ChangeRegion> {
+    let mut current = None;
+    let mut regions = Vec::new();
     for (index, kind) in kinds.enumerate() {
         let changed = matches!(
             kind,
             RowKind::Removed | RowKind::Added | RowKind::Changed | RowKind::Conflict
         );
-        if changed && !inside_change {
-            starts.push(index);
+        if changed {
+            current
+                .get_or_insert(ChangeRegion {
+                    first: index,
+                    last: index,
+                })
+                .last = index;
+        } else if let Some(region) = current.take() {
+            regions.push(region);
         }
-        inside_change = changed;
     }
-    starts
+    if let Some(region) = current {
+        regions.push(region);
+    }
+    regions
 }
 
 fn line_kind(text: &str, fallback: RowKind, options: ProjectionOptions) -> RowKind {

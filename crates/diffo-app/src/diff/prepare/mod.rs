@@ -1,11 +1,11 @@
 use super::{
-    Arc, DiffBlock, DiffDocument, DiffKey, DiffViewMode, HIGHLIGHT_LOOKBEHIND_LINES,
+    Arc, ChangeRegion, DiffBlock, DiffDocument, DiffKey, DiffViewMode, HIGHLIGHT_LOOKBEHIND_LINES,
     HighlightCache, HighlightedDiff, HunkButtonMetrics, MAX_HIGHLIGHT_BYTES_PER_SIDE,
     MAX_HIGHLIGHT_FILE_LINES, MAX_SYNC_BYTES, MAX_SYNC_LINES, Model, PREPARED_BUFFER_CACHE_SIZE,
     PrepareCommit, PrepareOutcome, PrepareRequest, ProjectionOptions, RenderLine, Renderer,
     RowKind, ScrollAnchor, ScrollbarMetrics, Span, SyntaxHighlighter, ViewportTransition, channel,
-    inline_change_starts, inline_rows_with_options, parse_unified_patch,
-    side_by_side_change_starts, side_by_side_rows_with_options, sync_channel, terminal_safe_text,
+    inline_change_regions, inline_rows_with_options, parse_unified_patch,
+    side_by_side_change_regions, side_by_side_rows_with_options, sync_channel, terminal_safe_text,
     thread,
 };
 use diffo_diff::SideBySideRow;
@@ -38,13 +38,13 @@ pub(in crate::diff) fn prepare_diff(
     } else {
         Vec::new()
     };
-    let inline_changes = inline_change_starts(&inline);
+    let inline_changes = inline_change_regions(&inline);
     let side_by_side = if request.mode == DiffViewMode::SideBySide {
         side_by_side_rows_with_options(&document, options)
     } else {
         Vec::new()
     };
-    let side_by_side_changes = side_by_side_change_starts(&side_by_side);
+    let side_by_side_changes = side_by_side_change_regions(&side_by_side);
     let syntax_highlighted = should_syntax_highlight(&document);
     let (old_range, new_range) = projection_highlight_ranges(
         &inline,
@@ -101,11 +101,24 @@ pub(in crate::diff) fn prepare_diff(
     })
 }
 
+fn e2e_diff_preparation_delay() {
+    let Some(milliseconds) = std::env::var_os("DIFFO_E2E_DIFF_PREP_DELAY_MS") else {
+        return;
+    };
+    let Some(milliseconds) = milliseconds
+        .to_str()
+        .and_then(|value| value.parse::<u64>().ok())
+    else {
+        return;
+    };
+    thread::sleep(std::time::Duration::from_millis(milliseconds));
+}
+
 fn projection_highlight_ranges(
     inline: &[RenderLine],
-    inline_changes: &[usize],
+    inline_changes: &[ChangeRegion],
     side_by_side: &[SideBySideRow],
-    side_by_side_changes: &[usize],
+    side_by_side_changes: &[ChangeRegion],
     request: ProjectionHighlightRequest,
 ) -> (Option<LineRange>, Option<LineRange>) {
     let window_viewports = request.prefetch_viewports.max(1);
@@ -117,12 +130,12 @@ fn projection_highlight_ranges(
     let inline_target = request
         .target_scroll
         .filter(|_| request.mode == DiffViewMode::Inline)
-        .or_else(|| inline_changes.first().copied())
+        .or_else(|| inline_changes.first().map(|change| change.first))
         .unwrap_or(0);
     let side_target = request
         .target_scroll
         .filter(|_| request.mode == DiffViewMode::SideBySide)
-        .or_else(|| side_by_side_changes.first().copied())
+        .or_else(|| side_by_side_changes.first().map(|change| change.first))
         .unwrap_or(0);
     let inline_start = centered_window_start(
         inline_target,
@@ -552,7 +565,7 @@ impl Renderer {
         }
     }
 
-    pub(in crate::diff) fn change_targets(&self, mode: DiffViewMode) -> &[usize] {
+    pub(in crate::diff) fn change_targets(&self, mode: DiffViewMode) -> &[ChangeRegion] {
         self.highlighted.as_ref().map_or(&[], |cache| match mode {
             DiffViewMode::Inline => cache.inline_changes.as_slice(),
             DiffViewMode::SideBySide => cache.side_by_side_changes.as_slice(),
@@ -585,6 +598,7 @@ impl Renderer {
                     while let Ok(newer) = requests.try_recv() {
                         request = newer;
                     }
+                    e2e_diff_preparation_delay();
                     let key = request.key.clone();
                     let target_scroll = request.target_scroll;
                     let cache = prepare_diff(request, &worker_highlighter);

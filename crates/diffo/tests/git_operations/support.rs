@@ -85,6 +85,8 @@ pub(super) struct BufferFrame {
     pub(super) requested_diff: Option<String>,
     pub(super) displayed_diff: Option<String>,
     pub(super) viewport_transition: Option<(usize, usize)>,
+    pub(super) scroll_before: (usize, usize),
+    pub(super) scroll_after: (usize, usize),
     pub(super) first_rendered_row: usize,
     pub(super) syntax_ready: bool,
 }

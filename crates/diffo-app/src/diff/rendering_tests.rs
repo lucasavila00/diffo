@@ -231,6 +231,26 @@ fn buffer_text(buffer: &ratatui::buffer::Buffer) -> String {
         })
 }
 
+fn assert_jump_event(
+    renderer: &mut Renderer,
+    event: &Event,
+    model: &Model,
+    area: Rect,
+    target: usize,
+) {
+    assert_eq!(
+        renderer.map_event(event, model, area),
+        Some(RendererEvent::Message(Message::JumpDiffToPosition(target)))
+    );
+}
+
+fn viewport_control_bottom(viewport: crate::diff::DiffViewportMetrics) -> u16 {
+    viewport
+        .content_area
+        .bottom()
+        .saturating_add(viewport.horizontal_area.height)
+}
+
 fn buffer_region(buffer: &Buffer, area: Rect) -> Buffer {
     let mut region = Buffer::empty(Rect::new(0, 0, area.width, area.height));
     for y in 0..area.height {
@@ -565,21 +585,40 @@ fn diff_navigation_hands_off_between_flat_picker_instances() {
 #[test]
 fn change_navigation_stops_at_the_first_and_last_changes() {
     let mut model = model();
-    model.snapshot.files[0].unstaged.as_mut().unwrap().text =
-            "@@ -1,7 +1,7 @@\n one\n-old two\n+new two\n three\n four\n-old five\n+new five\n six\n seven\n"
-                .to_owned();
+    let mut patch = String::from("@@ -1,60 +1,60 @@\n");
+    for line in 0..60 {
+        if matches!(line, 5 | 30 | 55) {
+            writeln!(patch, "-old {line}").unwrap();
+            writeln!(patch, "+new {line}").unwrap();
+        } else {
+            writeln!(patch, " context {line}").unwrap();
+        }
+    }
+    model.snapshot.files[0].unstaged.as_mut().unwrap().text = patch;
     let mut renderer = Renderer::new();
-    renderer.prepare_frame(&model, Rect::new(0, 0, 100, 30));
+    let area = Rect::new(0, 0, 100, 15);
+    renderer.prepare_frame(&model, area);
+    let changes = renderer
+        .highlighted
+        .as_ref()
+        .unwrap()
+        .inline_changes
+        .clone();
 
-    let first = renderer.change_jump(&model, true).expect("first change");
-    model.diff_scroll = first;
-    let second = renderer.change_jump(&model, true).expect("second change");
-    assert!(second > first);
+    model.diff_scroll = changes[0].first;
+    let second = renderer
+        .change_jump(&model, area, true)
+        .expect("second change");
     model.diff_scroll = second;
-    assert_eq!(renderer.change_jump(&model, true), None);
-    assert_eq!(renderer.change_jump(&model, false), Some(first));
-    model.diff_scroll = first;
-    assert_eq!(renderer.change_jump(&model, false), None);
+    let third = renderer
+        .change_jump(&model, area, true)
+        .expect("third change");
+    assert!(third > second);
+    model.diff_scroll = third;
+    assert_eq!(renderer.change_jump(&model, area, true), None);
+    assert_eq!(renderer.change_jump(&model, area, false), Some(second));
+    model.diff_scroll = changes[0].first;
+    assert_eq!(renderer.change_jump(&model, area, false), None);
 }
 
 mod chrome;

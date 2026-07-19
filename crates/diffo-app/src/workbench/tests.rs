@@ -391,7 +391,7 @@ fn explorer_palette_combines_shared_and_explorer_commands() {
         .active_palette()
         .matches()
         .into_iter()
-        .map(|command| format!("{}: {}", command.id.as_str(), command.label))
+        .map(|command| format!("{:?}: {}", command.id, command.label))
         .collect::<Vec<_>>();
 
     insta::assert_debug_snapshot!(commands);

@@ -110,6 +110,10 @@ This repository is a Rust workspace containing small command-line utilities. Eac
 ## TUI conventions
 
 - Always restore the terminal before returning from the application.
+- Use the semantic layout and dark-gray chrome tokens from `diffo-ui` for structural
+  borders, dividers, scrollbars, selection backgrounds, dimensions, gaps, and
+  overlay bounds. Keep meaning-specific colors for semantic content, diffs, and
+  syntax highlighting.
 - Design for SSH use and treat terminal input, redraw work, and output as network
   costs at all times. Do not add hover-driven visual changes, hover-only state,
   passive mouse-movement handling solely for hover feedback, or redraws caused only
@@ -122,11 +126,38 @@ This repository is a Rust workspace containing small command-line utilities. Eac
 - Treat visible syntax coverage as part of the atomic commit. File opens and uncached vertical jumps must not display a plain target and color it in a later frame.
 - Bound syntax work by the visible viewport, fixed parser look-behind, and a fixed byte budget; never put full-file syntax work back on the file-opening critical path.
 - Build only the requested diff projection on a cold path. Treat a view-mode change as an atomic prepared transition and keep the previously committed mode visible until it is ready.
+- Keep the prepared file-and-mode cache at four entries unless a newer ADR changes
+  that boundary.
 - Preserve the strict 10,000-line syntax eligibility boundary and the sub-100 ms 9,999-line reference benchmark unless a newer ADR replaces that contract.
 - Drain and install background diff results only during frame preparation. Rendering must consume committed state only, and stale results must never supply content, navigation targets, or scroll metrics.
 - Keep the vertical scrollbar and hunk-marker rail visually and interactively separate; neither control may overwrite or capture the other control's cells.
 - Add deterministic state-transition tests and a delayed PTY regression whenever changing asynchronous diff preparation, buffer opening, first-hunk navigation, or scrollbar markers.
 - Keep mock repository states in `crates/diffo-core/fixtures/`; do not add mock-only behavior to the real Git data path.
+
+## Development workflows
+
+- Run `make diffo` against the current Git repository.
+- Run `make diffo-mock` against the mutable in-memory fixture at
+  `crates/diffo-core/fixtures/repository-state.ron`. Its stage and unstage actions
+  must not modify the fixture on disk.
+- Keep generated large and stress-test payloads out of the repository. The mock
+  application generates them on demand.
+- Use `DIFFO_MOCK_FILE` only to preview another RON fixture during development and
+  testing; it is not user configuration.
+- Use `DIFFO_DUMP_PATH` only to write one repository snapshot and exit before the
+  TUI starts; it is not user configuration.
+
+## Release signing
+
+- Stable releases use `v<major>.<minor>.<patch>` tags.
+- Store the base64-encoded unencrypted PKCS#8 PEM Ed25519 private key in the
+  `DIFFO_UPDATE_SIGNING_KEY` repository secret. Never commit the private key.
+- Store the base64-encoded raw 32-byte public key in the
+  `DIFFO_UPDATE_PUBLIC_KEY` repository variable.
+- The release workflow must derive the public key from the private key and fail
+  before building when the configured keys do not match.
+- Embed the tag version in the binary and signed update metadata independently of
+  the Cargo package version.
 
 ## Validation
 

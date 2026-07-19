@@ -1,4 +1,8 @@
-use std::{process::Command, thread, time::Duration};
+use std::{
+    process::Command,
+    thread,
+    time::{Duration, Instant},
+};
 
 use diffo_core::CancellationHandle;
 use nix::{errno::Errno, sys::signal::kill, unistd::Pid};
@@ -31,5 +35,9 @@ fn cancellation_reaps_the_operation_process_group() {
         .trim()
         .parse::<i32>()
         .unwrap();
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while Instant::now() < deadline && kill(Pid::from_raw(child_pid), None).is_ok() {
+        thread::sleep(Duration::from_millis(10));
+    }
     assert_eq!(kill(Pid::from_raw(child_pid), None), Err(Errno::ESRCH));
 }

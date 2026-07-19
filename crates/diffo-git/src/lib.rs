@@ -1,6 +1,8 @@
 #![doc = include_str!("../README.md")]
 
 use std::{
+    error::Error,
+    fmt,
     path::{Path, PathBuf},
     process,
 };
@@ -18,6 +20,18 @@ mod operation_tests;
 mod snapshot;
 mod status;
 pub use askpass::run_askpass_if_requested;
+
+#[derive(Debug)]
+pub struct NotRepository;
+
+impl fmt::Display for NotRepository {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("the path is not inside a Git repository")
+    }
+}
+
+impl Error for NotRepository {}
+
 pub struct GitRepositorySource {
     root: PathBuf,
     askpass: Option<PathBuf>,

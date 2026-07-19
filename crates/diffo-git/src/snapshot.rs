@@ -19,8 +19,8 @@ impl GitRepositorySource {
     /// Returns an error when Git cannot resolve repository paths.
     pub fn watch_paths(&self) -> Result<Vec<PathBuf>> {
         let mut paths = BTreeSet::new();
+        paths.insert(self.repository_root()?);
         for args in [
-            &["rev-parse", "--show-toplevel"][..],
             &["rev-parse", "--path-format=absolute", "--git-dir"][..],
             &["rev-parse", "--path-format=absolute", "--git-common-dir"][..],
         ] {

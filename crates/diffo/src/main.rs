@@ -26,7 +26,7 @@ use diffo_core::{
     FailureKind, OperationFailure, Repository, RepositoryUpdateKind,
     fixture_source::MutableFixtureRepository,
 };
-use diffo_git::{GitRepositorySource, run_askpass_if_requested};
+use diffo_git::{GitRepositorySource, NotRepository, run_askpass_if_requested};
 use diffo_repository_service::{RepositoryEvent, RepositoryService};
 use ratatui::{Terminal, backend::CrosstermBackend};
 
@@ -106,7 +106,13 @@ fn main() -> Result<()> {
             run_updater();
             Ok(())
         }
-        launcher::LaunchMode::Application => run_application(),
+        launcher::LaunchMode::Application => match run_application() {
+            Err(error) if error.downcast_ref::<NotRepository>().is_some() => {
+                eprintln!("Diffo must be run inside a Git repository.");
+                std::process::exit(1);
+            }
+            result => result,
+        },
     }
 }
 

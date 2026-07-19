@@ -13,6 +13,31 @@ use serde_json::json;
 use sha2::{Digest as _, Sha256};
 
 #[test]
+fn application_requires_a_git_repository() -> Result<()> {
+    let directory = tempfile::tempdir().context("create non-repository directory")?;
+    let output = Command::new(diffo_e2e::diffo_binary(env!("CARGO_BIN_EXE_diffo"))?)
+        .current_dir(directory.path())
+        .output()
+        .context("run Diffo outside a repository")?;
+
+    ensure!(
+        !output.status.success(),
+        "Diffo started outside a repository"
+    );
+    ensure!(
+        output.stdout.is_empty(),
+        "unexpected stdout: {:?}",
+        output.stdout
+    );
+    ensure!(
+        String::from_utf8_lossy(&output.stderr) == "Diffo must be run inside a Git repository.\n",
+        "unexpected stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    Ok(())
+}
+
+#[test]
 fn invalid_arguments_are_rejected_before_repository_discovery() -> Result<()> {
     let directory = tempfile::tempdir().context("create non-repository directory")?;
     for arguments in [&["--help"][..], &["update", "extra"][..]] {

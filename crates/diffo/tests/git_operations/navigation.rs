@@ -26,7 +26,7 @@ fn view_toggle_renders_immediately() -> Result<()> {
     screen
         .press(Key::Char('r'))?
         .wait_for_text("Side by side")?;
-    assert!(screen.contents().contains("File Diff"));
+    assert!(screen.contents().contains("Side by side ─── "));
     Ok(())
 }
 
@@ -67,7 +67,7 @@ fn full_screen_explorer_shows_only_the_open_file_and_scroll_controls() -> Result
         .press(Key::Tab)?
         .wait_for_text("Explorer")?
         .wait_for_text("base")?
-        .press(Key::Char('f'))?
+        .click(&Selector::text(""))?
         .wait_for_text_gone("Explorer")?
         .wait_for_text("base")?;
     let contents = screen.contents();

@@ -77,11 +77,30 @@ fn full_screen_diff_renders_styled_raw_hunks_and_x_closes_it() {
         }],
         ..RepositorySnapshot::default()
     };
-    let area = Rect::new(0, 0, 40, 8);
+    let area = Rect::new(0, 0, 80, 8);
     let mut workbench = Workbench::new(snapshot);
     workbench.prepare_frame(area);
 
-    let _ = workbench.handle_event(&key(KeyCode::Char('f')), area);
+    let entry = full_screen::entry_area(area, workbench.pane_split);
+    let backend = TestBackend::new(area.width, area.height);
+    let mut terminal = Terminal::new(backend).unwrap();
+    terminal.draw(|frame| workbench.render(frame)).unwrap();
+    assert_eq!(
+        terminal.backend().buffer()[(entry.x, entry.y)].symbol(),
+        diffo_ui::interaction::MAXIMIZE,
+    );
+    let normal_header = (0..area.width)
+        .map(|column| terminal.backend().buffer()[(column, area.y)].symbol())
+        .collect::<String>();
+    assert!(normal_header.contains("Inline ─── "), "{normal_header}");
+
+    let open = Event::Mouse(MouseEvent {
+        kind: MouseEventKind::Up(MouseButton::Left),
+        column: entry.x,
+        row: entry.y,
+        modifiers: KeyModifiers::NONE,
+    });
+    let _ = workbench.handle_event(&open, area);
     workbench.prepare_frame(area);
     assert!(workbench.full_screen());
 
@@ -95,7 +114,10 @@ fn full_screen_diff_renders_styled_raw_hunks_and_x_closes_it() {
     };
     assert!(row(0).starts_with("M src/main.rs"));
     assert_eq!(terminal.backend().buffer()[(0, 0)].fg, Color::Yellow);
-    assert_eq!(terminal.backend().buffer()[(39, 0)].symbol(), "X");
+    assert_eq!(
+        terminal.backend().buffer()[(area.right().saturating_sub(1), 0)].symbol(),
+        "X",
+    );
     assert!(row(1).starts_with("@@ -1 +1 @@"));
     assert!(row(2).starts_with("-let old = true;"));
     assert!(row(3).starts_with("+let new = false;"));
@@ -107,7 +129,7 @@ fn full_screen_diff_renders_styled_raw_hunks_and_x_closes_it() {
     assert!(workbench.full_screen());
     let close = Event::Mouse(MouseEvent {
         kind: MouseEventKind::Up(MouseButton::Left),
-        column: 39,
+        column: area.right().saturating_sub(1),
         row: 0,
         modifiers: KeyModifiers::NONE,
     });

@@ -13,6 +13,11 @@ outer UI text and layout marks from the copied lines.
 
 Lowercase `f` toggles full-screen mode for the active text buffer.
 
+The normal buffer has a Nerd Font `` button in its top-right border. A short
+horizontal line separates the buffer label from the button. Diff shows only the
+view mode there, not a `File Diff` label. Clicking the button enters full-screen
+mode. It uses the same prepared transition as `f`.
+
 Diff uses the open diff buffer. Explorer uses the open file buffer. If no text
 buffer is open, `f` does nothing.
 
@@ -70,6 +75,7 @@ palette, menu, or text input keeps input priority. In text input, `f` remains te
 
 - Press `f` in Explorer. The header, syntax-highlighted file text, and scroll
   controls remain. Workbench chrome, line numbers, and gutters disappear.
+- Click `` on the normal Explorer or Diff buffer. Full-screen mode opens.
 - Press `f` in Diff. The header, styled raw hunks, and scroll controls remain.
   Inline and side-by-side layout marks disappear.
 - Press `f` again. The normal page returns with the same buffer and scroll position.

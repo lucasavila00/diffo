@@ -138,7 +138,7 @@ fn diff_horizontal_pan_is_terminal_safe_and_reversible() -> Result<()> {
         .press_many(Key::Right, 20)?
         .wait_for_text("␛[2JCONTROL_RIGHT_EDGE")?;
     let panned = screen.contents();
-    assert!(panned.contains("File Diff"), "{panned}");
+    assert!(panned.contains("Inline ─── "), "{panned}");
     assert!(panned.contains("1/f1: commands"), "{panned}");
 
     screen.press_many(Key::Left, 20)?.wait_for_text("START_")?;

@@ -5,7 +5,7 @@ expression: terminal.backend().buffer()
 Buffer {
     area: Rect { x: 0, y: 0, width: 80, height: 12 },
     content: [
-        "┌ Commit message ─✎┐┌ File Diff ─────────────────────────── File Diff · Inline ┐",
+        "┌ Commit message ─✎┐┌ File Diff ────────────────────────────────── Inline ───  ┐",
         "│Type a message…   ││                                                          │",
         "└──────────────────┘│                                                          │",
         "     [ Commit ]     │                                                          │",

@@ -42,6 +42,7 @@ pub mod interaction {
     pub const TREE_LEAF: &str = "  ";
     pub const EDIT: &str = "✎";
     pub const DISMISS: &str = "×";
+    pub const MAXIMIZE: &str = "";
     pub const PANE_DRAG: &str = "↔";
 }
 

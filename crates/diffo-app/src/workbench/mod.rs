@@ -290,6 +290,7 @@ impl Workbench {
             Activity::Explorer => self.explorer.render(frame, content, self.pane_split),
             Activity::Search => self.search.render(frame, content, self.pane_split),
         }
+        self.render_full_screen_entry(frame);
         render_pane_drag_marker(frame, tool_areas(content).content, self.pane_split);
         render_toasts(frame, self.toasts.as_slice(), content);
         if let Some(command) = self.commands.active() {
@@ -377,11 +378,7 @@ impl Workbench {
         if !tool_captures_global_input && self.handle_overlay_click(event, content) {
             return None;
         }
-        if !tool_captures_global_input
-            && full_screen::is_toggle(event)
-            && self.full_screen_title().is_some()
-        {
-            self.full_screen_pending = !self.full_screen_pending;
+        if !tool_captures_global_input && self.request_full_screen(event, area) {
             return None;
         }
         let pane_area = tool_areas(content).content;
@@ -495,14 +492,6 @@ impl Workbench {
     fn sync_diff_pane_state(&mut self) {
         self.diff.model.file_pane_percent = self.pane_split.percent();
         self.diff.model.resizing_file_pane = self.pane_split.is_dragging();
-    }
-
-    fn full_screen_title(&self) -> Option<ratatui::text::Line<'static>> {
-        match self.active {
-            Activity::Diff => self.diff.renderer.full_screen_title(),
-            Activity::Explorer => self.explorer.full_screen_title(),
-            Activity::Search => None,
-        }
     }
 
     pub fn take_task(&mut self) -> Option<WorkbenchTask> {

@@ -1,5 +1,5 @@
 use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind};
-use diffo_ui::design;
+use diffo_ui::{PaneSplit, design, enabled_control_style, interaction, tool_areas};
 use ratatui::{
     Frame,
     layout::{Constraint, Layout, Rect},
@@ -7,7 +7,7 @@ use ratatui::{
     widgets::{Clear, Paragraph},
 };
 
-use super::{Activity, Workbench, WorkbenchCommand, explorer_preparation};
+use super::{Activity, Workbench, WorkbenchCommand, explorer_preparation, workbench_areas};
 use crate::diff::{FramePreparation, RendererEvent};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -67,6 +67,30 @@ pub(super) fn is_toggle(event: &Event) -> bool {
     )
 }
 
+#[must_use]
+pub(super) fn entry_area(area: Rect, split: PaneSplit) -> Rect {
+    let content = tool_areas(workbench_areas(area).content).content;
+    let buffer = split.areas(content).trailing;
+    let x = buffer.right().saturating_sub(design::INLINE_GAP);
+    if buffer.height == 0 || x < buffer.x {
+        return Rect::default();
+    }
+    Rect::new(
+        x,
+        buffer.y,
+        design::SINGLE_LINE_HEIGHT,
+        design::SINGLE_LINE_HEIGHT,
+    )
+}
+
+fn opens(event: &Event, area: Rect, split: PaneSplit) -> bool {
+    let Event::Mouse(mouse) = event else {
+        return false;
+    };
+    mouse.kind == MouseEventKind::Up(MouseButton::Left)
+        && entry_area(area, split).contains((mouse.column, mouse.row).into())
+}
+
 fn is_quit(event: &Event) -> bool {
     matches!(
         event,
@@ -79,6 +103,39 @@ fn is_quit(event: &Event) -> bool {
 }
 
 impl Workbench {
+    fn full_screen_title(&self) -> Option<Line<'static>> {
+        match self.active {
+            Activity::Diff => self.diff.renderer.full_screen_title(),
+            Activity::Explorer => self.explorer.full_screen_title(),
+            Activity::Search => None,
+        }
+    }
+
+    pub(super) fn render_full_screen_entry(&self, frame: &mut Frame) {
+        if self.full_screen_title().is_none() {
+            return;
+        }
+        frame.render_widget(
+            Paragraph::new(interaction::MAXIMIZE).style(enabled_control_style()),
+            entry_area(frame.area(), self.pane_split),
+        );
+    }
+
+    pub(super) fn request_full_screen(&mut self, event: &Event, area: Rect) -> bool {
+        if self.full_screen_title().is_none() {
+            return false;
+        }
+        if is_toggle(event) {
+            self.full_screen_pending = !self.full_screen_pending;
+            return true;
+        }
+        if opens(event, area, self.pane_split) {
+            self.full_screen_pending = true;
+            return true;
+        }
+        false
+    }
+
     pub(super) fn prepare_full_screen(&mut self, area: Rect) -> Option<FramePreparation> {
         if !self.full_screen && !self.full_screen_pending {
             return None;
@@ -195,5 +252,13 @@ mod tests {
 
         assert!(closes(&event, Rect::new(2, 3, 20, 8)));
         assert!(!closes(&event, Rect::new(2, 4, 20, 8)));
+    }
+
+    #[test]
+    fn entry_control_uses_the_normal_buffer_top_right_border() {
+        assert_eq!(
+            entry_area(Rect::new(0, 0, 100, 30), PaneSplit::default()),
+            Rect::new(98, 0, 1, 1),
+        );
     }
 }

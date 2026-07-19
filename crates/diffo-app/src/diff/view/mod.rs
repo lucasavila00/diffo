@@ -282,8 +282,7 @@ impl Renderer {
                 .border_style(resize_border_style(model))
                 .title(title)
                 .title(
-                    Line::raw(format!(" File Diff · {mode}{resize_label} "))
-                        .alignment(Alignment::Right),
+                    Line::raw(format!(" {mode}{resize_label} ───  ")).alignment(Alignment::Right),
                 ),
             area,
         );

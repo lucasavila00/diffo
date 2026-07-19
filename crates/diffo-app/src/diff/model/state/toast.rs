@@ -23,7 +23,7 @@ impl ToastQueue {
         self.toasts.retain(|toast| toast.id != id);
     }
 
-    pub fn show(&mut self, kind: ToastKind, title: impl Into<String>) {
+    pub fn show(&mut self, kind: ToastKind, title: impl Into<String>) -> u64 {
         let title = title.into();
         let detail = None;
         self.toasts
@@ -37,6 +37,7 @@ impl ToastQueue {
         self.next_id = self.next_id.saturating_add(1);
         self.toasts.insert(0, toast);
         self.toasts.truncate(3);
+        self.next_id.saturating_sub(1)
     }
 }
 

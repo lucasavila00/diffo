@@ -93,7 +93,7 @@ impl Workbench {
         let _ = self.update_diff(Message::OperationCancelled(action));
     }
 
-    fn finish_command_progress(&mut self, id: ApplicationCommandId) {
+    pub(super) fn finish_command_progress(&mut self, id: ApplicationCommandId) {
         if self.command_progress.command_id() == Some(id) {
             self.command_progress = CommandProgressState::Hidden;
             self.command_animation_tick = 0;
@@ -104,7 +104,7 @@ impl Workbench {
         self.toast_deadlines
             .retain(|id, _| self.toasts.as_slice().iter().any(|toast| toast.id == *id));
         for toast in self.toasts.as_slice() {
-            if toast.kind != ToastKind::Error {
+            if toast.kind != ToastKind::Error && !self.persistent_toasts.contains(&toast.id) {
                 self.toast_deadlines
                     .entry(toast.id)
                     .or_insert_with(|| now + Duration::from_secs(3));
@@ -119,5 +119,7 @@ impl Workbench {
             self.toasts.dismiss(id);
             self.toast_deadlines.remove(&id);
         }
+        self.persistent_toasts
+            .retain(|id| self.toasts.as_slice().iter().any(|toast| toast.id == *id));
     }
 }

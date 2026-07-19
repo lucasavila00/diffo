@@ -1,0 +1,155 @@
+name: Release Diffo
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      TARGET: x86_64-unknown-linux-gnu
+      ASSET: diffo-x86_64-unknown-linux-gnu
+      DIFFO_UPDATE_PUBLIC_KEY: ${{ vars.DIFFO_UPDATE_PUBLIC_KEY }}
+
+    steps:
+      - name: Check out immutable tag
+        uses: actions/checkout@v4
+
+      - name: Validate release version and signing configuration
+        env:
+          SIGNING_KEY: ${{ secrets.DIFFO_UPDATE_SIGNING_KEY }}
+        run: |
+          set -euo pipefail
+          version=$(sed -n 's/^version = "\([^"]*\)"/\1/p' Cargo.toml | head -n1)
+          [[ "${version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          test "${GITHUB_REF_NAME}" = "v${version}"
+          test -n "${DIFFO_UPDATE_PUBLIC_KEY}"
+          test -n "${SIGNING_KEY}"
+          printf '%s' "${SIGNING_KEY}" | base64 --decode > "${RUNNER_TEMP}/diffo-signing-key.pem"
+          derived=$(openssl pkey -in "${RUNNER_TEMP}/diffo-signing-key.pem" -pubout -outform DER | tail -c 32 | base64 -w0)
+          test "${derived}" = "${DIFFO_UPDATE_PUBLIC_KEY}"
+          printf 'VERSION=%s\n' "${version}" >> "${GITHUB_ENV}"
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-gnu
+          components: rustfmt, clippy
+
+      - name: Cache Cargo build
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build the production executable
+        run: cargo build --locked --release --package diffo --target "${TARGET}"
+
+      - name: Validate exact production bytes
+        run: |
+          set -euo pipefail
+          production=$(realpath "target/${TARGET}/release/diffo")
+          DIFFO_E2E_BINARY="${production}" make all
+          mkdir -p dist
+          cp "${production}" "dist/${ASSET}"
+          cmp "${production}" "dist/${ASSET}"
+
+      - name: Smoke-test on Ubuntu 24.04
+        run: |
+          set -euo pipefail
+          output=$("dist/${ASSET}" unsupported 2>&1 || true)
+          test "${output}" = "Error: usage: diffo [update]"
+
+      - name: Smoke-test the same file on Debian stable
+        run: |
+          set -euo pipefail
+          before=$(sha256sum "dist/${ASSET}")
+          docker run --rm -v "${PWD}/dist/${ASSET}:/usr/local/bin/diffo:ro" debian:stable-slim sh -c '
+            output=$(diffo unsupported 2>&1 || true)
+            test "$output" = "Error: usage: diffo [update]"
+          '
+          test "${before}" = "$(sha256sum "dist/${ASSET}")"
+
+      - name: Build and sign schema-1 metadata
+        run: |
+          set -euo pipefail
+          length=$(stat --format=%s "dist/${ASSET}")
+          digest=$(sha256sum "dist/${ASSET}" | cut -d ' ' -f1)
+          jq -cn \
+            --arg version "${VERSION}" \
+            --arg name "${ASSET}" \
+            --arg target "${TARGET}" \
+            --arg sha256 "${digest}" \
+            --argjson length "${length}" \
+            '{schema:1,version:$version,assets:[{name:$name,length:$length,target:$target,sha256:$sha256}]}' \
+            > dist/update-v1.json
+          openssl pkeyutl -sign -rawin \
+            -inkey "${RUNNER_TEMP}/diffo-signing-key.pem" \
+            -in dist/update-v1.json \
+            | base64 -w0 > dist/update-v1.json.sig
+          (cd dist && sha256sum "${ASSET}" update-v1.json update-v1.json.sig > SHA256SUMS)
+
+      - name: Update the previous release on both supported distributions
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          previous_tag=$(gh release list --repo "${GITHUB_REPOSITORY}" --exclude-drafts --exclude-pre-releases --limit 1 --json tagName --jq '.[0].tagName // empty')
+          if test -z "${previous_tag}"; then
+            echo "No previous stable release exists; skipping first-release update test."
+            exit 0
+          fi
+          mkdir -p previous
+          gh release download "${previous_tag}" --repo "${GITHUB_REPOSITORY}" --pattern "${ASSET}" --dir previous
+          cp "previous/${ASSET}" dist/diffo-previous-ubuntu
+          cp "previous/${ASSET}" dist/diffo-previous-debian
+          chmod 0755 dist/diffo-previous-ubuntu dist/diffo-previous-debian
+          python3 -m http.server 18080 --bind 0.0.0.0 --directory dist >"${RUNNER_TEMP}/update-server.log" 2>&1 &
+          server_pid=$!
+          trap 'kill "${server_pid}"' EXIT
+
+          DIFFO_UPDATE_BASE_URL=http://127.0.0.1:18080 \
+            DIFFO_UPDATE_PUBLIC_KEY="${DIFFO_UPDATE_PUBLIC_KEY}" \
+            dist/diffo-previous-ubuntu update
+          cmp dist/diffo-previous-ubuntu "dist/${ASSET}"
+          DIFFO_UPDATE_BASE_URL=http://127.0.0.1:18080 \
+            DIFFO_UPDATE_PUBLIC_KEY="${DIFFO_UPDATE_PUBLIC_KEY}" \
+            dist/diffo-previous-ubuntu update | grep 'up to date'
+
+          docker run --rm \
+            --add-host host.docker.internal:host-gateway \
+            -e DIFFO_UPDATE_BASE_URL=http://host.docker.internal:18080 \
+            -e DIFFO_UPDATE_PUBLIC_KEY="${DIFFO_UPDATE_PUBLIC_KEY}" \
+            -v "${PWD}/dist:/update" \
+            debian:stable-slim /update/diffo-previous-debian update
+          cmp dist/diffo-previous-debian "dist/${ASSET}"
+          docker run --rm \
+            --add-host host.docker.internal:host-gateway \
+            -e DIFFO_UPDATE_BASE_URL=http://host.docker.internal:18080 \
+            -e DIFFO_UPDATE_PUBLIC_KEY="${DIFFO_UPDATE_PUBLIC_KEY}" \
+            -v "${PWD}/dist:/update" \
+            debian:stable-slim /update/diffo-previous-debian update | grep 'up to date'
+
+      - name: Attest the production executable
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: dist/diffo-x86_64-unknown-linux-gnu
+
+      - name: Publish immutable stable release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --title "Diffo ${VERSION}" \
+            --generate-notes \
+            --verify-tag \
+            dist/diffo-x86_64-unknown-linux-gnu \
+            dist/update-v1.json \
+            dist/update-v1.json.sig \
+            dist/SHA256SUMS

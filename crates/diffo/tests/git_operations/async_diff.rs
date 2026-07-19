@@ -28,7 +28,7 @@ fn rapid_diff_open_commits_only_the_latest_buffer_at_its_first_change() -> Resul
     )?;
     let trace_path = repository.root.path().join("atomic-open-frames.ronl");
     let mut screen = DiffoScreen::launch_with_env(
-        env!("CARGO_BIN_EXE_diffo"),
+        diffo_binary()?,
         &repository.worktree,
         &[("DIFFO_TRACE_FRAMES", trace_path.as_os_str())],
     )?;
@@ -110,7 +110,7 @@ fn wheel_burst_is_one_bounded_frame_transition() -> Result<()> {
     fs::write(repository.worktree.join("tracked.txt"), contents)?;
     let trace_path = repository.root.path().join("frames.ronl");
     let mut screen = DiffoScreen::launch_with_env(
-        env!("CARGO_BIN_EXE_diffo"),
+        diffo_binary()?,
         &repository.worktree,
         &[("DIFFO_TRACE_FRAMES", trace_path.as_os_str())],
     )?;

@@ -309,6 +309,9 @@ fn diffo_binary() -> Result<PathBuf> {
 }
 
 fn build_diffo() -> Result<PathBuf, String> {
+    if std::env::var_os("DIFFO_E2E_BINARY").is_some() {
+        return diffo_e2e::diffo_binary("").map_err(|error| error.to_string());
+    }
     let workspace = Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .and_then(Path::parent)

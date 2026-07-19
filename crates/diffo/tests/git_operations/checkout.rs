@@ -12,7 +12,7 @@ fn checkout_waits_for_real_git_completion_before_installing_the_new_branch() -> 
     let mut gate = diffo_e2e::GitProxy::new("checkout", diffo_e2e::GitGatePhase::After)?;
     let path = gate.path()?;
     let mut screen = DiffoScreen::launch_with_env(
-        env!("CARGO_BIN_EXE_diffo"),
+        diffo_binary()?,
         &repository.worktree,
         &[("PATH", path.as_os_str())],
     )?;
@@ -50,7 +50,7 @@ fn closing_and_reopening_a_blocked_discovery_ignores_the_first_load() -> Result<
     let mut gate = diffo_e2e::GitProxy::new("for-each-ref", diffo_e2e::GitGatePhase::After)?;
     let path = gate.path()?;
     let mut screen = DiffoScreen::launch_with_env(
-        env!("CARGO_BIN_EXE_diffo"),
+        diffo_binary()?,
         &repository.worktree,
         &[("PATH", path.as_os_str())],
     )?;

@@ -25,7 +25,7 @@ fn start_repository_command(
     let id = workbench.commands.enqueue(action);
     assert_eq!(
         workbench
-            .take_repository_command(Instant::now())
+            .take_application_command(Instant::now())
             .map(|command| command.id),
         Some(id)
     );
@@ -306,9 +306,12 @@ fn shared_git_commands_execute_from_every_activity() {
 
         assert!(effects.is_empty());
         let command = workbench
-            .take_repository_command(Instant::now())
+            .take_application_command(Instant::now())
             .expect("fetch command queued");
-        assert_eq!(command.action, RepositoryAction::Fetch);
+        assert_eq!(
+            command.action,
+            ApplicationAction::Repository(RepositoryAction::Fetch)
+        );
         assert_eq!(
             workbench.diff.model.network_operation(),
             Some(NetworkOperation::Fetch)
@@ -322,7 +325,7 @@ fn command_progress_survives_activity_switching_and_animates_the_app_border() {
     workbench.commands.enqueue(RepositoryAction::Fetch);
     let started = Instant::now();
     let _running = workbench
-        .take_repository_command(started)
+        .take_application_command(started)
         .expect("fetch command starts");
     let area = Rect::new(0, 0, 100, 30);
     let backend = TestBackend::new(area.width, area.height);
@@ -351,7 +354,7 @@ fn clicking_the_progress_marker_requests_cancellation_until_acknowledged() {
     workbench.commands.enqueue(RepositoryAction::Fetch);
     let started = Instant::now();
     let running = workbench
-        .take_repository_command(started)
+        .take_application_command(started)
         .expect("fetch command starts");
     workbench.tick(started + Duration::from_millis(150));
     let area = Rect::new(0, 0, 100, 30);
@@ -663,7 +666,7 @@ fn prompt_ids_are_scoped_to_the_active_command() {
             host: "example.com".to_owned(),
         },
     ));
-    assert!(workbench.take_repository_command(Instant::now()).is_none());
+    assert!(workbench.take_application_command(Instant::now()).is_none());
     let _ = workbench.handle_events(
         &[key(KeyCode::Char('u')), key(KeyCode::Enter)],
         Rect::default(),
@@ -676,7 +679,7 @@ fn prompt_ids_are_scoped_to_the_active_command() {
     );
 
     let second = workbench
-        .take_repository_command(Instant::now())
+        .take_application_command(Instant::now())
         .expect("queued pull starts after fetch completion")
         .id;
     assert!(!workbench.open_prompt(

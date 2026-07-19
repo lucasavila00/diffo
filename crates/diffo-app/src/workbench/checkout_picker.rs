@@ -162,7 +162,7 @@ impl Workbench {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::workbench::{Activity, CHECKOUT_COMMAND, workbench_areas};
+    use crate::workbench::{Activity, ApplicationAction, CHECKOUT_COMMAND, workbench_areas};
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseEvent};
     use diffo_core::{RepositoryAction, UpstreamState};
 
@@ -223,15 +223,15 @@ mod tests {
         );
         let _ = workbench.handle_event(&key(KeyCode::Enter), area);
         let command = workbench
-            .take_repository_command(std::time::Instant::now())
+            .take_application_command(std::time::Instant::now())
             .expect("checkout queued");
         assert_eq!(
             command.action,
-            RepositoryAction::Checkout(Box::new(CheckoutTarget {
+            ApplicationAction::Repository(RepositoryAction::Checkout(Box::new(CheckoutTarget {
                 kind: BranchKind::Local,
                 full_ref: "refs/heads/topic".to_owned(),
                 object_id: "bbb".to_owned(),
-            }))
+            })))
         );
     }
 
@@ -313,15 +313,15 @@ mod tests {
         let _ = workbench.handle_event(&key(KeyCode::Enter), area);
 
         let command = workbench
-            .take_repository_command(std::time::Instant::now())
+            .take_application_command(std::time::Instant::now())
             .expect("checkout queued");
         assert_eq!(
             command.action,
-            RepositoryAction::Checkout(Box::new(CheckoutTarget {
+            ApplicationAction::Repository(RepositoryAction::Checkout(Box::new(CheckoutTarget {
                 kind: BranchKind::Local,
                 full_ref: "refs/heads/zzz".to_owned(),
                 object_id: "new-zzz".to_owned(),
-            }))
+            })))
         );
     }
 }

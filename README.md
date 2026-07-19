@@ -6,6 +6,26 @@ A Rust workspace for small command-line utilities.
 
 - [`diffo`](crates/diffo): browse the current repository's Git state in a terminal UI.
 
+## Install
+
+Diffo supports Debian stable and Ubuntu 24.04 or newer on x86_64 GNU/Linux. Download
+the stable release asset and its checksums from GitHub, verify both the digest and the
+GitHub artifact attestation, then install the verified file at a path you choose:
+
+```sh
+version=v0.1.0
+base=https://github.com/lucasavila00/diffo/releases/download/$version
+curl --fail --location --remote-name "$base/diffo-x86_64-unknown-linux-gnu"
+curl --fail --location --remote-name "$base/SHA256SUMS"
+grep ' diffo-x86_64-unknown-linux-gnu$' SHA256SUMS | sha256sum --check
+gh attestation verify diffo-x86_64-unknown-linux-gnu --repo lucasavila00/diffo
+install -m 0755 diffo-x86_64-unknown-linux-gnu "$HOME/.local/bin/diffo"
+```
+
+Run `diffo update` to check and install a strictly newer signed stable release. The
+same action is available as `Application: Update Diffo` in the F1 command palette.
+Diffo uses the permissions of the current process and never invokes `sudo` itself.
+
 ## Development
 
 ```sh
@@ -29,8 +49,18 @@ application behavior.
 `make all` is the only repository validation command. Always run it before
 considering a change complete; it is the single source of truth for CI checks.
 
+### Release signing setup
+
+The tag-driven release workflow requires an Ed25519 key pair. Store the base64 of the
+unencrypted PKCS#8 PEM private key as the `DIFFO_UPDATE_SIGNING_KEY` repository secret,
+and store the base64 of its raw 32-byte public key as the
+`DIFFO_UPDATE_PUBLIC_KEY` repository variable. The workflow derives the public key
+from the secret and fails before building if they do not match. Never commit the
+private key. Stable tags must exactly match `v<workspace-version>`.
+
 For debugging, `DIFFO_DUMP_PATH=state.ron make diffo` writes one repository snapshot
-and exits without opening the TUI. Diffo has no command-line arguments.
+and exits without opening the TUI. The launcher accepts only the fixed `update`
+maintenance argument; the application receives no command-line arguments.
 
 ## Crate documentation
 

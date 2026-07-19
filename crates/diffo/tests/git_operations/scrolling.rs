@@ -318,7 +318,7 @@ fn delayed_next_change_commits_the_target_and_syntax_atomically() -> Result<()> 
     fs::write(&path, delayed_navigation_file(true)?)?;
     let trace_path = repository.root.path().join("atomic-navigation-frames.ronl");
     let mut screen = DiffoScreen::launch_with_env(
-        env!("CARGO_BIN_EXE_diffo"),
+        diffo_binary()?,
         &repository.worktree,
         &[
             ("DIFFO_TRACE_FRAMES", trace_path.as_os_str()),
@@ -385,7 +385,7 @@ fn cold_large_file_open_commits_at_a_syntax_ready_first_change() -> Result<()> {
     fs::write(&path, large_syntax_file(true)?)?;
     let trace_path = repository.root.path().join("large-syntax-frames.ronl");
     let mut screen = DiffoScreen::launch_with_env(
-        env!("CARGO_BIN_EXE_diffo"),
+        diffo_binary()?,
         &repository.worktree,
         &[("DIFFO_TRACE_FRAMES", trace_path.as_os_str())],
     )?;
@@ -426,7 +426,7 @@ fn delayed_open_prefetches_one_page_in_both_scroll_directions() -> Result<()> {
     fs::write(&path, middle_syntax_file(true)?)?;
     let trace_path = repository.root.path().join("direction-neutral-frames.ronl");
     let mut screen = DiffoScreen::launch_with_env(
-        env!("CARGO_BIN_EXE_diffo"),
+        diffo_binary()?,
         &repository.worktree,
         &[
             ("DIFFO_TRACE_FRAMES", trace_path.as_os_str()),

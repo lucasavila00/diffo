@@ -78,7 +78,9 @@ This repository is a Rust workspace containing small command-line utilities. Eac
 
 ## Product constraints
 
-- Diffo will never have CLI arguments, configuration files, or configurable key bindings.
+- The Diffo application never reads CLI options. The executable launcher may accept only
+  the fixed `update` maintenance argument; do not add any other public arguments.
+- Diffo will never have configuration files or configurable key bindings.
 - Keep controls and product behavior fixed in code.
 - Never add uppercase character shortcuts. Character shortcuts must be lowercase and must not require Shift.
 - Environment variables are developer and test hooks only. Do not turn them into user configuration.

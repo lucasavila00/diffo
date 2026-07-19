@@ -35,18 +35,21 @@ fn activity_palettes_share_git_commands_and_keep_specific_catalogs_separate() ->
     screen
         .press(Key::Char('1'))?
         .wait_for_text("Git: Fetch")?
+        .wait_for_text("Application: Update Diffo")?
         .wait_for_text_gone("Explorer: Collapse All Folders")?
         .press(Key::Escape)?
         .wait_for_text_gone("Command Palette")?
         .press(Key::Tab)?
         .press(Key::Char('1'))?
         .wait_for_text("Git: Fetch")?
+        .wait_for_text("Application: Update Diffo")?
         .wait_for_text("Explorer: Collapse All Folders")?
         .press(Key::Escape)?
         .wait_for_text_gone("Command Palette")?
         .press(Key::Tab)?
         .press(Key::Char('1'))?
         .wait_for_text("Git: Fetch")?
+        .wait_for_text("Application: Update Diffo")?
         .wait_for_text_gone("Explorer: Collapse All Folders")?;
     Ok(())
 }

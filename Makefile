@@ -1,4 +1,4 @@
-.PHONY: all check-file-lines diffo install diffo-mock e2e e2e-review measure-cpu measure-text-readiness
+.PHONY: all check-e2e-binary check-file-lines diffo install diffo-mock e2e e2e-review measure-cpu measure-text-readiness
 
 # Run every automated repository check once. Workspace tests include the black-box
 # diffo-e2e package and the diffo integration tests.
@@ -7,7 +7,13 @@ all:
 	cargo test --workspace
 	cargo clippy --workspace --all-targets --all-features -- -D warnings
 	cargo doc --workspace --no-deps
+	$(MAKE) check-e2e-binary
 	$(MAKE) check-file-lines
+
+check-e2e-binary:
+	@unexpected=$$(rg -l 'CARGO_BIN_EXE_diffo' crates/diffo/tests | \
+		rg -v 'crates/diffo/tests/(launcher.rs|live_refresh.rs|git_operations/support.rs)' || true); \
+	test -z "$$unexpected" || { printf 'black-box tests bypass DIFFO_E2E_BINARY:\n%s\n' "$$unexpected"; exit 1; }
 
 check-file-lines:
 	@rg --files -g '*.rs' | { failed=; while IFS= read -r file; do \

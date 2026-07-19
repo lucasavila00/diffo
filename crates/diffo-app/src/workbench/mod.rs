@@ -1,7 +1,7 @@
 //! Activity composition, global input routing, and command lifecycle.
 
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     time::{Duration, Instant},
 };
 
@@ -27,6 +27,7 @@ use ratatui::{
 use crate::explorer::{ExplorerActivity, ExplorerEvent, ExplorerOutcome, ExplorerRequest};
 
 mod activity_bar;
+mod application_update;
 mod checkout_picker;
 mod command_queue;
 mod full_screen;
@@ -42,11 +43,14 @@ use pending_scroll::PendingScroll;
 use prompt::{ConfirmChoice, prompt_layout};
 use prompt::{PromptModal, render_prompt};
 
-pub use command_queue::{ApplicationCommand, CommandQueue, CommandResult, CommandState};
+pub use command_queue::{
+    ApplicationAction, ApplicationCommand, CommandQueue, CommandResult, CommandState,
+};
 
 pub use activity_bar::{
     ACTIVITY_BAR_WIDTH, WorkbenchAreas, activity_at_position, render_activity_bar, workbench_areas,
 };
+pub use application_update::UpdateOutcome;
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum Activity {
@@ -110,17 +114,6 @@ pub enum WorkbenchTaskResult {
     Explorer(ExplorerOutcome),
 }
 
-impl Activity {
-    #[must_use]
-    pub const fn next(self) -> Self {
-        match self {
-            Self::Diff => Self::Explorer,
-            Self::Explorer => Self::Search,
-            Self::Search => Self::Diff,
-        }
-    }
-}
-
 pub struct Workbench {
     active: Activity,
     diff: DiffActivity,
@@ -129,6 +122,7 @@ pub struct Workbench {
     pane_split: PaneSplit,
     toasts: ToastQueue,
     toast_deadlines: HashMap<u64, Instant>,
+    persistent_toasts: HashSet<u64>,
     commands: CommandQueue,
     repository_generation: u64,
     command_progress: CommandProgressState,
@@ -178,8 +172,9 @@ impl CommandProgressState {
 const FETCH_COMMAND: CommandId = CommandId::new("git.fetch");
 const PULL_COMMAND: CommandId = CommandId::new("git.pull");
 const CHECKOUT_COMMAND: CommandId = CommandId::new("git.checkout_to");
+const UPDATE_COMMAND: CommandId = CommandId::new("application.update");
 
-const SHARED_COMMANDS: [Command; 3] = [
+const SHARED_COMMANDS: [Command; 4] = [
     Command {
         id: FETCH_COMMAND,
         label: "Git: Fetch",
@@ -191,6 +186,10 @@ const SHARED_COMMANDS: [Command; 3] = [
     Command {
         id: CHECKOUT_COMMAND,
         label: "Git: Checkout to...",
+    },
+    Command {
+        id: UPDATE_COMMAND,
+        label: "Application: Update Diffo",
     },
 ];
 
@@ -231,6 +230,7 @@ impl Workbench {
             pane_split: PaneSplit::default(),
             toasts: ToastQueue::new(),
             toast_deadlines: HashMap::new(),
+            persistent_toasts: HashSet::new(),
             commands: CommandQueue::new(),
             repository_generation: 0,
             command_progress: CommandProgressState::Hidden,
@@ -552,7 +552,7 @@ impl Workbench {
         }
     }
 
-    pub fn take_repository_command(&mut self, now: Instant) -> Option<ApplicationCommand> {
+    pub fn take_application_command(&mut self, now: Instant) -> Option<ApplicationCommand> {
         let command = self.commands.start_next()?;
         self.last_prompt_id = None;
         self.command_progress = CommandProgressState::Waiting {
@@ -560,10 +560,9 @@ impl Workbench {
             reveal_at: now + Duration::from_millis(150),
         };
         self.command_animation_tick = 0;
-        let _ = self
-            .diff
-            .model
-            .start_repository_action(command.action.clone());
+        if let ApplicationAction::Repository(action) = &command.action {
+            let _ = self.diff.model.start_repository_action(action.clone());
+        }
         Some(command)
     }
 
@@ -651,6 +650,9 @@ impl Workbench {
             Some(RepositoryAction::Pull)
         } else if command == CHECKOUT_COMMAND {
             self.open_checkout_picker();
+            return None;
+        } else if command == UPDATE_COMMAND {
+            self.commands.enqueue_update();
             return None;
         } else {
             None

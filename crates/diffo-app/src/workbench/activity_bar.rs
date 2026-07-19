@@ -1,4 +1,15 @@
 use super::Activity;
+
+impl Activity {
+    #[must_use]
+    pub const fn next(self) -> Self {
+        match self {
+            Self::Diff => Self::Explorer,
+            Self::Explorer => Self::Search,
+            Self::Search => Self::Diff,
+        }
+    }
+}
 use diffo_ui::{design, enabled_control_style, icons, theme};
 use ratatui::{
     Frame,

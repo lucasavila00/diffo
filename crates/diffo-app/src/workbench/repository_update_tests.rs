@@ -13,7 +13,7 @@ fn command_progress_is_hidden_at_149_ms_and_visible_at_150_ms() {
     workbench.commands.enqueue(RepositoryAction::Fetch);
     let started = Instant::now();
     let _ = workbench
-        .take_repository_command(started)
+        .take_application_command(started)
         .expect("fetch command starts");
 
     workbench.tick(started + Duration::from_millis(149));
@@ -28,7 +28,7 @@ fn fast_stage_completion_never_reveals_progress_or_creates_a_toast() {
     let id = workbench.commands.enqueue(RepositoryAction::StageAll);
     let started = Instant::now();
     let _ = workbench
-        .take_repository_command(started)
+        .take_application_command(started)
         .expect("stage command starts");
     let snapshot = RepositorySnapshot {
         files: vec![FileState {
@@ -66,7 +66,7 @@ fn generations_reject_stale_updates_and_only_matching_command_ids_finish_command
     let id = workbench.commands.enqueue(RepositoryAction::Fetch);
     let started = Instant::now();
     let _ = workbench
-        .take_repository_command(started)
+        .take_application_command(started)
         .expect("fetch command starts");
     workbench.tick(started + Duration::from_millis(150));
     let failure = |command_id| RepositoryUpdateKind::CommandFailed {
@@ -112,7 +112,7 @@ fn watcher_snapshots_preserve_toasts_and_visible_command_progress() {
     workbench.commands.enqueue(RepositoryAction::Fetch);
     let started = Instant::now();
     let _ = workbench
-        .take_repository_command(started)
+        .take_application_command(started)
         .expect("fetch command starts");
     workbench.tick(started + Duration::from_millis(150));
 
@@ -137,7 +137,7 @@ fn watcher_snapshot_after_completion_keeps_the_result_toast() {
     let mut workbench = Workbench::new(RepositorySnapshot::default());
     let id = workbench.commands.enqueue(RepositoryAction::Pull);
     let _ = workbench
-        .take_repository_command(Instant::now())
+        .take_application_command(Instant::now())
         .expect("pull command starts");
     assert!(workbench.accept_repository_update(RepositoryUpdate {
         generation: 1,

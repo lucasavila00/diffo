@@ -2,6 +2,12 @@ use std::collections::VecDeque;
 
 use diffo_core::{ApplicationCommandId, CancellationHandle, RepositoryAction};
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum ApplicationAction {
+    Repository(RepositoryAction),
+    Update,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CommandState {
     Queued,
@@ -20,7 +26,7 @@ pub enum CommandResult {
 #[derive(Clone, Debug)]
 pub struct ApplicationCommand {
     pub id: ApplicationCommandId,
-    pub action: RepositoryAction,
+    pub action: ApplicationAction,
     pub label: String,
     pub cancellation: CancellationHandle,
     pub state: CommandState,
@@ -43,6 +49,14 @@ impl CommandQueue {
     }
 
     pub fn enqueue(&mut self, action: RepositoryAction) -> ApplicationCommandId {
+        self.enqueue_action(ApplicationAction::Repository(action))
+    }
+
+    pub fn enqueue_update(&mut self) -> ApplicationCommandId {
+        self.enqueue_action(ApplicationAction::Update)
+    }
+
+    fn enqueue_action(&mut self, action: ApplicationAction) -> ApplicationCommandId {
         let id = ApplicationCommandId(self.next_id);
         self.next_id = self.next_id.saturating_add(1);
         self.queued.push_back(ApplicationCommand {
@@ -100,15 +114,19 @@ impl CommandQueue {
     }
 }
 
-fn command_label(action: &RepositoryAction) -> String {
+fn command_label(action: &ApplicationAction) -> String {
     match action {
-        RepositoryAction::Stage(_) | RepositoryAction::StageAll => "Staging".to_owned(),
-        RepositoryAction::Unstage(_) | RepositoryAction::UnstageAll => "Unstaging".to_owned(),
-        RepositoryAction::Fetch => "Fetching".to_owned(),
-        RepositoryAction::Pull => "Pulling".to_owned(),
-        RepositoryAction::Push => "Pushing".to_owned(),
-        RepositoryAction::Commit(_) => "Committing".to_owned(),
-        RepositoryAction::Checkout(target) => format!(
+        ApplicationAction::Repository(RepositoryAction::Stage(_) | RepositoryAction::StageAll) => {
+            "Staging".to_owned()
+        }
+        ApplicationAction::Repository(
+            RepositoryAction::Unstage(_) | RepositoryAction::UnstageAll,
+        ) => "Unstaging".to_owned(),
+        ApplicationAction::Repository(RepositoryAction::Fetch) => "Fetching".to_owned(),
+        ApplicationAction::Repository(RepositoryAction::Pull) => "Pulling".to_owned(),
+        ApplicationAction::Repository(RepositoryAction::Push) => "Pushing".to_owned(),
+        ApplicationAction::Repository(RepositoryAction::Commit(_)) => "Committing".to_owned(),
+        ApplicationAction::Repository(RepositoryAction::Checkout(target)) => format!(
             "Checking out {}",
             target
                 .full_ref
@@ -116,6 +134,7 @@ fn command_label(action: &RepositoryAction) -> String {
                 .or_else(|| target.full_ref.strip_prefix("refs/remotes/"))
                 .unwrap_or(&target.full_ref)
         ),
+        ApplicationAction::Update => "Updating Diffo".to_owned(),
     }
 }
 
@@ -171,5 +190,18 @@ mod tests {
             .acknowledge(fetch, CommandResult::Cancelled)
             .expect("cancellation acknowledged");
         assert_eq!(queue.start_next().map(|command| command.id), Some(pull));
+    }
+
+    #[test]
+    fn update_uses_the_same_serial_queue_as_repository_commands() {
+        let mut queue = CommandQueue::new();
+        let fetch = queue.enqueue(RepositoryAction::Fetch);
+        let update = queue.enqueue_update();
+
+        assert_eq!(queue.start_next().map(|command| command.id), Some(fetch));
+        queue.acknowledge(fetch, CommandResult::Succeeded).unwrap();
+        let command = queue.start_next().unwrap();
+        assert_eq!(command.id, update);
+        assert_eq!(command.action, ApplicationAction::Update);
     }
 }

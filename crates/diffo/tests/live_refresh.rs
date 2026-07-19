@@ -31,7 +31,7 @@ fn compiled_binary_refreshes_live_git_state() -> Result<()> {
 
     let output = tempfile::tempdir().context("create dump directory")?;
     let dump = output.path().join("live.ron");
-    let child = Command::new(env!("CARGO_BIN_EXE_diffo"))
+    let child = Command::new(diffo_e2e::diffo_binary(env!("CARGO_BIN_EXE_diffo"))?)
         .current_dir(repository.path())
         .env("DIFFO_WATCH_DUMP_PATH", &dump)
         .stdout(Stdio::null())

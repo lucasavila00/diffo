@@ -156,7 +156,7 @@ impl Workbench {
 mod tests {
     use super::*;
     use crate::explorer::ExplorerOutcome;
-    use crate::workbench::{Activity, WorkbenchEffect, workbench_areas};
+    use crate::workbench::{Activity, ApplicationAction, WorkbenchEffect, workbench_areas};
     use crossterm::event::{KeyEvent, MouseButton, MouseEvent, MouseEventKind};
     use diffo_core::{
         FailureKind, FileDiff, FileState, GitPrompt, OperationFailure, PromptId, RepositoryAction,
@@ -175,7 +175,7 @@ mod tests {
         let id = workbench.commands.enqueue(action);
         assert_eq!(
             workbench
-                .take_repository_command(std::time::Instant::now())
+                .take_application_command(std::time::Instant::now())
                 .map(|command| command.id),
             Some(id)
         );
@@ -340,12 +340,15 @@ mod tests {
         assert!(workbench.modal.is_none());
         assert_eq!(workbench.diff.model.commit_message, "x");
         let command = workbench
-            .take_repository_command(std::time::Instant::now())
+            .take_application_command(std::time::Instant::now())
             .expect("commit should be queued");
         workbench.action_failed(
             command.id,
             OperationFailure {
-                action: command.action,
+                action: match command.action {
+                    ApplicationAction::Repository(action) => action,
+                    ApplicationAction::Update => panic!("commit queued an update"),
+                },
                 kind: FailureKind::Network,
                 detail: "commit failed".to_owned(),
             },

@@ -16,6 +16,10 @@ pub(super) const TIMEOUT: Duration = Duration::from_secs(5);
 pub(super) const METADATA_LOOKING_SOURCE_BEFORE: &str = "before\nGIT binary patch\nBinary files a/x and b/x differ\ndiff --cc file.rs\n@@@ -1 -1 +1 @@@\n<<<<<<< HEAD\n=======\n>>>>>>> branch\n";
 pub(super) const METADATA_LOOKING_SOURCE_AFTER: &str = "after\nGIT binary patch\nBinary files a/x and b/x differ\ndiff --cc file.rs\n@@@ -1 -1 +1 @@@\n<<<<<<< HEAD\n=======\n>>>>>>> branch\n";
 
+pub(super) fn diffo_binary() -> Result<PathBuf> {
+    diffo_e2e::diffo_binary(env!("CARGO_BIN_EXE_diffo"))
+}
+
 pub(super) fn numbered_lines(count: usize, change_neighbor: bool) -> Result<String> {
     let mut contents = String::new();
     for line in 0..count {
@@ -149,7 +153,7 @@ impl TestRepository {
     }
 
     pub(super) fn screen(&self) -> Result<DiffoScreen> {
-        DiffoScreen::launch(env!("CARGO_BIN_EXE_diffo"), &self.worktree)
+        DiffoScreen::launch(diffo_binary()?, &self.worktree)
     }
 
     pub(super) fn commit_remote(

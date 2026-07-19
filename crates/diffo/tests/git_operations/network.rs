@@ -104,7 +104,7 @@ fn cancelling_a_blocked_git_client_releases_the_next_queued_command() -> Result<
     let gate = diffo_e2e::GitProxy::new("fetch", diffo_e2e::GitGatePhase::Before)?;
     let path = gate.path()?;
     let mut screen = DiffoScreen::launch_with_env(
-        env!("CARGO_BIN_EXE_diffo"),
+        diffo_binary()?,
         &repository.worktree,
         &[("PATH", path.as_os_str())],
     )?;
@@ -142,7 +142,7 @@ fn primary_pull_button_shows_progress_and_pulls() -> Result<()> {
     let mut gate = diffo_e2e::GitProxy::new("pull", diffo_e2e::GitGatePhase::Before)?;
     let path = gate.path()?;
     let mut screen = DiffoScreen::launch_with_env(
-        env!("CARGO_BIN_EXE_diffo"),
+        diffo_binary()?,
         &repository.worktree,
         &[("PATH", path.as_os_str())],
     )?;
@@ -227,7 +227,7 @@ fn ssh_push_uses_running_image_after_launched_binary_is_replaced() -> Result<()>
     let local_head = git_output(&repository.worktree, &["rev-parse", "HEAD"])?;
     let ssh = LocalSshServer::start(&repository, Authentication::PublicKey { passphrase: "" })?;
     let launched_binary = repository.root.path().join("diffo-under-test");
-    fs::copy(env!("CARGO_BIN_EXE_diffo"), &launched_binary)?;
+    fs::copy(diffo_binary()?, &launched_binary)?;
     fs::set_permissions(&launched_binary, fs::Permissions::from_mode(0o700))?;
     let mut screen = ssh_screen_with_binary(&launched_binary, &repository, &ssh, &[])?;
 
@@ -318,7 +318,7 @@ fn real_ssh_key_passphrase_completes_fetch_without_leaking_secret() -> Result<()
     ssh.trust_host()?;
     let trace_path = repository.root.path().join("passphrase-frames.ronl");
     let mut screen = ssh_screen_with_binary(
-        Path::new(env!("CARGO_BIN_EXE_diffo")),
+        &diffo_binary()?,
         &repository,
         &ssh,
         &[("DIFFO_TRACE_FRAMES", trace_path.as_os_str())],
@@ -378,7 +378,7 @@ fn cancelling_real_ssh_passphrase_preserves_repository_state() -> Result<()> {
 }
 
 fn ssh_screen(repository: &TestRepository, ssh: &LocalSshServer) -> Result<DiffoScreen> {
-    ssh_screen_with_binary(Path::new(env!("CARGO_BIN_EXE_diffo")), repository, ssh, &[])
+    ssh_screen_with_binary(&diffo_binary()?, repository, ssh, &[])
 }
 
 fn ssh_screen_with_binary(

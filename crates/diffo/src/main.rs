@@ -31,11 +31,14 @@ use diffo_repository_service::{RepositoryEvent, RepositoryService};
 use ratatui::{Terminal, backend::CrosstermBackend};
 
 mod frame_trace;
+mod launcher;
 mod tool_tasks;
+mod update_tasks;
 
 use diffo_app::workbench::{PromptResponse, Workbench, WorkbenchEffect};
 use frame_trace::{FrameRecord, FrameTracer};
 use tool_tasks::ToolTasks;
+use update_tasks::UpdateTasks;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct EnableActionMouseCapture;
@@ -98,6 +101,56 @@ fn main() -> Result<()> {
     if let Some(status) = run_askpass_if_requested() {
         std::process::exit(status);
     }
+    match launcher::dispatch(env::args_os().skip(1))? {
+        launcher::LaunchMode::Update => {
+            run_updater();
+            Ok(())
+        }
+        launcher::LaunchMode::Application => run_application(),
+    }
+}
+
+fn run_updater() {
+    let client = match diffo_update::UpdateClient::from_environment() {
+        Ok(client) => client,
+        Err(error) => {
+            print_update_error(&error);
+            std::process::exit(1);
+        }
+    };
+    match client.install_latest() {
+        Ok(diffo_update::InstallOutcome::UpToDate { current, latest }) => {
+            println!("Diffo is up to date ({current}; latest release {latest}).");
+        }
+        Ok(diffo_update::InstallOutcome::Installed {
+            previous,
+            installed,
+        }) => println!(
+            "Updated Diffo from {previous} to {installed}. Quit and relaunch Diffo to use the new version."
+        ),
+        Err(error) => {
+            print_update_error(&error);
+            std::process::exit(1);
+        }
+    }
+}
+
+fn print_update_error(error: &diffo_update::UpdateError) {
+    let label = match error.category() {
+        diffo_update::ErrorCategory::Network => "Update network error",
+        diffo_update::ErrorCategory::Verification => "Update verification failed",
+        diffo_update::ErrorCategory::Permission => "Update permission error",
+        diffo_update::ErrorCategory::Other => "Update failed",
+    };
+    eprintln!("{label}: {error}");
+    if error.category() == diffo_update::ErrorCategory::Permission
+        && let Some(command) = diffo_update::permission_hint()
+    {
+        eprintln!("Retry with: {command}");
+    }
+}
+
+fn run_application() -> Result<()> {
     let shutdown = install_signal_handlers()?;
     let (repository, watch_paths): (Arc<dyn Repository>, Option<Vec<_>>) =
         if let Some(path) = env::var_os("DIFFO_MOCK_FILE") {
@@ -122,6 +175,7 @@ fn main() -> Result<()> {
 
     let mut workbench = Workbench::new(snapshot);
     let tool_tasks = ToolTasks::start(Arc::clone(&repository));
+    let mut update_tasks = UpdateTasks::new();
     tool_tasks.drain(&mut workbench);
     let mut tracer = FrameTracer::from_environment();
     let mut terminal = ratatui::init();
@@ -137,6 +191,7 @@ fn main() -> Result<()> {
         &shutdown,
         &repository_service,
         &tool_tasks,
+        &mut update_tasks,
         &mut tracer,
     );
     drop(repository_service);
@@ -219,6 +274,7 @@ fn run(
     shutdown: &AtomicBool,
     repository_service: &RepositoryService,
     tool_tasks: &ToolTasks,
+    update_tasks: &mut UpdateTasks,
     tracer: &mut FrameTracer,
 ) -> Result<()> {
     let mut wheel_friction = WheelFriction::default();
@@ -239,6 +295,7 @@ fn run(
         draw_start_us,
         draw_end_us,
     ));
+    update_tasks.start_passive_check();
     while !workbench.should_quit() && !shutdown.load(Ordering::Relaxed) {
         workbench.tick(Instant::now());
         let poll_timeout = if workbench.is_preparing()
@@ -268,7 +325,14 @@ fn run(
         let update_start_us = tracer.elapsed_us();
         drain_repository_events(repository_service, workbench);
         tool_tasks.drain(workbench);
-        dispatch_events(&events, terminal, workbench, repository_service)?;
+        update_tasks.drain(workbench);
+        dispatch_events(
+            &events,
+            terminal,
+            workbench,
+            repository_service,
+            update_tasks,
+        )?;
         let (preparation, draw_start_us, draw_end_us) = draw_frame(terminal, workbench, tracer)?;
         tracer.record(FrameRecord::new(
             input_events,
@@ -319,6 +383,7 @@ fn dispatch_events(
     terminal: &Terminal<CrosstermBackend<io::Stdout>>,
     workbench: &mut Workbench,
     repository_service: &RepositoryService,
+    update_tasks: &UpdateTasks,
 ) -> Result<()> {
     let size = terminal.size()?;
     let area = ratatui::layout::Rect::new(0, 0, size.width, size.height);
@@ -331,18 +396,24 @@ fn dispatch_events(
         }
     }
     let command_start = Instant::now();
-    while let Some(command) = workbench.take_repository_command(command_start) {
+    while let Some(command) = workbench.take_application_command(command_start) {
         let id = command.id;
-        let action = command.action;
-        if !repository_service.execute(id, action.clone(), command.cancellation) {
-            workbench.action_failed(
-                id,
-                OperationFailure {
-                    action,
-                    kind: FailureKind::Unknown,
-                    detail: "repository service is unavailable".to_owned(),
-                },
-            );
+        match command.action {
+            diffo_app::workbench::ApplicationAction::Repository(action) => {
+                if !repository_service.execute(id, action.clone(), command.cancellation) {
+                    workbench.action_failed(
+                        id,
+                        OperationFailure {
+                            action,
+                            kind: FailureKind::Unknown,
+                            detail: "repository service is unavailable".to_owned(),
+                        },
+                    );
+                }
+            }
+            diffo_app::workbench::ApplicationAction::Update => {
+                update_tasks.start_update(id, command.cancellation);
+            }
         }
     }
     Ok(())

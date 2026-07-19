@@ -34,7 +34,7 @@ fn slow_stage_shows_progress_then_commits_only_the_list_change() -> Result<()> {
     let mut gate = diffo_e2e::GitProxy::new("add", diffo_e2e::GitGatePhase::Before)?;
     let path = gate.path()?;
     let mut screen = DiffoScreen::launch_with_env(
-        env!("CARGO_BIN_EXE_diffo"),
+        diffo_binary()?,
         &repository.worktree,
         &[("PATH", path.as_os_str())],
     )?;

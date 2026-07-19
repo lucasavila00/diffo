@@ -23,3 +23,7 @@ screen alone. Protocol/unit tests that substitute collaborators are not part of 
 focused `make e2e` target; the full `make all` command still runs them through the
 workspace test suite. `make all` does not invoke `make e2e` separately because
 `cargo test --workspace` already includes both black-box suites.
+
+When `DIFFO_E2E_BINARY` is set to an absolute production executable, every black-box
+suite launches those exact bytes and the standalone E2E package skips its normal local
+Diffo build. Release validation uses this developer-only hook before publication.

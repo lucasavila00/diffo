@@ -3,8 +3,8 @@
 ## What Diffo is
 
 Diffo is one terminal program. It shows the current Git repository. User can read
-changes, explore files, and run Git actions. It has no command-line options or user
-configuration.
+changes, explore files, and run Git actions. Its launcher accepts only the fixed
+`update` maintenance argument; the application has no options or user configuration.
 
 ## Main flow
 
@@ -18,6 +18,9 @@ configuration.
 5. Each screen updates its own state and draws itself.
 6. The event loop sends terminal input in and draws committed state out.
 7. On exit, `diffo` restores the terminal.
+8. `diffo-update` verifies and atomically installs signed GitHub release assets. The
+   TUI checks in the background after its first frame and runs installation in a
+   separate process through the shared command queue.
 
 ## Main parts
 
@@ -33,6 +36,7 @@ configuration.
 - `diffo-core`: shared repository data and interfaces.
 - `diffo-git`: real Git implementation.
 - `diffo-repository-service`: background repository worker.
+- `diffo-update`: signed discovery and atomic executable replacement.
 - `diffo-e2e` and `diffo-measure`: test and performance tools.
 
 ## Important rule

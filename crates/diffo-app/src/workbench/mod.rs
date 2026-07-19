@@ -311,11 +311,6 @@ impl Workbench {
             };
             match command {
                 WorkbenchCommand::Diff(message) if scroll.push(&message) => {}
-                WorkbenchCommand::Diff(Message::ToggleFilePane) => {
-                    scroll.flush(self);
-                    self.pane_split.toggle();
-                    self.sync_diff_pane_state();
-                }
                 WorkbenchCommand::Diff(message) => {
                     scroll.flush(self);
                     if let Some(effect) = self.update_diff(message) {
@@ -361,16 +356,6 @@ impl Workbench {
             Activity::Search => self.search.captures_global_input(),
         };
         if !tool_captures_global_input && self.handle_overlay_click(event, content) {
-            return None;
-        }
-        if !tool_captures_global_input
-            && let Event::Key(key) = event
-            && key.kind == KeyEventKind::Press
-            && key.code == KeyCode::Char('e')
-            && key.modifiers == KeyModifiers::NONE
-        {
-            self.pane_split.toggle();
-            self.sync_diff_pane_state();
             return None;
         }
         let pane_area = tool_areas(content).content;

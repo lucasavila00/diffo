@@ -198,7 +198,6 @@ pub struct PaneAreas {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct PaneSplit {
     percent: u16,
-    expanded_percent: u16,
     dragging: bool,
 }
 
@@ -206,7 +205,6 @@ impl Default for PaneSplit {
     fn default() -> Self {
         Self {
             percent: design::DEFAULT_PANE_PERCENT,
-            expanded_percent: design::DEFAULT_PANE_PERCENT,
             dragging: false,
         }
     }
@@ -276,22 +274,9 @@ impl PaneSplit {
         .unwrap_or(design::FULL_PERCENT)
         .min(design::MAX_PANE_PERCENT);
         self.percent = percent;
-        if percent > 0 {
-            self.expanded_percent = percent;
-        }
     }
 
     pub fn end_drag(&mut self) {
-        self.dragging = false;
-    }
-
-    pub fn toggle(&mut self) {
-        if self.percent == 0 {
-            self.percent = self.expanded_percent;
-        } else {
-            self.expanded_percent = self.percent;
-            self.percent = 0;
-        }
         self.dragging = false;
     }
 
@@ -403,7 +388,7 @@ mod tests {
     use diffo_highlight::{HighlightedLine, Rgb, StyledSpan};
 
     #[test]
-    fn pane_split_drags_collapses_restores_and_bounds_width() {
+    fn pane_split_drags_and_bounds_width() {
         let area = Rect::new(5, 2, 100, 20);
         let mut split = PaneSplit::default();
         assert_eq!(split.areas(area).trailing.x, 30);
@@ -419,10 +404,6 @@ mod tests {
         split.begin_drag();
         split.drag_to(area, 65);
         split.end_drag();
-        assert_eq!(split.percent(), 60);
-        split.toggle();
-        assert_eq!(split.percent(), 0);
-        split.toggle();
         assert_eq!(split.percent(), 60);
         split.begin_drag();
         split.drag_to(area, area.right());

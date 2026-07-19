@@ -94,16 +94,6 @@ impl Model {
         self.diff_view_mode = self.diff_view_mode.toggled();
     }
 
-    pub fn toggle_file_pane(&mut self) {
-        if self.file_pane_percent == 0 {
-            self.file_pane_percent = self.expanded_file_pane_percent;
-        } else {
-            self.expanded_file_pane_percent = self.file_pane_percent;
-            self.file_pane_percent = 0;
-        }
-        self.resizing_file_pane = false;
-    }
-
     pub fn begin_file_pane_resize(&mut self) {
         self.resizing_file_pane = true;
     }
@@ -111,9 +101,6 @@ impl Model {
     pub fn resize_file_pane(&mut self, percent: u16) {
         if self.resizing_file_pane {
             self.file_pane_percent = percent.min(80);
-            if self.file_pane_percent > 0 {
-                self.expanded_file_pane_percent = self.file_pane_percent;
-            }
         }
     }
 

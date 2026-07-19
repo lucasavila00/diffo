@@ -18,18 +18,15 @@ fn mouse_click_selects_a_file() -> Result<()> {
 }
 
 #[test]
-fn view_and_file_pane_toggles_render_immediately() -> Result<()> {
+fn view_toggle_renders_immediately() -> Result<()> {
     let repository = TestRepository::new()?;
     fs::write(repository.worktree.join("tracked.txt"), "changed\n")?;
     let mut screen = repository.screen()?;
 
     screen
         .press(Key::Char('r'))?
-        .wait_for_text("Side by side")?
-        .press(Key::Char('e'))?
-        .wait_for_text_gone("Changes")?;
+        .wait_for_text("Side by side")?;
     assert!(screen.contents().contains("File Diff"));
-    screen.press(Key::Char('e'))?.wait_for_text("Changes")?;
     Ok(())
 }
 

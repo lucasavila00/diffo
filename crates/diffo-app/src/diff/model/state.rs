@@ -141,7 +141,6 @@ pub struct Model {
     commit_composer_state: CommitComposerState,
     commit_message_cursor: usize,
     pending_operation: Option<RepositoryAction>,
-    expanded_file_pane_percent: u16,
     cursor: usize,
     pending_file_action: Option<PendingFileAction>,
 }
@@ -170,7 +169,6 @@ impl Model {
             commit_composer_state: CommitComposerState::Idle,
             commit_message_cursor: 0,
             pending_operation: None,
-            expanded_file_pane_percent: 25,
             cursor,
             pending_file_action: None,
         }

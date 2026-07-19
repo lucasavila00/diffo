@@ -215,7 +215,7 @@ fn scrolls_by_a_page() {
 }
 
 #[test]
-fn resizes_and_toggles_the_file_pane() {
+fn resizes_the_file_pane() {
     let mut model = model();
 
     update(&mut model, Message::BeginFilePaneResize);
@@ -223,11 +223,6 @@ fn resizes_and_toggles_the_file_pane() {
     update(&mut model, Message::EndFilePaneResize);
     assert_eq!(model.file_pane_percent, 64);
     assert!(!model.resizing_file_pane);
-
-    update(&mut model, Message::ToggleFilePane);
-    assert_eq!(model.file_pane_percent, 0);
-    update(&mut model, Message::ToggleFilePane);
-    assert_eq!(model.file_pane_percent, 64);
 
     update(&mut model, Message::BeginFilePaneResize);
     update(&mut model, Message::ResizeFilePane(100));

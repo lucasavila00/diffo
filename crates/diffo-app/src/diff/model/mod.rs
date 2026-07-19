@@ -31,7 +31,6 @@ pub enum Message {
     JumpToPreviousChange,
     JumpToNextChange,
     ToggleDiffView,
-    ToggleFilePane,
     BeginFilePaneResize,
     ResizeFilePane(u16),
     EndFilePaneResize,
@@ -81,7 +80,6 @@ pub fn update(model: &mut Model, message: Message) -> Option<Effect> {
         | Message::JumpToPreviousChange
         | Message::JumpToNextChange => {}
         Message::ToggleDiffView => model.toggle_diff_view(),
-        Message::ToggleFilePane => model.toggle_file_pane(),
         Message::BeginFilePaneResize => model.begin_file_pane_resize(),
         Message::ResizeFilePane(percent) => model.resize_file_pane(percent),
         Message::EndFilePaneResize => model.end_file_pane_resize(),

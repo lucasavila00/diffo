@@ -97,11 +97,6 @@ pub(super) static KEY_BINDINGS: &[KeyBinding] = &[
         description: "Previous change",
     },
     KeyBinding {
-        keys: &[KeyChord::plain(KeyCode::Char('e'))],
-        message: Message::ToggleFilePane,
-        description: "Show / hide file list",
-    },
-    KeyBinding {
         keys: &[KeyChord::plain(KeyCode::Char(' '))],
         message: Message::ToggleStageSelected,
         description: "Stage / unstage selected file",

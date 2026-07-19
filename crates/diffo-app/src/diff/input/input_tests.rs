@@ -39,7 +39,6 @@ fn maps_fixed_key_bindings() {
         (KeyCode::Char('r'), Message::ToggleDiffView),
         (KeyCode::Char('n'), Message::JumpToNextChange),
         (KeyCode::Char('p'), Message::JumpToPreviousChange),
-        (KeyCode::Char('e'), Message::ToggleFilePane),
         (KeyCode::Char(' '), Message::ToggleStageSelected),
         (KeyCode::Char('a'), Message::ToggleStageAll),
     ];
@@ -75,7 +74,6 @@ fn bindings_are_unique_and_generate_help() {
 
     let rows = help_rows();
     assert!(rows.contains(&("r".to_owned(), "Toggle inline / side-by-side view")));
-    assert!(rows.contains(&("e".to_owned(), "Show / hide file list")));
     assert!(rows.contains(&("Space".to_owned(), "Stage / unstage selected file")));
     assert!(rows.contains(&("j / w".to_owned(), "Previous file")));
     assert!(rows.contains(&("k / l / s".to_owned(), "Next file")));
@@ -100,6 +98,11 @@ fn private_diff_bindings_do_not_own_picker_navigation() {
     ] {
         assert_eq!(map_key(code, KeyModifiers::NONE), None);
     }
+}
+
+#[test]
+fn e_is_not_a_shortcut() {
+    assert_eq!(map_key(KeyCode::Char('e'), KeyModifiers::NONE), None);
 }
 
 #[test]

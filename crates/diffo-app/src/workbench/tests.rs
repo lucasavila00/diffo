@@ -83,23 +83,6 @@ fn pane_drag_is_shared_across_activities() {
 }
 
 #[test]
-fn pane_toggle_is_global_and_diff_overlays_capture_input() {
-    let mut workbench = Workbench::new(RepositorySnapshot::default());
-    let area = Rect::new(0, 0, 100, 30);
-
-    let _ = workbench.handle_event(&key(KeyCode::Tab), area);
-    let _ = workbench.handle_event(&key(KeyCode::Char('e')), area);
-    assert_eq!(workbench.pane_split.percent(), 0);
-    let _ = workbench.handle_event(&key(KeyCode::Char('e')), area);
-    assert_eq!(workbench.pane_split.percent(), 25);
-
-    workbench.active = Activity::Diff;
-    workbench.diff.model.help_open = true;
-    let _ = workbench.handle_event(&key(KeyCode::Char('e')), area);
-    assert_eq!(workbench.pane_split.percent(), 25);
-}
-
-#[test]
 fn explorer_picker_menu_captures_global_shortcuts() {
     let mut workbench = Workbench::new(RepositorySnapshot::default());
     let area = Rect::new(0, 0, 100, 30);
@@ -121,7 +104,7 @@ fn explorer_picker_menu_captures_global_shortcuts() {
     let _ = workbench.handle_event(&right_click, area);
     assert!(workbench.explorer.has_open_picker_menu());
 
-    for code in [KeyCode::Char('e'), KeyCode::Char('1'), KeyCode::Char('q')] {
+    for code in [KeyCode::Char('1'), KeyCode::Char('q')] {
         let _ = workbench.handle_event(&key(code), area);
     }
     assert_eq!(workbench.pane_split.percent(), 25);

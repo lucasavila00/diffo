@@ -4,7 +4,9 @@ use crate::diff::{
     Style, change_kind_style, horizontal_panes, main_area, terminal_safe_text,
 };
 use diffo_ui::file_picker::{Document, Row as PickerRow};
-use diffo_ui::{design, disabled_control_style, enabled_control_style, interaction, theme};
+use diffo_ui::{
+    design, disabled_control_style, enabled_control_style, file_icons, interaction, theme,
+};
 
 pub(in crate::diff) fn file_panel_areas(area: Rect) -> std::rc::Rc<[Rect]> {
     Layout::vertical([
@@ -137,7 +139,11 @@ pub(in crate::diff) fn file_label(file: &FileState) -> Line<'static> {
         ChangeKind::Conflicted => "U",
     };
     Line::styled(
-        terminal_safe_text(&format!("{marker}  {}", file.path.display())),
+        terminal_safe_text(&format!(
+            "{marker} {}{}",
+            file_icons::file_icon(&file.path),
+            file.path.display()
+        )),
         change_kind_style(file.kind, false),
     )
 }

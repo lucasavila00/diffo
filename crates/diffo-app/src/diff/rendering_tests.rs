@@ -11,7 +11,7 @@ use crossterm::event::{
 use diffo_core::{ChangeKind, FileDiff, FileState, HeadState, RepositorySnapshot, UpstreamState};
 use diffo_diff::RowKind;
 use diffo_highlight::Rgb;
-use diffo_ui::{interaction, theme};
+use diffo_ui::{file_icons, interaction, theme};
 use ratatui::{
     Terminal,
     backend::TestBackend,
@@ -96,11 +96,11 @@ fn file_picker_renders_every_git_change_kind_with_its_status_color() {
 
     let buffer = terminal.backend().buffer();
     for (index, (kind, color)) in kinds.iter().enumerate() {
-        let marker = &buffer[(3, u16::try_from(index).unwrap() + 1)];
+        let marker = &buffer[(1, u16::try_from(index).unwrap() + 1)];
         assert_eq!(marker.fg, *color, "wrong foreground for {kind:?}");
     }
-    assert!(buffer[(3, 3)].modifier.contains(Modifier::CROSSED_OUT));
-    assert!(buffer[(3, 7)].modifier.contains(Modifier::BOLD));
+    assert!(buffer[(1, 3)].modifier.contains(Modifier::CROSSED_OUT));
+    assert!(buffer[(1, 7)].modifier.contains(Modifier::BOLD));
     let controls = buffer
         .content
         .iter()
@@ -130,7 +130,7 @@ fn diff_buffer_title_matches_the_committed_picker_label() {
         .unwrap();
 
     let diff = horizontal_panes(main_area(area), model.file_pane_percent)[1];
-    let title = "M  src/main.rs";
+    let title = "M src/main.rs";
     for (offset, expected) in title.chars().enumerate() {
         let offset = u16::try_from(offset).unwrap();
         let cell = &terminal.backend().buffer()[(diff.x + 1 + offset, diff.y)];
@@ -138,6 +138,48 @@ fn diff_buffer_title_matches_the_committed_picker_label() {
         assert_eq!(cell.fg, Color::Yellow);
         assert_eq!(cell.bg, Color::Reset);
     }
+}
+
+#[test]
+fn diff_file_icon_inherits_status_style_in_a_narrow_row() {
+    let files = [FileState {
+        path: PathBuf::from("very-long-name.rs"),
+        old_path: None,
+        kind: ChangeKind::Modified,
+        staged: None,
+        unstaged: Some(FileDiff {
+            text: String::new(),
+        }),
+    }];
+    let mut picker = diffo_ui::file_picker::FilePicker::default();
+    picker.prepare(
+        Rect::new(0, 0, 15, 4),
+        picker_document(
+            "Changes",
+            "[+] Stage All",
+            files.iter(),
+            ChangeArea::Unstaged,
+            Style::default(),
+        ),
+        None,
+    );
+    let backend = TestBackend::new(15, 4);
+    let mut terminal = Terminal::new(backend).unwrap();
+
+    terminal.draw(|frame| picker.render(frame, false)).unwrap();
+
+    let buffer = terminal.backend().buffer();
+    let icon = buffer
+        .content
+        .iter()
+        .find(|cell| cell.symbol() == file_icons::file_icon(&files[0].path))
+        .expect("Rust icon remains visible");
+    assert_eq!(icon.fg, Color::Yellow);
+    let row = (picker.metrics().list_area.x..picker.metrics().list_area.right())
+        .map(|column| buffer[(column, picker.metrics().list_area.y)].symbol())
+        .collect::<String>();
+    assert!(row.contains("..."), "{row:?}");
+    assert!(row.ends_with("[+]"), "{row:?}");
 }
 
 #[test]

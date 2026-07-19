@@ -46,7 +46,7 @@ fn delayed_diff_open_commits_only_the_latest_buffer_at_its_first_change() -> Res
             .lines()
             .next()
             .unwrap_or_default()
-            .contains("M  a-small.txt")
+            .contains("M a-small.txt")
     );
     screen
         .press(Key::Char('s'))?
@@ -54,7 +54,7 @@ fn delayed_diff_open_commits_only_the_latest_buffer_at_its_first_change() -> Res
     assert!(screen.contents().contains("SMALL_CHANGED"));
     screen
         .wait_for_text("C_LARGE_CHANGED")?
-        .wait_for_text("M  c-large.txt")?
+        .wait_for_text("M c-large.txt")?
         .press(Key::Char('q'))?
         .wait_for_exit()?;
     drop(screen);

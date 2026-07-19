@@ -57,31 +57,35 @@ fn mouse_wheel_scrolls_diff_file_panels_independently() -> Result<()> {
     let repository = TestRepository::new()?;
     for index in 0..20 {
         fs::write(
-            repository.worktree.join(format!("staged-{index:02}.txt")),
+            repository.worktree.join(format!("{index:02}-staged.txt")),
             "staged\n",
         )?;
     }
     git(&repository.worktree, &["add", "."])?;
     for index in 0..20 {
         fs::write(
-            repository.worktree.join(format!("change-{index:02}.txt")),
+            repository.worktree.join(format!("{index:02}-change.txt")),
             "change\n",
         )?;
     }
     let mut screen = repository.screen()?;
 
     screen
-        .wait_for_text("staged-00...")?
-        .wait_for_text("change-00...")?
-        .scroll_many_at(&Selector::text("staged-00..."), ScrollDirection::Down, 4)?
-        .wait_for_text_gone("staged-00...")?;
-    assert!(screen.contents().contains("change-00..."));
+        .wait_for(&Selector::file_action("Staged", "00-staged.txt", "[-]"))?
+        .wait_for(&Selector::file_action("Changes", "00-change.txt", "[+]"))?
+        .scroll_many_at(
+            &Selector::file_action("Staged", "00-staged.txt", "[-]"),
+            ScrollDirection::Down,
+            4,
+        )?
+        .wait_for(&Selector::file_action("Staged", "10-staged.txt", "[-]"))?
+        .wait_for(&Selector::file_action("Changes", "00-change.txt", "[+]"))?;
 
     screen
-        .scroll_many_at(&Selector::text("change-00..."), ScrollDirection::Down, 4)?
-        .wait_for_text_gone("change-00...")?
+        .scroll_many_at(&Selector::text("Changes"), ScrollDirection::Down, 4)?
+        .wait_for(&Selector::file_action("Changes", "09-change.txt", "[+]"))?
         .scroll_many_at(&Selector::text("Changes"), ScrollDirection::Up, 4)?
-        .wait_for_text("change-00...")?;
+        .wait_for(&Selector::file_action("Changes", "00-change.txt", "[+]"))?;
     Ok(())
 }
 

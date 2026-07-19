@@ -1,9 +1,8 @@
-use diffo_core::ChangeKind;
 use diffo_ui::file_picker::{Document as PickerDocument, FilePicker, TreeNode as PickerTreeNode};
 use diffo_ui::text_view::render_lines;
 use diffo_ui::text_view::{Viewport, ViewportMetrics, render_scrollbars, viewport_metrics};
 use diffo_ui::{
-    PaneSplit, change_kind_style, design, plain_syntax_spans, terminal_safe_text, theme, tool_areas,
+    PaneSplit, design, file_icons, plain_syntax_spans, terminal_safe_text, theme, tool_areas,
 };
 use ratatui::{
     Frame,
@@ -70,50 +69,36 @@ pub(crate) fn tree_document(
 }
 
 fn picker_tree_node(entry: &TreeEntry) -> PickerTreeNode<EntryId> {
+    let label = entry_label(entry);
     if entry.directory() {
         PickerTreeNode::branch(
             entry.id.clone(),
-            entry_label(entry),
+            label,
             entry.children.iter().map(picker_tree_node).collect(),
         )
     } else {
-        PickerTreeNode::leaf(entry.id.clone(), entry_label(entry))
+        PickerTreeNode::leaf(entry.id.clone(), label)
     }
 }
 
 pub(crate) fn entry_label(entry: &TreeEntry) -> Line<'static> {
+    Line::styled(
+        terminal_safe_text(&entry_name(entry)),
+        Style::default().fg(theme::TEXT),
+    )
+}
+
+fn entry_name(entry: &TreeEntry) -> String {
     let name = entry
         .path()
         .file_name()
         .unwrap_or(entry.path().as_os_str())
         .to_string_lossy();
-    let prefix = if entry.directory() {
-        "  "
+    if entry.directory() {
+        name.into_owned()
     } else {
-        match entry.status {
-            Some(ChangeKind::Added | ChangeKind::Untracked) => "A ",
-            Some(ChangeKind::Modified) => "M ",
-            Some(ChangeKind::Deleted) => "D ",
-            Some(ChangeKind::Renamed) => "R ",
-            Some(ChangeKind::Copied) => "C ",
-            Some(ChangeKind::Conflicted) => "U ",
-            None => "  ",
-        }
-    };
-    Line::styled(
-        terminal_safe_text(&format!("{prefix}{name}")),
-        entry_style(entry),
-    )
-}
-
-fn entry_style(entry: &TreeEntry) -> Style {
-    entry
-        .status
-        .map_or_else(|| Style::default().fg(theme::TEXT), status_style)
-}
-
-fn status_style(kind: ChangeKind) -> Style {
-    change_kind_style(kind, false)
+        format!("{}{name}", file_icons::file_icon(entry.path()))
+    }
 }
 
 fn render_viewer(
@@ -256,7 +241,7 @@ fn marker_style(marker: Option<GutterMarker>) -> Style {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use diffo_core::{FileDiff, FileState, RepositorySnapshot};
+    use diffo_core::{ChangeKind, FileDiff, FileState, RepositorySnapshot};
     use diffo_diff::parse_unified_patch;
     use diffo_highlight::SyntaxHighlighter;
     use diffo_ui::file_picker::Navigation;
@@ -264,28 +249,7 @@ mod tests {
     use std::collections::HashMap;
 
     #[test]
-    fn tree_statuses_reuse_diff_colors_and_unchanged_labels_use_primary_text() {
-        assert_eq!(status_style(ChangeKind::Added).fg, Some(Color::LightGreen));
-        assert_eq!(status_style(ChangeKind::Modified).fg, Some(Color::Yellow));
-        assert_eq!(status_style(ChangeKind::Deleted).fg, Some(Color::LightRed));
-
-        let unchanged = TreeEntry {
-            id: EntryId::File("plain.txt".into()),
-            status: None,
-            children: Vec::new(),
-        };
-        assert_eq!(entry_style(&unchanged).fg, Some(Color::White));
-
-        let directory = TreeEntry {
-            id: EntryId::Directory("src".into()),
-            status: None,
-            children: Vec::new(),
-        };
-        assert_eq!(entry_style(&directory).fg, Some(theme::TEXT));
-    }
-
-    #[test]
-    fn tree_picker_renders_the_file_status_color() {
+    fn tree_picker_omits_the_file_status_letter_and_color() {
         let mut model = ExplorerModel::new(RepositorySnapshot {
             files: vec![FileState {
                 path: "changed.rs".into(),
@@ -310,9 +274,16 @@ mod tests {
 
         terminal.draw(|frame| picker.render(frame, false)).unwrap();
 
-        let marker = &terminal.backend().buffer()[(5, 1)];
-        assert_eq!(marker.symbol(), "M");
-        assert_eq!(marker.fg, Color::Yellow);
+        let buffer = terminal.backend().buffer();
+        assert_eq!(buffer[(1, 1)].symbol(), " ");
+        assert_eq!(buffer[(2, 1)].symbol(), " ");
+        let icon = &buffer[(3, 1)];
+        assert_eq!(
+            icon.symbol(),
+            file_icons::file_icon(std::path::Path::new("changed.rs"))
+        );
+        assert_eq!(icon.fg, theme::TEXT);
+        assert_eq!(buffer[(4, 1)].symbol(), "c");
     }
 
     #[test]
@@ -373,12 +344,12 @@ mod tests {
             .draw(|frame| render_viewer(frame, frame.area(), &model, Style::default(), false))
             .unwrap();
 
-        let expected = "D deleted.rs";
+        let expected = "deleted.rs";
         for (offset, expected) in expected.chars().enumerate() {
             let cell = &terminal.backend().buffer()[(u16::try_from(offset).unwrap() + 1, 0)];
             assert_eq!(cell.symbol(), expected.to_string());
-            assert_eq!(cell.fg, Color::LightRed);
-            assert!(cell.modifier.contains(Modifier::CROSSED_OUT));
+            assert_eq!(cell.fg, theme::TEXT);
+            assert!(!cell.modifier.contains(Modifier::CROSSED_OUT));
         }
         let screen = terminal
             .backend()

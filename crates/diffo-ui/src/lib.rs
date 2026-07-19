@@ -1,6 +1,7 @@
 #![doc = include_str!("../README.md")]
 
 pub mod command_palette;
+pub mod file_icons;
 pub mod file_picker;
 mod scrollbar;
 pub mod text_view;
@@ -36,7 +37,9 @@ pub mod theme {
 
 /// Fixed markers for mouse-interactive surfaces.
 pub mod interaction {
-    pub const FLAT_ROW: &str = "· ";
+    pub const TREE_COLLAPSED: &str = "▸ ";
+    pub const TREE_EXPANDED: &str = "▾ ";
+    pub const TREE_LEAF: &str = "  ";
     pub const EDIT: &str = "✎";
     pub const DISMISS: &str = "×";
     pub const PANE_DRAG: &str = "↔";

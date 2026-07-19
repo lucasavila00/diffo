@@ -22,7 +22,8 @@ fn real_renamed_file_renders_unchanged_content() -> Result<()> {
     let mut screen = repository.screen()?;
 
     screen
-        .wait_for_text("src/content-and-renamed.rs")?
+        .wait_for_text("src/content-...")?
+        .click(&Selector::text("src/content-..."))?
         .wait_for_text("pub struct RenamedFile")?
         .wait_for_text("Content is unchanged by the rename")?;
     Ok(())
@@ -43,7 +44,7 @@ fn real_merge_conflict_renders_as_a_highlighted_worktree_file() -> Result<()> {
 
     let mut screen = repository.screen()?;
     screen
-        .wait_for_text("U  tracked.txt")?
+        .wait_for_text("U tracked.txt")?
         .wait_for_text("<<<<<<< HEAD")?
         .wait_for_text("=======")?
         .wait_for_text(">>>>>>> origin/master")?;

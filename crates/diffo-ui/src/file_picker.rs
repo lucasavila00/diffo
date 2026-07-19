@@ -3,11 +3,11 @@
 use std::collections::HashSet;
 use std::hash::Hash;
 
-use crate::interaction;
 use crate::{
     design, enabled_control_style, maximum_scroll, render_scrollbar, scroll_offset,
     scrollbar_position, terminal_safe_text, theme, wheel_scroll_delta,
 };
+use crate::{file_icons, interaction};
 use crossterm::event::{
     Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind,
 };
@@ -430,25 +430,24 @@ where
     }
 
     fn list_item(&self, row: &DocumentRow<K>) -> ListItem<'static> {
-        let mut spans = vec![Span::styled(
-            if self.document.mode == Mode::Flat {
-                interaction::FLAT_ROW
-            } else {
-                "  "
-            },
-            enabled_control_style(),
-        )];
+        let mut spans = Vec::new();
         if self.document.mode == Mode::Tree {
             spans.push(Span::raw("  ".repeat(row.depth)));
-            spans.push(Span::raw(if row.branch {
-                if self.expanded.contains(&row.id) {
-                    "▾ "
+            spans.push(Span::styled(
+                if row.branch {
+                    if self.expanded.contains(&row.id) {
+                        interaction::TREE_EXPANDED
+                    } else {
+                        interaction::TREE_COLLAPSED
+                    }
                 } else {
-                    "▸ "
-                }
-            } else {
-                "  "
-            }));
+                    interaction::TREE_LEAF
+                },
+                enabled_control_style(),
+            ));
+            if row.branch {
+                spans.push(Span::raw(file_icons::FOLDER));
+            }
         }
         spans.extend(row.label.spans.clone());
         if let Some(action) = &row.action {

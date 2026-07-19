@@ -129,7 +129,7 @@ fn rendering_preserves_label_style_and_owns_the_action_style() {
         Rect::new(0, 0, 30, 4),
         Document::flat(
             "Files",
-            vec![Row::flat(0, Line::styled("D  deleted.txt", label_style)).with_action("[+]")],
+            vec![Row::flat(0, Line::styled("D deleted.txt", label_style)).with_action("[+]")],
         ),
         None,
     );
@@ -139,10 +139,10 @@ fn rendering_preserves_label_style_and_owns_the_action_style() {
     terminal.draw(|frame| picker.render(frame, true)).unwrap();
 
     let buffer = terminal.backend().buffer();
-    let marker = &buffer[(3, 1)];
+    let marker = &buffer[(1, 1)];
     assert_eq!(marker.symbol(), "D");
     assert_eq!(marker.fg, Color::LightRed);
-    let filename = &buffer[(6, 1)];
+    let filename = &buffer[(3, 1)];
     assert_eq!(filename.symbol(), "d");
     assert_eq!(filename.fg, Color::LightRed);
     assert_eq!(filename.bg, theme::SELECTION_BACKGROUND);
@@ -153,10 +153,8 @@ fn rendering_preserves_label_style_and_owns_the_action_style() {
     assert_eq!(action.symbol(), "[");
     assert_enabled_control(action);
     assert_eq!(action.bg, theme::SELECTION_BACKGROUND);
-    let selection = &buffer[(1, 1)];
-    assert_eq!(selection.symbol(), "·");
-    assert_enabled_control(selection);
-    assert_eq!(selection.bg, theme::SELECTION_BACKGROUND);
+    assert_eq!(marker.bg, theme::SELECTION_BACKGROUND);
+    assert!(marker.modifier.contains(Modifier::BOLD));
 }
 
 #[test]
@@ -257,7 +255,7 @@ fn tree_refresh_preserves_expansion_by_stable_node_id() {
 }
 
 #[test]
-fn every_unselected_flat_row_has_a_persistent_click_marker() {
+fn flat_rows_start_with_their_label_without_a_dot() {
     let mut picker = FilePicker::default();
     picker.prepare(
         Rect::new(0, 0, 20, 4),
@@ -268,9 +266,9 @@ fn every_unselected_flat_row_has_a_persistent_click_marker() {
     let mut terminal = Terminal::new(backend).unwrap();
     terminal.draw(|frame| picker.render(frame, false)).unwrap();
 
-    let marker = &terminal.backend().buffer()[(1, 1)];
-    assert_eq!(marker.symbol(), "·");
-    assert_enabled_control(marker);
+    let buffer = terminal.backend().buffer();
+    assert_eq!(buffer[(1, 1)].symbol(), "f");
+    assert!(!rendered_row(buffer, picker.metrics().list_area).contains('·'));
 }
 
 #[test]
@@ -292,21 +290,53 @@ fn tree_rows_keep_their_structure_when_selected() {
     terminal.draw(|frame| picker.render(frame, false)).unwrap();
 
     let buffer = terminal.backend().buffer();
-    assert_eq!(buffer[(1, 1)].symbol(), " ");
-    assert_eq!(buffer[(3, 1)].symbol(), "▸");
+    assert_eq!(buffer[(1, 1)].symbol(), "▸");
+    assert_eq!(buffer[(3, 1)].symbol(), file_icons::FOLDER);
     assert!(!rendered_row(buffer, Rect::new(1, 1, 18, 1)).contains('·'));
     assert!(!rendered_row(buffer, Rect::new(1, 2, 18, 1)).contains('·'));
 
     terminal.draw(|frame| picker.render(frame, true)).unwrap();
 
     let buffer = terminal.backend().buffer();
-    assert_eq!(buffer[(1, 1)].symbol(), " ");
-    assert_eq!(buffer[(3, 1)].symbol(), "▸");
+    assert_eq!(buffer[(1, 1)].symbol(), "▸");
+    assert_eq!(buffer[(3, 1)].symbol(), file_icons::FOLDER);
     assert!(!rendered_row(buffer, Rect::new(1, 1, 18, 1)).contains('›'));
-    let selected_label = &buffer[(5, 1)];
+    let selected_label = &buffer[(4, 1)];
     assert_eq!(selected_label.symbol(), "s");
     assert_eq!(selected_label.bg, theme::SELECTION_BACKGROUND);
     assert!(selected_label.modifier.contains(Modifier::BOLD));
+}
+
+#[test]
+fn tree_caret_tracks_expansion_and_the_folder_icon_stays_fixed() {
+    let mut picker = FilePicker::default();
+    picker.prepare(
+        Rect::new(0, 0, 20, 5),
+        Document::tree(
+            "Explorer",
+            vec![TreeNode::branch(
+                0,
+                Line::raw("src"),
+                vec![TreeNode::leaf(1, Line::raw("main.rs"))],
+            )],
+        ),
+        None,
+    );
+    let backend = TestBackend::new(20, 5);
+    let mut terminal = Terminal::new(backend).unwrap();
+
+    terminal.draw(|frame| picker.render(frame, false)).unwrap();
+    let buffer = terminal.backend().buffer();
+    assert_eq!(buffer[(1, 1)].symbol(), "▸");
+    assert_eq!(buffer[(3, 1)].symbol(), file_icons::FOLDER);
+    assert_eq!(buffer[(4, 1)].symbol(), "s");
+
+    picker.navigate(Navigation::Activate);
+    terminal.draw(|frame| picker.render(frame, false)).unwrap();
+    let buffer = terminal.backend().buffer();
+    assert_eq!(buffer[(1, 1)].symbol(), "▾");
+    assert_eq!(buffer[(3, 1)].symbol(), file_icons::FOLDER);
+    assert_eq!(buffer[(4, 1)].symbol(), "s");
 }
 
 #[test]

@@ -98,7 +98,7 @@ fn delayed_explorer_open_commits_only_the_latest_syntax_ready_file() -> Result<(
             .lines()
             .next()
             .unwrap_or_default()
-            .contains("  b.rs")
+            .contains("b.rs")
     );
     Ok(())
 }

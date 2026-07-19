@@ -1,6 +1,56 @@
 use super::*;
 
 #[test]
+fn sync_keys_run_once_and_disable_together_in_every_activity() {
+    let area = Rect::new(0, 0, 100, 30);
+    for activity in [Activity::Diff, Activity::Explorer, Activity::Search] {
+        for shortcut in [KeyCode::Char('9'), KeyCode::F(9)] {
+            let mut workbench = Workbench::new(RepositorySnapshot::default());
+            workbench.active = activity;
+
+            let _ = workbench.handle_event(&key(shortcut), area);
+            let _ = workbench.handle_event(&key(shortcut), area);
+
+            assert_eq!(workbench.commands.queued_len(), 1);
+            assert!(!workbench.diff.model.sync_enabled());
+        }
+    }
+}
+
+#[test]
+fn shared_footer_sync_button_runs_the_same_action() {
+    let snapshot = RepositorySnapshot {
+        head: diffo_core::HeadState::Named {
+            name: "main".to_owned(),
+            commit: "123456789abcdef".to_owned(),
+        },
+        ..RepositorySnapshot::default()
+    };
+    let area = Rect::new(0, 0, 100, 30);
+    let status = tool_areas(workbench_areas(area).content).status;
+    let sync_column = status
+        .x
+        .saturating_add(u16::try_from(" branch main · 1234567 ".len()).unwrap());
+
+    for activity in [Activity::Diff, Activity::Explorer, Activity::Search] {
+        let mut workbench = Workbench::new(snapshot.clone());
+        workbench.active = activity;
+        let click = Event::Mouse(MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: sync_column,
+            row: status.y,
+            modifiers: KeyModifiers::NONE,
+        });
+
+        let _ = workbench.handle_event(&click, area);
+        let _ = workbench.handle_event(&click, area);
+
+        assert_eq!(workbench.commands.queued_len(), 1);
+        assert!(!workbench.diff.model.sync_enabled());
+    }
+}
+
+#[test]
 fn operation_toasts_render_in_diff_and_explorer() {
     let mut rendered = Vec::new();
     for activity in [Activity::Diff, Activity::Explorer] {

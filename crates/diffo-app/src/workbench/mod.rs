@@ -28,6 +28,7 @@ use crate::explorer::{ExplorerActivity, ExplorerEvent, ExplorerOutcome, Explorer
 
 mod activity_bar;
 mod application_update;
+mod bindings;
 mod checkout_picker;
 mod command_queue;
 mod full_screen;
@@ -37,6 +38,7 @@ mod pending_scroll;
 mod prompt;
 mod repository_update;
 
+use bindings::GlobalAction;
 use modal::Modal;
 use pending_scroll::PendingScroll;
 #[cfg(test)]
@@ -406,6 +408,12 @@ impl Workbench {
             Activity::Explorer => self.explorer.captures_global_input(),
             Activity::Search => self.search.captures_global_input(),
         };
+        if self.full_screen
+            && !tool_captures_global_input
+            && bindings::action(event) == Some(GlobalAction::Sync)
+        {
+            return self.execute_sync();
+        }
         if self.full_screen {
             return self.handle_full_screen_event(event, area);
         }
@@ -414,6 +422,18 @@ impl Workbench {
         }
         if !tool_captures_global_input && self.request_full_screen(event, area) {
             return None;
+        }
+        if !tool_captures_global_input
+            && let Event::Mouse(mouse) = event
+            && mouse.kind == MouseEventKind::Down(MouseButton::Left)
+            && crate::diff::sync_control_at_position(
+                &self.diff.model,
+                tool_areas(content).status,
+                mouse.column,
+                mouse.row,
+            )
+        {
+            return self.execute_sync();
         }
         let pane_area = tool_areas(content).content;
         if !tool_captures_global_input && let Event::Mouse(mouse) = event {
@@ -440,22 +460,12 @@ impl Workbench {
                 _ => {}
             }
         }
-        if let Event::Key(key) = event
-            && key.kind == KeyEventKind::Press
-            && matches!(key.code, KeyCode::Char('1') | KeyCode::F(1))
-            && key.modifiers == KeyModifiers::NONE
-            && !tool_captures_global_input
-        {
-            self.open_active_palette();
-            return None;
-        }
-        if let Event::Key(key) = event
-            && key.kind == KeyEventKind::Press
-            && matches!(key.code, KeyCode::Char('2') | KeyCode::F(2))
-            && key.modifiers == KeyModifiers::NONE
-            && !tool_captures_global_input
-        {
-            self.set_modal(Modal::Help);
+        if !tool_captures_global_input && let Some(action) = bindings::action(event) {
+            match action {
+                GlobalAction::OpenCommandPalette => self.open_active_palette(),
+                GlobalAction::ToggleHelp => self.set_modal(Modal::Help),
+                GlobalAction::Sync => return self.execute_sync(),
+            }
             return None;
         }
         if self.active != Activity::Diff
@@ -581,7 +591,7 @@ impl Workbench {
             self.close_modal();
             return None;
         }
-        let commit_submission = message == Message::ExecutePrimaryAction;
+        let commit_submission = message == Message::ExecuteCommit;
         let reopen_commit_editor = matches!(
             &message,
             Message::ActionFailed(OperationFailure {
@@ -632,22 +642,11 @@ impl Workbench {
         self.set_modal(Modal::command_palette(commands));
     }
 
-    fn active_help_rows(&self) -> Vec<(String, &'static str)> {
-        let activity_rows = match self.active {
-            Activity::Diff => self.diff.help_rows(),
-            Activity::Explorer => self.explorer.help_rows(),
-            Activity::Search => self.search.help_rows(),
-        };
-        std::iter::once(("Tab".to_owned(), "Next activity"))
-            .chain(activity_rows)
-            .collect()
-    }
-
     fn execute_palette_command(&mut self, command: CommandId) -> Option<WorkbenchEffect> {
         let action = if command == FETCH_COMMAND {
             Some(RepositoryAction::Fetch)
         } else if command == SYNC_COMMAND {
-            Some(RepositoryAction::Sync)
+            return self.update_diff(Message::ExecuteSync);
         } else if command == CHECKOUT_COMMAND {
             self.open_checkout_picker();
             return None;

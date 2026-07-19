@@ -12,6 +12,8 @@ expression: mappings
     "Left -> Some(ScrollDiffHorizontalBy(-4))",
     "Right -> Some(ScrollDiffHorizontalBy(4))",
     "Char('r') -> Some(ToggleDiffView)",
+    "Char('e') -> Some(FocusCommitInput)",
+    "Enter -> Some(ExecuteCommit)",
     "Char('n') -> Some(JumpToNextChange)",
     "Char('p') -> Some(JumpToPreviousChange)",
     "Char(' ') -> Some(ToggleStageSelected)",

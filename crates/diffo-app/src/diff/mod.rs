@@ -3,8 +3,8 @@
 pub mod model;
 
 pub use model::{
-    ChangeArea, DiffViewMode, Effect, FileKey, Message, Model, NetworkOperation, PrimaryAction,
-    Toast, ToastKind, ToastQueue, update,
+    ChangeArea, DiffViewMode, Effect, FileKey, Message, Model, NetworkOperation, Toast, ToastKind,
+    ToastQueue, update,
 };
 use std::{
     sync::{
@@ -37,7 +37,7 @@ mod prepare;
 mod view;
 
 pub(crate) use input::{help_rows, map_commit_event};
-pub(crate) use view::files::render_status;
+pub(crate) use view::files::{render_status, sync_control_at_position};
 pub(crate) use view::overlays::render_commit_editor;
 
 #[cfg(test)]
@@ -525,6 +525,9 @@ impl Renderer {
         if let Event::Key(key) = event
             && let Some(command) = diffo_ui::file_picker::navigation(key)
         {
+            if command == PickerNavigation::Activate {
+                return None;
+            }
             return self
                 .navigate_file_pickers(command, model)
                 .or(Some(RendererEvent::Consumed));

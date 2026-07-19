@@ -49,11 +49,15 @@ pub(super) fn find_dialog_action(
     if find_text(cells, dialog).is_empty() {
         return Vec::new();
     }
-    let label = format!("[ {action} ]");
+    let label = match action {
+        "Commit" => "[ Commit (Enter) ]".to_owned(),
+        "Cancel" => "[ Cancel (Esc) ]".to_owned(),
+        _ => format!("[ {action} ]"),
+    };
     cells
         .iter()
         .enumerate()
-        .filter(|(_, row)| !find_in_row(row, "[ Cancel ]").is_empty())
+        .filter(|(_, row)| !find_in_row(row, "[ Cancel (Esc) ]").is_empty())
         .flat_map(|(row, cells)| positions(row, find_in_row(cells, &label), &label))
         .collect()
 }

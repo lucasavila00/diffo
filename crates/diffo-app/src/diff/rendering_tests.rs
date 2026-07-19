@@ -553,7 +553,7 @@ fn diff_navigation_hands_off_between_flat_picker_instances() {
     let area = Rect::new(0, 0, 100, 30);
     let mut renderer = Renderer::new();
     renderer.prepare_frame(&model, area);
-    let previous = Event::Key(KeyEvent::new(KeyCode::Char('w'), KeyModifiers::NONE));
+    let previous = Event::Key(KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE));
 
     assert_eq!(
         renderer.map_event(&previous, &model, area),

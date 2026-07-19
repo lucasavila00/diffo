@@ -8,23 +8,13 @@ use diffo_ui::{design, disabled_control_style, enabled_control_style, file_icons
 
 pub(in crate::diff) fn file_panel_areas(area: Rect) -> std::rc::Rc<[Rect]> {
     Layout::vertical([
-        Constraint::Length(design::FILE_COMPOSER_HEIGHT),
+        Constraint::Length(design::COMMIT_FIELD_HEIGHT),
         Constraint::Min(design::MIN_FILE_GROUP_HEIGHT),
     ])
     .split(area)
 }
 
-pub(in crate::diff) fn commit_composer_areas(area: Rect) -> std::rc::Rc<[Rect]> {
-    Layout::vertical([
-        Constraint::Length(design::COMMIT_FIELD_HEIGHT),
-        Constraint::Length(design::PRIMARY_ACTION_HEIGHT),
-        Constraint::Length(design::STATUS_HEIGHT),
-    ])
-    .split(area)
-}
-
 pub(in crate::diff) fn render_commit_composer(frame: &mut Frame, area: Rect, model: &Model) {
-    let sections = commit_composer_areas(area);
     let empty = model.commit_message.is_empty();
     let message = if empty {
         model
@@ -50,19 +40,7 @@ pub(in crate::diff) fn render_commit_composer(frame: &mut Frame, area: Rect, mod
                             .alignment(Alignment::Right),
                     ),
             ),
-        sections[0],
-    );
-    let action = model.primary_action();
-    let style = if primary_action_clickable(model) {
-        enabled_control_style().bg(theme::SELECTION_BACKGROUND)
-    } else {
-        disabled_control_style()
-    };
-    frame.render_widget(
-        Paragraph::new(format!("[ {} ]", action.label()))
-            .alignment(Alignment::Center)
-            .style(style),
-        sections[1],
+        area,
     );
 }
 
@@ -74,18 +52,10 @@ pub(crate) fn commit_action_at_position(
 ) -> Option<crate::diff::Message> {
     let columns = horizontal_panes(main_area(area), model.file_pane_percent);
     let file_areas = file_panel_areas(columns[0]);
-    let sections = commit_composer_areas(file_areas[0]);
-    if sections[0].contains((column, row).into()) {
+    if file_areas[0].contains((column, row).into()) {
         return Some(crate::diff::Message::FocusCommitInput);
     }
-    if sections[1].contains((column, row).into()) && primary_action_clickable(model) {
-        return Some(crate::diff::Message::ExecutePrimaryAction);
-    }
     None
-}
-
-fn primary_action_clickable(model: &Model) -> bool {
-    model.primary_action_enabled()
 }
 
 pub(in crate::diff) fn file_group_areas(
@@ -158,6 +128,17 @@ pub(in crate::diff) fn status_line(
     width: usize,
 ) -> Line<'static> {
     let mut head = Span::styled(head_label(&model.snapshot.head), head_style());
+    let mut sync = Span::styled(
+        " [ Sync (9 / F9) ]",
+        if model.sync_enabled() {
+            enabled_control_style().bg(theme::SELECTION_BACKGROUND)
+        } else {
+            disabled_control_style()
+        },
+    );
+    if sync.width() > width {
+        sync.content = truncate_width(sync.content.as_ref(), width).into();
+    }
     let status = repository_status(&model.snapshot);
     let mut status = Some(Span::styled(
         format!(" · {}", status.label()),
@@ -182,6 +163,7 @@ pub(in crate::diff) fn status_line(
 
     while status_width(
         &head,
+        &sync,
         status.as_ref(),
         divergence.as_ref(),
         transient.as_ref(),
@@ -199,19 +181,30 @@ pub(in crate::diff) fn status_line(
         }
         if let Some(message) = transient.as_mut() {
             let available =
-                width.saturating_sub(head.width().saturating_add(usize::from(design::INLINE_GAP)));
-            if available == 0 {
+                width.saturating_sub(sync.width().saturating_add(usize::from(design::INLINE_GAP)));
+            if available <= 1 {
                 transient = None;
             } else {
-                message.content = truncate_width(message.content.as_ref(), available).into();
+                if head.width() >= available {
+                    head.content =
+                        truncate_width(head.content.as_ref(), available.div_ceil(2)).into();
+                }
+                let message_width = available.saturating_sub(head.width());
+                if message_width == 0 {
+                    transient = None;
+                } else {
+                    message.content =
+                        truncate_width(message.content.as_ref(), message_width).into();
+                }
             }
             continue;
         }
-        head.content = truncate_width(head.content.as_ref(), width).into();
+        let head_width = width.saturating_sub(sync.width());
+        head.content = truncate_width(head.content.as_ref(), head_width).into();
         break;
     }
 
-    let mut spans = vec![head];
+    let mut spans = vec![head, sync];
     spans.extend(status);
     spans.extend(divergence);
     let left_width = spans.iter().map(Span::width).sum::<usize>();
@@ -340,18 +333,38 @@ fn head_style() -> Style {
 
 fn status_width(
     head: &Span<'_>,
+    sync: &Span<'_>,
     status: Option<&Span<'_>>,
     divergence: Option<&Span<'_>>,
     transient: Option<&Span<'_>>,
     help: Option<&Span<'_>>,
 ) -> usize {
     head.width()
+        .saturating_add(sync.width())
         .saturating_add(status.map_or(0, Span::width))
         .saturating_add(divergence.map_or(0, Span::width))
         .saturating_add(transient.map_or(0, |span| {
             span.width().saturating_add(usize::from(design::INLINE_GAP))
         }))
         .saturating_add(help.map_or(0, Span::width))
+}
+
+pub(crate) fn sync_control_at_position(model: &Model, area: Rect, column: u16, row: u16) -> bool {
+    if !model.sync_enabled() || row != area.y {
+        return false;
+    }
+    let line = status_line(model, 0, usize::from(area.width));
+    let Some((head, sync)) = line.spans.first().zip(line.spans.get(1)) else {
+        return false;
+    };
+    let start = area
+        .x
+        .saturating_add(u16::try_from(head.width()).unwrap_or(u16::MAX))
+        .saturating_add(1);
+    let end = start
+        .saturating_add(u16::try_from(sync.width().saturating_sub(1)).unwrap_or(u16::MAX))
+        .min(area.right());
+    column >= start && column < end
 }
 
 fn truncate_width(value: &str, width: usize) -> String {

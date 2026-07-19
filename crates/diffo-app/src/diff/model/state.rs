@@ -53,13 +53,6 @@ pub enum DiffViewMode {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum PrimaryAction {
-    Commit,
-    Sync,
-    Disabled,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum NetworkOperation {
     Fetch,
     Sync,
@@ -86,21 +79,6 @@ impl NetworkOperation {
         match self {
             Self::Fetch | Self::Sync => "Fetching",
         }
-    }
-}
-
-impl PrimaryAction {
-    #[must_use]
-    pub const fn label(self) -> &'static str {
-        match self {
-            Self::Commit | Self::Disabled => "Commit",
-            Self::Sync => "Sync",
-        }
-    }
-
-    #[must_use]
-    pub const fn enabled(self) -> bool {
-        matches!(self, Self::Commit | Self::Sync)
     }
 }
 

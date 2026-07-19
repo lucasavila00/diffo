@@ -98,7 +98,7 @@ fn palette_search_runs_sync() -> Result<()> {
 }
 
 #[test]
-fn cancelling_a_blocked_git_client_releases_the_next_queued_command() -> Result<()> {
+fn cancelling_a_blocked_git_client_enables_global_sync() -> Result<()> {
     let repository = TestRepository::new()?;
     repository.commit_remote("remote.txt", "remote\n", "Remote commit")?;
     let gate = diffo_e2e::GitProxy::new("fetch", diffo_e2e::GitGatePhase::Before)?;
@@ -115,16 +115,12 @@ fn cancelling_a_blocked_git_client_releases_the_next_queued_command() -> Result<
         .press(Key::Enter)?
         .wait_for_text("Fetching")?;
     gate.wait_until_blocked()?;
-    screen
-        .press(Key::Char('1'))?
-        .type_text("sync")?
-        .press(Key::Enter)?
-        .wait_for_text_gone("Command Palette")?;
     assert!(screen.contents().contains("Fetching"));
     assert!(!screen.contents().contains("Fast-forwarding"));
 
     screen.click(&Selector::text(""))?;
-    wait_for("queued sync to update the worktree", || {
+    wait_for("global sync to update the worktree", || {
+        screen.press(Key::Char('9'))?;
         Ok(repository.worktree.join("remote.txt").exists())
     })?;
     screen.wait_for_text("Fast-forwarded master by 1 commit.")?;
@@ -133,7 +129,7 @@ fn cancelling_a_blocked_git_client_releases_the_next_queued_command() -> Result<
 }
 
 #[test]
-fn primary_sync_button_shows_fast_forward_progress() -> Result<()> {
+fn global_sync_button_shows_fast_forward_progress() -> Result<()> {
     let repository = TestRepository::new()?;
     repository.commit_remote("remote.txt", "remote\n", "Remote commit")?;
     git(&repository.worktree, &["fetch", "origin"])?;
@@ -146,8 +142,8 @@ fn primary_sync_button_shows_fast_forward_progress() -> Result<()> {
     )?;
 
     screen
-        .wait_for_text("[ Sync ]")?
-        .click(&Selector::text("[ Sync ]"))?;
+        .wait_for_text("[ Sync (9 / F9) ]")?
+        .click(&Selector::text("[ Sync (9 / F9) ]"))?;
     gate.wait_until_blocked()?;
     screen
         .wait_for_text("origin/master has 1 upstream-only")?
@@ -156,7 +152,7 @@ fn primary_sync_button_shows_fast_forward_progress() -> Result<()> {
         .wait_for_text("fast-forward master to origin/master.")?
         .wait_for_text("Fast-forwarding master")?;
     gate.release()?;
-    wait_for("primary sync to update the worktree", || {
+    wait_for("global sync to update the worktree", || {
         Ok(repository.worktree.join("remote.txt").exists())
     })?;
     screen.wait_for_text_gone("Fast-forwarding master")?;
@@ -178,8 +174,8 @@ fn rejected_push_shows_a_persistent_failure_toast() -> Result<()> {
         &[("PATH", path.as_os_str())],
     )?;
     screen
-        .wait_for_text("[ Sync ]")?
-        .click(&Selector::text("[ Sync ]"))?;
+        .wait_for_text("[ Sync (9 / F9) ]")?
+        .click(&Selector::text("[ Sync (9 / F9) ]"))?;
     gate.wait_until_blocked()?;
 
     let remote = repository.commit_remote("remote.txt", "remote\n", "Remote commit")?;
@@ -209,7 +205,7 @@ fn success_toast_is_automatically_dismissed() -> Result<()> {
     let mut screen = repository.screen()?;
 
     screen
-        .click(&Selector::text("[ Commit ]"))?
+        .press(Key::Enter)?
         .wait_for_text("Committed ")?
         .wait_for_text_gone("Committed ")?;
     Ok(())
@@ -259,8 +255,8 @@ fn ssh_push_uses_running_image_after_launched_binary_is_replaced() -> Result<()>
     fs::set_permissions(&launched_binary, fs::Permissions::from_mode(0o600))?;
 
     screen
-        .wait_for_text("[ Sync ]")?
-        .click(&Selector::text("[ Sync ]"))?
+        .wait_for_text("[ Sync (9 / F9) ]")?
+        .click(&Selector::text("[ Sync (9 / F9) ]"))?
         .wait_for_text("Trust diffo-e2e?")?;
     screen
         .press(Key::Right)?

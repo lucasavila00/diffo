@@ -1,6 +1,6 @@
 ---
 source: crates/diffo-app/src/diff/rendering_tests/chrome.rs
-expression: "buffer_region(terminal.backend().buffer(), modal)"
+expression: "buffer_region(terminal.backend().buffer(), editor_area)"
 ---
 Buffer {
     area: Rect { x: 0, y: 0, width: 56, height: 11 },
@@ -10,11 +10,11 @@ Buffer {
         "│ │x                                                 │ │",
         "│ └──────────────────────────────────────────────────┘ │",
         "│                                                      │",
-        "│         [ Commit ]                [ Cancel ]         │",
+        "│     [ Commit (Enter) ]         [ Cancel (Esc) ]      │",
         "│                                                      │",
         "│                                                      │",
         "│                                                      │",
-        "│  Enter: commit · Esc: cancel · click outside: close  │",
+        "│                Click outside to close                │",
         "└──────────────────────────────────────────────────────┘",
     ],
     styles: [

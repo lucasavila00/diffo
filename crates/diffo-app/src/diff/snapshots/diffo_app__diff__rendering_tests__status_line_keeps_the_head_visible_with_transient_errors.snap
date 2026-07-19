@@ -3,7 +3,8 @@ source: crates/diffo-app/src/diff/rendering_tests.rs
 expression: line
 ---
 Line::from_iter([
-    Span::from(" branch main · 1234567").white().bold(),
+    Span::from(" branch m…").white().bold(),
+    Span::from(" [ Sync (9 / F9) ]").white().on_dark_gray().bold(),
     Span::from("  "),
-    Span::from("Checkout failed…").light_red(),
+    Span::from("Checkout …").light_red(),
 ])

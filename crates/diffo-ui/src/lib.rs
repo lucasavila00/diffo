@@ -117,17 +117,15 @@ pub mod design {
     pub const ACTIVITY_RAIL_WIDTH: u16 = 5;
     pub const ACTIVITY_CONTROL_HEIGHT: u16 = 3;
     pub const ACTIVITY_CONTROL_CONTENT_OFFSET: u16 = 1;
-    pub const FILE_COMPOSER_HEIGHT: u16 = 6;
     pub const MIN_FILE_GROUP_HEIGHT: u16 = 2;
     pub const COMMIT_FIELD_HEIGHT: u16 = 3;
-    pub const PRIMARY_ACTION_HEIGHT: u16 = 2;
 
     pub const COMMAND_PALETTE_WIDTH: ResponsiveWidth = ResponsiveWidth::new(70, 30, 80);
     pub const COMMAND_PALETTE_TOP_PERCENT: u16 = 20;
     pub const COMMAND_PALETTE_MAX_HEIGHT: u16 = 18;
     pub const HELP_WIDTH: ResponsiveWidth = ResponsiveWidth::new(80, 40, 90);
-    pub const HELP_TOP_PERCENT: u16 = 10;
-    pub const HELP_MAX_HEIGHT: u16 = 27;
+    pub const HELP_TOP_PERCENT: u16 = 0;
+    pub const HELP_MAX_HEIGHT: u16 = 30;
     pub const HELP_SHORTCUT_COLUMN_WIDTH: u16 = 22;
     pub const HELP_ACTION_MIN_WIDTH: u16 = 24;
     pub const HELP_COLUMN_GAP: u16 = 2;

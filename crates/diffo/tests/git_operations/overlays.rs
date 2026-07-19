@@ -32,7 +32,8 @@ fn overlays_open_and_close_with_function_keys() -> Result<()> {
         .wait_for_text("Shortcut")?
         .wait_for_text("Action")?
         .wait_for_text("Next activity")?
-        .wait_for_text("k / l / s")?
+        .wait_for_text("k / l")?
+        .wait_for_text("9 / F9")?
         .wait_for_text("Next file")?
         .wait_for_text("Page Up")?
         .wait_for_text("Scroll up one page")?

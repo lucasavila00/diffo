@@ -1,7 +1,7 @@
 use super::support::*;
 
 #[test]
-fn commit_composer_commits_then_pushes() -> Result<()> {
+fn commit_modal_commits_then_global_sync_publishes() -> Result<()> {
     let repository = TestRepository::new()?;
     fs::write(
         repository.worktree.join("tracked.txt"),
@@ -24,9 +24,9 @@ fn commit_composer_commits_then_pushes() -> Result<()> {
     screen.wait_for_text(&format!("Committed {commit}"))?;
 
     screen
-        .wait_for_text("[ Sync ]")?
-        .click(&Selector::text("[ Sync ]"))?;
-    wait_for("composer sync", || {
+        .wait_for_text("[ Sync (9 / F9) ]")?
+        .click(&Selector::text("[ Sync (9 / F9) ]"))?;
+    wait_for("global sync", || {
         let local = git_output(&repository.worktree, &["rev-parse", "HEAD"])?;
         let remote = git_output(&repository.worktree, &["ls-remote", "origin", "HEAD"])?;
         Ok(remote.starts_with(&local))
@@ -43,10 +43,7 @@ fn generated_commit_message_commits_staged_changes() -> Result<()> {
     git(&repository.worktree, &["add", "tracked.txt"])?;
     let mut screen = repository.screen()?;
 
-    screen
-        .wait_for_text("Update 1 file")?
-        .wait_for_text("[ Commit ]")?
-        .click(&Selector::text("[ Commit ]"))?;
+    screen.wait_for_text("Update 1 file")?.press(Key::Enter)?;
     wait_for("generated commit message", || {
         Ok(git_output(&repository.worktree, &["log", "-1", "--format=%s"])? == "Update 1 file")
     })?;
@@ -63,7 +60,7 @@ fn commit_input_keeps_focus_across_live_repository_refresh() -> Result<()> {
 
     screen
         .wait_for_text("Update 1 file")?
-        .click(&Selector::text("Update 1 file"))?;
+        .press(Key::Char('e'))?;
     fs::write(repository.worktree.join("new.txt"), "watcher refresh\n")?;
     screen
         .wait_for_text("new.txt")?
@@ -87,14 +84,14 @@ fn commit_modal_closes_on_outside_click_and_restores_its_draft() -> Result<()> {
 
     screen
         .click(&Selector::text("Update 1 file"))?
-        .wait_for_text("Esc: cancel")?
+        .wait_for_text("Cancel (Esc)")?
         .type_text("Draft stas")?
         .press(Key::Left)?
         .type_text("y")?
         .click(&Selector::text("Staged"))?
-        .wait_for_text_gone("Esc: cancel")?
+        .wait_for_text_gone("Cancel (Esc)")?
         .click(&Selector::text("Draft stays"))?
-        .wait_for_text("Esc: cancel")?
+        .wait_for_text("Cancel (Esc)")?
         .press(Key::Enter)?;
 
     wait_for("restored modal draft commit", || {
@@ -123,7 +120,7 @@ fn disabled_commit_button_does_not_commit_without_staged_changes() -> Result<()>
 }
 
 #[test]
-fn divergent_primary_button_rebases_and_pushes() -> Result<()> {
+fn divergent_global_sync_rebases_and_pushes() -> Result<()> {
     let repository = TestRepository::new()?;
     fs::write(repository.worktree.join("local-one.txt"), "local one\n")?;
     git(&repository.worktree, &["add", "local-one.txt"])?;
@@ -145,8 +142,8 @@ fn divergent_primary_button_rebases_and_pushes() -> Result<()> {
     )?;
 
     screen
-        .wait_for_text("[ Sync ]")?
-        .click(&Selector::text("[ Sync ]"))?;
+        .wait_for_text("[ Sync (9 / F9) ]")?
+        .click(&Selector::text("[ Sync (9 / F9) ]"))?;
     gate.wait_until_blocked()?;
     screen
         .wait_for_text("origin/master has 1 upstream-only")?

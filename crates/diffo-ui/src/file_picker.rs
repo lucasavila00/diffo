@@ -593,8 +593,8 @@ pub fn navigation(key: &KeyEvent) -> Option<Navigation> {
         return None;
     }
     match key.code {
-        KeyCode::Char('j' | 'w') => Some(Navigation::Previous),
-        KeyCode::Char('k' | 'l' | 's') => Some(Navigation::Next),
+        KeyCode::Char('j') => Some(Navigation::Previous),
+        KeyCode::Char('k' | 'l') => Some(Navigation::Next),
         KeyCode::Home | KeyCode::Char('g') => Some(Navigation::First),
         KeyCode::End => Some(Navigation::Last),
         KeyCode::Enter => Some(Navigation::Activate),
@@ -606,8 +606,8 @@ pub fn navigation(key: &KeyEvent) -> Option<Navigation> {
 #[must_use]
 pub fn help_rows() -> Vec<(String, &'static str)> {
     vec![
-        ("j / w".to_owned(), "Previous file"),
-        ("k / l / s".to_owned(), "Next file"),
+        ("j".to_owned(), "Previous file"),
+        ("k / l".to_owned(), "Next file"),
         ("Home / g".to_owned(), "First file"),
         ("End".to_owned(), "Last file"),
         ("c".to_owned(), "Open path menu"),

@@ -3,14 +3,12 @@ source: crates/diffo-app/src/diff/input/input_tests.rs
 expression: help
 ---
 [
-    "j / w: Previous file",
-    "k / l / s: Next file",
+    "j: Previous file",
+    "k / l: Next file",
     "Home / g: First file",
     "End: Last file",
     "c: Open path menu",
-    "1 / F1: Open command palette",
     "f: Toggle full-screen buffer",
-    "2 / F2: Toggle help",
     "q / Esc / Ctrl+c: Quit",
     "↑: Scroll diff up by four lines",
     "↓: Scroll diff down by four lines",
@@ -19,6 +17,8 @@ expression: help
     "←: Scroll diff left by four columns",
     "→: Scroll diff right by four columns",
     "r: Toggle inline / side-by-side view",
+    "e: Edit commit message",
+    "Enter: Commit staged changes",
     "n: Next change",
     "p: Previous change",
     "Space: Stage / unstage selected file",

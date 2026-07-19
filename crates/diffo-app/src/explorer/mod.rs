@@ -302,9 +302,7 @@ impl ExplorerActivity {
             .into_iter()
             .chain([
                 ("Enter".to_owned(), "Expand / collapse selected folder"),
-                ("1 / F1".to_owned(), "Open command palette"),
                 ("f".to_owned(), "Toggle full-screen viewer"),
-                ("2 / F2".to_owned(), "Toggle help"),
                 ("q / Esc / Ctrl+c".to_owned(), "Quit"),
                 ("↑".to_owned(), "Scroll viewer up by four lines"),
                 ("↓".to_owned(), "Scroll viewer down by four lines"),

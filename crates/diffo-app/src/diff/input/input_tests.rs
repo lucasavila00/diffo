@@ -35,6 +35,8 @@ fn maps_fixed_key_bindings() {
         KeyCode::Left,
         KeyCode::Right,
         KeyCode::Char('r'),
+        KeyCode::Char('e'),
+        KeyCode::Enter,
         KeyCode::Char('n'),
         KeyCode::Char('p'),
         KeyCode::Char(' '),
@@ -94,11 +96,6 @@ fn private_diff_bindings_do_not_own_picker_navigation() {
     ] {
         assert_eq!(map_key(code, KeyModifiers::NONE), None);
     }
-}
-
-#[test]
-fn e_is_not_a_shortcut() {
-    assert_eq!(map_key(KeyCode::Char('e'), KeyModifiers::NONE), None);
 }
 
 #[test]
@@ -186,7 +183,7 @@ fn ignores_non_press_unknown_and_non_file_clicks() {
 }
 
 #[test]
-fn maps_commit_input_and_only_the_enabled_primary_button() {
+fn maps_commit_input_without_an_external_commit_button() {
     let mut model = model();
     let area = Rect::new(0, 0, 100, 30);
     let click = |column, row| {
@@ -212,10 +209,7 @@ fn maps_commit_input_and_only_the_enabled_primary_button() {
         Some(Message::BlurCommitInput),
         "a click outside the modal closes it"
     );
-    assert_eq!(
-        map_event(&click(2, 3), &model, area),
-        Some(Message::ExecutePrimaryAction)
-    );
+    assert_eq!(map_event(&click(2, 3), &model, area), None);
 }
 
 #[test]

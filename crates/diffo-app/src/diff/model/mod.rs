@@ -5,8 +5,7 @@ mod state;
 use diffo_core::{OperationFailure, OperationResult, RepositoryAction, RepositorySnapshot};
 
 pub use state::{
-    ChangeArea, DiffViewMode, FileKey, Model, NetworkOperation, PrimaryAction, Toast, ToastKind,
-    ToastQueue,
+    ChangeArea, DiffViewMode, FileKey, Model, NetworkOperation, Toast, ToastKind, ToastQueue,
 };
 pub(crate) use state::{sync_plan_title, sync_progress_label};
 
@@ -43,7 +42,8 @@ pub enum Message {
     CommitMessageBackspace,
     CommitMessageCursorLeft,
     CommitMessageCursorRight,
-    ExecutePrimaryAction,
+    ExecuteCommit,
+    ExecuteSync,
     SnapshotLoaded(RepositorySnapshot),
     OperationFailed(String),
     OperationCompleted(RepositoryAction, OperationResult, RepositorySnapshot),
@@ -92,9 +92,8 @@ pub fn update(model: &mut Model, message: Message) -> Option<Effect> {
         Message::CommitMessageBackspace => model.commit_message_backspace(),
         Message::CommitMessageCursorLeft => model.commit_message_cursor_left(),
         Message::CommitMessageCursorRight => model.commit_message_cursor_right(),
-        Message::ExecutePrimaryAction => {
-            return model.execute_primary_action().map(Effect::Repository);
-        }
+        Message::ExecuteCommit => return model.execute_commit().map(Effect::Repository),
+        Message::ExecuteSync => return model.execute_sync().map(Effect::Repository),
         Message::SnapshotLoaded(snapshot) => model.repository_changed(snapshot),
         Message::OperationFailed(error) => model.show_error(error),
         Message::OperationCompleted(action, result, snapshot) => {

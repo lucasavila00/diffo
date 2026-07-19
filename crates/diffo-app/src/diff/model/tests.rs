@@ -5,10 +5,7 @@ use diffo_core::{
     RepositoryAction, RepositorySnapshot, SyncPlan, UpstreamState,
 };
 
-use super::{
-    ChangeArea, DiffViewMode, Effect, FileKey, Message, Model, NetworkOperation, PrimaryAction,
-    update,
-};
+use super::{ChangeArea, DiffViewMode, Effect, FileKey, Message, Model, NetworkOperation, update};
 
 fn model() -> Model {
     Model::new(RepositorySnapshot {
@@ -38,9 +35,10 @@ fn updates_local_state() {
 }
 
 #[test]
-fn primary_action_chooses_commit_or_sync() {
+fn commit_and_sync_are_independent_actions() {
     let mut model = model();
-    assert_eq!(model.primary_action(), PrimaryAction::Commit);
+    assert!(model.commit_enabled());
+    assert!(model.sync_enabled());
     assert_eq!(
         model.suggested_commit_message().as_deref(),
         Some("Update 1 file")
@@ -50,9 +48,8 @@ fn primary_action_chooses_commit_or_sync() {
     for character in "ship it".chars() {
         update(&mut model, Message::CommitMessageInput(character));
     }
-    assert_eq!(model.primary_action(), PrimaryAction::Commit);
     assert_eq!(
-        update(&mut model, Message::ExecutePrimaryAction),
+        update(&mut model, Message::ExecuteCommit),
         Some(Effect::Repository(RepositoryAction::Commit(
             "ship it".to_owned()
         )))
@@ -79,14 +76,13 @@ fn primary_action_chooses_commit_or_sync() {
         ahead: 1,
         behind: 0,
     });
-    assert_eq!(model.primary_action(), PrimaryAction::Sync);
-    assert!(model.primary_action_enabled());
+    assert!(!model.commit_enabled());
+    assert!(model.sync_enabled());
     assert_eq!(
-        update(&mut model, Message::ExecutePrimaryAction),
+        update(&mut model, Message::ExecuteSync),
         Some(Effect::Repository(RepositoryAction::Sync))
     );
-    assert_eq!(model.primary_action(), PrimaryAction::Sync);
-    assert!(!model.primary_action_enabled());
+    assert!(!model.sync_enabled());
     assert_eq!(model.network_operation(), Some(NetworkOperation::Sync));
     let refreshed = model.snapshot.clone();
     update(&mut model, Message::SnapshotLoaded(refreshed.clone()));
@@ -107,15 +103,9 @@ fn primary_action_chooses_commit_or_sync() {
         ),
     );
     assert_eq!(model.network_operation(), None);
-    model.snapshot.upstream.as_mut().unwrap().ahead = 0;
-    model.snapshot.upstream.as_mut().unwrap().behind = 1;
-    assert_eq!(model.primary_action(), PrimaryAction::Sync);
-    model.snapshot.upstream.as_mut().unwrap().ahead = 1;
-    assert_eq!(model.primary_action(), PrimaryAction::Sync);
-    assert_eq!(model.primary_action().label(), "Sync");
-    assert!(model.primary_action().enabled());
+    assert!(model.sync_enabled());
     assert_eq!(
-        update(&mut model, Message::ExecutePrimaryAction),
+        update(&mut model, Message::ExecuteSync),
         Some(Effect::Repository(RepositoryAction::Sync))
     );
 }
@@ -125,7 +115,7 @@ fn generated_commit_message_is_used_when_input_is_empty() {
     let mut model = model();
 
     assert_eq!(
-        update(&mut model, Message::ExecutePrimaryAction),
+        update(&mut model, Message::ExecuteCommit),
         Some(Effect::Repository(RepositoryAction::Commit(
             "Update 1 file".to_owned()
         )))
@@ -142,7 +132,7 @@ fn passive_and_unrelated_results_cannot_finish_a_sync() {
         behind: 0,
     });
     assert_eq!(
-        update(&mut model, Message::ExecutePrimaryAction),
+        update(&mut model, Message::ExecuteSync),
         Some(Effect::Repository(RepositoryAction::Sync))
     );
 
@@ -170,8 +160,7 @@ fn passive_and_unrelated_results_cannot_finish_a_sync() {
     );
 
     assert_eq!(model.network_operation(), Some(NetworkOperation::Sync));
-    assert_eq!(model.primary_action(), PrimaryAction::Sync);
-    assert!(!model.primary_action_enabled());
+    assert!(!model.sync_enabled());
 
     update(
         &mut model,

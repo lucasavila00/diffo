@@ -79,8 +79,42 @@ fn every_activity_renders_the_same_repository_footer() {
         .iter()
         .map(ratatui::buffer::Cell::symbol)
         .collect::<String>();
-    assert!(text.starts_with(" branch main · 1234567 · clean"), "{text}");
+    assert!(
+        text.starts_with(" branch main · 1234567 [ Sync (9 / F9) ] · clean"),
+        "{text}"
+    );
+    assert!(text.contains("[ Sync (9 / F9) ]"), "{text}");
     assert!(text.ends_with("1/f1: commands  2/f2: help "), "{text}");
+}
+
+#[test]
+fn diff_e_opens_the_commit_modal_and_normal_enter_commits() {
+    let snapshot = RepositorySnapshot {
+        files: vec![FileState {
+            path: "src/main.rs".into(),
+            old_path: None,
+            kind: ChangeKind::Modified,
+            staged: Some(FileDiff {
+                text: "@@ -1 +1 @@\n-old\n+new\n".to_owned(),
+            }),
+            unstaged: None,
+        }],
+        ..RepositorySnapshot::default()
+    };
+    let area = Rect::new(0, 0, 100, 30);
+    let mut workbench = Workbench::new(snapshot);
+    workbench.prepare_frame(area);
+
+    let _ = workbench.handle_events(&[key(KeyCode::Char('e'))], area);
+    assert!(matches!(workbench.modal, Some(Modal::CommitEditor)));
+    let _ = workbench.handle_events(&[key(KeyCode::Esc)], area);
+    assert!(workbench.modal.is_none());
+
+    let _ = workbench.handle_events(&[key(KeyCode::Enter)], area);
+
+    assert!(workbench.modal.is_none());
+    assert_eq!(workbench.commands.queued_len(), 1);
+    assert!(!workbench.diff.model.commit_enabled());
 }
 
 #[test]

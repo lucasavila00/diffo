@@ -1,4 +1,4 @@
-use super::{Model, NetworkOperation, PrimaryAction, RepositoryAction};
+use super::{Model, NetworkOperation, RepositoryAction};
 
 impl Model {
     pub fn commit_message_input(&mut self, character: char) {
@@ -62,38 +62,30 @@ impl Model {
     }
 
     #[must_use]
-    pub fn primary_action(&self) -> PrimaryAction {
-        if let Some(action) = self.pending_operation.as_ref() {
-            return match action {
-                RepositoryAction::Commit(_) => PrimaryAction::Commit,
-                RepositoryAction::Sync => PrimaryAction::Sync,
-                _ => PrimaryAction::Disabled,
-            };
-        }
-        if self.effective_commit_message().is_some() {
-            return PrimaryAction::Commit;
-        }
-        match self.snapshot.upstream.as_ref() {
-            Some(upstream) if upstream.ahead > 0 || upstream.behind > 0 => PrimaryAction::Sync,
-            _ => PrimaryAction::Disabled,
-        }
+    pub fn commit_enabled(&self) -> bool {
+        self.pending_operation.is_none() && self.effective_commit_message().is_some()
     }
 
     #[must_use]
-    pub fn primary_action_enabled(&self) -> bool {
-        self.pending_operation.is_none() && self.primary_action().enabled()
+    pub fn sync_enabled(&self) -> bool {
+        self.pending_operation.is_none()
     }
 
-    pub fn execute_primary_action(&mut self) -> Option<RepositoryAction> {
-        let primary = self.primary_action();
-        if !self.primary_action_enabled() {
+    pub fn execute_commit(&mut self) -> Option<RepositoryAction> {
+        if !self.commit_enabled() {
             return None;
         }
-        let action = match primary {
-            PrimaryAction::Commit => RepositoryAction::Commit(self.effective_commit_message()?),
-            PrimaryAction::Sync => RepositoryAction::Sync,
-            PrimaryAction::Disabled => return None,
-        };
+        let action = RepositoryAction::Commit(self.effective_commit_message()?);
+        self.error = None;
+        self.pending_operation = Some(action.clone());
+        Some(action)
+    }
+
+    pub fn execute_sync(&mut self) -> Option<RepositoryAction> {
+        if !self.sync_enabled() {
+            return None;
+        }
+        let action = RepositoryAction::Sync;
         self.error = None;
         self.pending_operation = Some(action.clone());
         Some(action)

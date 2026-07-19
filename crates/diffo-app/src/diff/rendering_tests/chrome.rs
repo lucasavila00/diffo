@@ -64,13 +64,8 @@ fn commit_composer_panel_action_uses_the_enabled_control_style() {
 }
 
 #[test]
-fn divergent_sync_is_enabled_and_clickable() {
-    let mut model = model();
-    model.snapshot.upstream = Some(UpstreamState {
-        name: "origin/main".to_owned(),
-        ahead: 1,
-        behind: 1,
-    });
+fn commit_composer_has_no_action_button() {
+    let model = model();
     let backend = TestBackend::new(40, 6);
     let mut terminal = Terminal::new(backend).unwrap();
     terminal

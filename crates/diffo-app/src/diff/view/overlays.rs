@@ -188,27 +188,25 @@ pub(crate) fn render_commit_editor(frame: &mut Frame, model: &Model, content_are
     );
     frame.render_widget(input_block, input);
 
-    let commit_style = if model.primary_action() == crate::diff::PrimaryAction::Commit
-        && model.primary_action_enabled()
-    {
+    let commit_style = if model.commit_enabled() {
         enabled_control_style().bg(theme::SELECTION_BACKGROUND)
     } else {
         disabled_control_style()
     };
     frame.render_widget(
-        Paragraph::new("[ Commit ]")
+        Paragraph::new("[ Commit (Enter) ]")
             .alignment(Alignment::Center)
             .style(commit_style),
         commit,
     );
     frame.render_widget(
-        Paragraph::new("[ Cancel ]")
+        Paragraph::new("[ Cancel (Esc) ]")
             .alignment(Alignment::Center)
             .style(enabled_control_style()),
         cancel,
     );
     frame.render_widget(
-        Paragraph::new("Enter: commit · Esc: cancel · click outside: close")
+        Paragraph::new("Click outside to close")
             .alignment(Alignment::Center)
             .style(enabled_control_style()),
         footer,
@@ -261,11 +259,8 @@ pub(crate) fn commit_editor_action_at_position(
     if cancel.contains(position) {
         return Some(crate::diff::Message::BlurCommitInput);
     }
-    if commit.contains(position)
-        && model.primary_action() == crate::diff::PrimaryAction::Commit
-        && model.primary_action_enabled()
-    {
-        return Some(crate::diff::Message::ExecutePrimaryAction);
+    if commit.contains(position) && model.commit_enabled() {
+        return Some(crate::diff::Message::ExecuteCommit);
     }
     None
 }

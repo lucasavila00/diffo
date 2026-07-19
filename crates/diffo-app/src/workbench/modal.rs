@@ -301,20 +301,26 @@ mod tests {
     }
 
     #[test]
-    fn modal_shortcuts_remain_commit_message_text() {
+    fn modal_shortcuts_do_not_run_global_actions() {
         let mut workbench = Workbench::new(RepositorySnapshot::default());
         workbench.set_modal(Modal::CommitEditor);
 
         assert!(
             workbench
                 .handle_events(
-                    &[key(KeyCode::Char('1')), key(KeyCode::Char('2'))],
+                    &[
+                        key(KeyCode::Char('1')),
+                        key(KeyCode::Char('2')),
+                        key(KeyCode::Char('9')),
+                        key(KeyCode::F(9)),
+                    ],
                     Rect::new(0, 0, 80, 24),
                 )
                 .is_empty()
         );
 
-        assert_eq!(workbench.diff.model.commit_message, "12");
+        assert_eq!(workbench.diff.model.commit_message, "129");
+        assert_eq!(workbench.commands.queued_len(), 0);
         assert!(matches!(workbench.modal, Some(Modal::CommitEditor)));
     }
 

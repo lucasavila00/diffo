@@ -17,7 +17,7 @@ pub(super) fn map_commit_key(key: &crossterm::event::KeyEvent) -> Option<Message
     }
     match key.code {
         KeyCode::Esc => Some(Message::BlurCommitInput),
-        KeyCode::Enter => Some(Message::ExecutePrimaryAction),
+        KeyCode::Enter => Some(Message::ExecuteCommit),
         KeyCode::Backspace => Some(Message::CommitMessageBackspace),
         KeyCode::Left => Some(Message::CommitMessageCursorLeft),
         KeyCode::Right => Some(Message::CommitMessageCursorRight),

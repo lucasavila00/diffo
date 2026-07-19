@@ -173,10 +173,6 @@ impl Tool for SearchActivity {
     }
 
     fn help_rows(&self) -> Vec<(String, &'static str)> {
-        vec![
-            ("1 / F1".to_owned(), "Open command palette"),
-            ("2 / F2".to_owned(), "Toggle help"),
-            ("q / Esc / Ctrl+c".to_owned(), "Quit"),
-        ]
+        vec![("q / Esc / Ctrl+c".to_owned(), "Quit")]
     }
 }

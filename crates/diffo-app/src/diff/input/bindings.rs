@@ -79,6 +79,16 @@ pub(super) static KEY_BINDINGS: &[KeyBinding] = &[
         description: "Toggle inline / side-by-side view",
     },
     KeyBinding {
+        keys: &[KeyChord::plain(KeyCode::Char('e'))],
+        message: Message::FocusCommitInput,
+        description: "Edit commit message",
+    },
+    KeyBinding {
+        keys: &[KeyChord::plain(KeyCode::Enter)],
+        message: Message::ExecuteCommit,
+        description: "Commit staged changes",
+    },
+    KeyBinding {
         keys: &[KeyChord::plain(KeyCode::Char('n'))],
         message: Message::JumpToNextChange,
         description: "Next change",
@@ -101,12 +111,7 @@ pub(super) static KEY_BINDINGS: &[KeyBinding] = &[
 ];
 
 pub(crate) fn help_rows() -> Vec<(String, &'static str)> {
-    std::iter::once(("1 / F1".to_owned(), "Open command palette"))
-        .chain(std::iter::once((
-            "f".to_owned(),
-            "Toggle full-screen buffer",
-        )))
-        .chain(std::iter::once(("2 / F2".to_owned(), "Toggle help")))
+    std::iter::once(("f".to_owned(), "Toggle full-screen buffer"))
         .chain(KEY_BINDINGS.iter().map(|binding| {
             let keys = binding
                 .keys

@@ -38,13 +38,11 @@ pub(super) fn render(frame: &mut Frame, content_area: Rect, rows: Vec<(String, &
         ],
     )
     .header(
-        Row::new(["Shortcut", "Action"])
-            .style(
-                Style::default()
-                    .fg(theme::TEXT)
-                    .add_modifier(Modifier::BOLD),
-            )
-            .bottom_margin(design::SINGLE_LINE_HEIGHT),
+        Row::new(["Shortcut", "Action"]).style(
+            Style::default()
+                .fg(theme::TEXT)
+                .add_modifier(Modifier::BOLD),
+        ),
     )
     .column_spacing(design::HELP_COLUMN_GAP);
     frame.render_widget(table, sections[0]);
@@ -75,6 +73,6 @@ mod tests {
 
     #[test]
     fn help_layout_uses_the_shared_dialog_contract() {
-        assert_eq!(layout(Rect::new(5, 3, 100, 30)), Rect::new(15, 6, 80, 27));
+        assert_eq!(layout(Rect::new(5, 3, 100, 30)), Rect::new(15, 3, 80, 30));
     }
 }

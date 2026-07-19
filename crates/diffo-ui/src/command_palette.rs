@@ -256,15 +256,15 @@ mod tests {
     use ratatui::{Terminal, backend::TestBackend};
 
     const FETCH: CommandId = CommandId::new("git.fetch");
-    const PULL: CommandId = CommandId::new("git.pull");
+    const SYNC: CommandId = CommandId::new("git.sync");
     const COMMANDS: [Command; 2] = [
         Command {
             id: FETCH,
             label: "Git: Fetch",
         },
         Command {
-            id: PULL,
-            label: "Git: Pull",
+            id: SYNC,
+            label: "Git: Sync",
         },
     ];
 
@@ -273,10 +273,10 @@ mod tests {
         let mut palette = CommandPalette::default();
         palette.open(COMMANDS);
         let _ = palette.handle_event(
-            &Event::Key(KeyEvent::new(KeyCode::Char('p'), KeyModifiers::NONE)),
+            &Event::Key(KeyEvent::new(KeyCode::Char('s'), KeyModifiers::NONE)),
             Rect::default(),
         );
-        assert_eq!(palette.matches()[0].id, PULL);
+        assert_eq!(palette.matches()[0].id, SYNC);
     }
 
     #[test]
@@ -303,7 +303,7 @@ mod tests {
             &Event::Key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE)),
             Rect::default(),
         );
-        assert_eq!(event, Some(PaletteEvent::Execute(PULL)));
+        assert_eq!(event, Some(PaletteEvent::Execute(SYNC)));
 
         palette.open(COMMANDS);
 
@@ -313,7 +313,7 @@ mod tests {
                 .into_iter()
                 .map(|command| command.id)
                 .collect::<Vec<_>>(),
-            vec![PULL, FETCH]
+            vec![SYNC, FETCH]
         );
         assert_eq!(palette.selected(), 0);
     }
@@ -389,7 +389,7 @@ mod tests {
         });
         assert_eq!(
             palette.handle_event(&event, area),
-            Some(PaletteEvent::Execute(PULL))
+            Some(PaletteEvent::Execute(SYNC))
         );
     }
 }

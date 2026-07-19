@@ -123,8 +123,7 @@ pub enum RepositoryAction {
     StageAll,
     UnstageAll,
     Fetch,
-    Pull,
-    Push,
+    Sync,
     Commit(String),
     Checkout(Box<CheckoutTarget>),
 }
@@ -134,10 +133,26 @@ pub enum OperationResult {
     Stage,
     Unstage,
     Fetch { updated_refs: usize },
-    Pull { commits: usize },
-    Push { hash: String, upstream: String },
+    Sync { plan: Box<SyncPlan> },
     Commit { hash: String },
     Checkout { branch: String },
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SyncPlan {
+    pub branch: String,
+    pub upstream: String,
+    pub local_only: usize,
+    pub upstream_only: usize,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum SyncProgress {
+    Fetching,
+    Plan(SyncPlan),
+    FastForwarding { branch: String },
+    Rebasing { commits: usize },
+    Pushing,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -194,13 +209,15 @@ pub struct RepositoryQueryId(pub u64);
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum FailureKind {
-    PullRequired,
-    Diverged,
     PushRejected,
     Authentication,
     Network,
-    MergeConflict,
+    RebaseConflict,
     DirtyWorktree,
+    NoUpstream,
+    UnsupportedHead,
+    OperationInProgress,
+    MergeCommits,
     RefChanged,
     BranchConflict,
     HookRejected,
@@ -239,9 +256,20 @@ pub trait PromptHandler: Send + Sync {
     ) -> PromptAnswer;
 }
 
+pub trait ProgressHandler: Send + Sync {
+    fn progress(&self, progress: SyncProgress);
+}
+
+struct IgnoreProgress;
+
+impl ProgressHandler for IgnoreProgress {
+    fn progress(&self, _progress: SyncProgress) {}
+}
+
 pub struct RepositoryOperationContext {
     pub prompts: Arc<dyn PromptHandler>,
     pub cancellation: CancellationHandle,
+    pub progress: Arc<dyn ProgressHandler>,
 }
 
 impl RepositoryOperationContext {
@@ -250,6 +278,20 @@ impl RepositoryOperationContext {
         Self {
             prompts,
             cancellation,
+            progress: Arc::new(IgnoreProgress),
+        }
+    }
+
+    #[must_use]
+    pub fn with_progress(
+        prompts: Arc<dyn PromptHandler>,
+        cancellation: CancellationHandle,
+        progress: Arc<dyn ProgressHandler>,
+    ) -> Self {
+        Self {
+            prompts,
+            cancellation,
+            progress,
         }
     }
 }

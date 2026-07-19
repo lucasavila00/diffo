@@ -9,7 +9,7 @@ fn command_palette_blocks_activity_switching_and_does_not_restore_hidden_state()
         .wait_for_text("Changes")?
         .press(Key::Char('1'))?
         .wait_for_text("Command Palette")?
-        .type_text("pull")?
+        .type_text("sync")?
         .press(Key::Tab)?
         .wait_for_text("Command Palette")?
         .wait_for_text("Changes")?

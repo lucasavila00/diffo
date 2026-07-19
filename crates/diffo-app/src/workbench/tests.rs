@@ -1,8 +1,10 @@
 use super::*;
 use crate::diff::NetworkOperation;
 use crossterm::event::{KeyEvent, KeyEventState, MouseEvent};
-use diffo_core::{ChangeKind, FileDiff, FileState, OperationResult};
+use diffo_core::{ChangeKind, FileDiff, FileState, OperationResult, SyncPlan};
 use ratatui::{Terminal, backend::TestBackend, buffer::Buffer, style::Color};
+
+mod sync;
 
 fn key(code: KeyCode) -> Event {
     Event::Key(KeyEvent::new(code, KeyModifiers::NONE))
@@ -379,41 +381,6 @@ fn clicking_the_progress_marker_requests_cancellation_until_acknowledged() {
 }
 
 #[test]
-fn operation_toasts_render_in_diff_and_explorer() {
-    let mut rendered = Vec::new();
-    for activity in [Activity::Diff, Activity::Explorer] {
-        let mut workbench = Workbench::new(RepositorySnapshot::default());
-        workbench.active = activity;
-        assert_eq!(
-            workbench
-                .diff
-                .model
-                .start_repository_action(RepositoryAction::Pull),
-            Some(RepositoryAction::Pull)
-        );
-        let id = workbench.commands.enqueue(RepositoryAction::Pull);
-        let _ = workbench.commands.start_next();
-        workbench.operation_completed(
-            id,
-            RepositoryAction::Pull,
-            OperationResult::Pull { commits: 1 },
-            RepositorySnapshot::default(),
-        );
-        assert_eq!(workbench.diff.model.network_operation(), None);
-        assert_eq!(workbench.toasts.as_slice()[0].title, "Pulled 1 commit");
-        let backend = TestBackend::new(100, 30);
-        let mut terminal = Terminal::new(backend).unwrap();
-
-        terminal.draw(|frame| workbench.render(frame)).unwrap();
-        rendered.push((
-            activity,
-            buffer_region(terminal.backend().buffer(), Rect::new(55, 25, 44, 3)),
-        ));
-    }
-    insta::assert_debug_snapshot!(rendered);
-}
-
-#[test]
 fn explorer_can_click_dismiss_a_workbench_toast() {
     let mut workbench = Workbench::new(RepositorySnapshot::default());
     workbench.active = Activity::Explorer;
@@ -658,7 +625,7 @@ fn prompt_rejects_concurrent_stale_ids_and_escape_cancels() {
 fn prompt_ids_are_scoped_to_the_active_command() {
     let mut workbench = Workbench::new(RepositorySnapshot::default());
     let first = start_repository_command(&mut workbench, RepositoryAction::Fetch);
-    workbench.commands.enqueue(RepositoryAction::Pull);
+    workbench.commands.enqueue(RepositoryAction::Sync);
     assert!(workbench.open_prompt(
         first,
         PromptId(1),
@@ -680,7 +647,7 @@ fn prompt_ids_are_scoped_to_the_active_command() {
 
     let second = workbench
         .take_application_command(Instant::now())
-        .expect("queued pull starts after fetch completion")
+        .expect("queued sync starts after fetch completion")
         .id;
     assert!(!workbench.open_prompt(
         first,

@@ -9,10 +9,10 @@ fn clicking_palette_result_runs_command() -> Result<()> {
     screen
         .press(Key::Char('1'))?
         .wait_for_text("Command Palette")?
-        .type_text("pull")?
-        .click(&Selector::text("Git: Pull"))?;
+        .type_text("sync")?
+        .click(&Selector::text("Git: Sync"))?;
 
-    wait_for("clicked pull command to finish", || {
+    wait_for("clicked sync command to finish", || {
         Ok(repository.worktree.join("remote.txt").exists())
     })
 }

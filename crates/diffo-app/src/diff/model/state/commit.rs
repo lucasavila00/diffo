@@ -66,8 +66,7 @@ impl Model {
         if let Some(action) = self.pending_operation.as_ref() {
             return match action {
                 RepositoryAction::Commit(_) => PrimaryAction::Commit,
-                RepositoryAction::Push => PrimaryAction::Push,
-                RepositoryAction::Pull => PrimaryAction::Pull,
+                RepositoryAction::Sync => PrimaryAction::Sync,
                 _ => PrimaryAction::Disabled,
             };
         }
@@ -75,11 +74,7 @@ impl Model {
             return PrimaryAction::Commit;
         }
         match self.snapshot.upstream.as_ref() {
-            Some(upstream) if upstream.ahead > 0 && upstream.behind > 0 => {
-                PrimaryAction::PushAndPull
-            }
-            Some(upstream) if upstream.behind > 0 => PrimaryAction::Pull,
-            Some(upstream) if upstream.ahead > 0 => PrimaryAction::Push,
+            Some(upstream) if upstream.ahead > 0 || upstream.behind > 0 => PrimaryAction::Sync,
             _ => PrimaryAction::Disabled,
         }
     }
@@ -91,17 +86,13 @@ impl Model {
 
     pub fn execute_primary_action(&mut self) -> Option<RepositoryAction> {
         let primary = self.primary_action();
-        if primary == PrimaryAction::PushAndPull {
-            return None;
-        }
         if !self.primary_action_enabled() {
             return None;
         }
         let action = match primary {
             PrimaryAction::Commit => RepositoryAction::Commit(self.effective_commit_message()?),
-            PrimaryAction::Push => RepositoryAction::Push,
-            PrimaryAction::Pull => RepositoryAction::Pull,
-            PrimaryAction::PushAndPull | PrimaryAction::Disabled => return None,
+            PrimaryAction::Sync => RepositoryAction::Sync,
+            PrimaryAction::Disabled => return None,
         };
         self.error = None;
         self.pending_operation = Some(action.clone());
@@ -112,8 +103,7 @@ impl Model {
     pub fn network_operation(&self) -> Option<NetworkOperation> {
         match self.pending_operation.as_ref() {
             Some(RepositoryAction::Fetch) => Some(NetworkOperation::Fetch),
-            Some(RepositoryAction::Pull) => Some(NetworkOperation::Pull),
-            Some(RepositoryAction::Push) => Some(NetworkOperation::Push),
+            Some(RepositoryAction::Sync) => Some(NetworkOperation::Sync),
             _ => None,
         }
     }

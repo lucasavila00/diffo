@@ -74,6 +74,10 @@ impl CommandQueue {
         self.active.as_ref()
     }
 
+    pub fn active_mut(&mut self) -> Option<&mut ApplicationCommand> {
+        self.active.as_mut()
+    }
+
     #[must_use]
     pub fn queued_len(&self) -> usize {
         self.queued.len()
@@ -122,9 +126,9 @@ fn command_label(action: &ApplicationAction) -> String {
         ApplicationAction::Repository(
             RepositoryAction::Unstage(_) | RepositoryAction::UnstageAll,
         ) => "Unstaging".to_owned(),
-        ApplicationAction::Repository(RepositoryAction::Fetch) => "Fetching".to_owned(),
-        ApplicationAction::Repository(RepositoryAction::Pull) => "Pulling".to_owned(),
-        ApplicationAction::Repository(RepositoryAction::Push) => "Pushing".to_owned(),
+        ApplicationAction::Repository(RepositoryAction::Fetch | RepositoryAction::Sync) => {
+            "Fetching".to_owned()
+        }
         ApplicationAction::Repository(RepositoryAction::Commit(_)) => "Committing".to_owned(),
         ApplicationAction::Repository(RepositoryAction::Checkout(target)) => format!(
             "Checking out {}",
@@ -146,7 +150,7 @@ mod tests {
     fn commands_start_one_at_a_time_in_fifo_order() {
         let mut queue = CommandQueue::new();
         let fetch = queue.enqueue(RepositoryAction::Fetch);
-        let pull = queue.enqueue(RepositoryAction::Pull);
+        let sync = queue.enqueue(RepositoryAction::Sync);
 
         assert_eq!(queue.start_next().map(|command| command.id), Some(fetch));
         assert!(queue.start_next().is_none());
@@ -157,24 +161,24 @@ mod tests {
                 .map(|command| command.state),
             Some(CommandState::Finished(CommandResult::Succeeded))
         );
-        assert_eq!(queue.start_next().map(|command| command.id), Some(pull));
+        assert_eq!(queue.start_next().map(|command| command.id), Some(sync));
     }
 
     #[test]
     fn queued_cancellation_removes_the_command_immediately() {
         let mut queue = CommandQueue::new();
         let fetch = queue.enqueue(RepositoryAction::Fetch);
-        let pull = queue.enqueue(RepositoryAction::Pull);
+        let sync = queue.enqueue(RepositoryAction::Sync);
 
         assert!(queue.cancel(fetch));
-        assert_eq!(queue.start_next().map(|command| command.id), Some(pull));
+        assert_eq!(queue.start_next().map(|command| command.id), Some(sync));
     }
 
     #[test]
     fn running_cancellation_waits_for_acknowledgement() {
         let mut queue = CommandQueue::new();
         let fetch = queue.enqueue(RepositoryAction::Fetch);
-        let pull = queue.enqueue(RepositoryAction::Pull);
+        let sync = queue.enqueue(RepositoryAction::Sync);
         let running = queue.start_next().expect("fetch starts");
 
         assert!(queue.cancel(fetch));
@@ -189,7 +193,7 @@ mod tests {
         queue
             .acknowledge(fetch, CommandResult::Cancelled)
             .expect("cancellation acknowledged");
-        assert_eq!(queue.start_next().map(|command| command.id), Some(pull));
+        assert_eq!(queue.start_next().map(|command| command.id), Some(sync));
     }
 
     #[test]

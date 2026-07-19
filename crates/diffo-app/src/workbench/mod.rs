@@ -170,7 +170,7 @@ impl CommandProgressState {
 }
 
 const FETCH_COMMAND: CommandId = CommandId::new("git.fetch");
-const PULL_COMMAND: CommandId = CommandId::new("git.pull");
+const SYNC_COMMAND: CommandId = CommandId::new("git.sync");
 const CHECKOUT_COMMAND: CommandId = CommandId::new("git.checkout_to");
 const UPDATE_COMMAND: CommandId = CommandId::new("application.update");
 
@@ -180,8 +180,8 @@ const SHARED_COMMANDS: [Command; 4] = [
         label: "Git: Fetch",
     },
     Command {
-        id: PULL_COMMAND,
-        label: "Git: Pull",
+        id: SYNC_COMMAND,
+        label: "Git: Sync",
     },
     Command {
         id: CHECKOUT_COMMAND,
@@ -646,8 +646,8 @@ impl Workbench {
     fn execute_palette_command(&mut self, command: CommandId) -> Option<WorkbenchEffect> {
         let action = if command == FETCH_COMMAND {
             Some(RepositoryAction::Fetch)
-        } else if command == PULL_COMMAND {
-            Some(RepositoryAction::Pull)
+        } else if command == SYNC_COMMAND {
+            Some(RepositoryAction::Sync)
         } else if command == CHECKOUT_COMMAND {
             self.open_checkout_picker();
             return None;

@@ -78,7 +78,7 @@ fn shared_palette_fetch_from_activity(activity_tabs: usize) -> Result<()> {
 }
 
 #[test]
-fn palette_search_runs_pull() -> Result<()> {
+fn palette_search_runs_sync() -> Result<()> {
     let repository = TestRepository::new()?;
     repository.commit_remote("remote.txt", "remote\n", "Remote commit")?;
     let mut screen = repository.screen()?;
@@ -86,14 +86,14 @@ fn palette_search_runs_pull() -> Result<()> {
     screen
         .press(Key::Char('1'))?
         .wait_for_text("Command Palette")?
-        .type_text("pull")?
+        .type_text("sync")?
         .press(Key::Enter)?;
 
-    wait_for("remote file to be pulled", || {
+    wait_for("remote file to be synced", || {
         Ok(repository.worktree.join("remote.txt").exists())
     })?;
-    screen.wait_for_text("Pulled 1 commit")?;
-    screen.wait_for_text_gone("Pulling")?;
+    screen.wait_for_text("Fast-forwarded master by 1 commit.")?;
+    screen.wait_for_text_gone("Fast-forwarding master")?;
     Ok(())
 }
 
@@ -101,7 +101,7 @@ fn palette_search_runs_pull() -> Result<()> {
 fn cancelling_a_blocked_git_client_releases_the_next_queued_command() -> Result<()> {
     let repository = TestRepository::new()?;
     repository.commit_remote("remote.txt", "remote\n", "Remote commit")?;
-    let gate = diffo_e2e::GitProxy::new("fetch", diffo_e2e::GitGatePhase::Before)?;
+    let mut gate = diffo_e2e::GitProxy::new("fetch", diffo_e2e::GitGatePhase::Before)?;
     let path = gate.path()?;
     let mut screen = DiffoScreen::launch_with_env(
         diffo_binary()?,
@@ -117,29 +117,28 @@ fn cancelling_a_blocked_git_client_releases_the_next_queued_command() -> Result<
     gate.wait_until_blocked()?;
     screen
         .press(Key::Char('1'))?
-        .type_text("pull")?
+        .type_text("sync")?
         .press(Key::Enter)?
         .wait_for_text_gone("Command Palette")?;
     assert!(screen.contents().contains("Fetching"));
-    assert!(!screen.contents().contains("Pulling"));
+    assert!(!screen.contents().contains("Fast-forwarding"));
 
-    screen
-        .click(&Selector::text(""))?
-        .wait_for_text_gone("Fetching")?;
-    wait_for("queued pull to update the worktree", || {
+    screen.click(&Selector::text(""))?;
+    gate.release()?;
+    wait_for("queued sync to update the worktree", || {
         Ok(repository.worktree.join("remote.txt").exists())
     })?;
-    screen.wait_for_text("Pulled 1 commit")?;
+    screen.wait_for_text("Fast-forwarded master by 1 commit.")?;
     assert!(!screen.contents().contains("Fetch complete"));
     Ok(())
 }
 
 #[test]
-fn primary_pull_button_shows_progress_and_pulls() -> Result<()> {
+fn primary_sync_button_shows_fast_forward_progress() -> Result<()> {
     let repository = TestRepository::new()?;
     repository.commit_remote("remote.txt", "remote\n", "Remote commit")?;
     git(&repository.worktree, &["fetch", "origin"])?;
-    let mut gate = diffo_e2e::GitProxy::new("pull", diffo_e2e::GitGatePhase::Before)?;
+    let mut gate = diffo_e2e::GitProxy::new("merge", diffo_e2e::GitGatePhase::Before)?;
     let path = gate.path()?;
     let mut screen = DiffoScreen::launch_with_env(
         diffo_binary()?,
@@ -148,15 +147,20 @@ fn primary_pull_button_shows_progress_and_pulls() -> Result<()> {
     )?;
 
     screen
-        .wait_for_text("[ Pull ]")?
-        .click(&Selector::text("[ Pull ]"))?;
+        .wait_for_text("[ Sync ]")?
+        .click(&Selector::text("[ Sync ]"))?;
     gate.wait_until_blocked()?;
-    screen.wait_for_text("Pulling")?;
+    screen
+        .wait_for_text("origin/master has 1 upstream-only")?
+        .wait_for_text("master has no local-only commits.")?
+        .wait_for_text("Plan:")?
+        .wait_for_text("fast-forward master to origin/master.")?
+        .wait_for_text("Fast-forwarding master")?;
     gate.release()?;
-    wait_for("primary pull to update the worktree", || {
+    wait_for("primary sync to update the worktree", || {
         Ok(repository.worktree.join("remote.txt").exists())
     })?;
-    screen.wait_for_text_gone("Pulling")?;
+    screen.wait_for_text_gone("Fast-forwarding master")?;
     Ok(())
 }
 
@@ -166,15 +170,35 @@ fn rejected_push_shows_a_persistent_failure_toast() -> Result<()> {
     fs::write(repository.worktree.join("local.txt"), "local\n")?;
     git(&repository.worktree, &["add", "local.txt"])?;
     git(&repository.worktree, &["commit", "-m", "Local commit"])?;
-    let mut screen = repository.screen()?;
-    screen.wait_for_text("[ Push ]")?;
-
-    repository.commit_remote("remote.txt", "remote\n", "Remote commit")?;
+    let local_before = git_output(&repository.worktree, &["rev-parse", "HEAD"])?;
+    let mut gate = diffo_e2e::GitProxy::new("push", diffo_e2e::GitGatePhase::Before)?;
+    let path = gate.path()?;
+    let mut screen = DiffoScreen::launch_with_env(
+        diffo_binary()?,
+        &repository.worktree,
+        &[("PATH", path.as_os_str())],
+    )?;
     screen
-        .click(&Selector::text("[ Push ]"))?
-        .wait_for_text("Push rejected: remote changed")?;
+        .wait_for_text("[ Sync ]")?
+        .click(&Selector::text("[ Sync ]"))?;
+    gate.wait_until_blocked()?;
+
+    let remote = repository.commit_remote("remote.txt", "remote\n", "Remote commit")?;
+    gate.release()?;
+    screen.wait_for_text("Push rejected: remote changed")?;
     thread::sleep(Duration::from_millis(300));
     assert!(screen.contents().contains("Push rejected"));
+    assert_eq!(
+        git_output(&repository.worktree, &["rev-parse", "HEAD"])?,
+        local_before
+    );
+    assert_eq!(
+        git_output(
+            &repository.root.path().join("remote.git"),
+            &["rev-parse", "HEAD"]
+        )?,
+        remote
+    );
     Ok(())
 }
 
@@ -236,13 +260,13 @@ fn ssh_push_uses_running_image_after_launched_binary_is_replaced() -> Result<()>
     fs::set_permissions(&launched_binary, fs::Permissions::from_mode(0o600))?;
 
     screen
-        .wait_for_text("[ Push ]")?
-        .click(&Selector::text("[ Push ]"))?
+        .wait_for_text("[ Sync ]")?
+        .click(&Selector::text("[ Sync ]"))?
         .wait_for_text("Trust diffo-e2e?")?;
     screen
         .press(Key::Right)?
         .press(Key::Enter)?
-        .wait_for_text("Pushed ")?;
+        .wait_for_text("Pushed master.")?;
 
     assert_eq!(
         git_output(

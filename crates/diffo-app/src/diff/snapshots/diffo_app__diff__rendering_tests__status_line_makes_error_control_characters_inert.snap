@@ -5,5 +5,5 @@ expression: line
 Line::from_iter([
     Span::from(" branch main · 1234567").white().bold(),
     Span::from("  "),
-    Span::from("Pull failed␊continue?␍␛[2J    ␈").light_red(),
+    Span::from("Sync failed␊continue?␍␛[2J    ␈").light_red(),
 ])

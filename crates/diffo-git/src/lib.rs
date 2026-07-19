@@ -11,7 +11,10 @@ mod askpass;
 mod branches;
 mod command;
 mod explorer;
+mod failure;
 mod operation;
+#[cfg(test)]
+mod operation_tests;
 mod snapshot;
 mod status;
 pub use askpass::run_askpass_if_requested;

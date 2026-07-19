@@ -369,7 +369,7 @@ fn status_line_makes_error_control_characters_inert() {
         },
         ..RepositorySnapshot::default()
     });
-    model.error = Some("Pull failed\ncontinue?\r\x1b[2J\t\x08".to_owned());
+    model.error = Some("Sync failed\ncontinue?\r\x1b[2J\t\x08".to_owned());
 
     let line = status_line(&model, 0, 80);
     let text = line_text(&line);

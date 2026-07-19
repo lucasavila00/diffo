@@ -24,14 +24,14 @@ fn commit_composer_commits_then_pushes() -> Result<()> {
     screen.wait_for_text(&format!("Committed {commit}"))?;
 
     screen
-        .wait_for_text("[ Push ]")?
-        .click(&Selector::text("[ Push ]"))?;
-    wait_for("composer push", || {
+        .wait_for_text("[ Sync ]")?
+        .click(&Selector::text("[ Sync ]"))?;
+    wait_for("composer sync", || {
         let local = git_output(&repository.worktree, &["rev-parse", "HEAD"])?;
         let remote = git_output(&repository.worktree, &["ls-remote", "origin", "HEAD"])?;
         Ok(remote.starts_with(&local))
     })?;
-    screen.wait_for_text(&format!("Pushed {commit} to origin/master"))?;
+    screen.wait_for_text("Pushed master.")?;
     screen.wait_for_text_gone("Pushing")?;
     Ok(())
 }
@@ -123,26 +123,68 @@ fn disabled_commit_button_does_not_commit_without_staged_changes() -> Result<()>
 }
 
 #[test]
-fn divergent_primary_button_is_blocked() -> Result<()> {
+fn divergent_primary_button_rebases_and_pushes() -> Result<()> {
     let repository = TestRepository::new()?;
-    fs::write(repository.worktree.join("local.txt"), "local\n")?;
-    git(&repository.worktree, &["add", "local.txt"])?;
-    git(&repository.worktree, &["commit", "-m", "Local commit"])?;
+    fs::write(repository.worktree.join("local-one.txt"), "local one\n")?;
+    git(&repository.worktree, &["add", "local-one.txt"])?;
+    git(&repository.worktree, &["commit", "-m", "Local first"])?;
+    fs::write(repository.worktree.join("local-two.txt"), "local two\n")?;
+    git(&repository.worktree, &["add", "local-two.txt"])?;
+    git(&repository.worktree, &["commit", "-m", "Local second"])?;
     repository.commit_remote("remote.txt", "remote\n", "Remote commit")?;
     git(&repository.worktree, &["fetch", "origin"])?;
+    git(&repository.worktree, &["config", "pull.rebase", "false"])?;
+    git(&repository.worktree, &["config", "pull.ff", "false"])?;
     let before = git_output(&repository.worktree, &["rev-parse", "HEAD"])?;
-    let mut screen = repository.screen()?;
+    let mut gate = diffo_e2e::GitProxy::new("rebase", diffo_e2e::GitGatePhase::Before)?;
+    let path = gate.path()?;
+    let mut screen = DiffoScreen::launch_with_env(
+        diffo_binary()?,
+        &repository.worktree,
+        &[("PATH", path.as_os_str())],
+    )?;
 
     screen
-        .wait_for_text("[ Push + Pull ]")?
-        .click(&Selector::text("[ Push + Pull ]"))?
-        .wait_for_text("Push blocked: pull and merge required")?;
-    thread::sleep(Duration::from_millis(150));
+        .wait_for_text("[ Sync ]")?
+        .click(&Selector::text("[ Sync ]"))?;
+    gate.wait_until_blocked()?;
+    screen
+        .wait_for_text("origin/master has 1 upstream-only")?
+        .wait_for_text("master has 2 local-only commits.")?
+        .wait_for_text("Plan:")?
+        .wait_for_text("rebase 2 commits onto")?
+        .wait_for_text("push.")?
+        .wait_for_text("Rebasing 2 commits")?;
+    gate.release()?;
+    screen.wait_for_text("Rebased 2 commits and pushed master.")?;
 
+    let after = git_output(&repository.worktree, &["rev-parse", "HEAD"])?;
+    assert_ne!(after, before);
+    assert!(repository.worktree.join("remote.txt").exists());
+    assert_eq!(
+        git_output(
+            &repository.worktree,
+            &["log", "-3", "--reverse", "--format=%s", "HEAD"]
+        )?,
+        "Remote commit\nLocal first\nLocal second"
+    );
+    assert!(
+        git_output(
+            &repository.worktree,
+            &["rev-list", "--min-parents=2", "HEAD"]
+        )?
+        .is_empty()
+    );
     assert_eq!(
         git_output(&repository.worktree, &["rev-parse", "HEAD"])?,
-        before
+        after
     );
-    assert!(!repository.worktree.join("remote.txt").exists());
+    assert_eq!(
+        git_output(
+            &repository.root.path().join("remote.git"),
+            &["rev-parse", "HEAD"]
+        )?,
+        after
+    );
     Ok(())
 }

@@ -12,7 +12,9 @@ mod toast;
 
 use navigation::file_keys;
 pub use toast::ToastQueue;
-pub(crate) use toast::{operation_failure_title, operation_result_toast};
+pub(crate) use toast::{
+    operation_failure_title, operation_result_toast, sync_plan_title, sync_progress_label,
+};
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum ChangeArea {
     Unstaged,
@@ -53,17 +55,14 @@ pub enum DiffViewMode {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum PrimaryAction {
     Commit,
-    Push,
-    Pull,
-    PushAndPull,
+    Sync,
     Disabled,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum NetworkOperation {
     Fetch,
-    Pull,
-    Push,
+    Sync,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -85,9 +84,7 @@ impl NetworkOperation {
     #[must_use]
     pub const fn label(self) -> &'static str {
         match self {
-            Self::Fetch => "Fetching",
-            Self::Pull => "Pulling",
-            Self::Push => "Pushing",
+            Self::Fetch | Self::Sync => "Fetching",
         }
     }
 }
@@ -97,15 +94,13 @@ impl PrimaryAction {
     pub const fn label(self) -> &'static str {
         match self {
             Self::Commit | Self::Disabled => "Commit",
-            Self::Push => "Push",
-            Self::Pull => "Pull",
-            Self::PushAndPull => "Push + Pull",
+            Self::Sync => "Sync",
         }
     }
 
     #[must_use]
     pub const fn enabled(self) -> bool {
-        matches!(self, Self::Commit | Self::Push | Self::Pull)
+        matches!(self, Self::Commit | Self::Sync)
     }
 }
 

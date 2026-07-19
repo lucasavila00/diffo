@@ -259,6 +259,7 @@ fn run_watch_dump(
                     );
                 }
                 RepositoryEvent::Update(_)
+                | RepositoryEvent::Progress { .. }
                 | RepositoryEvent::BranchesLoaded { .. }
                 | RepositoryEvent::BranchesLoadFailed { .. } => {}
             }
@@ -482,6 +483,10 @@ fn drain_repository_events(repository_service: &RepositoryService, workbench: &m
                     let _ = repository_service.cancel_command(command_id);
                 }
             }
+            RepositoryEvent::Progress {
+                command_id,
+                progress,
+            } => workbench.accept_sync_progress(command_id, progress),
             RepositoryEvent::Update(update) => {
                 let _ = workbench.accept_repository_update(update);
             }

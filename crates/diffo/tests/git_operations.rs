@@ -22,3 +22,5 @@ mod ssh;
 mod staging;
 #[path = "git_operations/support.rs"]
 mod support;
+#[path = "git_operations/sync.rs"]
+mod sync;

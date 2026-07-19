@@ -86,7 +86,6 @@ pub(crate) fn commit_action_at_position(
 
 fn primary_action_clickable(model: &Model) -> bool {
     model.primary_action_enabled()
-        || model.primary_action() == crate::diff::PrimaryAction::PushAndPull
 }
 
 pub(in crate::diff) fn file_group_areas(

@@ -64,7 +64,7 @@ fn commit_composer_panel_action_uses_the_enabled_control_style() {
 }
 
 #[test]
-fn blocked_sync_is_visually_clickable_because_it_opens_feedback() {
+fn divergent_sync_is_enabled_and_clickable() {
     let mut model = model();
     model.snapshot.upstream = Some(UpstreamState {
         name: "origin/main".to_owned(),

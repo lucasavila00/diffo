@@ -64,8 +64,7 @@ impl Model {
         let is_async_result = matches!(
             result,
             OperationResult::Fetch { .. }
-                | OperationResult::Pull { .. }
-                | OperationResult::Push { .. }
+                | OperationResult::Sync { .. }
                 | OperationResult::Commit { .. }
                 | OperationResult::Checkout { .. }
         );
@@ -156,8 +155,7 @@ pub(super) fn same_repository_operation(left: &RepositoryAction, right: &Reposit
     matches!(
         (left, right),
         (RepositoryAction::Fetch, RepositoryAction::Fetch)
-            | (RepositoryAction::Pull, RepositoryAction::Pull)
-            | (RepositoryAction::Push, RepositoryAction::Push)
+            | (RepositoryAction::Sync, RepositoryAction::Sync)
             | (RepositoryAction::Commit(_), RepositoryAction::Commit(_))
             | (RepositoryAction::Stage(_), RepositoryAction::Stage(_))
             | (RepositoryAction::Unstage(_), RepositoryAction::Unstage(_))

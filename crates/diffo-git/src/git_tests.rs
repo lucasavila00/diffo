@@ -4,17 +4,20 @@ use std::{
     os::unix::fs::PermissionsExt as _,
     path::{Path, PathBuf},
     process::Command,
-    sync::Arc,
+    sync::{Arc, Mutex},
     thread,
     time::{Duration, Instant},
 };
 
-use super::{operation::classify_failure, status::parse_status};
+use super::{failure::classify_failure, status::parse_status};
 use diffo_core::{
     BranchKind, CancellationHandle, ChangeKind, CheckoutTarget, ExplorerFileContent, FailureKind,
-    GitPrompt, HeadState, OperationOutcome, OperationResult, PromptAnswer, PromptHandler, PromptId,
-    Repository, RepositoryAction, RepositoryOperationContext, RepositorySource,
+    GitPrompt, HeadState, OperationOutcome, OperationResult, ProgressHandler, PromptAnswer,
+    PromptHandler, PromptId, Repository, RepositoryAction, RepositoryOperationContext,
+    RepositorySource, SyncPlan, SyncProgress,
 };
+
+mod sync_tests;
 
 #[test]
 fn configured_askpass_uses_the_running_process_image() {
@@ -411,7 +414,7 @@ fn snapshots_the_whole_modified_file_as_diff_context() {
 }
 
 #[test]
-fn fetches_and_pulls_from_the_configured_remote() {
+fn sync_fast_forwards_to_the_refreshed_upstream() {
     let root = tempfile::tempdir().expect("test directory");
     git(root.path(), &["init", "--bare", "remote.git"]);
     git(root.path(), &["clone", "remote.git", "seed"]);
@@ -431,32 +434,93 @@ fn fetches_and_pulls_from_the_configured_remote() {
     git(&seed, &["push", "origin", "HEAD"]);
 
     let source = super::GitRepositorySource::new(&work);
-    let fetch = source
-        .apply(&RepositoryAction::Fetch)
-        .expect("fetch remote");
-    assert_eq!(fetch, OperationResult::Fetch { updated_refs: 1 });
+    let result = source.apply(&RepositoryAction::Sync).expect("sync remote");
     assert_eq!(
-        source
-            .snapshot()
-            .expect("fetched snapshot")
-            .upstream
-            .unwrap()
-            .behind,
-        1
+        result,
+        OperationResult::Sync {
+            plan: Box::new(SyncPlan {
+                branch: "master".to_owned(),
+                upstream: "origin/master".to_owned(),
+                local_only: 0,
+                upstream_only: 1,
+            }),
+        }
     );
-
-    let pull = source.apply(&RepositoryAction::Pull).expect("pull remote");
-    assert_eq!(pull, OperationResult::Pull { commits: 1 });
     assert!(work.join("remote.txt").exists());
     assert_eq!(
         source
             .snapshot()
-            .expect("pulled snapshot")
+            .expect("synced snapshot")
             .upstream
             .unwrap()
             .behind,
         0
     );
+}
+
+#[test]
+fn sync_pushes_local_only_commits_after_fetching() {
+    let repository = sync_repository();
+    fs::write(repository.work.join("local.txt"), "local\n").unwrap();
+    git(&repository.work, &["add", "."]);
+    git(&repository.work, &["commit", "-m", "Local commit"]);
+
+    let result = super::GitRepositorySource::new(&repository.work)
+        .apply(&RepositoryAction::Sync)
+        .expect("sync local commit");
+
+    assert!(matches!(
+        result,
+        OperationResult::Sync { plan }
+            if plan.local_only == 1 && plan.upstream_only == 0
+    ));
+    assert_eq!(
+        git_stdout(&repository.work, &["rev-parse", "HEAD"]),
+        remote_head(&repository.seed)
+    );
+}
+
+#[test]
+fn sync_rebases_clean_divergence_and_pushes_without_a_merge_commit() {
+    let repository = sync_repository();
+    fs::write(repository.work.join("local.txt"), "local\n").unwrap();
+    git(&repository.work, &["add", "."]);
+    git(&repository.work, &["commit", "-m", "Local commit"]);
+    let old_local = git_stdout(&repository.work, &["rev-parse", "HEAD"]);
+    fs::write(repository.seed.join("remote.txt"), "remote\n").unwrap();
+    git(&repository.seed, &["add", "."]);
+    git(&repository.seed, &["commit", "-m", "Remote commit"]);
+    git(&repository.seed, &["push", "origin", "HEAD"]);
+    let remote = git_stdout(&repository.seed, &["rev-parse", "HEAD"]);
+
+    let result = super::GitRepositorySource::new(&repository.work)
+        .apply(&RepositoryAction::Sync)
+        .expect("sync divergent commits");
+    let new_local = git_stdout(&repository.work, &["rev-parse", "HEAD"]);
+
+    assert!(matches!(
+        result,
+        OperationResult::Sync { plan }
+            if plan.local_only == 1 && plan.upstream_only == 1
+    ));
+    assert_ne!(
+        new_local, old_local,
+        "rebase must give the local commit a new ID"
+    );
+    assert!(repository.work.join("local.txt").exists());
+    assert!(repository.work.join("remote.txt").exists());
+    assert_eq!(
+        git_stdout(&repository.work, &["log", "-1", "--format=%s"]),
+        "Local commit"
+    );
+    assert_eq!(
+        git_stdout(
+            &repository.work,
+            &["rev-list", "--merges", &format!("{remote}..HEAD")]
+        ),
+        ""
+    );
+    assert_eq!(new_local, remote_head(&repository.seed));
 }
 
 #[test]
@@ -519,24 +583,19 @@ fn explorer_marks_binary_contents_without_decoding_them() {
 fn classifies_failures_without_returning_git_secrets() {
     for (action, output, expected) in [
         (
-            RepositoryAction::Push,
+            RepositoryAction::Sync,
             "[rejected] (non-fast-forward)",
             FailureKind::PushRejected,
         ),
         (
-            RepositoryAction::Push,
+            RepositoryAction::Sync,
             "pre-receive hook declined: token=secret",
             FailureKind::HookRejected,
         ),
         (
-            RepositoryAction::Pull,
+            RepositoryAction::Sync,
             "CONFLICT in file",
-            FailureKind::MergeConflict,
-        ),
-        (
-            RepositoryAction::Pull,
-            "fatal: Not possible to fast-forward, aborting.",
-            FailureKind::Diverged,
+            FailureKind::RebaseConflict,
         ),
         (
             RepositoryAction::Fetch,
@@ -548,6 +607,52 @@ fn classifies_failures_without_returning_git_secrets() {
         assert_eq!(failure.kind, expected);
         assert!(!failure.detail.contains("secret"));
     }
+}
+
+struct SyncRepository {
+    root: tempfile::TempDir,
+    seed: PathBuf,
+    work: PathBuf,
+}
+
+fn sync_repository() -> SyncRepository {
+    let root = tempfile::tempdir().expect("sync test directory");
+    git(root.path(), &["init", "--bare", "remote.git"]);
+    git(root.path(), &["clone", "remote.git", "seed"]);
+    let seed = root.path().join("seed");
+    git(&seed, &["config", "user.name", "Diffo Test"]);
+    git(&seed, &["config", "user.email", "diffo@example.invalid"]);
+    fs::write(seed.join("base.txt"), "base\n").unwrap();
+    git(&seed, &["add", "."]);
+    git(&seed, &["commit", "-m", "Base commit"]);
+    git(&seed, &["push", "-u", "origin", "HEAD"]);
+    git(root.path(), &["clone", "remote.git", "work"]);
+    let work = root.path().join("work");
+    git(&work, &["config", "user.name", "Diffo Test"]);
+    git(&work, &["config", "user.email", "diffo@example.invalid"]);
+    SyncRepository { root, seed, work }
+}
+
+fn git_stdout(repo: &Path, args: &[&str]) -> String {
+    let output = Command::new("git")
+        .args(args)
+        .current_dir(repo)
+        .output()
+        .expect("run git for output");
+    assert!(
+        output.status.success(),
+        "git failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    String::from_utf8_lossy(&output.stdout).trim().to_owned()
+}
+
+fn remote_head(repo: &Path) -> String {
+    git_stdout(repo, &["ls-remote", "origin", "HEAD"])
+        .split_whitespace()
+        .next()
+        .expect("remote HEAD hash")
+        .to_owned()
 }
 
 fn test_repository() -> tempfile::TempDir {

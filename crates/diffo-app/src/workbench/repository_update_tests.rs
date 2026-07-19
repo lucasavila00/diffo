@@ -3,9 +3,38 @@ use std::time::{Duration, Instant};
 use diffo_core::{
     ApplicationCommandId, ChangeKind, FailureKind, FileDiff, FileState, OperationFailure,
     OperationResult, RepositoryAction, RepositorySnapshot, RepositoryUpdate, RepositoryUpdateKind,
+    SyncPlan, SyncProgress,
 };
 
 use super::{ToastKind, Workbench};
+
+#[test]
+fn sync_progress_shows_the_selected_plan_and_concrete_git_step() {
+    let mut workbench = Workbench::new(RepositorySnapshot::default());
+    let id = workbench.commands.enqueue(RepositoryAction::Sync);
+    let _ = workbench.take_application_command(Instant::now());
+    let plan = SyncPlan {
+        branch: "main".to_owned(),
+        upstream: "origin/main".to_owned(),
+        local_only: 2,
+        upstream_only: 3,
+    };
+
+    workbench.accept_sync_progress(id, SyncProgress::Plan(plan));
+
+    assert_eq!(
+        workbench.toasts.as_slice()[0].title,
+        "origin/main has 3 upstream-only commits. main has 2 local-only commits. Plan: rebase 2 commits onto origin/main, then push."
+    );
+    workbench.accept_sync_progress(id, SyncProgress::Rebasing { commits: 2 });
+    assert_eq!(
+        workbench
+            .commands
+            .active()
+            .map(|command| command.label.as_str()),
+        Some("Rebasing 2 commits")
+    );
+}
 
 #[test]
 fn command_progress_is_hidden_at_149_ms_and_visible_at_150_ms() {
@@ -135,16 +164,23 @@ fn watcher_snapshots_preserve_toasts_and_visible_command_progress() {
 #[test]
 fn watcher_snapshot_after_completion_keeps_the_result_toast() {
     let mut workbench = Workbench::new(RepositorySnapshot::default());
-    let id = workbench.commands.enqueue(RepositoryAction::Pull);
+    let id = workbench.commands.enqueue(RepositoryAction::Sync);
     let _ = workbench
         .take_application_command(Instant::now())
-        .expect("pull command starts");
+        .expect("sync command starts");
     assert!(workbench.accept_repository_update(RepositoryUpdate {
         generation: 1,
         kind: RepositoryUpdateKind::CommandCompleted {
             command_id: id,
-            action: RepositoryAction::Pull,
-            result: OperationResult::Pull { commits: 1 },
+            action: RepositoryAction::Sync,
+            result: OperationResult::Sync {
+                plan: Box::new(SyncPlan {
+                    branch: "main".to_owned(),
+                    upstream: "origin/main".to_owned(),
+                    local_only: 0,
+                    upstream_only: 1,
+                }),
+            },
             snapshot: RepositorySnapshot::default(),
         },
     }));

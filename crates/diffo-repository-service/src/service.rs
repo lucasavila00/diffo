@@ -12,7 +12,7 @@ use std::{
 use anyhow::{Context, Result};
 use diffo_core::{
     ApplicationCommandId, BranchRef, CancellationHandle, GitPrompt, PromptAnswer, PromptHandler,
-    PromptId, Repository, RepositoryAction, RepositoryQueryId, RepositoryUpdate,
+    PromptId, Repository, RepositoryAction, RepositoryQueryId, RepositoryUpdate, SyncProgress,
 };
 #[cfg(test)]
 use diffo_core::{OperationFailure, OperationResult, RepositorySnapshot, RepositoryUpdateKind};
@@ -36,6 +36,10 @@ pub enum RepositoryEvent {
         command_id: ApplicationCommandId,
         prompt_id: PromptId,
         prompt: GitPrompt,
+    },
+    Progress {
+        command_id: ApplicationCommandId,
+        progress: SyncProgress,
     },
     Update(RepositoryUpdate),
 }

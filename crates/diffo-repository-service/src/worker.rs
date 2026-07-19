@@ -10,10 +10,24 @@ use std::{
 use diffo_core::{
     ApplicationCommandId, CancellationHandle, OperationFailure, OperationOutcome, Repository,
     RepositoryAction, RepositoryOperationContext, RepositoryQueryId, RepositoryUpdate,
-    RepositoryUpdateKind,
+    RepositoryUpdateKind, SyncProgress,
 };
 
 use crate::service::{PromptBroker, RepositoryEvent};
+
+struct CommandProgressReporter {
+    command_id: ApplicationCommandId,
+    events: Sender<RepositoryEvent>,
+}
+
+impl diffo_core::ProgressHandler for CommandProgressReporter {
+    fn progress(&self, progress: SyncProgress) {
+        let _ = self.events.send(RepositoryEvent::Progress {
+            command_id: self.command_id,
+            progress,
+        });
+    }
+}
 
 #[cfg(test)]
 use anyhow::Result;
@@ -84,6 +98,7 @@ pub(super) fn worker_loop(
                         &cancellation,
                         &mut generation,
                         prompts,
+                        events,
                     )),
                     DebouncedRequest::Shutdown => break,
                 }
@@ -99,6 +114,7 @@ pub(super) fn worker_loop(
                 &cancellation,
                 &mut generation,
                 prompts,
+                events,
             )),
             WorkerRequest::LoadBranches { query_id } => {
                 Some(collect_branches(repository, query_id))
@@ -184,11 +200,16 @@ fn execute_command(
     cancellation: &CancellationHandle,
     generation: &mut u64,
     prompts: &Arc<PromptBroker>,
+    events: &Sender<RepositoryEvent>,
 ) -> RepositoryEvent {
     *generation = generation.saturating_add(1);
-    let context = RepositoryOperationContext::new(
+    let context = RepositoryOperationContext::with_progress(
         Arc::clone(prompts) as Arc<dyn diffo_core::PromptHandler>,
         cancellation.clone(),
+        Arc::new(CommandProgressReporter {
+            command_id,
+            events: events.clone(),
+        }),
     );
     let event = match repository.apply_with_context(action, &context) {
         Ok(OperationOutcome::Completed(result)) => match repository.snapshot() {
@@ -294,8 +315,8 @@ mod tests {
                 }
                 Ok(OperationOutcome::Cancelled)
             } else {
-                Ok(OperationOutcome::Completed(OperationResult::Pull {
-                    commits: 0,
+                Ok(OperationOutcome::Completed(OperationResult::Fetch {
+                    updated_refs: 0,
                 }))
             }
         }
@@ -422,7 +443,7 @@ mod tests {
         };
         let mut generation = 0;
         let (events, _event_rx) = mpsc::channel();
-        let prompts = Arc::new(PromptBroker::new(events));
+        let prompts = Arc::new(PromptBroker::new(events.clone()));
         assert!(prompts.begin_operation(ApplicationCommandId(1), CancellationHandle::default()));
 
         let watcher = collect_refresh(&repository, &mut generation);
@@ -433,6 +454,7 @@ mod tests {
             &CancellationHandle::default(),
             &mut generation,
             &prompts,
+            &events,
         );
 
         assert!(matches!(
@@ -485,7 +507,7 @@ mod tests {
         requests
             .send(WorkerRequest::Execute {
                 id: ApplicationCommandId(2),
-                action: RepositoryAction::Pull,
+                action: RepositoryAction::Sync,
                 cancellation: CancellationHandle::default(),
             })
             .unwrap();

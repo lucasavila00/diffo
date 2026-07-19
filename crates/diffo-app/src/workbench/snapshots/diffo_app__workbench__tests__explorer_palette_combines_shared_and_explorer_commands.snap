@@ -4,7 +4,7 @@ expression: commands
 ---
 [
     "CommandId(\"git.fetch\"): Git: Fetch",
-    "CommandId(\"git.pull\"): Git: Pull",
+    "CommandId(\"git.sync\"): Git: Sync",
     "CommandId(\"git.checkout_to\"): Git: Checkout to...",
     "CommandId(\"application.update\"): Application: Update Diffo",
     "CommandId(\"explorer.collapse_all\"): Explorer: Collapse All Folders",

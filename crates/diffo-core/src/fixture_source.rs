@@ -321,8 +321,7 @@ impl Repository for MutableFixtureRepository {
                     })
                 }
                 RepositoryAction::Fetch
-                | RepositoryAction::Pull
-                | RepositoryAction::Push
+                | RepositoryAction::Sync
                 | RepositoryAction::Checkout(_) => {
                     bail!("mock repository cannot execute {action:?}: no remote configured")
                 }
@@ -330,10 +329,7 @@ impl Repository for MutableFixtureRepository {
         })();
         result.map_err(|error| OperationFailure {
             action: action.clone(),
-            kind: if matches!(
-                action,
-                RepositoryAction::Fetch | RepositoryAction::Pull | RepositoryAction::Push
-            ) {
+            kind: if matches!(action, RepositoryAction::Fetch | RepositoryAction::Sync) {
                 FailureKind::NoRemote
             } else {
                 FailureKind::Unknown
@@ -404,11 +400,7 @@ mod tests {
             .join("repository-state.ron");
         let repository = MutableFixtureRepository::new(fixture).expect("fixture should load");
 
-        for action in [
-            RepositoryAction::Fetch,
-            RepositoryAction::Pull,
-            RepositoryAction::Push,
-        ] {
+        for action in [RepositoryAction::Fetch, RepositoryAction::Sync] {
             let action_name = format!("{action:?}");
             let error = repository
                 .apply(&action)

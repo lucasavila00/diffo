@@ -2,12 +2,12 @@ use std::path::PathBuf;
 
 use diffo_core::{
     ChangeKind, FailureKind, FileDiff, FileState, OperationFailure, OperationResult,
-    RepositoryAction, RepositorySnapshot, UpstreamState,
+    RepositoryAction, RepositorySnapshot, SyncPlan, UpstreamState,
 };
 
 use super::{
     ChangeArea, DiffViewMode, Effect, FileKey, Message, Model, NetworkOperation, PrimaryAction,
-    ToastKind, update,
+    update,
 };
 
 fn model() -> Model {
@@ -38,7 +38,7 @@ fn updates_local_state() {
 }
 
 #[test]
-fn primary_action_chooses_commit_push_pull_or_blocked_sync() {
+fn primary_action_chooses_commit_or_sync() {
     let mut model = model();
     assert_eq!(model.primary_action(), PrimaryAction::Commit);
     assert_eq!(
@@ -79,25 +79,29 @@ fn primary_action_chooses_commit_push_pull_or_blocked_sync() {
         ahead: 1,
         behind: 0,
     });
-    assert_eq!(model.primary_action(), PrimaryAction::Push);
+    assert_eq!(model.primary_action(), PrimaryAction::Sync);
     assert!(model.primary_action_enabled());
     assert_eq!(
         update(&mut model, Message::ExecutePrimaryAction),
-        Some(Effect::Repository(RepositoryAction::Push))
+        Some(Effect::Repository(RepositoryAction::Sync))
     );
-    assert_eq!(model.primary_action(), PrimaryAction::Push);
+    assert_eq!(model.primary_action(), PrimaryAction::Sync);
     assert!(!model.primary_action_enabled());
-    assert_eq!(model.network_operation(), Some(NetworkOperation::Push));
+    assert_eq!(model.network_operation(), Some(NetworkOperation::Sync));
     let refreshed = model.snapshot.clone();
     update(&mut model, Message::SnapshotLoaded(refreshed.clone()));
-    assert_eq!(model.network_operation(), Some(NetworkOperation::Push));
+    assert_eq!(model.network_operation(), Some(NetworkOperation::Sync));
     update(
         &mut model,
         Message::OperationCompleted(
-            RepositoryAction::Push,
-            OperationResult::Push {
-                hash: "abc1234".to_owned(),
-                upstream: "origin/main".to_owned(),
+            RepositoryAction::Sync,
+            OperationResult::Sync {
+                plan: Box::new(SyncPlan {
+                    branch: "main".to_owned(),
+                    upstream: "origin/main".to_owned(),
+                    local_only: 1,
+                    upstream_only: 0,
+                }),
             },
             refreshed,
         ),
@@ -105,17 +109,14 @@ fn primary_action_chooses_commit_push_pull_or_blocked_sync() {
     assert_eq!(model.network_operation(), None);
     model.snapshot.upstream.as_mut().unwrap().ahead = 0;
     model.snapshot.upstream.as_mut().unwrap().behind = 1;
-    assert_eq!(model.primary_action(), PrimaryAction::Pull);
+    assert_eq!(model.primary_action(), PrimaryAction::Sync);
     model.snapshot.upstream.as_mut().unwrap().ahead = 1;
-    assert_eq!(model.primary_action(), PrimaryAction::PushAndPull);
-    assert_eq!(model.primary_action().label(), "Push + Pull");
-    assert!(!model.primary_action().enabled());
+    assert_eq!(model.primary_action(), PrimaryAction::Sync);
+    assert_eq!(model.primary_action().label(), "Sync");
+    assert!(model.primary_action().enabled());
     assert_eq!(
         update(&mut model, Message::ExecutePrimaryAction),
-        Some(Effect::Toast(
-            ToastKind::Error,
-            "Push blocked: pull and merge required".to_owned()
-        ))
+        Some(Effect::Repository(RepositoryAction::Sync))
     );
 }
 
@@ -132,7 +133,7 @@ fn generated_commit_message_is_used_when_input_is_empty() {
 }
 
 #[test]
-fn passive_and_unrelated_results_cannot_finish_a_push() {
+fn passive_and_unrelated_results_cannot_finish_a_sync() {
     let mut model = model();
     model.snapshot.files[0].staged = None;
     model.snapshot.upstream = Some(UpstreamState {
@@ -142,7 +143,7 @@ fn passive_and_unrelated_results_cannot_finish_a_push() {
     });
     assert_eq!(
         update(&mut model, Message::ExecutePrimaryAction),
-        Some(Effect::Repository(RepositoryAction::Push))
+        Some(Effect::Repository(RepositoryAction::Sync))
     );
 
     let changed = model.snapshot.clone();
@@ -162,20 +163,20 @@ fn passive_and_unrelated_results_cannot_finish_a_push() {
     update(
         &mut model,
         Message::ActionFailed(OperationFailure {
-            action: RepositoryAction::Pull,
+            action: RepositoryAction::Commit("unrelated".to_owned()),
             kind: FailureKind::Network,
             detail: "unrelated".to_owned(),
         }),
     );
 
-    assert_eq!(model.network_operation(), Some(NetworkOperation::Push));
-    assert_eq!(model.primary_action(), PrimaryAction::Push);
+    assert_eq!(model.network_operation(), Some(NetworkOperation::Sync));
+    assert_eq!(model.primary_action(), PrimaryAction::Sync);
     assert!(!model.primary_action_enabled());
 
     update(
         &mut model,
         Message::ActionFailed(OperationFailure {
-            action: RepositoryAction::Push,
+            action: RepositoryAction::Sync,
             kind: FailureKind::Network,
             detail: "offline".to_owned(),
         }),

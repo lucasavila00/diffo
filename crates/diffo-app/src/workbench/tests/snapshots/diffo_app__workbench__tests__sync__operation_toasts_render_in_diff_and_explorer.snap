@@ -1,5 +1,5 @@
 ---
-source: crates/diffo-app/src/workbench/tests.rs
+source: crates/diffo-app/src/workbench/tests/sync.rs
 expression: rendered
 ---
 [
@@ -9,7 +9,7 @@ expression: rendered
             area: Rect { x: 0, y: 0, width: 44, height: 3 },
             content: [
                 "┌─────────────────────────────────────────┐",
-                "│Pulled 1 commit                           │",
+                "│Fast-forwarded main by 1 commit.          │",
                 "└──────────────────────────────────────────┘",
             ],
             styles: [
@@ -27,7 +27,7 @@ expression: rendered
             area: Rect { x: 0, y: 0, width: 44, height: 3 },
             content: [
                 "┌─────────────────────────────────────────┐",
-                "│Pulled 1 commit                           │",
+                "│Fast-forwarded main by 1 commit.          │",
                 "└──────────────────────────────────────────┘",
             ],
             styles: [

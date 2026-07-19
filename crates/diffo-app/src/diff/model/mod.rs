@@ -2,14 +2,13 @@
 
 mod state;
 
-use diffo_core::{
-    FailureKind, OperationFailure, OperationResult, RepositoryAction, RepositorySnapshot,
-};
+use diffo_core::{OperationFailure, OperationResult, RepositoryAction, RepositorySnapshot};
 
 pub use state::{
     ChangeArea, DiffViewMode, FileKey, Model, NetworkOperation, PrimaryAction, Toast, ToastKind,
     ToastQueue,
 };
+pub(crate) use state::{sync_plan_title, sync_progress_label};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Message {
@@ -94,17 +93,6 @@ pub fn update(model: &mut Model, message: Message) -> Option<Effect> {
         Message::CommitMessageCursorLeft => model.commit_message_cursor_left(),
         Message::CommitMessageCursorRight => model.commit_message_cursor_right(),
         Message::ExecutePrimaryAction => {
-            if model.primary_action() == PrimaryAction::PushAndPull {
-                let failure = OperationFailure {
-                    action: RepositoryAction::Push,
-                    kind: FailureKind::PullRequired,
-                    detail: "pull and merge required".to_owned(),
-                };
-                return Some(Effect::Toast(
-                    ToastKind::Error,
-                    state::operation_failure_title(&failure),
-                ));
-            }
             return model.execute_primary_action().map(Effect::Repository);
         }
         Message::SnapshotLoaded(snapshot) => model.repository_changed(snapshot),

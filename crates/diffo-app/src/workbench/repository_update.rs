@@ -2,12 +2,31 @@ use std::time::{Duration, Instant};
 
 use diffo_core::{
     ApplicationCommandId, OperationFailure, OperationResult, RepositoryAction, RepositorySnapshot,
-    RepositoryUpdate, RepositoryUpdateKind,
+    RepositoryUpdate, RepositoryUpdateKind, SyncProgress,
 };
 
-use super::{CommandProgressState, CommandResult, Message, ToastKind, Workbench};
+use super::{
+    ApplicationAction, CommandProgressState, CommandResult, Message, ToastKind, Workbench,
+};
 
 impl Workbench {
+    pub fn accept_sync_progress(
+        &mut self,
+        command_id: ApplicationCommandId,
+        progress: SyncProgress,
+    ) {
+        let Some(command) = self.commands.active_mut().filter(|command| {
+            command.id == command_id
+                && command.action == ApplicationAction::Repository(RepositoryAction::Sync)
+        }) else {
+            return;
+        };
+        command.label = crate::diff::model::sync_progress_label(&progress);
+        if let SyncProgress::Plan(plan) = progress {
+            self.show_toast(ToastKind::Info, crate::diff::model::sync_plan_title(&plan));
+        }
+    }
+
     #[must_use]
     pub const fn repository_generation(&self) -> u64 {
         self.repository_generation

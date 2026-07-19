@@ -124,7 +124,7 @@ impl Repository for PromptingRepository {
         &self,
         _action: &RepositoryAction,
     ) -> std::result::Result<OperationResult, OperationFailure> {
-        Ok(OperationResult::Pull { commits: 0 })
+        Ok(OperationResult::Fetch { updated_refs: 0 })
     }
 
     fn apply_with_context(
@@ -143,8 +143,8 @@ impl Repository for PromptingRepository {
                 updated_refs: 0,
             }));
         }
-        Ok(OperationOutcome::Completed(OperationResult::Pull {
-            commits: 0,
+        Ok(OperationOutcome::Completed(OperationResult::Fetch {
+            updated_refs: 0,
         }))
     }
 }
@@ -170,7 +170,7 @@ fn next_command_is_accepted_only_after_prompt_cancellation_is_acknowledged() {
     ));
     assert!(!service.execute(
         second,
-        RepositoryAction::Pull,
+        RepositoryAction::Sync,
         CancellationHandle::default(),
     ));
     assert!(service.answer_prompt(first, PromptId(1), PromptAnswer::Cancel));
@@ -187,7 +187,7 @@ fn next_command_is_accepted_only_after_prompt_cancellation_is_acknowledged() {
 
     assert!(service.execute(
         second,
-        RepositoryAction::Pull,
+        RepositoryAction::Sync,
         CancellationHandle::default(),
     ));
     assert!(matches!(

@@ -15,6 +15,6 @@ Buffer {
         x: 0, y: 0, fg: DarkGray, bg: Reset, underline: Reset, modifier: NONE,
         x: 16, y: 0, fg: White, bg: Reset, underline: Reset, modifier: BOLD,
         x: 19, y: 0, fg: DarkGray, bg: Reset, underline: Reset, modifier: NONE,
-        x: 0, y: 3, fg: White, bg: DarkGray, underline: Reset, modifier: BOLD,
+        x: 0, y: 3, fg: White, bg: Reset, underline: Reset, modifier: BOLD,
     ]
 }

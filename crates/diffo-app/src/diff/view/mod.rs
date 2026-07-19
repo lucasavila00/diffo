@@ -16,7 +16,7 @@ pub(in crate::diff) fn render_hunk_button(frame: &mut Frame, area: Rect, label: 
     frame.render_widget(
         Paragraph::new(label)
             .alignment(Alignment::Center)
-            .style(enabled_control_style().bg(theme::SELECTION_BACKGROUND)),
+            .style(enabled_control_style()),
         area,
     );
 }

@@ -189,7 +189,7 @@ pub(crate) fn render_commit_editor(frame: &mut Frame, model: &Model, content_are
     frame.render_widget(input_block, input);
 
     let commit_style = if model.commit_enabled() {
-        enabled_control_style().bg(theme::SELECTION_BACKGROUND)
+        enabled_control_style()
     } else {
         disabled_control_style()
     };

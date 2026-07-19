@@ -164,7 +164,7 @@ fn explorer_horizontal_pan_is_bounded_and_terminal_safe() -> Result<()> {
         .wait_for_text("␛[2JCONTROL_RIGHT_EDGE")?;
     let panned = screen.contents();
     assert!(panned.contains("Explorer"), "{panned}");
-    assert!(panned.contains("1/f1: commands"), "{panned}");
+    assert!(panned.contains("[ Commands (1 / F1) ]"), "{panned}");
 
     screen.press_many(Key::Left, 20)?.wait_for_text("START_")?;
     Ok(())

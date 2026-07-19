@@ -37,7 +37,7 @@ mod prepare;
 mod view;
 
 pub(crate) use input::{help_rows, map_commit_event};
-pub(crate) use view::files::{render_status, sync_control_at_position};
+pub(crate) use view::files::{FooterControl, footer_control_at_position, render_status};
 pub(crate) use view::overlays::render_commit_editor;
 
 #[cfg(test)]

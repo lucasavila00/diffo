@@ -28,7 +28,6 @@ fn overlays_open_and_close_with_function_keys() -> Result<()> {
         .press(Key::Escape)?
         .wait_for_text_gone("Command Palette")?
         .press(Key::Function(2))?
-        .wait_for_text("Help")?
         .wait_for_text("Shortcut")?
         .wait_for_text("Action")?
         .wait_for_text("Next activity")?
@@ -39,10 +38,10 @@ fn overlays_open_and_close_with_function_keys() -> Result<()> {
         .wait_for_text("Scroll up one page")?
         .wait_for_text("Stage / unstage selected file")?
         .press(Key::Function(2))?
-        .wait_for_text_gone("Help")?
+        .wait_for_text_gone("Shortcut")?
         .press(Key::Char('2'))?
-        .wait_for_text("Help")?
+        .wait_for_text("Shortcut")?
         .press(Key::Char('2'))?
-        .wait_for_text_gone("Help")?;
+        .wait_for_text_gone("Shortcut")?;
     Ok(())
 }

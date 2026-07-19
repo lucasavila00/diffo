@@ -4,8 +4,10 @@ expression: "status_line(&model, 0, 80)"
 ---
 Line::from_iter([
     Span::from(" branch main · 1234567").white().bold(),
-    Span::from(" [ Sync (9 / F9) ]").white().on_dark_gray().bold(),
-    Span::from(" · conflicts").light_red().bold(),
     Span::from(" "),
-    Span::from("1/f1: commands  2/f2: help "),
+    Span::from("[ Commands (1 / F1) ]").white().bold(),
+    Span::from(" "),
+    Span::from("[ Help (2 / F2) ]").white().bold(),
+    Span::from(" "),
+    Span::from("[ Sync (9 / F9) ]").white().bold(),
 ])

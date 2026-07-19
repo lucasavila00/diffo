@@ -426,14 +426,19 @@ impl Workbench {
         if !tool_captures_global_input
             && let Event::Mouse(mouse) = event
             && mouse.kind == MouseEventKind::Down(MouseButton::Left)
-            && crate::diff::sync_control_at_position(
+            && let Some(control) = crate::diff::footer_control_at_position(
                 &self.diff.model,
                 tool_areas(content).status,
                 mouse.column,
                 mouse.row,
             )
         {
-            return self.execute_sync();
+            match control {
+                crate::diff::FooterControl::Commands => self.open_active_palette(),
+                crate::diff::FooterControl::Help => self.set_modal(Modal::Help),
+                crate::diff::FooterControl::Sync => return self.execute_sync(),
+            }
+            return None;
         }
         let pane_area = tool_areas(content).content;
         if !tool_captures_global_input && let Event::Mouse(mouse) = event {

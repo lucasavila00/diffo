@@ -89,7 +89,7 @@ impl DiffoScreen {
             writer: Some(writer),
             child,
         };
-        screen.wait_for_text("1/f1: commands")?;
+        screen.wait_for_text("[ Commands (1 / F1) ]")?;
         Ok(screen)
     }
 

@@ -51,7 +51,7 @@ pub(in crate::diff) fn render_commit_composer(frame: &mut Frame, area: Rect, mod
         sections[0],
     );
     let style = if model.commit_enabled() {
-        enabled_control_style().bg(theme::SELECTION_BACKGROUND)
+        enabled_control_style()
     } else {
         disabled_control_style()
     };
@@ -145,16 +145,22 @@ pub(crate) fn render_status(frame: &mut Frame, area: ratatui::layout::Rect, mode
     );
 }
 
-pub(in crate::diff) fn status_line(
-    model: &Model,
-    animation_tick: usize,
-    width: usize,
-) -> Line<'static> {
-    let mut head = Span::styled(head_label(&model.snapshot.head), head_style());
+const COMMANDS_CONTROL: &str = "[ Commands (1 / F1) ]";
+const HELP_CONTROL: &str = "[ Help (2 / F2) ]";
+const SYNC_CONTROL: &str = "[ Sync (9 / F9) ]";
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum FooterControl {
+    Commands,
+    Help,
+    Sync,
+}
+
+fn sync_control_span(model: &Model, width: usize) -> Span<'static> {
     let mut sync = Span::styled(
-        " [ Sync (9 / F9) ]",
+        SYNC_CONTROL,
         if model.sync_enabled() {
-            enabled_control_style().bg(theme::SELECTION_BACKGROUND)
+            enabled_control_style()
         } else {
             disabled_control_style()
         },
@@ -162,6 +168,16 @@ pub(in crate::diff) fn status_line(
     if sync.width() > width {
         sync.content = truncate_width(sync.content.as_ref(), width).into();
     }
+    sync
+}
+
+pub(in crate::diff) fn status_line(
+    model: &Model,
+    animation_tick: usize,
+    width: usize,
+) -> Line<'static> {
+    let mut head = Span::styled(head_label(&model.snapshot.head), head_style());
+    let sync = sync_control_span(model, width);
     let status = repository_status(&model.snapshot);
     let mut status = Some(Span::styled(
         format!(" · {}", status.label()),
@@ -182,7 +198,9 @@ pub(in crate::diff) fn status_line(
         })
     });
     let mut transient = transient_status(model, animation_tick);
-    let mut help = Some(Span::raw("1/f1: commands  2/f2: help "));
+    let control_style = enabled_control_style();
+    let mut commands = Some(Span::styled(COMMANDS_CONTROL, control_style));
+    let mut help = Some(Span::styled(HELP_CONTROL, control_style));
 
     while status_width(
         &head,
@@ -190,6 +208,7 @@ pub(in crate::diff) fn status_line(
         status.as_ref(),
         divergence.as_ref(),
         transient.as_ref(),
+        commands.as_ref(),
         help.as_ref(),
     ) > width
     {
@@ -199,7 +218,8 @@ pub(in crate::diff) fn status_line(
         if status.take().is_some() {
             continue;
         }
-        if help.take().is_some() {
+        if commands.take().is_some() {
+            help = None;
             continue;
         }
         if let Some(message) = transient.as_mut() {
@@ -227,30 +247,36 @@ pub(in crate::diff) fn status_line(
         break;
     }
 
-    let mut spans = vec![head, sync];
+    let mut spans = vec![head];
     spans.extend(status);
     spans.extend(divergence);
     let left_width = spans.iter().map(Span::width).sum::<usize>();
     let transient_width = transient.as_ref().map_or(0, Span::width);
-    let help_width = help.as_ref().map_or(0, Span::width);
+    let controls_width = footer_controls_width(commands.as_ref(), help.as_ref(), &sync);
 
     if let Some(transient) = transient {
         spans.push(Span::raw(" ".repeat(usize::from(design::INLINE_GAP))));
         spans.push(transient);
     }
-    if let Some(help) = help {
-        let used = left_width
-            .saturating_add(if transient_width == 0 {
-                0
-            } else {
-                usize::from(design::INLINE_GAP)
-            })
-            .saturating_add(transient_width);
-        spans.push(Span::raw(
-            " ".repeat(width.saturating_sub(used.saturating_add(help_width))),
-        ));
-        spans.push(help);
+    let used = left_width
+        .saturating_add(if transient_width == 0 {
+            0
+        } else {
+            usize::from(design::INLINE_GAP)
+        })
+        .saturating_add(transient_width);
+    spans.push(Span::raw(
+        " ".repeat(width.saturating_sub(used.saturating_add(controls_width))),
+    ));
+    if let Some(commands) = commands {
+        spans.push(commands);
+        spans.push(Span::raw(" "));
     }
+    if let Some(help) = help {
+        spans.push(help);
+        spans.push(Span::raw(" "));
+    }
+    spans.push(sync);
     Line::from(spans)
 }
 
@@ -360,34 +386,53 @@ fn status_width(
     status: Option<&Span<'_>>,
     divergence: Option<&Span<'_>>,
     transient: Option<&Span<'_>>,
+    commands: Option<&Span<'_>>,
     help: Option<&Span<'_>>,
 ) -> usize {
     head.width()
-        .saturating_add(sync.width())
         .saturating_add(status.map_or(0, Span::width))
         .saturating_add(divergence.map_or(0, Span::width))
         .saturating_add(transient.map_or(0, |span| {
             span.width().saturating_add(usize::from(design::INLINE_GAP))
         }))
-        .saturating_add(help.map_or(0, Span::width))
+        .saturating_add(footer_controls_width(commands, help, sync))
 }
 
-pub(crate) fn sync_control_at_position(model: &Model, area: Rect, column: u16, row: u16) -> bool {
-    if !model.sync_enabled() || row != area.y {
-        return false;
+fn footer_controls_width(
+    commands: Option<&Span<'_>>,
+    help: Option<&Span<'_>>,
+    sync: &Span<'_>,
+) -> usize {
+    commands.map_or(0, |span| span.width().saturating_add(1))
+        + help.map_or(0, |span| span.width().saturating_add(1))
+        + sync.width()
+}
+
+pub(crate) fn footer_control_at_position(
+    model: &Model,
+    area: Rect,
+    column: u16,
+    row: u16,
+) -> Option<FooterControl> {
+    if row != area.y || column < area.x || column >= area.right() {
+        return None;
     }
     let line = status_line(model, 0, usize::from(area.width));
-    let Some((head, sync)) = line.spans.first().zip(line.spans.get(1)) else {
-        return false;
-    };
-    let start = area
-        .x
-        .saturating_add(u16::try_from(head.width()).unwrap_or(u16::MAX))
-        .saturating_add(1);
-    let end = start
-        .saturating_add(u16::try_from(sync.width().saturating_sub(1)).unwrap_or(u16::MAX))
-        .min(area.right());
-    column >= start && column < end
+    let offset = usize::from(column - area.x);
+    let mut start = 0;
+    for span in &line.spans {
+        let end = start + span.width();
+        if offset >= start && offset < end {
+            return match span.content.as_ref() {
+                COMMANDS_CONTROL => Some(FooterControl::Commands),
+                HELP_CONTROL => Some(FooterControl::Help),
+                SYNC_CONTROL if model.sync_enabled() => Some(FooterControl::Sync),
+                _ => None,
+            };
+        }
+        start = end;
+    }
+    None
 }
 
 fn truncate_width(value: &str, width: usize) -> String {

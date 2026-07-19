@@ -79,12 +79,11 @@ fn every_activity_renders_the_same_repository_footer() {
         .iter()
         .map(ratatui::buffer::Cell::symbol)
         .collect::<String>();
+    assert!(text.starts_with(" branch main · 1234567 · clean"), "{text}");
     assert!(
-        text.starts_with(" branch main · 1234567 [ Sync (9 / F9) ] · clean"),
+        text.ends_with("[ Commands (1 / F1) ] [ Help (2 / F2) ] [ Sync (9 / F9) ]"),
         "{text}"
     );
-    assert!(text.contains("[ Sync (9 / F9) ]"), "{text}");
-    assert!(text.ends_with("1/f1: commands  2/f2: help "), "{text}");
 }
 
 #[test]

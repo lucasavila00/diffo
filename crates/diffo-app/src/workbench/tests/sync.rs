@@ -29,8 +29,8 @@ fn shared_footer_sync_button_runs_the_same_action() {
     let area = Rect::new(0, 0, 100, 30);
     let status = tool_areas(workbench_areas(area).content).status;
     let sync_column = status
-        .x
-        .saturating_add(u16::try_from(" branch main · 1234567 ".len()).unwrap());
+        .right()
+        .saturating_sub(u16::try_from("[ Sync (9 / F9) ]".len()).unwrap());
 
     for activity in [Activity::Diff, Activity::Explorer, Activity::Search] {
         let mut workbench = Workbench::new(snapshot.clone());
@@ -48,6 +48,34 @@ fn shared_footer_sync_button_runs_the_same_action() {
         assert_eq!(workbench.commands.queued_len(), 1);
         assert!(!workbench.diff.model.sync_enabled());
     }
+}
+
+#[test]
+fn shared_footer_command_and_help_buttons_open_their_modals() {
+    let area = Rect::new(0, 0, 100, 30);
+    let status = tool_areas(workbench_areas(area).content).status;
+    let controls = "[ Commands (1 / F1) ] [ Help (2 / F2) ] [ Sync (9 / F9) ]";
+    let commands_column = status
+        .right()
+        .saturating_sub(u16::try_from(controls.len()).unwrap());
+    let help_column =
+        commands_column.saturating_add(u16::try_from("[ Commands (1 / F1) ] ".len()).unwrap());
+    let click = |column| {
+        Event::Mouse(MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column,
+            row: status.y,
+            modifiers: KeyModifiers::NONE,
+        })
+    };
+    let mut workbench = Workbench::new(RepositorySnapshot::default());
+
+    let _ = workbench.handle_event(&click(commands_column), area);
+    assert!(matches!(workbench.modal, Some(Modal::CommandPalette(_))));
+    workbench.close_modal();
+
+    let _ = workbench.handle_event(&click(help_column), area);
+    assert!(matches!(workbench.modal, Some(Modal::Help)));
 }
 
 #[test]

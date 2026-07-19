@@ -25,7 +25,8 @@ Commit stays local and fixed:
 
 Sync is global:
 
-- show one `[ Sync (9 / F9) ]` button beside branch status in the shared footer;
+- end the shared footer with `[ Commands (1 / F1) ]`, `[ Help (2 / F2) ]`, and
+  `[ Sync (9 / F9) ]` buttons, with Sync at the far right;
 - show it in every activity;
 - `9` and `F9` run the same action from every activity;
 - open modals keep input priority; `9` and `F9` do not bypass them;

@@ -4,5 +4,6 @@ expression: minimum
 ---
 Line::from_iter([
     Span::default().white().bold(),
-    Span::from("…").white().on_dark_gray().bold(),
+    Span::default(),
+    Span::from("…").white().bold(),
 ])

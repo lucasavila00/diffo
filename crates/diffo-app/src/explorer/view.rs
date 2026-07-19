@@ -88,7 +88,7 @@ pub(crate) fn entry_label(entry: &TreeEntry) -> Line<'static> {
         .unwrap_or(entry.path().as_os_str())
         .to_string_lossy();
     let prefix = if entry.directory() {
-        ""
+        "  "
     } else {
         match entry.status {
             Some(ChangeKind::Added | ChangeKind::Untracked) => "A ",
@@ -259,6 +259,7 @@ mod tests {
     use diffo_core::{FileDiff, FileState, RepositorySnapshot};
     use diffo_diff::parse_unified_patch;
     use diffo_highlight::SyntaxHighlighter;
+    use diffo_ui::file_picker::Navigation;
     use ratatui::{Terminal, backend::TestBackend, style::Color};
     use std::collections::HashMap;
 
@@ -312,6 +313,38 @@ mod tests {
         let marker = &terminal.backend().buffer()[(5, 1)];
         assert_eq!(marker.symbol(), "M");
         assert_eq!(marker.fg, Color::Yellow);
+    }
+
+    #[test]
+    fn explorer_aligns_file_and_folder_names_at_each_depth() {
+        let mut model = ExplorerModel::new(RepositorySnapshot::default());
+        model.install_paths(vec![
+            "directory/nested/child.rs".into(),
+            "directory/plain.rs".into(),
+            "file.txt".into(),
+        ]);
+        let mut picker = FilePicker::default();
+        picker.prepare(
+            Rect::new(0, 0, 30, 6),
+            tree_document(&model, Style::default(), false),
+            None,
+        );
+        let backend = TestBackend::new(30, 6);
+        let mut terminal = Terminal::new(backend).unwrap();
+
+        terminal.draw(|frame| picker.render(frame, false)).unwrap();
+
+        let column_of = |terminal: &Terminal<TestBackend>, row, symbol| {
+            (0..30)
+                .find(|column| terminal.backend().buffer()[(*column, row)].symbol() == symbol)
+                .unwrap()
+        };
+        assert_eq!(column_of(&terminal, 1, "d"), column_of(&terminal, 2, "f"));
+
+        picker.navigate(Navigation::Activate);
+        terminal.draw(|frame| picker.render(frame, false)).unwrap();
+
+        assert_eq!(column_of(&terminal, 2, "n"), column_of(&terminal, 3, "p"));
     }
 
     #[test]

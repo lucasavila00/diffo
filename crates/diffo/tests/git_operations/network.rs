@@ -101,7 +101,7 @@ fn palette_search_runs_sync() -> Result<()> {
 fn cancelling_a_blocked_git_client_releases_the_next_queued_command() -> Result<()> {
     let repository = TestRepository::new()?;
     repository.commit_remote("remote.txt", "remote\n", "Remote commit")?;
-    let mut gate = diffo_e2e::GitProxy::new("fetch", diffo_e2e::GitGatePhase::Before)?;
+    let gate = diffo_e2e::GitProxy::new("fetch", diffo_e2e::GitGatePhase::Before)?;
     let path = gate.path()?;
     let mut screen = DiffoScreen::launch_with_env(
         diffo_binary()?,
@@ -124,7 +124,6 @@ fn cancelling_a_blocked_git_client_releases_the_next_queued_command() -> Result<
     assert!(!screen.contents().contains("Fast-forwarding"));
 
     screen.click(&Selector::text(""))?;
-    gate.release()?;
     wait_for("queued sync to update the worktree", || {
         Ok(repository.worktree.join("remote.txt").exists())
     })?;

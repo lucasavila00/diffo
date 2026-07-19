@@ -32,7 +32,7 @@ use ratatui::{Terminal, backend::CrosstermBackend};
 mod frame_trace;
 mod tool_tasks;
 
-use diffo_workbench::{PromptResponse, Workbench, WorkbenchEffect};
+use diffo_app::workbench::{PromptResponse, Workbench, WorkbenchEffect};
 use frame_trace::{FrameRecord, FrameTracer};
 use tool_tasks::ToolTasks;
 
@@ -304,7 +304,7 @@ fn draw_frame(
     terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
     workbench: &mut Workbench,
     tracer: &FrameTracer,
-) -> Result<(diffo_tui::FramePreparation, u64, u64)> {
+) -> Result<(diffo_app::FramePreparation, u64, u64)> {
     let size = terminal.size()?;
     let area = ratatui::layout::Rect::new(0, 0, size.width, size.height);
     let preparation = workbench.prepare_frame(area);

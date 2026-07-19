@@ -8,8 +8,8 @@ use std::{
     time::Instant,
 };
 
+use diffo_app::FramePreparation;
 use diffo_app::Model;
-use diffo_tui::FramePreparation;
 use serde::Serialize;
 
 pub struct FrameTracer {

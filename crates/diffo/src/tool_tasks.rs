@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
+use diffo_app::explorer::ExplorerWorker;
+use diffo_app::workbench::{Workbench, WorkbenchTask, WorkbenchTaskResult};
 use diffo_core::Repository;
-use diffo_explorer::ExplorerWorker;
-use diffo_workbench::{Workbench, WorkbenchTask, WorkbenchTaskResult};
 
 pub(crate) struct ToolTasks {
     explorer: ExplorerWorker,

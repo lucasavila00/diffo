@@ -7,7 +7,7 @@ all:
 	$(MAKE) check-file-lines
 
 check-file-lines:
-	@git ls-files '*.rs' | { failed=; while IFS= read -r file; do \
+	@rg --files -g '*.rs' | { failed=; while IFS= read -r file; do \
 		lines=$$(wc -l < "$$file"); \
 		if [ "$$lines" -gt 700 ]; then \
 			printf '%s has %s lines (maximum 700)\n' "$$file" "$$lines"; \

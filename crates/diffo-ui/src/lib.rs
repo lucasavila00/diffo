@@ -1,5 +1,9 @@
 #![doc = include_str!("../README.md")]
 
+pub mod command_palette;
+pub mod file_picker;
+pub mod text_view;
+
 use crossterm::event::MouseEventKind;
 use diffo_core::ChangeKind;
 use diffo_highlight::HighlightedLine;

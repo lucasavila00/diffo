@@ -1,6 +1,6 @@
 [package]
 name = "diffo-app"
-description = "Pure application state and updates for Diffo"
+description = "Activities, application state, rendering, and workbench composition for Diffo"
 edition.workspace = true
 license.workspace = true
 readme = "README.md"
@@ -8,7 +8,12 @@ rust-version.workspace = true
 version.workspace = true
 
 [dependencies]
+crossterm.workspace = true
 diffo-core.workspace = true
+diffo-diff.workspace = true
+diffo-highlight.workspace = true
+diffo-ui.workspace = true
+ratatui.workspace = true
 
 [lints]
 workspace = true

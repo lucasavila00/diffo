@@ -63,21 +63,22 @@ fn structural_geometry_is_fixed() {
 fn chrome_renderers_use_design_system_tokens() {
     let workspace = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let crate_sources = [
-        "crates/diffo-command/src",
-        "crates/diffo-explorer/src",
-        "crates/diffo-file-picker/src",
-        "crates/diffo-text-view/src",
-        "crates/diffo-tui/src",
-        "crates/diffo-workbench/src",
+        "crates/diffo-ui/src/command_palette.rs",
+        "crates/diffo-app/src/explorer",
+        "crates/diffo-ui/src/file_picker.rs",
+        "crates/diffo-ui/src/file_picker",
+        "crates/diffo-ui/src/text_view.rs",
+        "crates/diffo-app/src/diff",
+        "crates/diffo-app/src/workbench",
     ];
     let exceptions = [
-        "crates/diffo-file-picker/src/tests.rs",
-        "crates/diffo-tui/src/rendering_tests.rs",
-        "crates/diffo-tui/src/rendering_tests/chrome.rs",
-        "crates/diffo-tui/src/rendering_tests/diff.rs",
-        "crates/diffo-tui/src/rendering_tests/diff/transitions.rs",
-        "crates/diffo-tui/src/style.rs",
-        "crates/diffo-workbench/src/tests.rs",
+        "crates/diffo-ui/src/file_picker/tests.rs",
+        "crates/diffo-app/src/diff/rendering_tests.rs",
+        "crates/diffo-app/src/diff/rendering_tests/chrome.rs",
+        "crates/diffo-app/src/diff/rendering_tests/diff.rs",
+        "crates/diffo-app/src/diff/rendering_tests/diff/transitions.rs",
+        "crates/diffo-app/src/diff/view/style.rs",
+        "crates/diffo-app/src/workbench/tests.rs",
     ];
 
     let mut sources = Vec::new();
@@ -138,6 +139,10 @@ fn numeric_argument(line: &str, call: &str) -> bool {
 }
 
 fn rust_sources(directory: &Path, sources: &mut Vec<std::path::PathBuf>) {
+    if directory.is_file() {
+        sources.push(directory.to_owned());
+        return;
+    }
     for entry in fs::read_dir(directory).expect("chrome source directory should be readable") {
         let path = entry
             .expect("chrome source entry should be readable")

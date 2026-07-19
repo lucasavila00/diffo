@@ -2,20 +2,14 @@
 members = [
     "crates/diffo",
     "crates/diffo-app",
-    "crates/diffo-command",
     "crates/diffo-core",
     "crates/diffo-diff",
     "crates/diffo-e2e",
-    "crates/diffo-explorer",
-    "crates/diffo-file-picker",
     "crates/diffo-git",
     "crates/diffo-highlight",
     "crates/diffo-measure",
-    "crates/diffo-tui",
-    "crates/diffo-text-view",
     "crates/diffo-ui",
     "crates/diffo-repository-service",
-    "crates/diffo-workbench",
 ]
 resolver = "3"
 
@@ -30,18 +24,12 @@ anyhow = "1.0"
 base64 = "0.22"
 crossterm = "0.29"
 diffo-core = { path = "crates/diffo-core" }
-diffo-command = { path = "crates/diffo-command" }
 diffo-diff = { path = "crates/diffo-diff" }
-diffo-explorer = { path = "crates/diffo-explorer" }
-diffo-file-picker = { path = "crates/diffo-file-picker" }
 diffo-app = { path = "crates/diffo-app" }
 diffo-git = { path = "crates/diffo-git" }
 diffo-highlight = { path = "crates/diffo-highlight" }
-diffo-tui = { path = "crates/diffo-tui" }
-diffo-text-view = { path = "crates/diffo-text-view" }
 diffo-ui = { path = "crates/diffo-ui" }
 diffo-repository-service = { path = "crates/diffo-repository-service" }
-diffo-workbench = { path = "crates/diffo-workbench" }
 notify = "8.2"
 nix = { version = "0.28", features = ["process", "signal"] }
 portable-pty = "0.9"

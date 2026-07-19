@@ -246,11 +246,8 @@ dependencies = [
  "diffo-app",
  "diffo-core",
  "diffo-e2e",
- "diffo-explorer",
  "diffo-git",
  "diffo-repository-service",
- "diffo-tui",
- "diffo-workbench",
  "ratatui",
  "ron 0.10.1",
  "serde",
@@ -262,14 +259,10 @@ dependencies = [
 name = "diffo-app"
 version = "0.1.0"
 dependencies = [
- "diffo-core",
-]
-
-[[package]]
-name = "diffo-command"
-version = "0.1.0"
-dependencies = [
  "crossterm 0.29.0",
+ "diffo-core",
+ "diffo-diff",
+ "diffo-highlight",
  "diffo-ui",
  "ratatui",
 ]
@@ -303,30 +296,6 @@ dependencies = [
  "ron 0.10.1",
  "tempfile",
  "vt100",
-]
-
-[[package]]
-name = "diffo-explorer"
-version = "0.1.0"
-dependencies = [
- "crossterm 0.29.0",
- "diffo-command",
- "diffo-core",
- "diffo-diff",
- "diffo-file-picker",
- "diffo-highlight",
- "diffo-text-view",
- "diffo-ui",
- "ratatui",
-]
-
-[[package]]
-name = "diffo-file-picker"
-version = "0.1.0"
-dependencies = [
- "crossterm 0.29.0",
- "diffo-ui",
- "ratatui",
 ]
 
 [[package]]
@@ -368,51 +337,12 @@ dependencies = [
 ]
 
 [[package]]
-name = "diffo-text-view"
-version = "0.1.0"
-dependencies = [
- "diffo-highlight",
- "diffo-ui",
- "ratatui",
-]
-
-[[package]]
-name = "diffo-tui"
-version = "0.1.0"
-dependencies = [
- "crossterm 0.29.0",
- "diffo-app",
- "diffo-core",
- "diffo-diff",
- "diffo-file-picker",
- "diffo-highlight",
- "diffo-text-view",
- "diffo-ui",
- "ratatui",
-]
-
-[[package]]
 name = "diffo-ui"
 version = "0.1.0"
 dependencies = [
  "crossterm 0.29.0",
  "diffo-core",
  "diffo-highlight",
- "ratatui",
-]
-
-[[package]]
-name = "diffo-workbench"
-version = "0.1.0"
-dependencies = [
- "crossterm 0.29.0",
- "diffo-app",
- "diffo-command",
- "diffo-core",
- "diffo-explorer",
- "diffo-text-view",
- "diffo-tui",
- "diffo-ui",
  "ratatui",
 ]
 

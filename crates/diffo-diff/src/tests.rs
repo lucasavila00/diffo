@@ -16,8 +16,12 @@ fn compact_side(rows: &[SideBySideRow]) -> Vec<String> {
             format!(
                 "{:?} | {} | {}",
                 row.kind,
-                row.old.as_ref().map_or_else(|| "∅".to_owned(), compact_line),
-                row.new.as_ref().map_or_else(|| "∅".to_owned(), compact_line),
+                row.old
+                    .as_ref()
+                    .map_or_else(|| "∅".to_owned(), compact_line),
+                row.new
+                    .as_ref()
+                    .map_or_else(|| "∅".to_owned(), compact_line),
             )
         })
         .collect()

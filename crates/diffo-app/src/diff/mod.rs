@@ -39,7 +39,6 @@ mod prepare;
 mod view;
 
 #[cfg(test)]
-use diffo_ui::change_kind_style as file_kind_style;
 #[cfg(test)]
 use prepare::{diff_file_lines, should_syntax_highlight};
 #[cfg(test)]

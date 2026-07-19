@@ -1,9 +1,15 @@
 ---
 source: crates/diffo-app/src/explorer/worker.rs
-assertion_line: 366
+assertion_line: 370
 expression: markers
 ---
-{
-    1: Deleted,
-    2: Deleted,
-}
+[
+    (
+        1,
+        Deleted,
+    ),
+    (
+        2,
+        Deleted,
+    ),
+]

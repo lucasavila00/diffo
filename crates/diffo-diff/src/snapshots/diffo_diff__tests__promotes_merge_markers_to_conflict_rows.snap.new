@@ -1,148 +1,24 @@
 ---
 source: crates/diffo-diff/src/tests.rs
-assertion_line: 122
-expression: "(inline, side_by_side_rows_with_options(&document, options),)"
+assertion_line: 146
+expression: "(compact_inline, compact_side(&side))"
 ---
 (
     [
-        RenderLine {
-            number: None,
-            text: "@@ -1 +1,5 @@",
-            kind: Header,
-        },
-        RenderLine {
-            number: Some(
-                1,
-            ),
-            text: "old",
-            kind: Removed,
-        },
-        RenderLine {
-            number: Some(
-                1,
-            ),
-            text: "<<<<<<< HEAD",
-            kind: Conflict,
-        },
-        RenderLine {
-            number: Some(
-                2,
-            ),
-            text: "ours",
-            kind: Added,
-        },
-        RenderLine {
-            number: Some(
-                3,
-            ),
-            text: "=======",
-            kind: Conflict,
-        },
-        RenderLine {
-            number: Some(
-                4,
-            ),
-            text: "theirs",
-            kind: Added,
-        },
-        RenderLine {
-            number: Some(
-                5,
-            ),
-            text: ">>>>>>> branch",
-            kind: Conflict,
-        },
+        "Header None: @@ -1 +1,5 @@",
+        "Removed Some(1): old",
+        "Conflict Some(1): <<<<<<< HEAD",
+        "Added Some(2): ours",
+        "Conflict Some(3): =======",
+        "Added Some(4): theirs",
+        "Conflict Some(5): >>>>>>> branch",
     ],
     [
-        SideBySideRow {
-            old: Some(
-                RenderLine {
-                    number: None,
-                    text: "@@ -1 +1,5 @@",
-                    kind: Header,
-                },
-            ),
-            new: Some(
-                RenderLine {
-                    number: None,
-                    text: "@@ -1 +1,5 @@",
-                    kind: Header,
-                },
-            ),
-            kind: Header,
-        },
-        SideBySideRow {
-            old: Some(
-                RenderLine {
-                    number: Some(
-                        1,
-                    ),
-                    text: "old",
-                    kind: Removed,
-                },
-            ),
-            new: Some(
-                RenderLine {
-                    number: Some(
-                        1,
-                    ),
-                    text: "<<<<<<< HEAD",
-                    kind: Conflict,
-                },
-            ),
-            kind: Changed,
-        },
-        SideBySideRow {
-            old: None,
-            new: Some(
-                RenderLine {
-                    number: Some(
-                        2,
-                    ),
-                    text: "ours",
-                    kind: Added,
-                },
-            ),
-            kind: Changed,
-        },
-        SideBySideRow {
-            old: None,
-            new: Some(
-                RenderLine {
-                    number: Some(
-                        3,
-                    ),
-                    text: "=======",
-                    kind: Conflict,
-                },
-            ),
-            kind: Changed,
-        },
-        SideBySideRow {
-            old: None,
-            new: Some(
-                RenderLine {
-                    number: Some(
-                        4,
-                    ),
-                    text: "theirs",
-                    kind: Added,
-                },
-            ),
-            kind: Changed,
-        },
-        SideBySideRow {
-            old: None,
-            new: Some(
-                RenderLine {
-                    number: Some(
-                        5,
-                    ),
-                    text: ">>>>>>> branch",
-                    kind: Conflict,
-                },
-            ),
-            kind: Changed,
-        },
+        "Header | Header None: @@ -1 +1,5 @@ | Header None: @@ -1 +1,5 @@",
+        "Changed | Removed Some(1): old | Conflict Some(1): <<<<<<< HEAD",
+        "Changed | ∅ | Added Some(2): ours",
+        "Changed | ∅ | Conflict Some(3): =======",
+        "Changed | ∅ | Added Some(4): theirs",
+        "Changed | ∅ | Conflict Some(5): >>>>>>> branch",
     ],
 )

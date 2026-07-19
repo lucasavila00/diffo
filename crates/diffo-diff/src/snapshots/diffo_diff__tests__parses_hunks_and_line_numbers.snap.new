@@ -1,6 +1,6 @@
 ---
 source: crates/diffo-diff/src/tests.rs
-assertion_line: 13
+assertion_line: 34
 expression: document
 ---
 DiffDocument {

@@ -1,6 +1,6 @@
 ---
 source: crates/diffo-app/src/explorer/worker.rs
-assertion_line: 441
+assertion_line: 447
 expression: viewer.lines
 ---
 [

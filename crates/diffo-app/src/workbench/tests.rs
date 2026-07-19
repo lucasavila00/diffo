@@ -303,7 +303,7 @@ fn operation_toasts_render_in_diff_and_explorer() {
         terminal.draw(|frame| workbench.render(frame)).unwrap();
         rendered.push((
             activity,
-            buffer_region(terminal.backend().buffer(), Rect::new(55, 25, 44, 4)),
+            buffer_region(terminal.backend().buffer(), Rect::new(55, 25, 44, 3)),
         ));
     }
     insta::assert_debug_snapshot!(rendered);

@@ -111,7 +111,7 @@ fn renders_and_hit_tests_a_bottom_right_toast() {
         .unwrap();
     insta::assert_debug_snapshot!(buffer_region(
         terminal.backend().buffer(),
-        Rect::new(55, 25, 44, 4),
+        Rect::new(55, 25, 44, 3),
     ));
 
     assert_eq!(
@@ -140,7 +140,7 @@ fn error_toasts_render_embedded_newlines_as_inert_text() {
     assert!(!screen.chars().any(char::is_control));
     insta::assert_debug_snapshot!(buffer_region(
         terminal.backend().buffer(),
-        Rect::new(55, 24, 44, 5),
+        Rect::new(55, 24, 44, 4),
     ));
     assert_eq!(
         crate::diff::toast_at_position(&toasts, area, 70, 26),

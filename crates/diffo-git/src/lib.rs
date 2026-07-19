@@ -1,11 +1,13 @@
 #![doc = include_str!("../README.md")]
 
-use std::path::PathBuf;
+use std::{
+    path::{Path, PathBuf},
+    process,
+};
 
 const NO_CHANGE: char = '.';
 
 mod askpass;
-mod askpass_image;
 mod command;
 mod explorer;
 mod operation;
@@ -14,7 +16,7 @@ mod status;
 pub use askpass::run_askpass_if_requested;
 pub struct GitRepositorySource {
     root: PathBuf,
-    askpass: Option<askpass_image::OwnedAskpass>,
+    askpass: Option<PathBuf>,
 }
 
 impl GitRepositorySource {
@@ -26,24 +28,18 @@ impl GitRepositorySource {
         }
     }
 
-    /// Create a repository source that retains the running executable for deferred
-    /// Git and SSH prompts.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error when the running executable cannot be opened and retained.
-    pub fn with_owned_askpass(root: impl Into<PathBuf>) -> anyhow::Result<Self> {
-        Ok(Self {
+    /// Create a repository source that re-enters the running Diffo process image for
+    /// deferred Git and SSH prompts.
+    #[must_use]
+    pub fn with_askpass(root: impl Into<PathBuf>) -> Self {
+        Self {
             root: root.into(),
-            askpass: Some(askpass_image::OwnedAskpass::capture()?),
-        })
+            askpass: Some(PathBuf::from(format!("/proc/{}/exe", process::id()))),
+        }
     }
 
-    fn askpass_executable(&self) -> anyhow::Result<Option<PathBuf>> {
-        self.askpass
-            .as_ref()
-            .map(askpass_image::OwnedAskpass::executable)
-            .transpose()
+    fn askpass_executable(&self) -> Option<&Path> {
+        self.askpass.as_deref()
     }
 }
 

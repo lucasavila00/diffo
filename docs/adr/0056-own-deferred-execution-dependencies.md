@@ -4,6 +4,9 @@ Status: Accepted
 
 Refined by [ADR 0060](0060-lazy-askpass-image.md), which retains an open startup
 executable and delays private-path materialization until askpass is first needed.
+The askpass-specific implementation is superseded by
+[ADR 0062](0062-use-procfs-image-for-askpass.md); the general owned-dependency rule
+remains in force.
 
 Refines [ADR 0053](0053-broker-git-interactions.md).
 

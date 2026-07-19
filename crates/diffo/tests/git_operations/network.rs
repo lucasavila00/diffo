@@ -197,7 +197,7 @@ fn local_ssh_host_approval_completes_fetch() -> Result<()> {
 }
 
 #[test]
-fn ssh_push_uses_startup_image_after_launched_binary_is_replaced() -> Result<()> {
+fn ssh_push_uses_running_image_after_launched_binary_is_replaced() -> Result<()> {
     use std::os::unix::fs::PermissionsExt as _;
 
     let repository = TestRepository::new()?;

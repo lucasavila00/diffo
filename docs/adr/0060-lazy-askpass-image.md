@@ -1,6 +1,6 @@
 # ADR 0060: Materialize the owned askpass image lazily
 
-Status: Accepted
+Status: Superseded by [ADR 0062](0062-use-procfs-image-for-askpass.md)
 
 Refines [ADR 0056](0056-own-deferred-execution-dependencies.md).
 

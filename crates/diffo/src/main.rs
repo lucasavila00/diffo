@@ -105,10 +105,7 @@ fn main() -> Result<()> {
                 None,
             )
         } else {
-            let repository = Arc::new(
-                GitRepositorySource::with_owned_askpass(".")
-                    .context("failed to retain the running executable for askpass")?,
-            );
+            let repository = Arc::new(GitRepositorySource::with_askpass("."));
             let paths = repository.watch_paths()?;
             (repository, Some(paths))
         };

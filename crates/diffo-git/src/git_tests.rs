@@ -12,6 +12,14 @@ use diffo_core::{
 };
 
 #[test]
+fn configured_askpass_uses_the_running_process_image() {
+    let source = super::GitRepositorySource::with_askpass(".");
+    let expected = PathBuf::from(format!("/proc/{}/exe", std::process::id()));
+
+    assert_eq!(source.askpass_executable(), Some(expected.as_path()));
+}
+
+#[test]
 fn parses_branch_files_and_upstream() {
     let status = b"# branch.oid abcdef0123456789\0# branch.head feature\0# branch.upstream origin/feature\0# branch.ab +2 -1\x001 M. N... 100644 100644 100644 abc def file.txt\0? notes.txt\0";
 

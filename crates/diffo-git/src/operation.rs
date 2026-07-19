@@ -145,19 +145,16 @@ fn configure_askpass(
         .transpose()
         .map_err(|error| operation_failure(action, FailureKind::Unknown, &error.to_string()))?;
     if let Some(bridge) = bridge.as_ref() {
-        let executable = source
-            .askpass_executable()
-            .map_err(|error| operation_failure(action, FailureKind::Unknown, &error.to_string()))?
-            .ok_or_else(|| {
-                operation_failure(
-                    action,
-                    FailureKind::Unknown,
-                    "prepared askpass executable is unavailable",
-                )
-            })?;
+        let executable = source.askpass_executable().ok_or_else(|| {
+            operation_failure(
+                action,
+                FailureKind::Unknown,
+                "askpass executable is unavailable",
+            )
+        })?;
         command
-            .env("GIT_ASKPASS", &executable)
-            .env("SSH_ASKPASS", &executable)
+            .env("GIT_ASKPASS", executable)
+            .env("SSH_ASKPASS", executable)
             .env("SSH_ASKPASS_REQUIRE", "force")
             .env(ASKPASS_MARKER, "1")
             .env(ASKPASS_SOCKET, bridge.socket());

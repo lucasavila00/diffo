@@ -2,7 +2,8 @@ use super::*;
 use crate::diff::NetworkOperation;
 use crate::explorer::COLLAPSE_ALL_COMMAND;
 use crossterm::event::{KeyEvent, KeyEventState, MouseEvent};
-use ratatui::{Terminal, backend::TestBackend, buffer::Buffer};
+use diffo_core::{ChangeKind, FileDiff, FileState};
+use ratatui::{Terminal, backend::TestBackend, buffer::Buffer, style::Color};
 
 fn key(code: KeyCode) -> Event {
     Event::Key(KeyEvent::new(code, KeyModifiers::NONE))
@@ -63,6 +64,74 @@ fn activity_bar_click_selects_and_consumes_the_activity() {
 }
 
 #[test]
+fn full_screen_diff_renders_styled_raw_hunks_and_x_closes_it() {
+    let snapshot = RepositorySnapshot {
+        files: vec![FileState {
+            path: "src/main.rs".into(),
+            old_path: None,
+            kind: ChangeKind::Modified,
+            staged: None,
+            unstaged: Some(FileDiff {
+                text: "@@ -1 +1 @@\n-let old = true;\n+let new = false;\n".to_owned(),
+            }),
+        }],
+        ..RepositorySnapshot::default()
+    };
+    let area = Rect::new(0, 0, 40, 8);
+    let mut workbench = Workbench::new(snapshot);
+    workbench.prepare_frame(area);
+
+    let _ = workbench.handle_event(&key(KeyCode::Char('f')), area);
+    workbench.prepare_frame(area);
+    assert!(workbench.full_screen());
+
+    let backend = TestBackend::new(area.width, area.height);
+    let mut terminal = Terminal::new(backend).unwrap();
+    terminal.draw(|frame| workbench.render(frame)).unwrap();
+    let row = |row| {
+        (0..area.width)
+            .map(|column| terminal.backend().buffer()[(column, row)].symbol())
+            .collect::<String>()
+    };
+    assert!(row(0).starts_with("M src/main.rs"));
+    assert_eq!(terminal.backend().buffer()[(0, 0)].fg, Color::Yellow);
+    assert_eq!(terminal.backend().buffer()[(39, 0)].symbol(), "X");
+    assert!(row(1).starts_with("@@ -1 +1 @@"));
+    assert!(row(2).starts_with("-let old = true;"));
+    assert!(row(3).starts_with("+let new = false;"));
+    assert_eq!(terminal.backend().buffer()[(0, 2)].bg, Color::Indexed(52));
+    assert_eq!(terminal.backend().buffer()[(0, 3)].bg, Color::Indexed(22));
+    assert!(!row(0).contains("File Diff"));
+
+    let _ = workbench.handle_event(&key(KeyCode::Char('F')), area);
+    assert!(workbench.full_screen());
+    let close = Event::Mouse(MouseEvent {
+        kind: MouseEventKind::Up(MouseButton::Left),
+        column: 39,
+        row: 0,
+        modifiers: KeyModifiers::NONE,
+    });
+    let _ = workbench.handle_event(&close, area);
+    assert!(!workbench.full_screen());
+}
+
+#[test]
+fn commit_input_keeps_f_as_text_instead_of_opening_full_screen() {
+    let mut workbench = Workbench::new(RepositorySnapshot::default());
+    workbench.diff.model.focus_commit_input();
+
+    assert!(
+        workbench
+            .handle_events(&[key(KeyCode::Char('f'))], Rect::new(0, 0, 80, 24))
+            .is_empty()
+    );
+
+    assert_eq!(workbench.diff.model.commit_message, "f");
+    assert!(!workbench.full_screen());
+    assert!(!workbench.full_screen_pending);
+}
+
+#[test]
 fn pane_drag_is_shared_across_activities() {
     let mut workbench = Workbench::new(RepositorySnapshot::default());
     let area = Rect::new(0, 0, 100, 30);
@@ -113,7 +182,7 @@ fn explorer_picker_menu_captures_global_shortcuts() {
     let _ = workbench.handle_event(&right_click, area);
     assert!(workbench.explorer.has_open_picker_menu());
 
-    for code in [KeyCode::Char('1'), KeyCode::Char('q')] {
+    for code in [KeyCode::Char('f'), KeyCode::Char('1'), KeyCode::Char('q')] {
         let _ = workbench.handle_event(&key(code), area);
     }
     assert_eq!(workbench.pane_split.percent(), 25);

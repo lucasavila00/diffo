@@ -34,6 +34,28 @@ pub(in crate::diff) fn inline_line(
     Line::from(spans)
 }
 
+pub(in crate::diff) fn raw_hunk_line(
+    prefix: Option<char>,
+    text: &str,
+    kind: RowKind,
+    highlighted: Option<&HighlightedLine>,
+) -> Line<'static> {
+    if matches!(kind, RowKind::Header | RowKind::Meta) {
+        return Line::styled(terminal_safe_text(text), row_style(kind));
+    }
+    let mut spans = vec![Span::styled(
+        prefix.unwrap_or(' ').to_string(),
+        gutter_style(kind),
+    )];
+    let background = diff_background(kind);
+    if let Some(highlighted) = highlighted {
+        spans.extend(syntax_spans(highlighted, background, kind));
+    } else {
+        spans.push(Span::styled(terminal_safe_text(text), background));
+    }
+    Line::from(spans)
+}
+
 pub(in crate::diff) fn inline_skeleton_line(row: &RenderLine) -> Line<'static> {
     Line::from(Span::styled(
         row.number

@@ -25,6 +25,7 @@ use crate::explorer::{ExplorerActivity, ExplorerEvent, ExplorerOutcome, Explorer
 
 mod activity_bar;
 mod command_queue;
+mod full_screen;
 mod pending_scroll;
 mod prompt;
 
@@ -124,6 +125,8 @@ pub struct Workbench {
     commands: CommandQueue,
     command_animation_tick: usize,
     should_quit: bool,
+    full_screen: bool,
+    full_screen_pending: bool,
     prompt: Option<PromptModal>,
     last_prompt_id: Option<PromptId>,
 }
@@ -195,6 +198,8 @@ impl Workbench {
             commands: CommandQueue::new(),
             command_animation_tick: 0,
             should_quit: false,
+            full_screen: false,
+            full_screen_pending: false,
             prompt: None,
             last_prompt_id: None,
         }
@@ -254,7 +259,15 @@ impl Workbench {
         }
     }
 
+    #[must_use]
+    pub const fn full_screen(&self) -> bool {
+        self.full_screen
+    }
+
     pub fn prepare_frame(&mut self, area: Rect) -> FramePreparation {
+        if let Some(preparation) = self.prepare_full_screen(area) {
+            return preparation;
+        }
         let content = workbench_areas(area).content;
         self.sync_diff_pane_state();
         match self.active {
@@ -268,6 +281,9 @@ impl Workbench {
 
     pub fn render(&mut self, frame: &mut Frame) {
         let area = frame.area();
+        if self.render_full_screen(frame) {
+            return;
+        }
         let content = workbench_areas(area).content;
         match self.active {
             Activity::Diff => self.diff.render(frame, content, self.pane_split),
@@ -333,7 +349,7 @@ impl Workbench {
                 .handle_prompt_event(event, area)
                 .map(WorkbenchCommand::Effect);
         }
-        if self.select_activity(event, area) {
+        if !self.full_screen && self.select_activity(event, area) {
             return None;
         }
         let content = workbench_areas(area).content;
@@ -355,7 +371,17 @@ impl Workbench {
             Activity::Explorer => self.explorer.captures_global_input(),
             Activity::Search => self.search.captures_global_input(),
         };
+        if self.full_screen {
+            return self.handle_full_screen_event(event, area);
+        }
         if !tool_captures_global_input && self.handle_overlay_click(event, content) {
+            return None;
+        }
+        if !tool_captures_global_input
+            && full_screen::is_toggle(event)
+            && self.full_screen_title().is_some()
+        {
+            self.full_screen_pending = !self.full_screen_pending;
             return None;
         }
         let pane_area = tool_areas(content).content;
@@ -469,6 +495,14 @@ impl Workbench {
     fn sync_diff_pane_state(&mut self) {
         self.diff.model.file_pane_percent = self.pane_split.percent();
         self.diff.model.resizing_file_pane = self.pane_split.is_dragging();
+    }
+
+    fn full_screen_title(&self) -> Option<ratatui::text::Line<'static>> {
+        match self.active {
+            Activity::Diff => self.diff.renderer.full_screen_title(),
+            Activity::Explorer => self.explorer.full_screen_title(),
+            Activity::Search => None,
+        }
     }
 
     pub fn take_task(&mut self) -> Option<WorkbenchTask> {

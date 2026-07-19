@@ -48,11 +48,68 @@ pub(crate) fn render(
     render_viewer(frame, areas.viewer, model, border_style, skeleton);
     frame.render_widget(
         Paragraph::new(
-            " j/w: previous  k/l/s: next  enter/click: expand  1/f1: commands  ↑/↓: scroll ",
+            " j/w: previous  k/l/s: next  enter/click: expand  f: full screen  1/f1: commands  ↑/↓: scroll ",
         ),
         areas.status,
     );
     picker.render_menu(frame);
+}
+
+pub(crate) fn render_full_screen(
+    frame: &mut Frame,
+    area: Rect,
+    model: &ExplorerModel,
+    skeleton: bool,
+) {
+    let Some(viewer) = model.viewer.as_ref() else {
+        return;
+    };
+    if let Some(message) = viewer.message.as_deref() {
+        frame.render_widget(Paragraph::new(terminal_safe_text(message)), area);
+        return;
+    }
+    let metrics = full_screen_viewer_metrics(area, model, viewer);
+    let lines = if skeleton {
+        Vec::new()
+    } else {
+        viewer
+            .lines
+            .iter()
+            .enumerate()
+            .skip(model.viewer_scroll)
+            .take(metrics.viewport_rows)
+            .map(|(index, line)| viewer_code(index.saturating_add(1), line, viewer))
+            .collect()
+    };
+    render_lines(frame, metrics.area, lines, model.viewer_horizontal_scroll);
+    render_scrollbars(
+        frame,
+        area,
+        metrics,
+        Viewport {
+            vertical: model.viewer_scroll,
+            horizontal: model.viewer_horizontal_scroll,
+        },
+    );
+}
+
+pub(crate) fn full_screen_viewer_metrics(
+    area: Rect,
+    model: &ExplorerModel,
+    viewer: &super::model::Viewer,
+) -> ViewportMetrics {
+    let text_area = Rect::new(
+        area.x,
+        area.y,
+        area.width.saturating_sub(design::BORDER_WIDTH),
+        area.height,
+    );
+    let widths = viewer
+        .lines
+        .iter()
+        .map(|line| Span::raw(terminal_safe_text(line)).width())
+        .collect::<Vec<_>>();
+    viewport_metrics(text_area, &widths, model.viewer_scroll, true)
 }
 
 pub(crate) fn tree_document(
@@ -261,7 +318,7 @@ mod tests {
     use diffo_diff::parse_unified_patch;
     use diffo_highlight::SyntaxHighlighter;
     use diffo_ui::file_picker::Navigation;
-    use ratatui::{Terminal, backend::TestBackend};
+    use ratatui::{Terminal, backend::TestBackend, style::Color};
     use std::collections::HashMap;
 
     #[test]
@@ -436,6 +493,11 @@ mod tests {
         let highlighted = SyntaxHighlighter::new()
             .highlight(std::path::Path::new("main.rs"), &document)
             .new;
+        let keyword_foreground = highlighted[&1]
+            .spans
+            .first()
+            .expect("highlighted Rust keyword")
+            .foreground;
 
         let mut model = ExplorerModel::new(diffo_core::RepositorySnapshot::default());
         model.viewer = Some(super::super::model::Viewer {
@@ -456,6 +518,71 @@ mod tests {
             .unwrap();
 
         insta::assert_debug_snapshot!(terminal.backend().buffer());
+        let code_area = terminal.backend().buffer().area.inner(design::PANEL_INSET);
+        let keyword_cell =
+            &terminal.backend().buffer()[(code_area.x + VIEWER_GUTTER_WIDTH, code_area.y)];
+        assert_eq!(
+            keyword_cell.fg,
+            Color::Rgb(
+                keyword_foreground.red,
+                keyword_foreground.green,
+                keyword_foreground.blue,
+            )
+        );
+        assert_eq!(keyword_cell.bg, Color::Reset);
+        assert!(keyword_cell.modifier.is_empty());
+
+        let backend = TestBackend::new(40, 5);
+        let mut full_screen = Terminal::new(backend).unwrap();
+        full_screen
+            .draw(|frame| render_full_screen(frame, frame.area(), &model, false))
+            .unwrap();
+        let keyword_cell = &full_screen.backend().buffer()[(0, 0)];
+        assert_eq!(keyword_cell.symbol(), "f");
+        assert_eq!(
+            keyword_cell.fg,
+            Color::Rgb(
+                keyword_foreground.red,
+                keyword_foreground.green,
+                keyword_foreground.blue,
+            )
+        );
+        let screen = full_screen
+            .backend()
+            .buffer()
+            .content
+            .iter()
+            .map(ratatui::buffer::Cell::symbol)
+            .collect::<String>();
+        assert!(!screen.contains("   1"));
+        assert!(!screen.contains('┌'));
+    }
+
+    #[test]
+    fn full_screen_file_text_keeps_the_vertical_scroll_control() {
+        let mut model = ExplorerModel::new(diffo_core::RepositorySnapshot::default());
+        model.viewer = Some(super::super::model::Viewer {
+            path: "many.txt".into(),
+            title: Box::new(Line::raw("many.txt")),
+            lines: (0..20).map(|line| format!("line {line}")).collect(),
+            markers: HashMap::new(),
+            highlighted: HashMap::new(),
+            coverage: Vec::new(),
+            syntax_eligible: false,
+            message: None,
+        });
+        let backend = TestBackend::new(20, 4);
+        let mut terminal = Terminal::new(backend).unwrap();
+
+        terminal
+            .draw(|frame| render_full_screen(frame, frame.area(), &model, false))
+            .unwrap();
+
+        assert_eq!(terminal.backend().buffer()[(0, 0)].symbol(), "l");
+        assert!(matches!(
+            terminal.backend().buffer()[(19, 0)].symbol(),
+            "█" | "║"
+        ));
     }
 
     #[test]

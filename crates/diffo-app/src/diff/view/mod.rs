@@ -1,8 +1,8 @@
 use super::{
-    Alignment, Block, Borders, DiffViewMode, DiffViewportMetrics, Frame, HunkButtonMetrics, Line,
-    Model, Paragraph, Rect, Renderer, ScrollbarMetrics, Style, inline_line, inline_skeleton_line,
-    overview_position, resize_border_style, side_by_side_line, side_by_side_skeleton_line,
-    terminal_safe_text,
+    Alignment, Block, Borders, DiffBlock, DiffViewMode, DiffViewportMetrics, Frame,
+    HunkButtonMetrics, Line, Model, Paragraph, Rect, Renderer, RowKind, ScrollbarMetrics, Style,
+    inline_line, inline_skeleton_line, overview_position, raw_hunk_line, resize_border_style,
+    side_by_side_line, side_by_side_skeleton_line, terminal_safe_text,
 };
 use diffo_ui::text_view::{Viewport, ViewportMetrics, render_lines, render_scrollbars};
 use diffo_ui::{design, enabled_control_style, theme};
@@ -51,6 +51,195 @@ pub(in crate::diff) fn render_change_markers(
 }
 
 impl Renderer {
+    pub fn render_full_screen(&mut self, frame: &mut Frame, area: Rect, model: &Model) {
+        let metrics = self.full_screen_metrics(area, model.diff_scroll);
+        let syntax_ready = self.failed.is_some()
+            || self.syntax_ready_for_viewport(
+                self.displayed_mode(model.diff_view_mode),
+                model.diff_scroll,
+            );
+        let lines = if syntax_ready {
+            self.full_screen_lines(model.diff_scroll, metrics.viewport_rows)
+        } else {
+            Vec::new()
+        };
+        render_lines(frame, metrics.area, lines, model.diff_horizontal_scroll);
+        let areas = render_scrollbars(
+            frame,
+            area,
+            metrics,
+            Viewport {
+                vertical: model.diff_scroll,
+                horizontal: model.diff_horizontal_scroll,
+            },
+        );
+        self.scrollbars = ScrollbarMetrics {
+            vertical_area: areas.vertical,
+            horizontal_area: areas.horizontal,
+            rows: metrics.rows,
+            columns: metrics.columns,
+            viewport_columns: metrics.viewport_columns,
+            maximum_vertical_scroll: metrics.maximum_vertical,
+        };
+    }
+
+    pub(in crate::diff) fn full_screen_metrics(
+        &self,
+        area: Rect,
+        requested_scroll: usize,
+    ) -> ViewportMetrics {
+        let rows = self.full_screen_rows();
+        let text_area = Rect::new(
+            area.x,
+            area.y,
+            area.width.saturating_sub(design::BORDER_WIDTH),
+            area.height,
+        );
+        let viewport_columns = usize::from(text_area.width);
+        let mut horizontal = false;
+        let mut columns = 0;
+        for _ in 0..2 {
+            let viewport_rows =
+                usize::from(text_area.height).saturating_sub(usize::from(horizontal));
+            let maximum_vertical = diffo_ui::maximum_scroll(rows, viewport_rows);
+            let first = requested_scroll.min(maximum_vertical);
+            columns = self
+                .full_screen_lines(first, viewport_rows)
+                .iter()
+                .map(Line::width)
+                .max()
+                .unwrap_or(0);
+            horizontal = columns > viewport_columns;
+        }
+        let horizontal_rows = u16::from(horizontal);
+        let content = Rect::new(
+            text_area.x,
+            text_area.y,
+            text_area.width,
+            text_area.height.saturating_sub(horizontal_rows),
+        );
+        let viewport_rows = usize::from(content.height);
+        ViewportMetrics {
+            area: content,
+            horizontal_scrollbar: if horizontal {
+                Rect::new(
+                    text_area.x,
+                    text_area.bottom().saturating_sub(design::BORDER_WIDTH),
+                    text_area.width,
+                    design::BORDER_WIDTH,
+                )
+            } else {
+                Rect::default()
+            },
+            rows,
+            columns,
+            viewport_rows,
+            viewport_columns,
+            maximum_vertical: diffo_ui::maximum_scroll(rows, viewport_rows),
+            maximum_horizontal: diffo_ui::maximum_scroll(columns, viewport_columns),
+        }
+    }
+
+    fn full_screen_rows(&self) -> usize {
+        self.highlighted.as_ref().map_or_else(
+            || {
+                self.failed
+                    .as_ref()
+                    .map_or(0, |key| key.patch.lines().count())
+            },
+            |cache| {
+                if cache.document.binary {
+                    1
+                } else {
+                    cache.inline.len()
+                }
+            },
+        )
+    }
+
+    fn full_screen_lines(&self, first_row: usize, row_count: usize) -> Vec<Line<'static>> {
+        if let Some(failed) = self.failed.as_ref() {
+            return failed
+                .patch
+                .lines()
+                .skip(first_row)
+                .take(row_count)
+                .map(|line| Line::raw(terminal_safe_text(line)))
+                .collect();
+        }
+        let Some(cache) = self.highlighted.as_ref() else {
+            return Vec::new();
+        };
+        if cache.document.binary {
+            return vec![Line::raw("Binary file changed.")];
+        }
+        let end = first_row.saturating_add(row_count);
+        let mut index = 0_usize;
+        let mut lines = Vec::new();
+        let mut push = |line: Line<'static>| {
+            if index >= first_row && index < end {
+                lines.push(line);
+            }
+            index = index.saturating_add(1);
+        };
+        for hunk in &cache.document.hunks {
+            push(raw_hunk_line(None, &hunk.header, RowKind::Header, None));
+            for block in &hunk.blocks {
+                match block {
+                    DiffBlock::Context(rows) => {
+                        for row in rows {
+                            let highlighted = row
+                                .new_number
+                                .and_then(|number| cache.highlighted.new.get(&number));
+                            push(raw_hunk_line(
+                                Some(' '),
+                                &row.text,
+                                raw_hunk_kind(
+                                    &row.text,
+                                    RowKind::Context,
+                                    cache.key.mark_conflicts,
+                                ),
+                                highlighted,
+                            ));
+                        }
+                    }
+                    DiffBlock::Change { removed, added, .. } => {
+                        for row in removed {
+                            let highlighted = row
+                                .old_number
+                                .and_then(|number| cache.highlighted.old.get(&number));
+                            push(raw_hunk_line(
+                                Some('-'),
+                                &row.text,
+                                raw_hunk_kind(
+                                    &row.text,
+                                    RowKind::Removed,
+                                    cache.key.mark_conflicts,
+                                ),
+                                highlighted,
+                            ));
+                        }
+                        for row in added {
+                            let highlighted = row
+                                .new_number
+                                .and_then(|number| cache.highlighted.new.get(&number));
+                            push(raw_hunk_line(
+                                Some('+'),
+                                &row.text,
+                                raw_hunk_kind(&row.text, RowKind::Added, cache.key.mark_conflicts),
+                                highlighted,
+                            ));
+                        }
+                    }
+                    DiffBlock::Meta(text) => {
+                        push(raw_hunk_line(None, text, RowKind::Meta, None));
+                    }
+                }
+            }
+        }
+        lines
+    }
+
     pub(in crate::diff) fn render_diff(
         &mut self,
         frame: &mut Frame,
@@ -292,5 +481,18 @@ impl Renderer {
                     .collect()
             }
         }
+    }
+}
+
+fn raw_hunk_kind(text: &str, fallback: RowKind, mark_conflicts: bool) -> RowKind {
+    if mark_conflicts
+        && (text.starts_with("<<<<<<<")
+            || text.starts_with("|||||||")
+            || text.starts_with("=======")
+            || text.starts_with(">>>>>>>"))
+    {
+        RowKind::Conflict
+    } else {
+        fallback
     }
 }

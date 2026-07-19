@@ -9,6 +9,7 @@ expression: help
     "End: Last file",
     "c: Open path menu",
     "1 / F1: Open command palette",
+    "f: Toggle full-screen buffer",
     "2 / F2: Toggle help",
     "q / Esc / Ctrl+c: Quit",
     "↑: Scroll diff up by four lines",

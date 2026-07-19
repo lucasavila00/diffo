@@ -43,6 +43,8 @@ impl Workbench {
         {
             return false;
         }
+        self.full_screen = false;
+        self.full_screen_pending = false;
         self.prompt = Some(PromptModal {
             command_id,
             id,

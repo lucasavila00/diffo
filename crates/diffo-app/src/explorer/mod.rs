@@ -16,10 +16,13 @@ use diffo_ui::text_view::{
     scrollbar_command,
 };
 use diffo_ui::{PaneSplit, design, maximum_scroll, scroll_offset, wheel_scroll_delta};
-use ratatui::{Frame, layout::Rect};
+use ratatui::{Frame, layout::Rect, text::Line};
 
 use model::{EntryId, ExplorerModel};
-use view::{VIEWER_GUTTER_WIDTH, entry_label, explorer_areas, tree_document, viewer_metrics};
+use view::{
+    VIEWER_GUTTER_WIDTH, entry_label, explorer_areas, full_screen_viewer_metrics, tree_document,
+    viewer_metrics,
+};
 pub use worker::{ExplorerOutcome, ExplorerRequest, ExplorerWorker};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -197,6 +200,64 @@ impl ExplorerActivity {
         }
     }
 
+    pub fn prepare_full_screen(&mut self, area: Rect) -> TextSurfacePreparation {
+        let metrics = self
+            .model
+            .viewer
+            .as_ref()
+            .map(|viewer| full_screen_viewer_metrics(area, &self.model, viewer));
+        if let Some(metrics) = metrics {
+            self.viewport_rows = metrics.viewport_rows.max(1);
+            self.viewport_columns = metrics.viewport_columns;
+            self.maximum_horizontal_scroll = metrics.maximum_horizontal;
+            self.model.viewer_scroll = self.model.viewer_scroll.min(metrics.maximum_vertical);
+            self.model.viewer_horizontal_scroll = self
+                .model
+                .viewer_horizontal_scroll
+                .min(metrics.maximum_horizontal);
+        }
+        let selected = self.selected_file().cloned();
+        let displayed = self.model.viewer.as_ref().map(|viewer| viewer.path.clone());
+        let text_missing = selected != displayed;
+        if text_missing && selected.as_ref() != self.pending_path.as_ref() {
+            if let Some(path) = selected.as_ref() {
+                self.request_file(path.clone(), 0);
+            }
+        } else if !self.viewer_syntax_ready()
+            && let Some(viewer) = self.model.viewer.as_ref()
+            && self.pending_path.as_ref() != Some(&viewer.path)
+        {
+            self.request_file(viewer.path.clone(), self.model.viewer_scroll);
+        }
+        let coverage = self
+            .model
+            .viewer
+            .as_ref()
+            .and_then(|viewer| viewer.coverage.last().map(|range| (range.start, range.end)));
+        TextSurfacePreparation {
+            surface: TextSurface::Explorer,
+            document_revision: self.content_revision,
+            viewport: (self.model.viewer_scroll, self.viewport_rows),
+            requested_range: (
+                self.model.viewer_scroll,
+                self.model.viewer_scroll.saturating_add(self.viewport_rows),
+            ),
+            mode: if text_missing {
+                TextRenderMode::TextSkeleton
+            } else if self.viewer_syntax_ready() {
+                TextRenderMode::Full
+            } else {
+                TextRenderMode::SyntaxSkeleton
+            },
+            coverage_before: coverage,
+            coverage_after: coverage,
+            request_id: self.pending_path.as_ref().map(|_| self.latest_file),
+            cache_hit: !text_missing && self.viewer_syntax_ready(),
+            coalesced_request: false,
+            stale_discarded: false,
+        }
+    }
+
     pub fn render(&self, frame: &mut Frame, area: Rect, split: PaneSplit) {
         view::render(
             frame,
@@ -206,6 +267,18 @@ impl ExplorerActivity {
             &self.picker,
             !self.viewer_syntax_ready(),
         );
+    }
+
+    pub fn render_full_screen(&self, frame: &mut Frame, area: Rect) {
+        view::render_full_screen(frame, area, &self.model, !self.viewer_syntax_ready());
+    }
+
+    #[must_use]
+    pub fn full_screen_title(&self) -> Option<Line<'static>> {
+        self.model
+            .viewer
+            .as_ref()
+            .map(|viewer| viewer.title.as_ref().clone())
     }
 
     #[must_use]
@@ -282,6 +355,64 @@ impl ExplorerActivity {
             KeyCode::Right => self.scroll_viewer_horizontal(LINE_SCROLL_ROWS),
             _ => return None,
         }
+        Some(ExplorerEvent::Consumed)
+    }
+
+    pub fn handle_full_screen_event(&mut self, event: &Event, area: Rect) -> Option<ExplorerEvent> {
+        if let Event::Mouse(mouse) = event {
+            if mouse.kind == MouseEventKind::Up(MouseButton::Left) && self.scrollbar_drag.is_some()
+            {
+                self.scrollbar_drag = None;
+                return Some(ExplorerEvent::Consumed);
+            }
+            if let Some(metrics) = self
+                .model
+                .viewer
+                .as_ref()
+                .map(|viewer| full_screen_viewer_metrics(area, &self.model, viewer))
+            {
+                let areas = scrollbar_areas(area, metrics);
+                let axis = if mouse.kind == MouseEventKind::Down(MouseButton::Left) {
+                    scrollbar_axis_at(areas, metrics, mouse.column, mouse.row)
+                } else if mouse.kind == MouseEventKind::Drag(MouseButton::Left) {
+                    self.scrollbar_drag
+                } else {
+                    None
+                };
+                if let Some(axis) = axis {
+                    self.scrollbar_drag = Some(axis);
+                    let command = scrollbar_command(axis, areas, metrics, mouse.column, mouse.row);
+                    self.apply_viewer_command(command, metrics);
+                    return Some(ExplorerEvent::Consumed);
+                }
+            }
+        }
+        let amount = match event {
+            Event::Key(key)
+                if key.kind == KeyEventKind::Press && key.modifiers == KeyModifiers::NONE =>
+            {
+                match key.code {
+                    KeyCode::Up => -LINE_SCROLL_ROWS,
+                    KeyCode::Down => LINE_SCROLL_ROWS,
+                    KeyCode::PageUp => -i64::try_from(self.viewport_rows).unwrap_or(i64::MAX),
+                    KeyCode::PageDown => i64::try_from(self.viewport_rows).unwrap_or(i64::MAX),
+                    KeyCode::Left => {
+                        self.scroll_viewer_horizontal(-LINE_SCROLL_ROWS);
+                        return Some(ExplorerEvent::Consumed);
+                    }
+                    KeyCode::Right => {
+                        self.scroll_viewer_horizontal(LINE_SCROLL_ROWS);
+                        return Some(ExplorerEvent::Consumed);
+                    }
+                    _ => return None,
+                }
+            }
+            Event::Mouse(mouse) if area.contains((mouse.column, mouse.row).into()) => {
+                wheel_scroll_delta(mouse.kind)?
+            }
+            _ => return None,
+        };
+        self.scroll_viewer(amount);
         Some(ExplorerEvent::Consumed)
     }
 

@@ -16,7 +16,7 @@ use std::{
     time::Duration,
 };
 
-use crossterm::event::{Event, MouseButton, MouseEventKind};
+use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind};
 use diffo_core::{ChangeKind, FileState, HeadState, RepositorySnapshot};
 use diffo_diff::{
     DiffBlock, DiffDocument, ProjectionOptions, RenderLine, RowKind, SideBySideRow,
@@ -25,7 +25,7 @@ use diffo_diff::{
 };
 use diffo_highlight::{HighlightedDiff, HighlightedLine, Rgb, StyledSpan, SyntaxHighlighter};
 use diffo_ui::file_picker::{Navigation as PickerNavigation, Outcome as PickerOutcome};
-use diffo_ui::{design, maximum_scroll, tool_areas};
+use diffo_ui::{design, maximum_scroll, tool_areas, wheel_scroll_delta};
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
@@ -60,7 +60,7 @@ use view::style::{
     contrast_ratio, contrasting_foreground, diff_background, diff_background_rgb, row_style,
 };
 use view::style::{
-    inline_line, inline_skeleton_line, side_by_side_line, side_by_side_skeleton_line,
+    inline_line, inline_skeleton_line, raw_hunk_line, side_by_side_line, side_by_side_skeleton_line,
 };
 
 use prepare::state::{
@@ -72,7 +72,7 @@ use prepare::state::{
 pub use diffo_highlight::{
     HIGHLIGHT_LOOKBEHIND_LINES, MAX_HIGHLIGHT_BYTES_PER_SIDE, MAX_HIGHLIGHT_FILE_LINES,
 };
-use diffo_ui::text_view::{TextRenderMode, TextSurface, TextSurfacePreparation};
+use diffo_ui::text_view::{LINE_SCROLL_ROWS, TextRenderMode, TextSurface, TextSurfacePreparation};
 pub use diffo_ui::{change_kind_style, plain_syntax_spans, terminal_safe_text};
 pub use prepare::state::{FramePreparation, Renderer, ViewportTransition};
 
@@ -129,33 +129,20 @@ impl Renderer {
     pub fn prepare_frame(&mut self, model: &Model, area: Rect) -> FramePreparation {
         let panes = horizontal_panes(main_area(area), model.file_pane_percent);
         self.prepare_file_pickers(model, panes[0]);
-        let diff_area = panes[1];
-        let requested = model.selected.as_ref().and_then(|selected| {
-            let file = model
-                .snapshot
-                .files
-                .iter()
-                .find(|file| file.path == selected.path)?;
-            let diff = match selected.area {
-                ChangeArea::Unstaged => file.unstaged.as_ref(),
-                ChangeArea::Staged => file.staged.as_ref(),
-            }?;
-            let patch = self
-                .requested
-                .as_ref()
-                .filter(|key| key.file == *selected && key.patch.as_ref() == diff.text)
-                .map_or_else(
-                    || Arc::<str>::from(diff.text.as_str()),
-                    |key| key.patch.clone(),
-                );
-            Some(DiffKey {
-                file: selected.clone(),
-                title: file_label(file),
-                patch,
-                mark_conflicts: file.kind == ChangeKind::Conflicted,
-                mode: model.diff_view_mode,
-            })
-        });
+        self.prepare_buffer(model, panes[1], false)
+    }
+
+    pub fn prepare_full_screen(&mut self, model: &Model, area: Rect) -> FramePreparation {
+        self.prepare_buffer(model, area, true)
+    }
+
+    fn prepare_buffer(
+        &mut self,
+        model: &Model,
+        diff_area: Rect,
+        undecorated: bool,
+    ) -> FramePreparation {
+        let requested = self.requested_key(model);
         self.requested.clone_from(&requested);
         if self.requested_navigation_target.is_some() && requested.as_ref() != self.displayed_key()
         {
@@ -168,7 +155,11 @@ impl Renderer {
                 .filter(|cache| cache.key.file == requested.file)
                 .map(|cache| ScrollAnchor::capture(cache, cache.key.mode, model.diff_scroll))
         });
-        self.diff_viewport_rows = usize::from(design::panel_content_extent(diff_area.height));
+        self.diff_viewport_rows = if undecorated {
+            usize::from(diff_area.height)
+        } else {
+            usize::from(design::panel_content_extent(diff_area.height))
+        };
         let prefetch_viewports = self.update_prefetch(model.diff_scroll);
         let target_scroll = self
             .navigation_preparation_target(requested.as_ref(), model.diff_view_mode)
@@ -207,13 +198,22 @@ impl Renderer {
             .map_or(model.diff_scroll, |viewport| viewport.vertical)
             .min(self.displayed_rows(self.displayed_mode(model.diff_view_mode)));
         let displayed_mode = self.displayed_mode(model.diff_view_mode);
-        let viewport =
-            self.diff_viewport_metrics(displayed_mode, diff_area, rendered_vertical_scroll);
+        let (maximum_vertical_scroll, maximum_horizontal_scroll) = if undecorated {
+            let viewport = self.full_screen_metrics(diff_area, rendered_vertical_scroll);
+            (viewport.maximum_vertical, viewport.maximum_horizontal)
+        } else {
+            let viewport =
+                self.diff_viewport_metrics(displayed_mode, diff_area, rendered_vertical_scroll);
+            (
+                viewport.maximum_vertical_scroll,
+                maximum_scroll(viewport.columns, viewport.viewport_columns),
+            )
+        };
         let syntax_ready = self.failed.is_some()
             || self.syntax_ready_for_viewport(displayed_mode, rendered_vertical_scroll);
         FramePreparation {
-            maximum_vertical_scroll: viewport.maximum_vertical_scroll,
-            maximum_horizontal_scroll: maximum_scroll(viewport.columns, viewport.viewport_columns),
+            maximum_vertical_scroll,
+            maximum_horizontal_scroll,
             content_revision: self.content_revision,
             preparing: self.requested.as_ref() != self.displayed_key(),
             syntax_ready,
@@ -227,6 +227,116 @@ impl Renderer {
                 requested.as_ref(),
             )),
         }
+    }
+
+    fn requested_key(&self, model: &Model) -> Option<DiffKey> {
+        let selected = model.selected.as_ref()?;
+        let file = model
+            .snapshot
+            .files
+            .iter()
+            .find(|file| file.path == selected.path)?;
+        let diff = match selected.area {
+            ChangeArea::Unstaged => file.unstaged.as_ref(),
+            ChangeArea::Staged => file.staged.as_ref(),
+        }?;
+        let patch = self
+            .requested
+            .as_ref()
+            .filter(|key| key.file == *selected && key.patch.as_ref() == diff.text)
+            .map_or_else(
+                || Arc::<str>::from(diff.text.as_str()),
+                |key| key.patch.clone(),
+            );
+        Some(DiffKey {
+            file: selected.clone(),
+            title: file_label(file),
+            patch,
+            mark_conflicts: file.kind == ChangeKind::Conflicted,
+            mode: model.diff_view_mode,
+        })
+    }
+
+    #[must_use]
+    pub fn full_screen_title(&self) -> Option<Line<'static>> {
+        self.displayed_key().map(|key| key.title.clone())
+    }
+
+    pub fn map_full_screen_event(
+        &mut self,
+        event: &Event,
+        model: &Model,
+        area: Rect,
+    ) -> Option<RendererEvent> {
+        if let Event::Mouse(mouse) = event {
+            if mouse.kind == MouseEventKind::Up(MouseButton::Left) && self.scrollbar_drag.is_some()
+            {
+                self.scrollbar_drag = None;
+                return Some(RendererEvent::Consumed);
+            }
+            if matches!(
+                mouse.kind,
+                MouseEventKind::Down(MouseButton::Left) | MouseEventKind::Drag(MouseButton::Left)
+            ) {
+                let axis = if mouse.kind == MouseEventKind::Down(MouseButton::Left) {
+                    self.scrollbar_at(mouse.column, mouse.row)
+                } else {
+                    self.scrollbar_drag
+                };
+                if let Some(axis) = axis {
+                    self.scrollbar_drag = Some(axis);
+                    self.requested_navigation_target = None;
+                    let message = self.scrollbar_message(axis, mouse.column, mouse.row);
+                    return Some(RendererEvent::Message(Self::vertical_message(
+                        message, model,
+                    )));
+                }
+            }
+        }
+        let page_rows = usize::from(
+            area.height
+                .saturating_sub(u16::from(!self.scrollbars.horizontal_area.is_empty())),
+        )
+        .max(1);
+        let message = match event {
+            Event::Key(key)
+                if key.kind == KeyEventKind::Press && key.modifiers == KeyModifiers::NONE =>
+            {
+                match key.code {
+                    KeyCode::Up => Message::ScrollDiffVerticalBy(-LINE_SCROLL_ROWS),
+                    KeyCode::Down => Message::ScrollDiffVerticalBy(LINE_SCROLL_ROWS),
+                    KeyCode::PageUp => Message::ScrollDiffPageUp(page_rows),
+                    KeyCode::PageDown => Message::ScrollDiffPageDown(page_rows),
+                    KeyCode::Left => Message::ScrollDiffHorizontalBy(-LINE_SCROLL_ROWS),
+                    KeyCode::Right => Message::ScrollDiffHorizontalBy(LINE_SCROLL_ROWS),
+                    KeyCode::Char('q') | KeyCode::Esc => Message::Quit,
+                    _ => return None,
+                }
+            }
+            Event::Key(key)
+                if key.kind == KeyEventKind::Press
+                    && key.code == KeyCode::Char('c')
+                    && key.modifiers.contains(KeyModifiers::CONTROL) =>
+            {
+                Message::Quit
+            }
+            Event::Mouse(mouse)
+                if area.contains((mouse.column, mouse.row).into())
+                    && wheel_scroll_delta(mouse.kind).is_some() =>
+            {
+                Message::ScrollDiffVerticalBy(wheel_scroll_delta(mouse.kind).unwrap_or_default())
+            }
+            _ => return None,
+        };
+        if matches!(
+            message,
+            Message::ScrollDiffPageUp(_)
+                | Message::ScrollDiffPageDown(_)
+                | Message::ScrollDiffVerticalBy(_)
+        ) {
+            self.requested_navigation_target = None;
+        }
+        Some(RendererEvent::Message(message))
     }
 
     fn prepare_file_pickers(&mut self, model: &Model, area: Rect) {

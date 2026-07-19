@@ -31,6 +31,55 @@ fn view_toggle_renders_immediately() -> Result<()> {
 }
 
 #[test]
+fn full_screen_diff_shows_raw_hunks_and_exits_by_key_or_x() -> Result<()> {
+    let repository = TestRepository::new()?;
+    fs::write(repository.worktree.join("tracked.txt"), "changed\n")?;
+    let mut screen = repository.screen()?;
+
+    screen
+        .press(Key::Char('f'))?
+        .wait_for_text_gone("Changes")?
+        .wait_for_text("@@ -1 +1 @@")?;
+    let contents = screen.contents();
+    assert!(contents.contains("-base"));
+    assert!(contents.contains("+changed"));
+    assert!(!contents.contains("File Diff"));
+    assert!(!contents.contains("branch master"));
+
+    screen
+        .press(Key::Char('F'))?
+        .wait_for_text("@@ -1 +1 @@")?
+        .press(Key::Char('f'))?
+        .wait_for_text("Changes")?
+        .press(Key::Char('f'))?
+        .wait_for_text_gone("Changes")?
+        .click(&Selector::text("X"))?
+        .wait_for_text("Changes")?;
+    Ok(())
+}
+
+#[test]
+fn full_screen_explorer_shows_only_the_open_file_and_scroll_controls() -> Result<()> {
+    let repository = TestRepository::new()?;
+    let mut screen = repository.screen()?;
+
+    screen
+        .press(Key::Tab)?
+        .wait_for_text("Explorer")?
+        .wait_for_text("base")?
+        .press(Key::Char('f'))?
+        .wait_for_text_gone("Explorer")?
+        .wait_for_text("base")?;
+    let contents = screen.contents();
+    assert!(contents.contains("tracked.txt"));
+    assert!(!contents.contains("previous"));
+    assert!(!contents.contains("branch master"));
+
+    screen.press(Key::Char('f'))?.wait_for_text("Explorer")?;
+    Ok(())
+}
+
+#[test]
 fn every_file_navigation_alias_moves_selection() -> Result<()> {
     let repository = TestRepository::new()?;
     fs::write(repository.worktree.join("tracked.txt"), "changed\n")?;

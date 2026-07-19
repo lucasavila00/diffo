@@ -110,6 +110,10 @@ pub(super) static KEY_BINDINGS: &[KeyBinding] = &[
 
 pub(crate) fn help_rows() -> Vec<(String, &'static str)> {
     std::iter::once(("1 / F1".to_owned(), "Open command palette"))
+        .chain(std::iter::once((
+            "f".to_owned(),
+            "Toggle full-screen buffer",
+        )))
         .chain(KEY_BINDINGS.iter().map(|binding| {
             let keys = binding
                 .keys

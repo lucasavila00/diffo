@@ -214,6 +214,98 @@ fn n_and_p_move_between_changes_with_the_keyboard() -> Result<()> {
 }
 
 #[test]
+fn fully_visible_changes_are_skipped_in_both_directions_without_wrapping() -> Result<()> {
+    let repository = TestRepository::new()?;
+    let path = repository.worktree.join("clustered-navigation.rs");
+    install_navigation_fixture(
+        &repository,
+        &path,
+        clustered_navigation_file(false)?,
+        clustered_navigation_file(true)?,
+    )?;
+
+    let mut screen = repository.screen()?;
+    screen
+        .wait_for_text("EARLY_CLUSTER_CHANGE")?
+        .wait_for_text_gone("↑ Previous change (p)")?
+        .press(Key::Char('n'))?
+        .wait_for_text("CLUSTER_CHANGE_A")?
+        .wait_for_text("CLUSTER_CHANGE_B")?
+        .wait_for_text("CLUSTER_CHANGE_C")?
+        .click(&Selector::text("↑ Previous change (p)"))?
+        .wait_for_text("EARLY_CLUSTER_CHANGE")?;
+
+    screen.press(Key::Char('p'))?;
+    thread::sleep(Duration::from_millis(100));
+    screen
+        .wait_for_text("EARLY_CLUSTER_CHANGE")?
+        .click(&Selector::text("↓ Next change (n)"))?
+        .wait_for_text("CLUSTER_CHANGE_A")?
+        .click(&Selector::text("↓ Next change (n)"))?
+        .wait_for_text("LATE_CLUSTER_CHANGE")?
+        .wait_for_text_gone("↓ Next change (n)")?
+        .press(Key::Char('n'))?;
+    thread::sleep(Duration::from_millis(100));
+    screen
+        .wait_for_text("LATE_CLUSTER_CHANGE")?
+        .press(Key::Char('p'))?
+        .wait_for_text("CLUSTER_CHANGE_C")?;
+    Ok(())
+}
+
+#[test]
+fn one_change_taller_than_the_viewport_advances_and_retreats_by_one_page() -> Result<()> {
+    let repository = TestRepository::new()?;
+    let path = repository.worktree.join("tall-change.rs");
+    install_navigation_fixture(
+        &repository,
+        &path,
+        tall_change_file(false)?,
+        tall_change_file(true)?,
+    )?;
+
+    let mut screen = repository.screen()?;
+    screen
+        .wait_for_text("OLD_TALL_CHANGE_000")?
+        .click(&Selector::text("↓ Next change (n)"))?
+        .wait_for_text("OLD_TALL_CHANGE_030")?
+        .wait_for_text_gone("OLD_TALL_CHANGE_000")?
+        .click(&Selector::text("↑ Previous change (p)"))?
+        .wait_for_text("OLD_TALL_CHANGE_000")?
+        .press(Key::Char('n'))?
+        .wait_for_text("OLD_TALL_CHANGE_030")?;
+    assert!(screen.contents().contains("↓ Next change (n)"));
+    assert!(screen.contents().contains("↑ Previous change (p)"));
+    Ok(())
+}
+
+#[test]
+fn inline_and_side_by_side_modes_use_their_own_change_bounds() -> Result<()> {
+    let repository = TestRepository::new()?;
+    let path = repository.worktree.join("projection-navigation.rs");
+    install_navigation_fixture(
+        &repository,
+        &path,
+        projection_navigation_file(false)?,
+        projection_navigation_file(true)?,
+    )?;
+
+    let mut screen = repository.screen()?;
+    screen
+        .wait_for_text("OLD_PROJECTION_CHANGE_00")?
+        .wait_for_text("↓ Next change (n)")?
+        .press(Key::Char('r'))?
+        .wait_for_text("Side by side")?
+        .wait_for_text("NEW_PROJECTION_CHANGE_00")?
+        .wait_for_text_gone("↓ Next change (n)")?
+        .wait_for_text_gone("↑ Previous change (p)")?
+        .press(Key::Char('n'))?;
+    thread::sleep(Duration::from_millis(100));
+    screen.wait_for_text("NEW_PROJECTION_CHANGE_00")?;
+    Ok(())
+}
+
+#[test]
 fn delayed_next_change_commits_the_target_and_syntax_atomically() -> Result<()> {
     let repository = TestRepository::new()?;
     let path = repository.worktree.join("delayed-navigation.rs");
@@ -394,6 +486,64 @@ fn delayed_navigation_file(changed: bool) -> Result<String> {
         };
         writeln!(contents, "pub const DELAYED_{line:03}: &str = \"{value}\";")
             .context("build delayed navigation file")?;
+    }
+    Ok(contents)
+}
+
+fn install_navigation_fixture(
+    repository: &TestRepository,
+    path: &Path,
+    before: String,
+    after: String,
+) -> Result<()> {
+    fs::write(path, before)?;
+    let relative = path
+        .strip_prefix(&repository.worktree)
+        .context("navigation fixture is outside the worktree")?;
+    git(
+        &repository.worktree,
+        &["add", relative.to_string_lossy().as_ref()],
+    )?;
+    git(
+        &repository.worktree,
+        &["commit", "-m", "Add viewport navigation fixture"],
+    )?;
+    fs::write(path, after)?;
+    Ok(())
+}
+
+fn clustered_navigation_file(changed: bool) -> Result<String> {
+    let mut contents = String::new();
+    for line in 0..130 {
+        let value = match (changed, line) {
+            (true, 10) => "EARLY_CLUSTER_CHANGE".to_owned(),
+            (true, 50) => "CLUSTER_CHANGE_A".to_owned(),
+            (true, 55) => "CLUSTER_CHANGE_B".to_owned(),
+            (true, 60) => "CLUSTER_CHANGE_C".to_owned(),
+            (true, 110) => "LATE_CLUSTER_CHANGE".to_owned(),
+            _ => format!("cluster_value_{line:03}"),
+        };
+        writeln!(contents, "pub const CLUSTER_{line:03}: &str = \"{value}\";")
+            .context("build clustered navigation file")?;
+    }
+    Ok(contents)
+}
+
+fn tall_change_file(changed: bool) -> Result<String> {
+    let mut contents = String::new();
+    for line in 0..100 {
+        let prefix = if changed && line < 80 { "NEW" } else { "OLD" };
+        writeln!(contents, "{prefix}_TALL_CHANGE_{line:03}").context("build tall change file")?;
+    }
+    Ok(contents)
+}
+
+fn projection_navigation_file(changed: bool) -> Result<String> {
+    let mut contents = String::new();
+    for line in 0..40 {
+        let prefix = if changed && line < 15 { "NEW" } else { "OLD" };
+        writeln!(contents, "{prefix}_PROJECTION_CHANGE_{line:02}")
+            .context("build projection navigation file")?;
     }
     Ok(contents)
 }

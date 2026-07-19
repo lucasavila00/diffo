@@ -175,7 +175,7 @@ mod tests {
         let id = workbench.commands.enqueue(action);
         assert_eq!(
             workbench
-                .take_repository_command()
+                .take_repository_command(std::time::Instant::now())
                 .map(|command| command.id),
             Some(id)
         );
@@ -340,7 +340,7 @@ mod tests {
         assert!(workbench.modal.is_none());
         assert_eq!(workbench.diff.model.commit_message, "x");
         let command = workbench
-            .take_repository_command()
+            .take_repository_command(std::time::Instant::now())
             .expect("commit should be queued");
         workbench.action_failed(
             command.id,

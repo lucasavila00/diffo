@@ -11,7 +11,7 @@ use std::{
 
 use anyhow::{Context, Result, bail};
 use diffo_app::Model;
-use diffo_core::{Repository, RepositorySnapshot, RepositorySource};
+use diffo_core::{Repository, RepositorySnapshot, RepositorySource, RepositoryUpdateKind};
 use diffo_git::GitRepositorySource;
 use diffo_repository_service::{RepositoryEvent, RepositoryService};
 
@@ -130,21 +130,25 @@ fn wait_for_snapshot(
 ) -> Result<RepositorySnapshot> {
     while Instant::now() < deadline {
         match repository_service.try_recv() {
-            Ok(Some(RepositoryEvent::SnapshotRefreshed { snapshot, .. }))
-                if predicate(&snapshot) =>
+            Ok(Some(RepositoryEvent::Update(update))) if matches!(&update.kind, RepositoryUpdateKind::Snapshot(snapshot) if predicate(snapshot)) =>
             {
+                let RepositoryUpdateKind::Snapshot(snapshot) = update.kind else {
+                    unreachable!();
+                };
                 return Ok(snapshot);
             }
             Ok(Some(
                 RepositoryEvent::BranchesLoaded { .. }
                 | RepositoryEvent::BranchesLoadFailed { .. }
-                | RepositoryEvent::Prompt { .. }
-                | RepositoryEvent::SnapshotRefreshed { .. }
-                | RepositoryEvent::CommandCompleted { .. }
-                | RepositoryEvent::CommandFailed { .. }
-                | RepositoryEvent::CommandCancelled { .. },
+                | RepositoryEvent::Prompt { .. },
             )) => {}
-            Ok(Some(RepositoryEvent::RefreshFailed { message, .. })) => bail!(message),
+            Ok(Some(RepositoryEvent::Update(update))) => match update.kind {
+                RepositoryUpdateKind::RefreshFailed(message) => bail!(message),
+                RepositoryUpdateKind::Snapshot(_)
+                | RepositoryUpdateKind::CommandCompleted { .. }
+                | RepositoryUpdateKind::CommandFailed { .. }
+                | RepositoryUpdateKind::CommandCancelled { .. } => {}
+            },
             Ok(None) => thread::sleep(Duration::from_millis(10)),
             Err(error) => bail!("repository service stopped: {error}"),
         }

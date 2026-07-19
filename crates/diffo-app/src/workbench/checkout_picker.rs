@@ -18,7 +18,13 @@ pub(super) enum CheckoutPickerEvent {
 pub(super) struct CheckoutPicker {
     pub(super) query_id: RepositoryQueryId,
     branches: Vec<BranchRef>,
-    picker: SearchPicker<CheckoutTarget>,
+    picker: SearchPicker<CheckoutIdentity, CheckoutTarget>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct CheckoutIdentity {
+    kind: BranchKind,
+    full_ref: String,
 }
 
 impl CheckoutPicker {
@@ -62,7 +68,11 @@ impl CheckoutPicker {
                         .unwrap_or_default(),
                 };
                 SearchItem {
-                    key: CheckoutTarget {
+                    identity: CheckoutIdentity {
+                        kind: branch.kind,
+                        full_ref: branch.full_ref.clone(),
+                    },
+                    payload: CheckoutTarget {
                         kind: branch.kind,
                         full_ref: branch.full_ref.clone(),
                         object_id: branch.object_id.clone(),
@@ -73,7 +83,7 @@ impl CheckoutPicker {
                 }
             })
             .collect();
-        self.picker.set_items(items);
+        self.picker.reconcile_items(items);
     }
 
     pub(super) fn handle_event(&mut self, event: &Event, area: Rect) -> CheckoutPickerEvent {
@@ -213,7 +223,7 @@ mod tests {
         );
         let _ = workbench.handle_event(&key(KeyCode::Enter), area);
         let command = workbench
-            .take_repository_command()
+            .take_repository_command(std::time::Instant::now())
             .expect("checkout queued");
         assert_eq!(
             command.action,
@@ -266,5 +276,52 @@ mod tests {
         assert!(workbench.modal.is_none());
         assert_eq!(workbench.toasts.as_slice().len(), 1);
         assert_eq!(workbench.toasts.as_slice()[0].kind, ToastKind::Error);
+    }
+
+    #[test]
+    fn refresh_between_down_and_enter_keeps_identity_and_uses_newest_object_id() {
+        let snapshot = RepositorySnapshot {
+            head: HeadState::Named {
+                name: "main".to_owned(),
+                commit: "aaa".to_owned(),
+            },
+            ..RepositorySnapshot::default()
+        };
+        let mut workbench = Workbench::new(snapshot.clone());
+        let area = Rect::new(0, 0, 100, 30);
+        let _ = workbench.execute_palette_command(CHECKOUT_COMMAND);
+        let query_id = workbench.take_branch_query().expect("branch query queued");
+        workbench.branches_loaded(
+            query_id,
+            vec![
+                branch(BranchKind::Local, "main", "aaa"),
+                branch(BranchKind::Local, "topic", "old-topic"),
+                branch(BranchKind::Local, "zzz", "old-zzz"),
+            ],
+        );
+        let _ = workbench.handle_event(&key(KeyCode::Down), area);
+
+        workbench.branches_loaded(
+            query_id,
+            vec![
+                branch(BranchKind::Local, "zzz", "new-zzz"),
+                branch(BranchKind::Local, "main", "aaa"),
+                branch(BranchKind::Local, "topic", "new-topic"),
+            ],
+        );
+        workbench.repository_changed(snapshot);
+        let _ = workbench.handle_event(&key(KeyCode::Enter), area);
+
+        let command = workbench
+            .take_repository_command(std::time::Instant::now())
+            .expect("checkout queued");
+        assert_eq!(
+            command.action,
+            RepositoryAction::Checkout(Box::new(CheckoutTarget {
+                kind: BranchKind::Local,
+                full_ref: "refs/heads/zzz".to_owned(),
+                object_id: "new-zzz".to_owned(),
+            }))
+        );
     }
 }

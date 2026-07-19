@@ -28,6 +28,31 @@ fn space_stages_selected_file() -> Result<()> {
 }
 
 #[test]
+fn slow_stage_shows_progress_then_commits_only_the_list_change() -> Result<()> {
+    let repository = TestRepository::new()?;
+    fs::write(repository.worktree.join("tracked.txt"), "changed\n")?;
+    let mut gate = diffo_e2e::GitProxy::new("add", diffo_e2e::GitGatePhase::Before)?;
+    let path = gate.path()?;
+    let mut screen = DiffoScreen::launch_with_env(
+        env!("CARGO_BIN_EXE_diffo"),
+        &repository.worktree,
+        &[("PATH", path.as_os_str())],
+    )?;
+
+    screen
+        .wait_for(&Selector::selected_row("tracked.txt"))?
+        .press(Key::Char(' '))?;
+    gate.wait_until_blocked()?;
+    screen.wait_for_text("Staging")?;
+    gate.release()?;
+    screen
+        .wait_for(&Selector::file_action("Staged", "tracked.txt", "[-]"))?
+        .wait_for_text_gone("Staging")?;
+    assert!(!screen.contents().contains("Stage complete"));
+    Ok(())
+}
+
+#[test]
 fn space_stages_and_selects_the_next_unstaged_file() -> Result<()> {
     let repository = TestRepository::new()?;
     fs::write(repository.worktree.join("tracked.txt"), "changed\n")?;

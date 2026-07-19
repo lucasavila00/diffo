@@ -140,6 +140,32 @@ pub enum OperationResult {
     Checkout { branch: String },
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RepositoryUpdate {
+    pub generation: u64,
+    pub kind: RepositoryUpdateKind,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum RepositoryUpdateKind {
+    Snapshot(RepositorySnapshot),
+    RefreshFailed(String),
+    CommandCompleted {
+        command_id: ApplicationCommandId,
+        action: RepositoryAction,
+        result: OperationResult,
+        snapshot: RepositorySnapshot,
+    },
+    CommandFailed {
+        command_id: ApplicationCommandId,
+        failure: OperationFailure,
+    },
+    CommandCancelled {
+        command_id: ApplicationCommandId,
+        action: RepositoryAction,
+    },
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct CancellationHandle(Arc<AtomicBool>);
 

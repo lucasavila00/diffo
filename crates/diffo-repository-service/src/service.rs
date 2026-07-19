@@ -11,10 +11,11 @@ use std::{
 
 use anyhow::{Context, Result};
 use diffo_core::{
-    ApplicationCommandId, BranchRef, CancellationHandle, GitPrompt, OperationFailure,
-    OperationResult, PromptAnswer, PromptHandler, PromptId, Repository, RepositoryAction,
-    RepositoryQueryId, RepositorySnapshot,
+    ApplicationCommandId, BranchRef, CancellationHandle, GitPrompt, PromptAnswer, PromptHandler,
+    PromptId, Repository, RepositoryAction, RepositoryQueryId, RepositoryUpdate,
 };
+#[cfg(test)]
+use diffo_core::{OperationFailure, OperationResult, RepositorySnapshot, RepositoryUpdateKind};
 
 use crate::{
     watcher::RepositoryWatcher,
@@ -36,31 +37,7 @@ pub enum RepositoryEvent {
         prompt_id: PromptId,
         prompt: GitPrompt,
     },
-    SnapshotRefreshed {
-        generation: u64,
-        snapshot: RepositorySnapshot,
-    },
-    RefreshFailed {
-        generation: u64,
-        message: String,
-    },
-    CommandCompleted {
-        generation: u64,
-        command_id: ApplicationCommandId,
-        action: RepositoryAction,
-        result: OperationResult,
-        snapshot: RepositorySnapshot,
-    },
-    CommandFailed {
-        generation: u64,
-        command_id: ApplicationCommandId,
-        failure: OperationFailure,
-    },
-    CommandCancelled {
-        generation: u64,
-        command_id: ApplicationCommandId,
-        action: RepositoryAction,
-    },
+    Update(RepositoryUpdate),
 }
 
 pub struct RepositoryService {

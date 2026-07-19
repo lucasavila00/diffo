@@ -1,6 +1,9 @@
 //! Activity composition, global input routing, and command lifecycle.
 
-use std::{collections::HashMap, time::Instant};
+use std::{
+    collections::HashMap,
+    time::{Duration, Instant},
+};
 
 use crate::diff::{
     CommandProgress, FramePreparation, Renderer, RendererEvent, command_cancel_at_position,
@@ -9,7 +12,7 @@ use crate::diff::{
 use crate::diff::{Effect, Message, Model, ToastKind, ToastQueue, update};
 use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind};
 use diffo_core::{
-    ApplicationCommandId, GitPrompt, OperationFailure, OperationResult, PromptId, RepositoryAction,
+    ApplicationCommandId, GitPrompt, OperationFailure, PromptId, RepositoryAction,
     RepositoryQueryId, RepositorySnapshot,
 };
 use diffo_ui::command_palette::{Command, CommandId};
@@ -31,6 +34,7 @@ mod help;
 mod modal;
 mod pending_scroll;
 mod prompt;
+mod repository_update;
 
 use modal::Modal;
 use pending_scroll::PendingScroll;
@@ -126,6 +130,8 @@ pub struct Workbench {
     toasts: ToastQueue,
     toast_deadlines: HashMap<u64, Instant>,
     commands: CommandQueue,
+    repository_generation: u64,
+    command_progress: CommandProgressState,
     command_animation_tick: usize,
     should_quit: bool,
     full_screen: bool,
@@ -142,6 +148,32 @@ struct DiffActivity {
 }
 
 struct SearchActivity;
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+enum CommandProgressState {
+    #[default]
+    Hidden,
+    Waiting {
+        command_id: ApplicationCommandId,
+        reveal_at: Instant,
+    },
+    Visible {
+        command_id: ApplicationCommandId,
+    },
+}
+
+impl CommandProgressState {
+    const fn command_id(self) -> Option<ApplicationCommandId> {
+        match self {
+            Self::Hidden => None,
+            Self::Waiting { command_id, .. } | Self::Visible { command_id } => Some(command_id),
+        }
+    }
+
+    const fn is_visible(self) -> bool {
+        matches!(self, Self::Visible { .. })
+    }
+}
 
 const FETCH_COMMAND: CommandId = CommandId::new("git.fetch");
 const PULL_COMMAND: CommandId = CommandId::new("git.pull");
@@ -200,6 +232,8 @@ impl Workbench {
             toasts: ToastQueue::new(),
             toast_deadlines: HashMap::new(),
             commands: CommandQueue::new(),
+            repository_generation: 0,
+            command_progress: CommandProgressState::Hidden,
             command_animation_tick: 0,
             should_quit: false,
             full_screen: false,
@@ -238,9 +272,21 @@ impl Workbench {
         )
     }
 
-    pub fn tick(&mut self) {
-        self.expire_toasts();
-        if self.commands.active().is_some() {
+    pub fn tick(&mut self, now: Instant) {
+        self.expire_toasts(now);
+        if let CommandProgressState::Waiting {
+            command_id,
+            reveal_at,
+        } = self.command_progress
+            && self
+                .commands
+                .active()
+                .is_some_and(|command| command.id == command_id)
+            && now >= reveal_at
+        {
+            self.command_progress = CommandProgressState::Visible { command_id };
+        }
+        if self.command_progress.is_visible() {
             self.command_animation_tick = self.command_animation_tick.wrapping_add(1);
         } else {
             self.command_animation_tick = 0;
@@ -292,7 +338,11 @@ impl Workbench {
         self.render_full_screen_entry(frame);
         render_pane_drag_marker(frame, tool_areas(content).content, self.pane_split);
         render_toasts(frame, self.toasts.as_slice(), content);
-        if let Some(command) = self.commands.active() {
+        if let Some(command) = self
+            .commands
+            .active()
+            .filter(|_| self.command_progress.is_visible())
+        {
             render_command_progress(
                 frame,
                 CommandProgress {
@@ -304,7 +354,7 @@ impl Workbench {
             );
         }
         render_activity_bar(frame, area, self.active);
-        if self.commands.active().is_some() {
+        if self.command_progress.is_visible() {
             frame.render_widget(
                 Block::default()
                     .borders(Borders::ALL)
@@ -478,7 +528,12 @@ impl Workbench {
         {
             return false;
         }
-        let Some(id) = self.commands.active().map(|command| command.id) else {
+        let Some(id) = self
+            .commands
+            .active()
+            .filter(|_| self.command_progress.is_visible())
+            .map(|command| command.id)
+        else {
             return false;
         };
         self.commands.cancel(id)
@@ -497,9 +552,14 @@ impl Workbench {
         }
     }
 
-    pub fn take_repository_command(&mut self) -> Option<ApplicationCommand> {
+    pub fn take_repository_command(&mut self, now: Instant) -> Option<ApplicationCommand> {
         let command = self.commands.start_next()?;
         self.last_prompt_id = None;
+        self.command_progress = CommandProgressState::Waiting {
+            command_id: command.id,
+            reveal_at: now + Duration::from_millis(150),
+        };
+        self.command_animation_tick = 0;
         let _ = self
             .diff
             .model
@@ -610,74 +670,6 @@ impl Workbench {
     pub fn show_toast(&mut self, kind: ToastKind, message: impl Into<String>) {
         self.toasts.show(kind, message);
     }
-
-    pub fn operation_failed(&mut self, message: String) {
-        let _ = self.update_diff(Message::OperationFailed(message));
-    }
-
-    pub fn operation_completed(
-        &mut self,
-        id: ApplicationCommandId,
-        action: RepositoryAction,
-        result: OperationResult,
-        snapshot: RepositorySnapshot,
-    ) {
-        if self
-            .commands
-            .acknowledge(id, CommandResult::Succeeded)
-            .is_none()
-        {
-            return;
-        }
-        self.close_prompt(id);
-        let _ = self.update_diff(Message::OperationCompleted(action, result, snapshot));
-    }
-
-    pub fn action_failed(&mut self, id: ApplicationCommandId, failure: OperationFailure) {
-        if self
-            .commands
-            .acknowledge(id, CommandResult::Failed)
-            .is_none()
-        {
-            return;
-        }
-        self.close_prompt(id);
-        let _ = self.update_diff(Message::ActionFailed(failure));
-    }
-
-    pub fn operation_cancelled(&mut self, id: ApplicationCommandId, action: RepositoryAction) {
-        if self
-            .commands
-            .acknowledge(id, CommandResult::Cancelled)
-            .is_none()
-        {
-            return;
-        }
-        self.close_prompt(id);
-        let _ = self.update_diff(Message::OperationCancelled(action));
-    }
-
-    fn expire_toasts(&mut self) {
-        let now = Instant::now();
-        self.toast_deadlines
-            .retain(|id, _| self.toasts.as_slice().iter().any(|toast| toast.id == *id));
-        for toast in self.toasts.as_slice() {
-            if toast.kind != ToastKind::Error {
-                self.toast_deadlines
-                    .entry(toast.id)
-                    .or_insert_with(|| now + std::time::Duration::from_secs(3));
-            }
-        }
-        let expired = self
-            .toast_deadlines
-            .iter()
-            .filter_map(|(id, deadline)| (*deadline <= now).then_some(*id))
-            .collect::<Vec<_>>();
-        for id in expired {
-            self.toasts.dismiss(id);
-            self.toast_deadlines.remove(&id);
-        }
-    }
 }
 
 fn render_pane_drag_marker(frame: &mut Frame, area: Rect, split: PaneSplit) {
@@ -693,5 +685,7 @@ fn render_pane_drag_marker(frame: &mut Frame, area: Rect, split: PaneSplit) {
 mod tool_impls;
 use tool_impls::explorer_preparation;
 
+#[cfg(test)]
+mod repository_update_tests;
 #[cfg(test)]
 mod tests;

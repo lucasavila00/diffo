@@ -1,7 +1,7 @@
 use super::*;
 use crate::diff::NetworkOperation;
 use crossterm::event::{KeyEvent, KeyEventState, MouseEvent};
-use diffo_core::{ChangeKind, FileDiff, FileState};
+use diffo_core::{ChangeKind, FileDiff, FileState, OperationResult};
 use ratatui::{Terminal, backend::TestBackend, buffer::Buffer, style::Color};
 
 fn key(code: KeyCode) -> Event {
@@ -25,7 +25,7 @@ fn start_repository_command(
     let id = workbench.commands.enqueue(action);
     assert_eq!(
         workbench
-            .take_repository_command()
+            .take_repository_command(Instant::now())
             .map(|command| command.id),
         Some(id)
     );
@@ -306,7 +306,7 @@ fn shared_git_commands_execute_from_every_activity() {
 
         assert!(effects.is_empty());
         let command = workbench
-            .take_repository_command()
+            .take_repository_command(Instant::now())
             .expect("fetch command queued");
         assert_eq!(command.action, RepositoryAction::Fetch);
         assert_eq!(
@@ -320,18 +320,20 @@ fn shared_git_commands_execute_from_every_activity() {
 fn command_progress_survives_activity_switching_and_animates_the_app_border() {
     let mut workbench = Workbench::new(RepositorySnapshot::default());
     workbench.commands.enqueue(RepositoryAction::Fetch);
+    let started = Instant::now();
     let _running = workbench
-        .take_repository_command()
+        .take_repository_command(started)
         .expect("fetch command starts");
     let area = Rect::new(0, 0, 100, 30);
     let backend = TestBackend::new(area.width, area.height);
     let mut terminal = Terminal::new(backend).unwrap();
 
+    workbench.tick(started + Duration::from_millis(150));
     terminal.draw(|frame| workbench.render(frame)).unwrap();
     let first_border = terminal.backend().buffer()[(0, 0)].fg;
     let _ = workbench.handle_event(&key(KeyCode::Tab), area);
     for _ in 0..4 {
-        workbench.tick();
+        workbench.tick(started + Duration::from_millis(150));
     }
     terminal.draw(|frame| workbench.render(frame)).unwrap();
 
@@ -347,9 +349,11 @@ fn command_progress_survives_activity_switching_and_animates_the_app_border() {
 fn clicking_the_progress_marker_requests_cancellation_until_acknowledged() {
     let mut workbench = Workbench::new(RepositorySnapshot::default());
     workbench.commands.enqueue(RepositoryAction::Fetch);
+    let started = Instant::now();
     let running = workbench
-        .take_repository_command()
+        .take_repository_command(started)
         .expect("fetch command starts");
+    workbench.tick(started + Duration::from_millis(150));
     let area = Rect::new(0, 0, 100, 30);
     let content = workbench_areas(area).content;
     let click = Event::Mouse(MouseEvent {
@@ -659,7 +663,7 @@ fn prompt_ids_are_scoped_to_the_active_command() {
             host: "example.com".to_owned(),
         },
     ));
-    assert!(workbench.take_repository_command().is_none());
+    assert!(workbench.take_repository_command(Instant::now()).is_none());
     let _ = workbench.handle_events(
         &[key(KeyCode::Char('u')), key(KeyCode::Enter)],
         Rect::default(),
@@ -672,7 +676,7 @@ fn prompt_ids_are_scoped_to_the_active_command() {
     );
 
     let second = workbench
-        .take_repository_command()
+        .take_repository_command(Instant::now())
         .expect("queued pull starts after fetch completion")
         .id;
     assert!(!workbench.open_prompt(

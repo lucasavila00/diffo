@@ -15,33 +15,35 @@ use crate::{
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct SearchItem<K> {
-    pub key: K,
+pub struct SearchItem<I, P> {
+    pub identity: I,
+    pub payload: P,
     pub label: String,
     pub aliases: Vec<String>,
     pub enabled: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub enum SearchPickerEvent<K> {
+pub enum SearchPickerEvent<P> {
     Consumed,
     Cancel,
-    Activate(K),
+    Activate(P),
     Quit,
 }
 
-pub struct SearchPicker<K> {
+pub struct SearchPicker<I, P> {
     title: &'static str,
     empty_message: &'static str,
     query: String,
-    items: Vec<SearchItem<K>>,
+    items: Vec<SearchItem<I, P>>,
     selected: Option<usize>,
     offset: usize,
 }
 
-impl<K> SearchPicker<K>
+impl<I, P> SearchPicker<I, P>
 where
-    K: Clone,
+    I: Clone + Eq,
+    P: Clone,
 {
     #[must_use]
     pub fn new(title: &'static str, empty_message: &'static str) -> Self {
@@ -59,10 +61,50 @@ where
         self.empty_message = message;
     }
 
-    pub fn set_items(&mut self, items: Vec<SearchItem<K>>) {
+    pub fn set_items(&mut self, items: Vec<SearchItem<I, P>>) {
         self.items = items;
         self.offset = 0;
         self.select_first_enabled();
+    }
+
+    pub fn reconcile_items(&mut self, items: Vec<SearchItem<I, P>>) {
+        let matches = self.matches();
+        let selected_identity = self
+            .selected
+            .and_then(|selected| matches.get(selected))
+            .map(|(_, item)| item.identity.clone());
+        let top_identity = matches
+            .get(self.offset)
+            .map(|(_, item)| item.identity.clone());
+        let old_offset = self.offset;
+
+        self.items = items;
+        let (selected, offset) = {
+            let matches = self.matches();
+            let preserved_selection = selected_identity.as_ref().and_then(|identity| {
+                matches
+                    .iter()
+                    .position(|(_, item)| item.enabled && item.identity == *identity)
+            });
+            let selected =
+                preserved_selection.or_else(|| matches.iter().position(|(_, item)| item.enabled));
+            let offset = if preserved_selection.is_some() {
+                top_identity
+                    .as_ref()
+                    .and_then(|identity| {
+                        matches
+                            .iter()
+                            .position(|(_, item)| item.identity == *identity)
+                    })
+                    .unwrap_or(old_offset)
+                    .min(matches.len().saturating_sub(1))
+            } else {
+                0
+            };
+            (selected, offset)
+        };
+        self.selected = selected;
+        self.offset = offset;
     }
 
     #[must_use]
@@ -71,14 +113,14 @@ where
     }
 
     #[must_use]
-    pub fn selected_key(&self) -> Option<&K> {
+    pub fn selected_identity(&self) -> Option<&I> {
         let matches = self.matches();
         self.selected
             .and_then(|selected| matches.get(selected))
-            .map(|(_, item)| &item.key)
+            .map(|(_, item)| &item.identity)
     }
 
-    pub fn handle_event(&mut self, event: &Event, area: Rect) -> SearchPickerEvent<K> {
+    pub fn handle_event(&mut self, event: &Event, area: Rect) -> SearchPickerEvent<P> {
         let (_, results) = search_picker_layout(area);
         if let Event::Mouse(mouse) = event {
             if let Some(amount) = wheel_scroll_delta(mouse.kind)
@@ -96,10 +138,10 @@ where
                 let activated = matches
                     .get(index)
                     .filter(|(_, item)| item.enabled)
-                    .map(|(_, item)| item.key.clone());
-                if let Some(key) = activated {
+                    .map(|(_, item)| item.payload.clone());
+                if let Some(payload) = activated {
                     self.selected = Some(index);
-                    return SearchPickerEvent::Activate(key);
+                    return SearchPickerEvent::Activate(payload);
                 }
             }
             return SearchPickerEvent::Consumed;
@@ -132,8 +174,12 @@ where
                 SearchPickerEvent::Consumed
             }
             KeyCode::Enter => self
-                .selected_key()
-                .cloned()
+                .selected
+                .and_then(|selected| {
+                    self.matches()
+                        .get(selected)
+                        .map(|(_, item)| item.payload.clone())
+                })
                 .map_or(SearchPickerEvent::Consumed, SearchPickerEvent::Activate),
             KeyCode::Char(character)
                 if !key
@@ -220,7 +266,7 @@ where
         );
     }
 
-    fn matches(&self) -> Vec<(usize, &SearchItem<K>)> {
+    fn matches(&self) -> Vec<(usize, &SearchItem<I, P>)> {
         let mut matches = self
             .items
             .iter()
@@ -329,32 +375,35 @@ mod tests {
         let mut picker = SearchPicker::new("Branches", "None");
         picker.set_items(vec![
             SearchItem {
-                key: 1,
+                identity: 1,
+                payload: "main-a",
                 label: "main".to_owned(),
                 aliases: Vec::new(),
                 enabled: false,
             },
             SearchItem {
-                key: 2,
+                identity: 2,
+                payload: "topic-a",
                 label: "topic".to_owned(),
                 aliases: Vec::new(),
                 enabled: true,
             },
             SearchItem {
-                key: 3,
+                identity: 3,
+                payload: "remote-topic-a",
                 label: "origin/topic".to_owned(),
                 aliases: vec!["topic".to_owned()],
                 enabled: true,
             },
         ]);
 
-        assert_eq!(picker.selected_key(), Some(&2));
+        assert_eq!(picker.selected_identity(), Some(&2));
         let _ = picker.handle_event(&key(KeyCode::Char('T')), Rect::new(0, 0, 80, 24));
         assert_eq!(picker.query(), "T");
-        assert_eq!(picker.selected_key(), Some(&2));
+        assert_eq!(picker.selected_identity(), Some(&2));
         assert_eq!(
             picker.handle_event(&key(KeyCode::Enter), Rect::new(0, 0, 80, 24)),
-            SearchPickerEvent::Activate(2)
+            SearchPickerEvent::Activate("topic-a")
         );
     }
 
@@ -362,7 +411,8 @@ mod tests {
     fn escape_closes_and_pointer_movement_changes_nothing() {
         let mut picker = SearchPicker::new("Branches", "None");
         picker.set_items(vec![SearchItem {
-            key: 1,
+            identity: 1,
+            payload: "main-a",
             label: "main".to_owned(),
             aliases: Vec::new(),
             enabled: true,
@@ -378,10 +428,99 @@ mod tests {
             picker.handle_event(&moved, Rect::new(0, 0, 80, 24)),
             SearchPickerEvent::Consumed
         );
-        assert_eq!(picker.selected_key(), Some(&1));
+        assert_eq!(picker.selected_identity(), Some(&1));
         assert_eq!(
             picker.handle_event(&key(KeyCode::Esc), Rect::new(0, 0, 80, 24)),
             SearchPickerEvent::Cancel
         );
+    }
+
+    #[test]
+    fn refresh_preserves_interaction_by_identity_and_uses_the_newest_payload() {
+        let area = Rect::new(0, 0, 80, 24);
+        let item = |identity, payload: &'static str, label: &str, enabled| SearchItem {
+            identity,
+            payload,
+            label: label.to_owned(),
+            aliases: Vec::new(),
+            enabled,
+        };
+        let mut picker = SearchPicker::new("Branches", "None");
+        picker.set_items(vec![
+            item(1, "main-a", "main", true),
+            item(2, "topic-a", "topic", true),
+            item(3, "other-a", "other", true),
+        ]);
+        let _ = picker.handle_event(&key(KeyCode::Down), area);
+        let _ = picker.handle_event(&key(KeyCode::Char('t')), area);
+        assert_eq!(picker.selected_identity(), Some(&2));
+
+        picker.reconcile_items(vec![
+            item(3, "other-b", "other", true),
+            item(2, "topic-b", "topic", true),
+            item(1, "main-b", "main", true),
+        ]);
+
+        assert_eq!(picker.query(), "t");
+        assert_eq!(picker.selected_identity(), Some(&2));
+        assert_eq!(
+            picker.handle_event(&key(KeyCode::Enter), area),
+            SearchPickerEvent::Activate("topic-b")
+        );
+    }
+
+    #[test]
+    fn refresh_reconciles_removed_disabled_filtered_and_empty_selections() {
+        let area = Rect::new(0, 0, 80, 24);
+        let item = |identity, label: &str, enabled| SearchItem {
+            identity,
+            payload: identity,
+            label: label.to_owned(),
+            aliases: Vec::new(),
+            enabled,
+        };
+        let mut picker = SearchPicker::new("Branches", "None");
+        picker.set_items(vec![item(1, "main", true), item(2, "topic", true)]);
+        let _ = picker.handle_event(&key(KeyCode::Down), area);
+        picker.offset = 1;
+
+        picker.reconcile_items(vec![item(1, "main", true)]);
+        assert_eq!(picker.selected_identity(), Some(&1));
+        assert_eq!(picker.offset, 0);
+        picker.reconcile_items(vec![item(1, "main", false), item(2, "topic", true)]);
+        assert_eq!(picker.selected_identity(), Some(&2));
+        let _ = picker.handle_event(&key(KeyCode::Char('m')), area);
+        assert_eq!(picker.selected_identity(), None);
+        picker.reconcile_items(Vec::new());
+        assert_eq!(picker.query(), "m");
+        assert_eq!(picker.selected_identity(), None);
+    }
+
+    #[test]
+    fn refresh_keeps_the_scrolled_top_item_by_identity() {
+        let item = |identity| SearchItem {
+            identity,
+            payload: identity,
+            label: format!("branch-{identity:02}"),
+            aliases: Vec::new(),
+            enabled: true,
+        };
+        let mut picker = SearchPicker::new("Branches", "None");
+        picker.set_items((0..20).map(item).collect());
+        picker.offset = 7;
+
+        picker.reconcile_items((0..20).rev().map(item).collect());
+
+        assert_eq!(picker.offset, 12);
+        assert_eq!(picker.matches()[picker.offset].1.identity, 7);
+
+        picker.reconcile_items(
+            (0..20)
+                .rev()
+                .filter(|identity| *identity != 7)
+                .map(item)
+                .collect(),
+        );
+        assert_eq!(picker.offset, 12);
     }
 }

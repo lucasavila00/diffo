@@ -45,7 +45,6 @@ impl Model {
         self.snapshot = snapshot;
         self.cursor = cursor;
         self.selected = selected;
-        self.error = None;
     }
 
     pub(super) fn finish_pending_operation(&mut self) {

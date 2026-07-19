@@ -176,10 +176,13 @@ fn next_command_is_accepted_only_after_prompt_cancellation_is_acknowledged() {
     assert!(service.answer_prompt(first, PromptId(1), PromptAnswer::Cancel));
     assert!(matches!(
         service.events.recv_timeout(Duration::from_secs(1)),
-        Ok(RepositoryEvent::CommandCancelled {
-            command_id: ApplicationCommandId(1),
+        Ok(RepositoryEvent::Update(RepositoryUpdate {
+            kind: RepositoryUpdateKind::CommandCancelled {
+                command_id: ApplicationCommandId(1),
+                ..
+            },
             ..
-        })
+        }))
     ));
 
     assert!(service.execute(
@@ -189,9 +192,12 @@ fn next_command_is_accepted_only_after_prompt_cancellation_is_acknowledged() {
     ));
     assert!(matches!(
         service.events.recv_timeout(Duration::from_secs(1)),
-        Ok(RepositoryEvent::CommandCompleted {
-            command_id: ApplicationCommandId(2),
+        Ok(RepositoryEvent::Update(RepositoryUpdate {
+            kind: RepositoryUpdateKind::CommandCompleted {
+                command_id: ApplicationCommandId(2),
+                ..
+            },
             ..
-        })
+        }))
     ));
 }

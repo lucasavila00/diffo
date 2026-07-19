@@ -74,3 +74,25 @@ fn closing_and_reopening_a_blocked_discovery_ignores_the_first_load() -> Result<
     assert!(!screen.contents().contains("Could not load branches"));
     Ok(())
 }
+
+#[test]
+fn watcher_refresh_between_down_and_enter_preserves_the_checkout_target() -> Result<()> {
+    let repository = TestRepository::new()?;
+    git(&repository.worktree, &["branch", "topic"])?;
+    git(&repository.worktree, &["branch", "zzz"])?;
+    let mut screen = repository.screen()?;
+
+    screen
+        .press(Key::Char('1'))?
+        .type_text("checkout")?
+        .press(Key::Enter)?
+        .wait_for_text("Checkout to")?
+        .wait_for(&Selector::selected_row("topic"))?
+        .press(Key::Down)?
+        .wait_for(&Selector::selected_row("zzz"))?;
+
+    fs::write(repository.worktree.join("tracked.txt"), "watcher refresh\n")?;
+    screen.wait_for_text("watcher refresh")?;
+    screen.press(Key::Enter)?.wait_for_text("branch zzz")?;
+    Ok(())
+}

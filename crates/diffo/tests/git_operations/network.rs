@@ -125,7 +125,7 @@ fn cancelling_a_blocked_git_client_releases_the_next_queued_command() -> Result<
 
     screen
         .click(&Selector::text("×"))?
-        .wait_for_text("Pulling")?;
+        .wait_for_text_gone("Fetching")?;
     wait_for("queued pull to update the worktree", || {
         Ok(repository.worktree.join("remote.txt").exists())
     })?;
@@ -139,12 +139,20 @@ fn primary_pull_button_shows_progress_and_pulls() -> Result<()> {
     let repository = TestRepository::new()?;
     repository.commit_remote("remote.txt", "remote\n", "Remote commit")?;
     git(&repository.worktree, &["fetch", "origin"])?;
-    let mut screen = repository.screen()?;
+    let mut gate = diffo_e2e::GitProxy::new("pull", diffo_e2e::GitGatePhase::Before)?;
+    let path = gate.path()?;
+    let mut screen = DiffoScreen::launch_with_env(
+        env!("CARGO_BIN_EXE_diffo"),
+        &repository.worktree,
+        &[("PATH", path.as_os_str())],
+    )?;
 
     screen
         .wait_for_text("[ Pull ]")?
-        .click(&Selector::text("[ Pull ]"))?
-        .wait_for_text("Pulling")?;
+        .click(&Selector::text("[ Pull ]"))?;
+    gate.wait_until_blocked()?;
+    screen.wait_for_text("Pulling")?;
+    gate.release()?;
     wait_for("primary pull to update the worktree", || {
         Ok(repository.worktree.join("remote.txt").exists())
     })?;

@@ -23,7 +23,8 @@ use crossterm::{
 };
 use diffo_app::ToastKind;
 use diffo_core::{
-    FailureKind, OperationFailure, Repository, fixture_source::MutableFixtureRepository,
+    FailureKind, OperationFailure, Repository, RepositoryUpdateKind,
+    fixture_source::MutableFixtureRepository,
 };
 use diffo_git::{GitRepositorySource, run_askpass_if_requested};
 use diffo_repository_service::{RepositoryEvent, RepositoryService};
@@ -179,14 +180,18 @@ fn run_watch_dump(
     while !shutdown.load(Ordering::Relaxed) {
         while let Ok(Some(event)) = repository_service.try_recv() {
             match event {
-                RepositoryEvent::SnapshotRefreshed {
-                    generation: next,
-                    snapshot,
-                } if next > generation => {
-                    generation = next;
-                    dump_snapshot_atomic(path, &snapshot)?;
+                RepositoryEvent::Update(update) if update.generation > generation => {
+                    generation = update.generation;
+                    match update.kind {
+                        RepositoryUpdateKind::Snapshot(snapshot) => {
+                            dump_snapshot_atomic(path, &snapshot)?;
+                        }
+                        RepositoryUpdateKind::RefreshFailed(message) => eprintln!("{message}"),
+                        RepositoryUpdateKind::CommandCompleted { .. }
+                        | RepositoryUpdateKind::CommandFailed { .. }
+                        | RepositoryUpdateKind::CommandCancelled { .. } => {}
+                    }
                 }
-                RepositoryEvent::RefreshFailed { message, .. } => eprintln!("{message}"),
                 RepositoryEvent::Prompt {
                     command_id,
                     prompt_id,
@@ -198,12 +203,9 @@ fn run_watch_dump(
                         diffo_core::PromptAnswer::Cancel,
                     );
                 }
-                RepositoryEvent::SnapshotRefreshed { .. }
+                RepositoryEvent::Update(_)
                 | RepositoryEvent::BranchesLoaded { .. }
-                | RepositoryEvent::BranchesLoadFailed { .. }
-                | RepositoryEvent::CommandCompleted { .. }
-                | RepositoryEvent::CommandFailed { .. }
-                | RepositoryEvent::CommandCancelled { .. } => {}
+                | RepositoryEvent::BranchesLoadFailed { .. } => {}
             }
         }
         std::thread::sleep(Duration::from_millis(10));
@@ -219,7 +221,6 @@ fn run(
     tool_tasks: &ToolTasks,
     tracer: &mut FrameTracer,
 ) -> Result<()> {
-    let mut generation = 0;
     let mut wheel_friction = WheelFriction::default();
     let scroll = (
         workbench.diff_model().diff_scroll,
@@ -229,7 +230,7 @@ fn run(
     let (preparation, draw_start_us, draw_end_us) = draw_frame(terminal, workbench, tracer)?;
     tracer.record(FrameRecord::new(
         Vec::new(),
-        generation,
+        workbench.repository_generation(),
         workbench.diff_model(),
         &preparation,
         scroll,
@@ -239,7 +240,7 @@ fn run(
         draw_end_us,
     ));
     while !workbench.should_quit() && !shutdown.load(Ordering::Relaxed) {
-        workbench.tick();
+        workbench.tick(Instant::now());
         let poll_timeout = if workbench.is_preparing()
             || repository_service.is_busy()
             || workbench.has_active_command()
@@ -265,13 +266,13 @@ fn run(
             workbench.diff_model().diff_horizontal_scroll,
         );
         let update_start_us = tracer.elapsed_us();
-        drain_repository_events(repository_service, workbench, &mut generation);
+        drain_repository_events(repository_service, workbench);
         tool_tasks.drain(workbench);
         dispatch_events(&events, terminal, workbench, repository_service)?;
         let (preparation, draw_start_us, draw_end_us) = draw_frame(terminal, workbench, tracer)?;
         tracer.record(FrameRecord::new(
             input_events,
-            generation,
+            workbench.repository_generation(),
             workbench.diff_model(),
             &preparation,
             scroll_before,
@@ -329,7 +330,8 @@ fn dispatch_events(
             workbench.branches_load_failed(query_id, "repository service is unavailable");
         }
     }
-    while let Some(command) = workbench.take_repository_command() {
+    let command_start = Instant::now();
+    while let Some(command) = workbench.take_repository_command(command_start) {
         let id = command.id;
         let action = command.action;
         if !repository_service.execute(id, action.clone(), command.cancellation) {
@@ -386,11 +388,7 @@ fn dispatch_effect(
     }
 }
 
-fn drain_repository_events(
-    repository_service: &RepositoryService,
-    workbench: &mut Workbench,
-    generation: &mut u64,
-) {
+fn drain_repository_events(repository_service: &RepositoryService, workbench: &mut Workbench) {
     while let Ok(Some(event)) = repository_service.try_recv() {
         match event {
             RepositoryEvent::BranchesLoaded { query_id, branches } => {
@@ -413,51 +411,9 @@ fn drain_repository_events(
                     let _ = repository_service.cancel_command(command_id);
                 }
             }
-            RepositoryEvent::SnapshotRefreshed {
-                generation: next,
-                snapshot,
-            } if next > *generation => {
-                *generation = next;
-                workbench.repository_changed(snapshot);
+            RepositoryEvent::Update(update) => {
+                let _ = workbench.accept_repository_update(update);
             }
-            RepositoryEvent::RefreshFailed {
-                generation: next,
-                message,
-            } if next > *generation => {
-                *generation = next;
-                workbench.operation_failed(message);
-            }
-            RepositoryEvent::CommandCompleted {
-                generation: next,
-                command_id,
-                action,
-                result,
-                snapshot,
-            } if next > *generation => {
-                *generation = next;
-                workbench.operation_completed(command_id, action, result, snapshot);
-            }
-            RepositoryEvent::CommandFailed {
-                generation: next,
-                command_id,
-                failure,
-            } if next > *generation => {
-                *generation = next;
-                workbench.action_failed(command_id, failure);
-            }
-            RepositoryEvent::CommandCancelled {
-                generation: next,
-                command_id,
-                action,
-            } if next > *generation => {
-                *generation = next;
-                workbench.operation_cancelled(command_id, action);
-            }
-            RepositoryEvent::SnapshotRefreshed { .. }
-            | RepositoryEvent::RefreshFailed { .. }
-            | RepositoryEvent::CommandCompleted { .. }
-            | RepositoryEvent::CommandFailed { .. }
-            | RepositoryEvent::CommandCancelled { .. } => {}
         }
     }
 }

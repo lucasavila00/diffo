@@ -9,7 +9,8 @@ use std::{
 
 use diffo_core::{
     ApplicationCommandId, CancellationHandle, OperationFailure, OperationOutcome, Repository,
-    RepositoryAction, RepositoryOperationContext, RepositoryQueryId,
+    RepositoryAction, RepositoryOperationContext, RepositoryQueryId, RepositoryUpdate,
+    RepositoryUpdateKind,
 };
 
 use crate::service::{PromptBroker, RepositoryEvent};
@@ -104,10 +105,12 @@ pub(super) fn worker_loop(
             }
             WorkerRequest::WatchFailed(message) => {
                 generation = generation.saturating_add(1);
-                Some(RepositoryEvent::RefreshFailed {
+                Some(RepositoryEvent::Update(RepositoryUpdate {
                     generation,
-                    message: format!("repository watch failed: {message}"),
-                })
+                    kind: RepositoryUpdateKind::RefreshFailed(format!(
+                        "repository watch failed: {message}"
+                    )),
+                }))
             }
             WorkerRequest::Shutdown => break,
         };
@@ -163,14 +166,14 @@ fn collect_branches(repository: &dyn Repository, query_id: RepositoryQueryId) ->
 fn collect_refresh(repository: &dyn Repository, generation: &mut u64) -> RepositoryEvent {
     *generation = generation.saturating_add(1);
     match repository.snapshot() {
-        Ok(snapshot) => RepositoryEvent::SnapshotRefreshed {
+        Ok(snapshot) => RepositoryEvent::Update(RepositoryUpdate {
             generation: *generation,
-            snapshot,
-        },
-        Err(error) => RepositoryEvent::RefreshFailed {
+            kind: RepositoryUpdateKind::Snapshot(snapshot),
+        }),
+        Err(error) => RepositoryEvent::Update(RepositoryUpdate {
             generation: *generation,
-            message: error.to_string(),
-        },
+            kind: RepositoryUpdateKind::RefreshFailed(error.to_string()),
+        }),
     }
 }
 
@@ -189,33 +192,41 @@ fn execute_command(
     );
     let event = match repository.apply_with_context(action, &context) {
         Ok(OperationOutcome::Completed(result)) => match repository.snapshot() {
-            Ok(snapshot) => RepositoryEvent::CommandCompleted {
+            Ok(snapshot) => RepositoryEvent::Update(RepositoryUpdate {
                 generation: *generation,
+                kind: RepositoryUpdateKind::CommandCompleted {
+                    command_id,
+                    action: action.clone(),
+                    result,
+                    snapshot,
+                },
+            }),
+            Err(error) => RepositoryEvent::Update(RepositoryUpdate {
+                generation: *generation,
+                kind: RepositoryUpdateKind::CommandFailed {
+                    command_id,
+                    failure: OperationFailure {
+                        action: action.clone(),
+                        kind: diffo_core::FailureKind::Unknown,
+                        detail: error.to_string(),
+                    },
+                },
+            }),
+        },
+        Ok(OperationOutcome::Cancelled) => RepositoryEvent::Update(RepositoryUpdate {
+            generation: *generation,
+            kind: RepositoryUpdateKind::CommandCancelled {
                 command_id,
                 action: action.clone(),
-                result,
-                snapshot,
             },
-            Err(error) => RepositoryEvent::CommandFailed {
-                generation: *generation,
+        }),
+        Err(failure) => RepositoryEvent::Update(RepositoryUpdate {
+            generation: *generation,
+            kind: RepositoryUpdateKind::CommandFailed {
                 command_id,
-                failure: OperationFailure {
-                    action: action.clone(),
-                    kind: diffo_core::FailureKind::Unknown,
-                    detail: error.to_string(),
-                },
+                failure,
             },
-        },
-        Ok(OperationOutcome::Cancelled) => RepositoryEvent::CommandCancelled {
-            generation: *generation,
-            command_id,
-            action: action.clone(),
-        },
-        Err(failure) => RepositoryEvent::CommandFailed {
-            generation: *generation,
-            command_id,
-            failure,
-        },
+        }),
     };
     prompts.finish_operation(command_id);
     event
@@ -323,7 +334,10 @@ mod tests {
         let event = event_rx.recv_timeout(Duration::from_secs(1)).unwrap();
         assert!(matches!(
             event,
-            RepositoryEvent::SnapshotRefreshed { generation: 1, .. }
+            RepositoryEvent::Update(RepositoryUpdate {
+                generation: 1,
+                kind: RepositoryUpdateKind::Snapshot(_),
+            })
         ));
         assert_eq!(repository.collections.load(Ordering::Relaxed), 1);
         requests.send(WorkerRequest::Shutdown).unwrap();
@@ -366,7 +380,10 @@ mod tests {
         ));
         assert!(matches!(
             event_rx.recv_timeout(Duration::from_secs(1)).unwrap(),
-            RepositoryEvent::SnapshotRefreshed { generation: 1, .. }
+            RepositoryEvent::Update(RepositoryUpdate {
+                generation: 1,
+                kind: RepositoryUpdateKind::Snapshot(_),
+            })
         ));
         requests.send(WorkerRequest::Shutdown).unwrap();
         worker.join().unwrap();
@@ -418,13 +435,22 @@ mod tests {
             &prompts,
         );
 
-        assert!(matches!(watcher, RepositoryEvent::SnapshotRefreshed { .. }));
+        assert!(matches!(
+            watcher,
+            RepositoryEvent::Update(RepositoryUpdate {
+                kind: RepositoryUpdateKind::Snapshot(_),
+                ..
+            })
+        ));
         assert!(matches!(
             command,
-            RepositoryEvent::CommandCompleted {
-                result: OperationResult::Stage,
+            RepositoryEvent::Update(RepositoryUpdate {
+                kind: RepositoryUpdateKind::CommandCompleted {
+                    result: OperationResult::Stage,
+                    ..
+                },
                 ..
-            }
+            })
         ));
     }
 
@@ -473,17 +499,23 @@ mod tests {
 
         assert!(matches!(
             event_rx.recv_timeout(Duration::from_secs(1)).unwrap(),
-            RepositoryEvent::CommandCancelled {
-                command_id: ApplicationCommandId(1),
+            RepositoryEvent::Update(RepositoryUpdate {
+                kind: RepositoryUpdateKind::CommandCancelled {
+                    command_id: ApplicationCommandId(1),
+                    ..
+                },
                 ..
-            }
+            })
         ));
         assert!(matches!(
             event_rx.recv_timeout(Duration::from_secs(1)).unwrap(),
-            RepositoryEvent::CommandCompleted {
-                command_id: ApplicationCommandId(2),
+            RepositoryEvent::Update(RepositoryUpdate {
+                kind: RepositoryUpdateKind::CommandCompleted {
+                    command_id: ApplicationCommandId(2),
+                    ..
+                },
                 ..
-            }
+            })
         ));
         requests.send(WorkerRequest::Shutdown).unwrap();
         worker.join().unwrap();

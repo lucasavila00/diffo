@@ -19,7 +19,7 @@ wrong-platform bytes.
 
 Use `https://github.com/lucasavila00/diffo` as the public canonical repository and
 GitHub Releases as the fixed release and update authority. Publish stable releases
-from immutable `v<major>.<minor>.<patch>` tags, using the tag as the release version.
+from immutable `<major>.<minor>.<patch>` tags, using the tag as the release version.
 Ignore drafts and prereleases.
 
 Support only Debian stable and Ubuntu 24.04 or newer on x86_64 GNU/Linux. Other Linux

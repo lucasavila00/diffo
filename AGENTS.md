@@ -149,7 +149,7 @@ This repository is a Rust workspace containing small command-line utilities. Eac
 
 ## Release publication
 
-- Stable releases use `v<major>.<minor>.<patch>` tags.
+- Stable releases use `<major>.<minor>.<patch>` tags.
 - Publish only the GNU/Linux executable, unsigned schema-1 update metadata, and
   `SHA256SUMS`.
 - Embed the tag version in the binary and update metadata independently of

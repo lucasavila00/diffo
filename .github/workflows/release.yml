@@ -3,7 +3,7 @@ name: Release Diffo
 on:
   push:
     tags:
-      - "v*.*.*"
+      - "[0-9]+.[0-9]+.[0-9]+"
 
 permissions:
   contents: write
@@ -15,17 +15,12 @@ jobs:
     env:
       TARGET: x86_64-unknown-linux-gnu
       ASSET: diffo-x86_64-unknown-linux-gnu
+      VERSION: ${{ github.ref_name }}
+      DIFFO_RELEASE_VERSION: ${{ github.ref_name }}
 
     steps:
       - name: Check out immutable tag
         uses: actions/checkout@v4
-
-      - name: Derive stable release version
-        run: |
-          set -euo pipefail
-          [[ "${GITHUB_REF_NAME}" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)$ ]]
-          version="${BASH_REMATCH[1]}"
-          printf 'VERSION=%s\nDIFFO_RELEASE_VERSION=%s\n' "${version}" "${version}" >> "${GITHUB_ENV}"
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable

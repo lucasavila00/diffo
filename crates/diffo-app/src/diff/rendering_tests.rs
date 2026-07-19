@@ -27,28 +27,6 @@ use super::{
 };
 
 #[test]
-fn file_list_styles_show_git_change_kinds() {
-    let styles = [
-        ChangeKind::Added,
-        ChangeKind::Modified,
-        ChangeKind::Deleted,
-        ChangeKind::Renamed,
-        ChangeKind::Copied,
-        ChangeKind::Untracked,
-        ChangeKind::Conflicted,
-    ]
-    .map(|kind| {
-        (
-            kind,
-            file_kind_style(kind, false),
-            file_kind_style(kind, true),
-        )
-    });
-
-    insta::assert_debug_snapshot!(styles);
-}
-
-#[test]
 fn file_picker_renders_every_git_change_kind_with_its_status_color() {
     let kinds = [
         (ChangeKind::Added, Color::LightGreen),

@@ -147,16 +147,12 @@ This repository is a Rust workspace containing small command-line utilities. Eac
 - Use `DIFFO_DUMP_PATH` only to write one repository snapshot and exit before the
   TUI starts; it is not user configuration.
 
-## Release signing
+## Release publication
 
 - Stable releases use `v<major>.<minor>.<patch>` tags.
-- Store the base64-encoded unencrypted PKCS#8 PEM Ed25519 private key in the
-  `DIFFO_UPDATE_SIGNING_KEY` repository secret. Never commit the private key.
-- Store the base64-encoded raw 32-byte public key in the
-  `DIFFO_UPDATE_PUBLIC_KEY` repository variable.
-- The release workflow must derive the public key from the private key and fail
-  before building when the configured keys do not match.
-- Embed the tag version in the binary and signed update metadata independently of
+- Publish only the GNU/Linux executable, unsigned schema-1 update metadata, and
+  `SHA256SUMS`.
+- Embed the tag version in the binary and update metadata independently of
   the Cargo package version.
 
 ## Validation

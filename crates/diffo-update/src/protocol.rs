@@ -1,5 +1,3 @@
-use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
-use ed25519_dalek::{Signature, Verifier as _, VerifyingKey};
 use semver::Version;
 use serde::{Deserialize, Serialize};
 
@@ -36,23 +34,7 @@ pub enum CheckOutcome {
     Available(UpdatePlan),
 }
 
-pub(crate) fn verify_manifest(
-    bytes: &[u8],
-    signature: &[u8],
-    public_key: &VerifyingKey,
-    current: &str,
-) -> Result<CheckOutcome, UpdateError> {
-    let encoded = std::str::from_utf8(signature)
-        .map_err(|_| verification("manifest signature is not UTF-8"))?;
-    let signature = BASE64
-        .decode(encoded.trim())
-        .map_err(|_| verification("manifest signature is not valid base64"))?;
-    let signature = Signature::from_slice(&signature)
-        .map_err(|_| verification("manifest signature has the wrong length"))?;
-    public_key
-        .verify(bytes, &signature)
-        .map_err(|_| verification("manifest signature is invalid"))?;
-
+pub(crate) fn parse_manifest(bytes: &[u8], current: &str) -> Result<CheckOutcome, UpdateError> {
     let manifest: Manifest = serde_json::from_slice(bytes)
         .map_err(|error| verification(format!("manifest is invalid: {error}")))?;
     if manifest.schema != 1 {
@@ -111,22 +93,12 @@ fn verification(message: impl Into<String>) -> UpdateError {
 
 #[cfg(test)]
 mod tests {
-    use ed25519_dalek::{Signer as _, SigningKey};
     use serde_json::json;
 
     use super::*;
 
-    const SEED: [u8; 32] = [
-        0x9d, 0x61, 0xb1, 0x9d, 0xef, 0xfd, 0x5a, 0x60, 0xba, 0x84, 0x4a, 0xf4, 0x92, 0xec, 0x2c,
-        0xc4, 0x44, 0x49, 0xc5, 0x69, 0x7b, 0x32, 0x69, 0x19, 0x70, 0x3b, 0xac, 0x03, 0x1c, 0xae,
-        0x7f, 0x60,
-    ];
-
-    fn signed(value: &serde_json::Value, current: &str) -> Result<CheckOutcome, UpdateError> {
-        let bytes = serde_json::to_vec(&value).unwrap();
-        let key = SigningKey::from_bytes(&SEED);
-        let signature = BASE64.encode(key.sign(&bytes).to_bytes());
-        verify_manifest(&bytes, signature.as_bytes(), &key.verifying_key(), current)
+    fn parse(value: &serde_json::Value, current: &str) -> Result<CheckOutcome, UpdateError> {
+        parse_manifest(&serde_json::to_vec(value).unwrap(), current)
     }
 
     fn manifest(version: &str) -> serde_json::Value {
@@ -144,55 +116,60 @@ mod tests {
     }
 
     #[test]
-    fn accepts_additive_fields_and_selects_a_strictly_newer_stable_release() {
-        let outcome = signed(&manifest("0.2.0"), "0.1.0").unwrap();
+    fn selects_a_strictly_newer_stable_release_and_ignores_additive_fields() {
+        let outcome = parse(&manifest("0.2.0"), "0.1.0").unwrap();
         assert!(matches!(outcome, CheckOutcome::Available(_)));
     }
 
     #[test]
     fn equal_and_older_releases_are_up_to_date() {
         assert!(matches!(
-            signed(&manifest("0.1.0"), "0.1.0").unwrap(),
+            parse(&manifest("0.1.0"), "0.1.0").unwrap(),
             CheckOutcome::UpToDate { .. }
         ));
         assert!(matches!(
-            signed(&manifest("0.0.9"), "0.1.0").unwrap(),
+            parse(&manifest("0.0.9"), "0.1.0").unwrap(),
             CheckOutcome::UpToDate { .. }
         ));
     }
 
     #[test]
-    fn rejects_bad_signatures_before_parsing_metadata() {
-        let key = SigningKey::from_bytes(&SEED);
-        let signature = BASE64.encode(key.sign(b"different").to_bytes());
-        let error = verify_manifest(
-            b"not json",
-            signature.as_bytes(),
-            &key.verifying_key(),
-            "0.1.0",
-        )
-        .unwrap_err();
+    fn rejects_invalid_json() {
+        let error = parse_manifest(b"not json", "0.1.0").unwrap_err();
         assert_eq!(error.category(), ErrorCategory::Verification);
-        assert!(error.to_string().contains("signature"));
+        assert!(error.to_string().contains("manifest is invalid"));
     }
 
     #[test]
-    fn rejects_protocol_version_target_and_digest_mismatches() {
+    fn rejects_invalid_schema_version_target_filename_length_and_digest() {
         let mut cases = Vec::new();
+
         let mut schema = manifest("0.2.0");
         schema["schema"] = json!(2);
         cases.push(schema);
+
+        cases.push(manifest("not-a-version"));
         cases.push(manifest("0.2.0-alpha.1"));
+
         let mut target = manifest("0.2.0");
         target["assets"][0]["target"] = json!("aarch64-unknown-linux-gnu");
         cases.push(target);
+
+        let mut filename = manifest("0.2.0");
+        filename["assets"][0]["name"] = json!("diffo");
+        cases.push(filename);
+
+        let mut length = manifest("0.2.0");
+        length["assets"][0]["length"] = json!(0);
+        cases.push(length);
+
         let mut digest = manifest("0.2.0");
         digest["assets"][0]["sha256"] = json!("ABC");
         cases.push(digest);
 
         for value in cases {
             assert_eq!(
-                signed(&value, "0.1.0").unwrap_err().category(),
+                parse(&value, "0.1.0").unwrap_err().category(),
                 ErrorCategory::Verification
             );
         }

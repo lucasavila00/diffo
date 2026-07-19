@@ -1,6 +1,6 @@
 [package]
 name = "diffo-update"
-description = "Signed update discovery and atomic replacement for Diffo"
+description = "Update discovery and atomic replacement for Diffo"
 edition.workspace = true
 license.workspace = true
 readme = "README.md"
@@ -8,8 +8,6 @@ rust-version.workspace = true
 version.workspace = true
 
 [dependencies]
-base64.workspace = true
-ed25519-dalek.workspace = true
 reqwest.workspace = true
 semver.workspace = true
 serde.workspace = true

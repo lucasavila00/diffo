@@ -32,7 +32,6 @@ diffo-highlight = { path = "crates/diffo-highlight" }
 diffo-ui = { path = "crates/diffo-ui" }
 diffo-repository-service = { path = "crates/diffo-repository-service" }
 diffo-update = { path = "crates/diffo-update" }
-ed25519-dalek = "2.2"
 insta = "1.48"
 notify = "8.2"
 nix = { version = "0.28", features = ["process", "signal"] }

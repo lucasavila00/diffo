@@ -30,7 +30,6 @@ diffo-core.workspace = true
 diffo-e2e = { path = "../diffo-e2e" }
 diffo-git.workspace = true
 diffo-repository-service.workspace = true
-ed25519-dalek.workspace = true
 ron.workspace = true
 serde_json.workspace = true
 sha2.workspace = true

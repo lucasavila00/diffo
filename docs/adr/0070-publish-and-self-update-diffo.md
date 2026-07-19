@@ -10,8 +10,8 @@ Builds on [ADR 0039](0039-independent-app-modes.md),
 
 Diffo needs public releases, update discovery, and recovery when the TUI cannot start.
 It remains a single-binary, no-configuration application.
-Updating a privileged executable must not replace it with partial, corrupt,
-wrong-platform, or untrusted bytes.
+Updating a privileged executable must not replace it with partial, corrupt, or
+wrong-platform bytes.
 
 ## Decision
 
@@ -19,17 +19,16 @@ wrong-platform, or untrusted bytes.
 
 Use `https://github.com/lucasavila00/diffo` as the public canonical repository and
 GitHub Releases as the fixed release and update authority. Publish stable releases
-from immutable `v<major>.<minor>.<patch>` tags matching the workspace version. Ignore
-drafts and prereleases.
+from immutable `v<major>.<minor>.<patch>` tags, using the tag as the release version.
+Ignore drafts and prereleases.
 
 Support only Debian stable and Ubuntu 24.04 or newer on x86_64 GNU/Linux. Other Linux
 distributions and architectures are unsupported. Compile exactly one production
-`x86_64-unknown-linux-gnu` executable on Ubuntu 24.04 for both distributions. Stage
-those exact bytes without rebuilding them. Smoke-test the same file on Ubuntu 24.04
-and Debian stable, then publish it as the single Linux asset with SHA-256 digests,
-signed update metadata, and a GitHub artifact attestation. The release workflow does
-not repeat the full `make all` suite owned by repository CI. Installation documentation
-tells users to verify the binary and place it at any path they choose.
+`x86_64-unknown-linux-gnu` executable on Ubuntu 24.04 for both distributions. Publish
+only that executable, unsigned schema-1 update metadata, and `SHA256SUMS`. The release
+workflow does not repeat tests or the full `make all` suite owned by repository CI.
+Installation documentation tells users to verify the binary and place it at any path
+they choose.
 
 `DIFFO_E2E_BINARY` is a developer and test hook, not user configuration. When unset,
 local `make all` keeps its normal development-profile behavior.
@@ -52,21 +51,22 @@ Every stable release publishes:
 
 ```text
 update-v1.json
-update-v1.json.sig
-diffo-<target-triple>
+diffo-x86_64-unknown-linux-gnu
+SHA256SUMS
 ```
 
 Fetch metadata through GitHub's permanent latest-release URLs. The manifest contains
 its schema, Diffo version, and each asset's name, length, target, and SHA-256 digest.
-Verify it with the release public key compiled into Diffo.
+HTTPS protects the metadata and asset in transit, and the manifest digest detects a
+corrupt or unexpected asset. This protocol does not provide publisher authenticity
+independent of GitHub and HTTPS.
 
 Schema 1 is permanent. Ignore additive fields and publish incompatible protocols
 alongside it. Future releases must retain schema-1 metadata and raw assets so old
-launchers can reach a version supporting newer protocols. Rotate signing keys through
-a bridge release signed by the old key. Never fall back to unsigned updates.
+launchers can reach a version supporting newer protocols.
 
-The endpoint, key, protocol, and target mapping are fixed in code. Environment
-overrides are developer and test hooks only.
+The endpoint, protocol, and target mapping are fixed in code. The endpoint environment
+override is a developer and test hook only.
 
 ### Replacement
 
@@ -74,8 +74,8 @@ Install only a strictly newer stable version. Equal or older versions produce an
 up-to-date result without rewriting or downgrading the executable.
 
 Resolve the current executable's actual regular-file path and download the exact target
-asset to a newly created sibling. Before replacement, verify the manifest signature,
-target, length, and digest, and reject unsupported schemas or insecure redirects. Set
+asset to a newly created sibling. Before replacement, verify the target, length, and
+digest, and reject unsupported schemas or insecure redirects. Set
 the executable mode, flush the file, atomically rename it over that exact path, and
 flush the directory. Any failure before rename leaves the binary unchanged. Remove
 temporary files; install no backup, helper, cache, receipt, or configuration.
@@ -104,10 +104,8 @@ and relaunch.
 ## Verification
 
 - Test launcher dispatch before TUI initialization and rejection of other arguments.
-- Test schema compatibility, versions, targets, signatures, lengths, and digests.
+- Test schema compatibility, versions, targets, filenames, lengths, and digests.
 - Fault every filesystem stage and prove only complete verified bytes become visible.
 - Test permission failures without elevation or partial replacement.
 - Test passive discovery without focus changes, F1 availability, and persistent results.
-- Before publication, smoke-test the staged production file on Debian stable and
-  Ubuntu 24.04, then update the previous release on both distributions and verify the
-  new binary starts and its launcher can still check for updates.
+- Verify release builds derive their embedded version from the stable Git tag.

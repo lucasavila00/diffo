@@ -5,8 +5,6 @@ mod protocol;
 
 use std::{env, fmt, io::Read as _, path::PathBuf};
 
-use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
-use ed25519_dalek::VerifyingKey;
 use reqwest::{StatusCode, blocking::Client, redirect::Policy};
 
 pub use install::{InstallOutcome, resolved_executable};
@@ -14,9 +12,7 @@ pub use protocol::{Asset, CheckOutcome, Manifest, UpdatePlan};
 
 const DEFAULT_BASE_URL: &str = "https://github.com/lucasavila00/diffo/releases/latest/download";
 const MANIFEST_NAME: &str = "update-v1.json";
-const SIGNATURE_NAME: &str = "update-v1.json.sig";
 const MAX_METADATA_BYTES: u64 = 1024 * 1024;
-const MAX_SIGNATURE_BYTES: u64 = 1024;
 const BUILD_VERSION: &str = selected_build_version(option_env!("DIFFO_RELEASE_VERSION"));
 
 const fn selected_build_version(release_version: Option<&'static str>) -> &'static str {
@@ -25,13 +21,6 @@ const fn selected_build_version(release_version: Option<&'static str>) -> &'stat
         None => env!("CARGO_PKG_VERSION"),
     }
 }
-
-// RFC 8032 test-vector key. Production release builds must replace this at compile
-// time with DIFFO_UPDATE_PUBLIC_KEY; the release workflow enforces that contract.
-const DEVELOPMENT_PUBLIC_KEY: [u8; 32] = [
-    0xd7, 0x5a, 0x98, 0x01, 0x82, 0xb1, 0x0a, 0xb7, 0xd5, 0x4b, 0xfe, 0xd3, 0xc9, 0x64, 0x07, 0x3a,
-    0x0e, 0xe1, 0x72, 0xf3, 0xda, 0xa6, 0x23, 0x25, 0xaf, 0x02, 0x1a, 0x68, 0xf7, 0x07, 0x51, 0x1a,
-];
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ErrorCategory {
@@ -80,16 +69,15 @@ impl std::error::Error for UpdateError {}
 
 pub struct UpdateClient {
     base_url: String,
-    public_key: VerifyingKey,
     http: Client,
 }
 
 impl UpdateClient {
-    /// Constructs the fixed updater, honoring developer-only endpoint and key hooks.
+    /// Constructs the fixed updater, honoring the developer-only endpoint hook.
     ///
     /// # Errors
     ///
-    /// Returns an error when the HTTP client or test public key cannot be constructed.
+    /// Returns an error when the HTTP client cannot be constructed.
     pub fn from_environment() -> Result<Self, UpdateError> {
         let base_url = env::var("DIFFO_UPDATE_BASE_URL").unwrap_or_else(|_| {
             option_env!("DIFFO_UPDATE_BASE_URL")
@@ -102,15 +90,6 @@ impl UpdateClient {
                 "compiled update endpoint is not HTTPS",
             ));
         }
-        let public_key = match environment_public_key()? {
-            Some(public_key) => public_key,
-            None => VerifyingKey::from_bytes(&DEVELOPMENT_PUBLIC_KEY).map_err(|_| {
-                UpdateError::new(
-                    ErrorCategory::Verification,
-                    "compiled development update key is invalid",
-                )
-            })?,
-        };
         let http = Client::builder()
             .user_agent(format!("diffo/{BUILD_VERSION}"))
             .redirect(Policy::custom(|attempt| {
@@ -128,7 +107,6 @@ impl UpdateClient {
             .map_err(|error| UpdateError::new(ErrorCategory::Network, error.to_string()))?;
         Ok(Self {
             base_url: base_url.trim_end_matches('/').to_owned(),
-            public_key,
             http,
         })
     }
@@ -140,8 +118,7 @@ impl UpdateClient {
     /// Returns network or verification errors without changing the executable.
     pub fn check(&self) -> Result<CheckOutcome, UpdateError> {
         let manifest = self.fetch_limited(MANIFEST_NAME, MAX_METADATA_BYTES)?;
-        let signature = self.fetch_limited(SIGNATURE_NAME, MAX_SIGNATURE_BYTES)?;
-        protocol::verify_manifest(&manifest, &signature, &self.public_key, BUILD_VERSION)
+        protocol::parse_manifest(&manifest, BUILD_VERSION)
     }
 
     /// Downloads and installs the latest strictly newer verified release.
@@ -205,30 +182,6 @@ impl UpdateClient {
         }
         Ok(bytes)
     }
-}
-
-fn environment_public_key() -> Result<Option<VerifyingKey>, UpdateError> {
-    let value = env::var("DIFFO_UPDATE_PUBLIC_KEY")
-        .ok()
-        .or_else(|| option_env!("DIFFO_UPDATE_PUBLIC_KEY").map(str::to_owned));
-    let Some(value) = value else {
-        return Ok(None);
-    };
-    let bytes = BASE64.decode(value.trim()).map_err(|_| {
-        UpdateError::new(
-            ErrorCategory::Verification,
-            "update public key is not valid base64",
-        )
-    })?;
-    let bytes: [u8; 32] = bytes.try_into().map_err(|_| {
-        UpdateError::new(
-            ErrorCategory::Verification,
-            "update public key must contain 32 bytes",
-        )
-    })?;
-    VerifyingKey::from_bytes(&bytes)
-        .map(Some)
-        .map_err(|_| UpdateError::new(ErrorCategory::Verification, "update public key is invalid"))
 }
 
 fn network_error(error: impl fmt::Display) -> UpdateError {

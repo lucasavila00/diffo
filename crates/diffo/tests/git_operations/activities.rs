@@ -128,7 +128,7 @@ fn explorer_removes_a_deleted_file_without_showing_head_content() -> Result<()> 
 
     screen
         .wait_for_text_gone("removed.txt")?
-        .wait_for_text("KEEP_CONTENT")?;
+        .wait_for_text("base")?;
 
     assert!(!screen.contents().contains("REMOVED_CONTENT"));
     Ok(())

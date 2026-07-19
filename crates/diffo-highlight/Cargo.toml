@@ -11,5 +11,8 @@ version.workspace = true
 diffo-diff.workspace = true
 two-face.workspace = true
 
+[dev-dependencies]
+insta.workspace = true
+
 [lints]
 workspace = true

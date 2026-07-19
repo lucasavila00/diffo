@@ -385,24 +385,23 @@ mod tests {
         let backend = TestBackend::new(100, 30);
         let mut terminal = Terminal::new(backend).unwrap();
         terminal.draw(|frame| palette.render(frame, area)).unwrap();
-        let screen = terminal
-            .backend()
-            .buffer()
-            .content
-            .iter()
-            .map(ratatui::buffer::Cell::symbol)
-            .collect::<String>();
-        assert!(screen.contains("Command Palette"));
-        assert!(screen.contains("Git: Pull"));
-        let command = terminal
-            .backend()
-            .buffer()
+        let buffer = terminal.backend().buffer();
+        let rendered = (palette_area.y..palette_area.bottom())
+            .map(|row| {
+                (palette_area.x..palette_area.right())
+                    .map(|column| buffer[(column, row)].symbol())
+                    .collect::<String>()
+                    .trim_end()
+                    .to_owned()
+            })
+            .collect::<Vec<_>>();
+        let selected_style = buffer
             .content
             .iter()
             .find(|cell| cell.symbol() == "G")
-            .expect("command action");
-        assert_eq!(command.fg, theme::TEXT);
-        assert!(command.modifier.contains(Modifier::BOLD));
+            .expect("selected command")
+            .style();
+        insta::assert_debug_snapshot!((rendered, selected_style));
 
         let blank = Event::Mouse(crossterm::event::MouseEvent {
             kind: MouseEventKind::Down(MouseButton::Left),

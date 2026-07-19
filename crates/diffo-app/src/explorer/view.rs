@@ -261,7 +261,7 @@ mod tests {
     use diffo_diff::parse_unified_patch;
     use diffo_highlight::SyntaxHighlighter;
     use diffo_ui::file_picker::Navigation;
-    use ratatui::{Terminal, backend::TestBackend, style::Color};
+    use ratatui::{Terminal, backend::TestBackend};
     use std::collections::HashMap;
 
     #[test]
@@ -359,17 +359,12 @@ mod tests {
 
         terminal.draw(|frame| picker.render(frame, false)).unwrap();
 
-        let column_of = |terminal: &Terminal<TestBackend>, row, symbol| {
-            (0..30)
-                .find(|column| terminal.backend().buffer()[(*column, row)].symbol() == symbol)
-                .unwrap()
-        };
-        assert_eq!(column_of(&terminal, 1, "d"), column_of(&terminal, 2, "f"));
+        insta::assert_debug_snapshot!("collapsed", terminal.backend().buffer());
 
         picker.navigate(Navigation::Activate);
         terminal.draw(|frame| picker.render(frame, false)).unwrap();
 
-        assert_eq!(column_of(&terminal, 2, "n"), column_of(&terminal, 3, "p"));
+        insta::assert_debug_snapshot!("expanded", terminal.backend().buffer());
     }
 
     #[test]
@@ -398,21 +393,7 @@ mod tests {
             .draw(|frame| render_viewer(frame, frame.area(), &model, Style::default(), false))
             .unwrap();
 
-        let expected = "deleted.rs";
-        for (offset, expected) in expected.chars().enumerate() {
-            let cell = &terminal.backend().buffer()[(u16::try_from(offset).unwrap() + 1, 0)];
-            assert_eq!(cell.symbol(), expected.to_string());
-            assert_eq!(cell.fg, theme::TEXT);
-            assert!(!cell.modifier.contains(Modifier::CROSSED_OUT));
-        }
-        let screen = terminal
-            .backend()
-            .buffer()
-            .content
-            .iter()
-            .map(ratatui::buffer::Cell::symbol)
-            .collect::<String>();
-        assert!(!screen.contains("different-path.rs"));
+        insta::assert_debug_snapshot!(terminal.backend().buffer());
     }
 
     #[test]
@@ -443,9 +424,8 @@ mod tests {
             .iter()
             .map(ratatui::buffer::Cell::symbol)
             .collect::<String>();
-        assert!(screen.contains("   1"));
-        assert!(screen.contains("␛[2JPAN_TARGET"));
         assert!(!screen.chars().any(char::is_control));
+        insta::assert_debug_snapshot!(terminal.backend().buffer());
     }
 
     #[test]
@@ -456,12 +436,6 @@ mod tests {
         let highlighted = SyntaxHighlighter::new()
             .highlight(std::path::Path::new("main.rs"), &document)
             .new;
-        let keyword = highlighted[&1]
-            .spans
-            .first()
-            .expect("highlighted Rust keyword");
-        assert_eq!(keyword.text, "fn");
-        let keyword_foreground = keyword.foreground;
 
         let mut model = ExplorerModel::new(diffo_core::RepositorySnapshot::default());
         model.viewer = Some(super::super::model::Viewer {
@@ -481,19 +455,7 @@ mod tests {
             .draw(|frame| render_viewer(frame, frame.area(), &model, Style::default(), false))
             .unwrap();
 
-        let code_area = terminal.backend().buffer().area.inner(design::PANEL_INSET);
-        let keyword_cell =
-            &terminal.backend().buffer()[(code_area.x + VIEWER_GUTTER_WIDTH, code_area.y)];
-        assert_eq!(
-            keyword_cell.fg,
-            Color::Rgb(
-                keyword_foreground.red,
-                keyword_foreground.green,
-                keyword_foreground.blue,
-            )
-        );
-        assert_eq!(keyword_cell.bg, Color::Reset);
-        assert!(keyword_cell.modifier.is_empty());
+        insta::assert_debug_snapshot!(terminal.backend().buffer());
     }
 
     #[test]
@@ -516,15 +478,6 @@ mod tests {
             .draw(|frame| render_viewer(frame, frame.area(), &model, Style::default(), true))
             .unwrap();
 
-        let screen = terminal
-            .backend()
-            .buffer()
-            .content
-            .iter()
-            .map(ratatui::buffer::Cell::symbol)
-            .collect::<String>();
-        assert!(screen.contains("   1"));
-        assert!(!screen.contains("TEXT_MUST_BE_HIDDEN"));
-        assert!(!screen.contains('▌'));
+        insta::assert_debug_snapshot!(terminal.backend().buffer());
     }
 }

@@ -1,0 +1,21 @@
+---
+source: crates/diffo-ui/tests/theme_contract.rs
+assertion_line: 32
+expression: "(design::BORDER_WIDTH, design::PANEL_INSET, design::DIALOG_INSET,\ndesign::ACTIVITY_RAIL_WIDTH, design::COMMAND_PALETTE_WIDTH.resolve(100),\ndesign::COMMAND_PALETTE_WIDTH.resolve(20), design::HELP_WIDTH.resolve(200),\ndesign::COMMIT_EDITOR_WIDTH.resolve(100),)"
+---
+(
+    1,
+    Margin {
+        horizontal: 1,
+        vertical: 1,
+    },
+    Margin {
+        horizontal: 2,
+        vertical: 1,
+    },
+    5,
+    70,
+    20,
+    90,
+    70,
+)

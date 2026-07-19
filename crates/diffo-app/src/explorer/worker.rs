@@ -352,9 +352,7 @@ mod tests {
         let patch = "@@ -1,4 +1,4 @@\n same\n-old\n+new\n-gone\n tail\n+added\n";
         let lines = ["same", "new", "tail", "added"].map(str::to_owned);
         let markers = change_markers(patch, false, Some(ChangeKind::Modified), &lines);
-        assert_eq!(markers.get(&2), Some(&GutterMarker::Modified));
-        assert_eq!(markers.get(&3), Some(&GutterMarker::Deleted));
-        assert_eq!(markers.get(&4), Some(&GutterMarker::Added));
+        insta::assert_debug_snapshot!(markers);
     }
 
     #[test]
@@ -365,8 +363,7 @@ mod tests {
             Some(ChangeKind::Deleted),
             &["one".to_owned(), "two".to_owned()],
         );
-        assert_eq!(markers.get(&1), Some(&GutterMarker::Deleted));
-        assert_eq!(markers.get(&2), Some(&GutterMarker::Deleted));
+        insta::assert_debug_snapshot!(markers);
     }
 
     #[test]
@@ -380,9 +377,7 @@ mod tests {
         ]
         .map(str::to_owned);
         let markers = change_markers("", false, Some(ChangeKind::Conflicted), &lines);
-        assert_eq!(markers.get(&1), Some(&GutterMarker::Conflict));
-        assert_eq!(markers.get(&3), Some(&GutterMarker::Conflict));
-        assert_eq!(markers.get(&5), Some(&GutterMarker::Conflict));
+        insta::assert_debug_snapshot!(markers);
     }
 
     #[test]
@@ -442,7 +437,7 @@ mod tests {
             &SyntaxHighlighter::new(),
         );
 
-        assert_eq!(viewer.lines, ["before    ␛[2J␈after"]);
         assert!(!viewer.lines[0].chars().any(char::is_control));
+        insta::assert_debug_snapshot!(viewer.lines);
     }
 }

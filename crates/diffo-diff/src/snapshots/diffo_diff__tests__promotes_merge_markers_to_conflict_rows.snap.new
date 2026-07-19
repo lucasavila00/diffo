@@ -1,0 +1,148 @@
+---
+source: crates/diffo-diff/src/tests.rs
+assertion_line: 122
+expression: "(inline, side_by_side_rows_with_options(&document, options),)"
+---
+(
+    [
+        RenderLine {
+            number: None,
+            text: "@@ -1 +1,5 @@",
+            kind: Header,
+        },
+        RenderLine {
+            number: Some(
+                1,
+            ),
+            text: "old",
+            kind: Removed,
+        },
+        RenderLine {
+            number: Some(
+                1,
+            ),
+            text: "<<<<<<< HEAD",
+            kind: Conflict,
+        },
+        RenderLine {
+            number: Some(
+                2,
+            ),
+            text: "ours",
+            kind: Added,
+        },
+        RenderLine {
+            number: Some(
+                3,
+            ),
+            text: "=======",
+            kind: Conflict,
+        },
+        RenderLine {
+            number: Some(
+                4,
+            ),
+            text: "theirs",
+            kind: Added,
+        },
+        RenderLine {
+            number: Some(
+                5,
+            ),
+            text: ">>>>>>> branch",
+            kind: Conflict,
+        },
+    ],
+    [
+        SideBySideRow {
+            old: Some(
+                RenderLine {
+                    number: None,
+                    text: "@@ -1 +1,5 @@",
+                    kind: Header,
+                },
+            ),
+            new: Some(
+                RenderLine {
+                    number: None,
+                    text: "@@ -1 +1,5 @@",
+                    kind: Header,
+                },
+            ),
+            kind: Header,
+        },
+        SideBySideRow {
+            old: Some(
+                RenderLine {
+                    number: Some(
+                        1,
+                    ),
+                    text: "old",
+                    kind: Removed,
+                },
+            ),
+            new: Some(
+                RenderLine {
+                    number: Some(
+                        1,
+                    ),
+                    text: "<<<<<<< HEAD",
+                    kind: Conflict,
+                },
+            ),
+            kind: Changed,
+        },
+        SideBySideRow {
+            old: None,
+            new: Some(
+                RenderLine {
+                    number: Some(
+                        2,
+                    ),
+                    text: "ours",
+                    kind: Added,
+                },
+            ),
+            kind: Changed,
+        },
+        SideBySideRow {
+            old: None,
+            new: Some(
+                RenderLine {
+                    number: Some(
+                        3,
+                    ),
+                    text: "=======",
+                    kind: Conflict,
+                },
+            ),
+            kind: Changed,
+        },
+        SideBySideRow {
+            old: None,
+            new: Some(
+                RenderLine {
+                    number: Some(
+                        4,
+                    ),
+                    text: "theirs",
+                    kind: Added,
+                },
+            ),
+            kind: Changed,
+        },
+        SideBySideRow {
+            old: None,
+            new: Some(
+                RenderLine {
+                    number: Some(
+                        5,
+                    ),
+                    text: ">>>>>>> branch",
+                    kind: Conflict,
+                },
+            ),
+            kind: Changed,
+        },
+    ],
+)

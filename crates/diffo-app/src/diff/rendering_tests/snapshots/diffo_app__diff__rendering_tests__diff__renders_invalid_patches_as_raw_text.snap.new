@@ -1,0 +1,10 @@
+---
+source: crates/diffo-app/src/diff/rendering_tests/diff.rs
+assertion_line: 260
+expression: lines
+---
+[
+    Line::from("diff --cc src/main.rs"),
+    Line::from("@@@ malformed"),
+    Line::from("+raw line"),
+]

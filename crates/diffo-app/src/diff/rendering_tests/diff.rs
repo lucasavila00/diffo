@@ -48,38 +48,7 @@ fn renders_syntax_foregrounds_over_diff_backgrounds() {
     let lines = diff_lines(&mut renderer, &model, 0);
     assert!(!lines.is_empty());
     assert!(!renderer.is_preparing());
-    let removed = &lines[1];
-    let added = &lines[2];
-
-    assert!(removed.spans.iter().any(|span| span.style.fg.is_some()));
-    assert!(
-        removed
-            .spans
-            .iter()
-            .any(|span| { span.style.bg == Some(Color::Indexed(52)) })
-    );
-    assert!(
-        added
-            .spans
-            .iter()
-            .any(|span| { span.style.bg == Some(Color::Indexed(22)) })
-    );
-    assert_eq!(removed.spans[0].style.fg, Some(Color::LightRed));
-    assert_eq!(added.spans[0].style.fg, Some(Color::LightGreen));
-    assert!(
-        removed.spans[1..]
-            .iter()
-            .all(|span| span.style.add_modifier.is_empty()),
-        "syntax highlighting should not emit terminal font attributes"
-    );
-    assert_eq!(
-        removed
-            .spans
-            .iter()
-            .map(|span| span.content.chars().count())
-            .sum::<usize>(),
-        80
-    );
+    insta::assert_debug_snapshot!(&lines[..3]);
 }
 
 #[test]
@@ -170,10 +139,9 @@ fn commits_a_new_file_and_its_first_change_position_together() {
     assert_eq!(committed.displayed_file, model.selected);
     assert_eq!(transition.vertical, 450);
     assert_eq!(transition.horizontal, 0);
-    assert!(
+    insta::assert_debug_snapshot!(
+        "committed_first_change",
         renderer.diff_lines(&model, 80, transition.vertical, 1)[0]
-            .to_string()
-            .contains("old line 449")
     );
 }
 
@@ -288,9 +256,8 @@ fn renders_invalid_patches_as_raw_text() {
     renderer.prepare_frame(&model, Rect::new(0, 0, 100, 30));
     let lines = renderer.diff_lines(&model, 80, 0, 100);
 
-    assert_eq!(lines[0].to_string(), "diff --cc src/main.rs");
-    assert_eq!(lines[2].to_string(), "+raw line");
     assert!(!renderer.is_preparing());
+    insta::assert_debug_snapshot!(lines);
 }
 
 #[test]
@@ -407,26 +374,7 @@ fn uncached_scroll_uses_one_viewport_and_skeleton_until_syntax_is_ready() {
     assert!(first.viewport_transition.is_none());
     let skeleton = renderer.diff_skeleton_lines(80, model.diff_scroll, 20);
     assert!(!skeleton.is_empty());
-    let rows = renderer
-        .highlighted
-        .as_ref()
-        .unwrap()
-        .inline
-        .iter()
-        .skip(model.diff_scroll);
-    for (line, row) in skeleton.iter().zip(rows) {
-        assert_eq!(
-            line.spans[0].style,
-            crate::diff::view::style::gutter_style(row.kind)
-        );
-    }
-    assert!(skeleton.iter().all(|line| {
-        line.spans.iter().all(|span| {
-            span.content.chars().all(|character| {
-                character.is_ascii_digit() || character.is_whitespace() || character == '│'
-            })
-        })
-    }));
+    insta::assert_debug_snapshot!("uncached_skeleton", skeleton);
     let backend = TestBackend::new(100, 30);
     let mut terminal = Terminal::new(backend).unwrap();
     terminal
@@ -498,24 +446,15 @@ fn hunk_markers_have_a_separate_clickable_rail_beside_the_scrollbar() {
         modifiers: KeyModifiers::NONE,
     });
 
-    assert_eq!(
-        terminal.backend().buffer()[(marker_column, marker_row)].symbol(),
-        "▪"
-    );
-    assert_ne!(
-        terminal.backend().buffer()[(renderer.scrollbars.vertical_area.x, marker_row)].symbol(),
-        "▪"
-    );
-    let visible_marker_row = renderer.scrollbars.vertical_area.y
-        + overview_position(
-            changes[0],
-            renderer.scrollbars.rows,
+    insta::assert_debug_snapshot!(buffer_region(
+        terminal.backend().buffer(),
+        Rect::new(
+            renderer.scrollbars.vertical_area.x,
+            renderer.scrollbars.vertical_area.y,
+            2,
             renderer.scrollbars.vertical_area.height,
-        );
-    assert_eq!(
-        terminal.backend().buffer()[(marker_column, visible_marker_row)].symbol(),
-        "▪"
-    );
+        ),
+    ));
     assert_eq!(
         renderer.change_at_marker(renderer.scrollbars.vertical_area.x, marker_row, &model),
         None
@@ -556,11 +495,11 @@ fn large_hunk_buttons_are_fixed_and_do_not_wrap() {
         .unwrap();
 
     assert!(renderer.hunk_buttons.previous.is_none());
-    assert!(buffer_text(terminal.backend().buffer()).contains("Next change (n)"));
     let (next_area, next_target) = renderer.hunk_buttons.next.expect("next button");
-    let next_control = &terminal.backend().buffer()[(next_area.x, next_area.y)];
-    assert_eq!(next_control.fg, theme::TEXT);
-    assert!(next_control.modifier.contains(Modifier::BOLD));
+    insta::assert_debug_snapshot!(
+        "next_button",
+        buffer_region(terminal.backend().buffer(), next_area)
+    );
     assert!(renderer.scrollbars.horizontal_area.height > 0);
     assert_eq!(next_area.bottom(), renderer.scrollbars.horizontal_area.y);
     assert_eq!(
@@ -587,7 +526,10 @@ fn large_hunk_buttons_are_fixed_and_do_not_wrap() {
         .draw(|frame| renderer.render(frame, &model))
         .unwrap();
     let (previous_area, previous_target) = renderer.hunk_buttons.previous.expect("previous button");
-    assert!(buffer_text(terminal.backend().buffer()).contains("Previous change (p)"));
+    insta::assert_debug_snapshot!(
+        "previous_button",
+        buffer_region(terminal.backend().buffer(), previous_area)
+    );
     assert_eq!(previous_area.y, area.y.saturating_add(1));
     assert!(renderer.hunk_buttons.next.is_some());
     assert_eq!(

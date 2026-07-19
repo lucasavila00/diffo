@@ -11,5 +11,8 @@ version.workspace = true
 anyhow.workspace = true
 similar.workspace = true
 
+[dev-dependencies]
+insta.workspace = true
+
 [lints]
 workspace = true

@@ -1,0 +1,10 @@
+---
+source: crates/diffo-app/src/explorer/worker.rs
+assertion_line: 355
+expression: markers
+---
+{
+    4: Added,
+    2: Modified,
+    3: Deleted,
+}

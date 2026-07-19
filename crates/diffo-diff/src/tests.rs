@@ -1,30 +1,33 @@
 use super::{
-    DiffBlock, ProjectionOptions, RowKind, inline_change_starts, inline_rows,
-    inline_rows_with_options, parse_unified_patch, side_by_side_change_starts, side_by_side_rows,
-    side_by_side_rows_with_options,
+    DiffBlock, ProjectionOptions, RenderLine, RowKind, SideBySideRow, inline_change_starts,
+    inline_rows, inline_rows_with_options, parse_unified_patch, side_by_side_change_starts,
+    side_by_side_rows, side_by_side_rows_with_options,
 };
 
 const PATCH: &str = "diff --git a/file.txt b/file.txt\n--- a/file.txt\n+++ b/file.txt\n@@ -1,4 +1,4 @@\n same\n-old one\n-old two\n+new one\n+new two\n end\n";
+
+fn compact_line(line: &RenderLine) -> String {
+    format!("{:?} {:?}: {}", line.kind, line.number, line.text)
+}
+
+fn compact_side(rows: &[SideBySideRow]) -> Vec<String> {
+    rows.iter()
+        .map(|row| {
+            format!(
+                "{:?} | {} | {}",
+                row.kind,
+                row.old.as_ref().map_or_else(|| "∅".to_owned(), compact_line),
+                row.new.as_ref().map_or_else(|| "∅".to_owned(), compact_line),
+            )
+        })
+        .collect()
+}
 
 #[test]
 fn parses_hunks_and_line_numbers() {
     let document = parse_unified_patch(PATCH).expect("patch should parse");
 
-    assert_eq!(document.hunks.len(), 1);
-    assert_eq!(document.hunks[0].old_start, 1);
-    assert_eq!(document.hunks[0].new_start, 1);
-    assert_eq!(document.hunks[0].blocks.len(), 3);
-    let DiffBlock::Change {
-        removed,
-        added,
-        alignment,
-    } = &document.hunks[0].blocks[1]
-    else {
-        panic!("expected change block");
-    };
-    assert_eq!(removed[0].old_number, Some(2));
-    assert_eq!(added[0].new_number, Some(2));
-    assert_eq!(alignment.len(), 2);
+    insta::assert_debug_snapshot!(document);
 }
 
 #[test]
@@ -33,24 +36,8 @@ fn projects_inline_and_side_by_side_rows() {
     let inline = inline_rows(&document);
     let side = side_by_side_rows(&document);
 
-    assert_eq!(
-        inline
-            .iter()
-            .filter(|row| row.kind == RowKind::Removed)
-            .count(),
-        2
-    );
-    assert_eq!(
-        inline
-            .iter()
-            .filter(|row| row.kind == RowKind::Added)
-            .count(),
-        2
-    );
-    assert!(
-        side.iter()
-            .any(|row| row.old.is_some() && row.new.is_some())
-    );
+    let compact_inline = inline.iter().map(compact_line).collect::<Vec<_>>();
+    insta::assert_debug_snapshot!((compact_inline, compact_side(&side)));
 }
 
 #[test]
@@ -150,21 +137,9 @@ fn promotes_merge_markers_to_conflict_rows() {
     };
     let inline = inline_rows_with_options(&document, options);
 
-    let markers = inline
-        .iter()
-        .filter(|row| row.kind == RowKind::Conflict)
-        .map(|row| row.text.as_str())
-        .collect::<Vec<_>>();
-    assert_eq!(markers, ["<<<<<<< HEAD", "=======", ">>>>>>> branch"]);
-    assert_eq!(
-        side_by_side_rows_with_options(&document, options)
-            .iter()
-            .flat_map(|row| [row.old.as_ref(), row.new.as_ref()])
-            .flatten()
-            .filter(|line| line.kind == RowKind::Conflict)
-            .count(),
-        3
-    );
+    let compact_inline = inline.iter().map(compact_line).collect::<Vec<_>>();
+    let side = side_by_side_rows_with_options(&document, options);
+    insta::assert_debug_snapshot!((compact_inline, compact_side(&side)));
 }
 
 #[test]

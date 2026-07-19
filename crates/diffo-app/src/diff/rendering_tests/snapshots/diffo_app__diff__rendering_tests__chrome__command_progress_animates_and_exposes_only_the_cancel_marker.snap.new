@@ -1,0 +1,20 @@
+---
+source: crates/diffo-app/src/diff/rendering_tests/chrome.rs
+assertion_line: 20
+expression: "buffer_region(terminal.backend().buffer(), Rect::new(39, 1, 40, 3),)"
+---
+Buffer {
+    area: Rect { x: 0, y: 0, width: 40, height: 3 },
+    content: [
+        "──────────────────────────────────────×┐",
+        "ushing…                                │",
+        "───────────────────────────────────────┘",
+    ],
+    styles: [
+        x: 0, y: 0, fg: DarkGray, bg: Reset, underline: Reset, modifier: BOLD,
+        x: 38, y: 0, fg: White, bg: Reset, underline: Reset, modifier: BOLD,
+        x: 39, y: 0, fg: DarkGray, bg: Reset, underline: Reset, modifier: BOLD,
+        x: 0, y: 1, fg: Indexed(24), bg: Reset, underline: Reset, modifier: BOLD,
+        x: 39, y: 1, fg: DarkGray, bg: Reset, underline: Reset, modifier: BOLD,
+    ]
+}

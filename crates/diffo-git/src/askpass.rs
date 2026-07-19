@@ -475,44 +475,11 @@ mod tests {
 
     #[test]
     fn parses_supported_git_and_ssh_prompts() {
-        assert_eq!(
-            parse_prompt("Username for 'https://person@example.com': ", None),
-            Some(GitPrompt::Username {
-                host: "example.com".to_owned()
-            })
-        );
-        assert_eq!(
-            parse_prompt(
-                "Password for 'https://person:sentinel@example.com/repo': ",
-                None
-            ),
-            Some(GitPrompt::Secret {
-                kind: SecretKind::HttpsSecret,
-                context: "example.com".to_owned()
-            })
-        );
-        assert_eq!(
-            parse_prompt(
-                "Enter passphrase for key '/keys/id_ed25519': ",
-                Some("none")
-            ),
-            Some(GitPrompt::Secret {
-                kind: SecretKind::SshKeyPassphrase,
-                context: "/keys/id_ed25519".to_owned()
-            })
-        );
         let confirmation = concat!(
             "The authenticity of host 'git.example.com (192.0.2.1)' can't be established.\n",
             "ED25519 key fingerprint is SHA256:Abcdefghijklmnopqrstuvwxyz0123456789+/=.\n",
             "This key is not known by any other names.\n",
             "Are you sure you want to continue connecting (yes/no/[fingerprint])? "
-        );
-        assert_eq!(
-            parse_prompt(confirmation, Some("confirm")),
-            Some(GitPrompt::ConfirmSshHost {
-                host: "git.example.com".to_owned(),
-                fingerprint: "SHA256:Abcdefghijklmnopqrstuvwxyz0123456789+/=".to_owned()
-            })
         );
         let loopback_confirmation = concat!(
             "The authenticity of host 'diffo-e2e ([127.0.0.1]:39397)' can't be established.\n",
@@ -520,20 +487,40 @@ mod tests {
             "This key is not known by any other names.\n",
             "Are you sure you want to continue connecting (yes/no/[fingerprint])? "
         );
-        assert_eq!(
-            parse_prompt(loopback_confirmation, Some("confirm")),
-            Some(GitPrompt::ConfirmSshHost {
-                host: "diffo-e2e".to_owned(),
-                fingerprint: "SHA256:y4V5owxERf/fLbZfbkglknok7xY1IkZvRs+x9hOGGzE".to_owned()
-            })
-        );
-        assert_eq!(
-            parse_prompt(loopback_confirmation, None),
-            Some(GitPrompt::ConfirmSshHost {
-                host: "diffo-e2e".to_owned(),
-                fingerprint: "SHA256:y4V5owxERf/fLbZfbkglknok7xY1IkZvRs+x9hOGGzE".to_owned()
-            })
-        );
+        let parsed = [
+            (
+                "HTTPS username",
+                parse_prompt("Username for 'https://person@example.com': ", None),
+            ),
+            (
+                "HTTPS secret",
+                parse_prompt(
+                    "Password for 'https://person:sentinel@example.com/repo': ",
+                    None,
+                ),
+            ),
+            (
+                "SSH key passphrase",
+                parse_prompt(
+                    "Enter passphrase for key '/keys/id_ed25519': ",
+                    Some("none"),
+                ),
+            ),
+            (
+                "SSH host confirmation",
+                parse_prompt(confirmation, Some("confirm")),
+            ),
+            (
+                "loopback host confirmation",
+                parse_prompt(loopback_confirmation, Some("confirm")),
+            ),
+            (
+                "loopback host confirmation without hint",
+                parse_prompt(loopback_confirmation, None),
+            ),
+        ];
+
+        insta::assert_debug_snapshot!(parsed);
     }
 
     #[test]

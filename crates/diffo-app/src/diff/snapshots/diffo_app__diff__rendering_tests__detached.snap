@@ -1,0 +1,10 @@
+---
+source: crates/diffo-app/src/diff/rendering_tests.rs
+expression: "status_line(&model, 0, 80)"
+---
+Line::from_iter([
+    Span::from(" detached 1234567").white().bold(),
+    Span::from(" · clean").dark_gray(),
+    Span::from("                            "),
+    Span::from("1/f1: commands  2/f2: help "),
+])

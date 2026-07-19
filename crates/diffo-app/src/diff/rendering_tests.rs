@@ -11,10 +11,10 @@ use crossterm::event::{
 use diffo_core::{ChangeKind, FileDiff, FileState, HeadState, RepositorySnapshot, UpstreamState};
 use diffo_diff::RowKind;
 use diffo_highlight::Rgb;
-use diffo_ui::{file_icons, interaction, theme};
 use ratatui::{
     Terminal,
     backend::TestBackend,
+    buffer::Buffer,
     layout::Rect,
     style::{Color, Modifier, Style},
 };
@@ -28,29 +28,24 @@ use super::{
 
 #[test]
 fn file_list_styles_show_git_change_kinds() {
-    assert_eq!(
-        file_kind_style(ChangeKind::Untracked, false).fg,
-        Some(Color::LightGreen)
-    );
-    assert_eq!(
-        file_kind_style(ChangeKind::Added, false).fg,
-        Some(Color::LightGreen)
-    );
-    assert_eq!(
-        file_kind_style(ChangeKind::Modified, false).fg,
-        Some(Color::Yellow)
-    );
-    let deleted = file_kind_style(ChangeKind::Deleted, false);
-    assert_eq!(deleted.fg, Some(Color::LightRed));
-    assert!(deleted.add_modifier.contains(Modifier::CROSSED_OUT));
-    let conflicted = file_kind_style(ChangeKind::Conflicted, false);
-    assert_eq!(conflicted.fg, Some(Color::LightRed));
-    assert!(conflicted.add_modifier.contains(Modifier::BOLD));
-    assert!(
-        file_kind_style(ChangeKind::Added, true)
-            .add_modifier
-            .contains(Modifier::BOLD)
-    );
+    let styles = [
+        ChangeKind::Added,
+        ChangeKind::Modified,
+        ChangeKind::Deleted,
+        ChangeKind::Renamed,
+        ChangeKind::Copied,
+        ChangeKind::Untracked,
+        ChangeKind::Conflicted,
+    ]
+    .map(|kind| {
+        (
+            kind,
+            file_kind_style(kind, false),
+            file_kind_style(kind, true),
+        )
+    });
+
+    insta::assert_debug_snapshot!(styles);
 }
 
 #[test]
@@ -94,23 +89,7 @@ fn file_picker_renders_every_git_change_kind_with_its_status_color() {
 
     terminal.draw(|frame| picker.render(frame, false)).unwrap();
 
-    let buffer = terminal.backend().buffer();
-    for (index, (kind, color)) in kinds.iter().enumerate() {
-        let marker = &buffer[(1, u16::try_from(index).unwrap() + 1)];
-        assert_eq!(marker.fg, *color, "wrong foreground for {kind:?}");
-    }
-    assert!(buffer[(1, 3)].modifier.contains(Modifier::CROSSED_OUT));
-    assert!(buffer[(1, 7)].modifier.contains(Modifier::BOLD));
-    let controls = buffer
-        .content
-        .iter()
-        .filter(|cell| cell.symbol() == "+")
-        .collect::<Vec<_>>();
-    assert_eq!(controls.len(), kinds.len() + 1);
-    for control in controls {
-        assert_eq!(control.fg, theme::TEXT);
-        assert!(control.modifier.contains(Modifier::BOLD));
-    }
+    insta::assert_debug_snapshot!(terminal.backend().buffer());
 }
 
 #[test]
@@ -130,14 +109,10 @@ fn diff_buffer_title_matches_the_committed_picker_label() {
         .unwrap();
 
     let diff = horizontal_panes(main_area(area), model.file_pane_percent)[1];
-    let title = "M src/main.rs";
-    for (offset, expected) in title.chars().enumerate() {
-        let offset = u16::try_from(offset).unwrap();
-        let cell = &terminal.backend().buffer()[(diff.x + 1 + offset, diff.y)];
-        assert_eq!(cell.symbol(), expected.to_string());
-        assert_eq!(cell.fg, Color::Yellow);
-        assert_eq!(cell.bg, Color::Reset);
-    }
+    insta::assert_debug_snapshot!(buffer_region(
+        terminal.backend().buffer(),
+        Rect::new(diff.x, diff.y, 30, 1),
+    ));
 }
 
 #[test]
@@ -168,18 +143,7 @@ fn diff_file_icon_inherits_status_style_in_a_narrow_row() {
 
     terminal.draw(|frame| picker.render(frame, false)).unwrap();
 
-    let buffer = terminal.backend().buffer();
-    let icon = buffer
-        .content
-        .iter()
-        .find(|cell| cell.symbol() == file_icons::file_icon(&files[0].path))
-        .expect("Rust icon remains visible");
-    assert_eq!(icon.fg, Color::Yellow);
-    let row = (picker.metrics().list_area.x..picker.metrics().list_area.right())
-        .map(|column| buffer[(column, picker.metrics().list_area.y)].symbol())
-        .collect::<String>();
-    assert!(row.contains("..."), "{row:?}");
-    assert!(row.ends_with("[+]"), "{row:?}");
+    insta::assert_debug_snapshot!(terminal.backend().buffer());
 }
 
 #[test]
@@ -288,6 +252,16 @@ fn buffer_text(buffer: &ratatui::buffer::Buffer) -> String {
         })
 }
 
+fn buffer_region(buffer: &Buffer, area: Rect) -> Buffer {
+    let mut region = Buffer::empty(Rect::new(0, 0, area.width, area.height));
+    for y in 0..area.height {
+        for x in 0..area.width {
+            region[(x, y)] = buffer[(area.x + x, area.y + y)].clone();
+        }
+    }
+    region
+}
+
 fn line_text(line: &ratatui::text::Line<'_>) -> String {
     line.spans
         .iter()
@@ -310,10 +284,7 @@ fn status_line_shows_named_head_state_and_divergence() {
         ..RepositorySnapshot::default()
     });
 
-    let line = status_line(&model, 0, 80);
-    assert!(line_text(&line).contains(" branch main · clean · ↓1 ↑2"));
-    assert_eq!(line.spans[0].style.fg, Some(theme::TEXT));
-    assert!(line.spans[0].style.add_modifier.contains(Modifier::BOLD));
+    insta::assert_debug_snapshot!("clean_with_divergence", status_line(&model, 0, 80));
 
     model.snapshot.files.push(FileState {
         path: PathBuf::from("changed.rs"),
@@ -324,15 +295,13 @@ fn status_line_shows_named_head_state_and_divergence() {
             text: "@@ -1 +1 @@\n-old\n+new\n".to_owned(),
         }),
     });
-    assert!(line_text(&status_line(&model, 0, 80)).contains(" · changes"));
+    insta::assert_debug_snapshot!("unstaged_changes", status_line(&model, 0, 80));
 
     model.snapshot.files[0].staged = model.snapshot.files[0].unstaged.clone();
-    assert!(line_text(&status_line(&model, 0, 80)).contains(" · staged"));
+    insta::assert_debug_snapshot!("staged_changes", status_line(&model, 0, 80));
 
     model.snapshot.files[0].kind = ChangeKind::Conflicted;
-    let line = status_line(&model, 0, 80);
-    assert!(line_text(&line).contains(" · conflicts"));
-    assert_eq!(line.spans[1].style.fg, Some(Color::LightRed));
+    insta::assert_debug_snapshot!("conflicts", status_line(&model, 0, 80));
 }
 
 #[test]
@@ -343,12 +312,12 @@ fn status_line_distinguishes_unborn_and_detached_head() {
         },
         ..RepositorySnapshot::default()
     });
-    assert!(line_text(&status_line(&model, 0, 80)).contains(" branch main (unborn) · clean"));
+    insta::assert_debug_snapshot!("unborn", status_line(&model, 0, 80));
 
     model.snapshot.head = HeadState::Detached {
         commit: "123456789abcdef".to_owned(),
     };
-    assert!(line_text(&status_line(&model, 0, 80)).contains(" detached 1234567 · clean"));
+    insta::assert_debug_snapshot!("detached", status_line(&model, 0, 80));
 }
 
 #[test]
@@ -369,13 +338,11 @@ fn status_line_preserves_head_and_respects_unicode_width() {
 
     let line = status_line(&model, 0, 24);
     assert_eq!(line.width(), 24);
-    assert!(line_text(&line).starts_with(" branch feature/"));
-    assert!(line_text(&line).ends_with('…'));
-    assert!(!line_text(&line).contains("↓4"));
+    insta::assert_debug_snapshot!("unicode_truncation", line);
 
     let minimum = status_line(&model, 0, 1);
     assert_eq!(minimum.width(), 1);
-    assert_eq!(line_text(&minimum), "…");
+    insta::assert_debug_snapshot!("minimum_width", minimum);
 }
 
 #[test]
@@ -390,11 +357,8 @@ fn status_line_keeps_the_head_visible_with_transient_errors() {
     model.error = Some("Checkout failed: local changes".to_owned());
 
     let line = status_line(&model, 0, 40);
-    let text = line_text(&line);
     assert_eq!(line.width(), 40);
-    assert!(text.starts_with(" branch main  Checkout"));
-    assert!(text.ends_with('…'));
-    assert!(!text.contains("1/f1"));
+    insta::assert_debug_snapshot!(line);
 }
 
 #[test]
@@ -412,8 +376,8 @@ fn status_line_makes_error_control_characters_inert() {
     let text = line_text(&line);
 
     assert_eq!(line.width(), 80);
-    assert!(text.contains("Pull failed␊continue?␍␛[2J    ␈"));
     assert!(!text.chars().any(char::is_control));
+    insta::assert_debug_snapshot!(line);
 }
 
 #[test]
@@ -436,17 +400,7 @@ fn rendered_footer_keeps_newline_errors_on_the_footer_row() {
         .draw(|frame| renderer.render(frame, &model))
         .unwrap();
 
-    let buffer = terminal.backend().buffer();
-    let footer = (0..area.width)
-        .map(|column| buffer[(column, area.height - 1)].symbol())
-        .collect::<String>();
-    assert!(footer.contains("Fetch failed␊SSH host is unknown"));
-    for row in 0..area.height - 1 {
-        let content = (0..area.width)
-            .map(|column| buffer[(column, row)].symbol())
-            .collect::<String>();
-        assert!(!content.contains("SSH host is unknown"));
-    }
+    insta::assert_debug_snapshot!(terminal.backend().buffer());
 }
 
 #[test]

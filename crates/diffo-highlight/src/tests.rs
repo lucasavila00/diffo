@@ -2,7 +2,20 @@ use std::path::Path;
 
 use diffo_diff::parse_unified_patch;
 
-use super::{HighlightWindowRequest, LineRange, SyntaxHighlighter};
+use super::{HighlightWindowRequest, HighlightedLine, LineRange, SyntaxHighlighter};
+
+fn compact_line(line: &HighlightedLine) -> String {
+    line.spans
+        .iter()
+        .map(|span| {
+            format!(
+                "{:?}=#{:02x}{:02x}{:02x}",
+                span.text, span.foreground.red, span.foreground.green, span.foreground.blue
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(" | ")
+}
 
 #[test]
 fn highlights_old_and_new_rust_lines() {
@@ -12,31 +25,31 @@ fn highlights_old_and_new_rust_lines() {
     .expect("valid patch");
     let result = SyntaxHighlighter::new().highlight(Path::new("src/main.rs"), &document);
 
-    assert!(result.old.get(&2).is_some_and(|line| line.spans.len() > 1));
-    assert!(result.new.get(&2).is_some_and(|line| line.spans.len() > 1));
-    assert!(
-        result
-            .new
-            .get(&2)
-            .expect("highlighted new line")
-            .spans
-            .iter()
-            .any(|span| {
-                let channels = [
-                    span.foreground.red,
-                    span.foreground.green,
-                    span.foreground.blue,
-                ];
-                channels.iter().max().expect("channel") - channels.iter().min().expect("channel")
-                    > 30
-            }),
-        "syntax palette should contain chromatic colors"
-    );
+    let compact = [
+        (
+            "old",
+            result
+                .old
+                .iter()
+                .map(|(number, line)| (*number, compact_line(line)))
+                .collect::<Vec<_>>(),
+        ),
+        (
+            "new",
+            result
+                .new
+                .iter()
+                .map(|(number, line)| (*number, compact_line(line)))
+                .collect::<Vec<_>>(),
+        ),
+    ];
+    insta::assert_debug_snapshot!(compact);
 }
 
 #[test]
 fn supports_bat_curated_syntaxes() {
     let highlighter = SyntaxHighlighter::new();
+    let mut highlighted = Vec::new();
     for (path, code) in [
         ("app.tsx", "const view = <main>Hello</main>;"),
         ("script.py", "def hello(): return True"),
@@ -46,8 +59,9 @@ fn supports_bat_curated_syntaxes() {
         let patch = format!("@@ -0,0 +1 @@\n+{code}\n");
         let document = parse_unified_patch(&patch).expect("valid patch");
         let result = highlighter.highlight(Path::new(path), &document);
-        assert!(!result.new[&1].spans.is_empty(), "{path} should highlight");
+        highlighted.push((path, compact_line(&result.new[&1])));
     }
+    insta::assert_debug_snapshot!(highlighted);
 }
 
 #[test]

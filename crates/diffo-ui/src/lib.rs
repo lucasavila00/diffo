@@ -436,24 +436,24 @@ mod tests {
 
     #[test]
     fn shared_change_styles_cover_neutral_selection_and_git_status() {
-        assert_eq!(
-            change_kind_style(ChangeKind::Added, false).fg,
-            Some(Color::LightGreen)
-        );
-        assert_eq!(
-            change_kind_style(ChangeKind::Modified, false).fg,
-            Some(Color::Yellow)
-        );
-        assert!(
-            change_kind_style(ChangeKind::Deleted, false)
-                .add_modifier
-                .contains(Modifier::CROSSED_OUT)
-        );
-        assert!(
-            change_kind_style(ChangeKind::Conflicted, true)
-                .add_modifier
-                .contains(Modifier::BOLD)
-        );
+        let styles = [
+            ChangeKind::Added,
+            ChangeKind::Modified,
+            ChangeKind::Deleted,
+            ChangeKind::Renamed,
+            ChangeKind::Copied,
+            ChangeKind::Untracked,
+            ChangeKind::Conflicted,
+        ]
+        .map(|kind| {
+            (
+                kind,
+                change_kind_style(kind, false),
+                change_kind_style(kind, true),
+            )
+        });
+
+        insta::assert_debug_snapshot!(styles);
     }
 
     #[test]
@@ -468,9 +468,7 @@ mod tests {
                 },
             }],
         });
-        assert_eq!(spans[0].style.fg, Some(Color::Rgb(1, 2, 3)));
-        assert_eq!(spans[0].style.bg, None);
-        assert!(spans[0].style.add_modifier.is_empty());
+        insta::assert_debug_snapshot!(spans);
     }
 
     #[test]

@@ -283,6 +283,7 @@ name = "diffo-diff"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "insta",
  "similar",
 ]
 
@@ -305,6 +306,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "diffo-core",
+ "insta",
  "nix",
  "tempfile",
 ]
@@ -314,6 +316,7 @@ name = "diffo-highlight"
 version = "0.1.0"
 dependencies = [
  "diffo-diff",
+ "insta",
  "two-face",
 ]
 
@@ -344,6 +347,7 @@ dependencies = [
  "crossterm 0.29.0",
  "diffo-core",
  "diffo-highlight",
+ "insta",
  "ratatui",
 ]
 

@@ -17,18 +17,10 @@ fn command_progress_animates_and_exposes_only_the_cancel_marker() {
             );
         })
         .unwrap();
-    let screen =
-        terminal
-            .backend()
-            .buffer()
-            .content
-            .iter()
-            .fold(String::new(), |mut output, cell| {
-                output.push_str(cell.symbol());
-                output
-            });
-    assert!(screen.contains("Pushing"));
-    assert!(screen.contains(interaction::DISMISS));
+    insta::assert_debug_snapshot!(buffer_region(
+        terminal.backend().buffer(),
+        Rect::new(39, 1, 40, 3),
+    ));
     assert!(crate::diff::command_cancel_at_position(
         Rect::new(0, 0, 80, 24),
         77,
@@ -45,7 +37,6 @@ fn command_progress_animates_and_exposes_only_the_cancel_marker() {
 fn commit_message_and_file_diff_boxes_share_the_chrome_border() {
     let model = model();
     let area = Rect::new(0, 0, 80, 24);
-    let panes = horizontal_panes(main_area(area), model.file_pane_percent);
     let mut renderer = Renderer::new();
     renderer.prepare_frame(&model, area);
     let backend = TestBackend::new(area.width, area.height);
@@ -54,11 +45,10 @@ fn commit_message_and_file_diff_boxes_share_the_chrome_border() {
         .draw(|frame| renderer.render(frame, &model))
         .unwrap();
 
-    let buffer = terminal.backend().buffer();
-    let commit_border = buffer[(panes[0].x, panes[0].y)].fg;
-    let diff_border = buffer[(panes[1].x, panes[1].y)].fg;
-    assert_eq!(commit_border, theme::CHROME);
-    assert_eq!(diff_border, theme::CHROME);
+    insta::assert_debug_snapshot!(buffer_region(
+        terminal.backend().buffer(),
+        Rect::new(area.x, area.y, area.width, 1),
+    ));
 }
 
 #[test]
@@ -70,15 +60,7 @@ fn commit_composer_panel_action_uses_the_enabled_control_style() {
         .draw(|frame| crate::diff::render_commit_composer(frame, frame.area(), &model))
         .unwrap();
 
-    let edit_control = terminal
-        .backend()
-        .buffer()
-        .content
-        .iter()
-        .find(|cell| cell.symbol() == interaction::EDIT)
-        .expect("click-to-edit control");
-    assert_eq!(edit_control.fg, theme::TEXT);
-    assert!(edit_control.modifier.contains(Modifier::BOLD));
+    insta::assert_debug_snapshot!(terminal.backend().buffer());
 }
 
 #[test]
@@ -95,15 +77,7 @@ fn blocked_sync_is_visually_clickable_because_it_opens_feedback() {
         .draw(|frame| crate::diff::render_commit_composer(frame, frame.area(), &model))
         .unwrap();
 
-    let action = terminal
-        .backend()
-        .buffer()
-        .content
-        .iter()
-        .find(|cell| cell.symbol() == "[")
-        .expect("blocked sync action");
-    assert_eq!(action.fg, theme::TEXT);
-    assert!(action.modifier.contains(Modifier::BOLD));
+    insta::assert_debug_snapshot!(terminal.backend().buffer());
 }
 
 #[test]
@@ -121,25 +95,8 @@ fn commit_dialog_actions_use_the_enabled_control_style() {
         .draw(|frame| crate::diff::render_commit_editor(frame, &model, frame.area()))
         .unwrap();
 
-    let actions = terminal
-        .backend()
-        .buffer()
-        .content
-        .iter()
-        .filter(|cell| cell.symbol() == "[")
-        .collect::<Vec<_>>();
-    assert_eq!(actions.len(), 2);
-    for action in actions {
-        assert_eq!(action.fg, theme::TEXT);
-        assert!(action.modifier.contains(Modifier::BOLD));
-    }
-    let footer = crate::diff::view::overlays::commit_editor_layout(area).4;
-    let footer_control = (footer.x..footer.right())
-        .map(|column| &terminal.backend().buffer()[(column, footer.y)])
-        .find(|cell| cell.symbol() != " ")
-        .expect("outside-click instruction");
-    assert_eq!(footer_control.fg, theme::TEXT);
-    assert!(footer_control.modifier.contains(Modifier::BOLD));
+    let modal = crate::diff::view::overlays::commit_editor_layout(area).0;
+    insta::assert_debug_snapshot!(buffer_region(terminal.backend().buffer(), modal));
 }
 
 #[test]
@@ -152,23 +109,10 @@ fn renders_and_hit_tests_a_bottom_right_toast() {
     terminal
         .draw(|frame| crate::diff::render_toasts(frame, toasts.as_slice(), frame.area()))
         .unwrap();
-    assert!(
-        terminal
-            .backend()
-            .buffer()
-            .content
-            .iter()
-            .any(|cell| { cell.symbol().contains("Committed") || cell.fg == Color::LightGreen })
-    );
-    let dismiss = terminal
-        .backend()
-        .buffer()
-        .content
-        .iter()
-        .find(|cell| cell.symbol() == interaction::DISMISS)
-        .expect("toast dismiss control");
-    assert_eq!(dismiss.fg, theme::TEXT);
-    assert!(dismiss.modifier.contains(Modifier::BOLD));
+    insta::assert_debug_snapshot!(buffer_region(
+        terminal.backend().buffer(),
+        Rect::new(59, 25, 40, 4),
+    ));
 
     assert_eq!(
         crate::diff::toast_at_position(toasts.as_slice(), Rect::new(0, 0, 100, 30), 70, 26),
@@ -193,9 +137,11 @@ fn error_toasts_render_embedded_newlines_as_inert_text() {
         .unwrap();
 
     let screen = buffer_text(terminal.backend().buffer());
-    assert!(screen.contains("Push failed␊accept remote output?"));
-    assert!(screen.contains("detail␊next line"));
     assert!(!screen.chars().any(char::is_control));
+    insta::assert_debug_snapshot!(buffer_region(
+        terminal.backend().buffer(),
+        Rect::new(59, 24, 40, 5),
+    ));
     assert_eq!(
         crate::diff::toast_at_position(&toasts, area, 70, 26),
         Some(1)

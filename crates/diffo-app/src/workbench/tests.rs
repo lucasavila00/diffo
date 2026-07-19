@@ -2,11 +2,20 @@ use super::*;
 use crate::diff::NetworkOperation;
 use crate::explorer::COLLAPSE_ALL_COMMAND;
 use crossterm::event::{KeyEvent, KeyEventState, MouseEvent};
-use diffo_ui::theme;
-use ratatui::{Terminal, backend::TestBackend, style::Modifier};
+use ratatui::{Terminal, backend::TestBackend, buffer::Buffer};
 
 fn key(code: KeyCode) -> Event {
     Event::Key(KeyEvent::new(code, KeyModifiers::NONE))
+}
+
+fn buffer_region(buffer: &Buffer, area: Rect) -> Buffer {
+    let mut region = Buffer::empty(Rect::new(0, 0, area.width, area.height));
+    for y in 0..area.height {
+        for x in 0..area.width {
+            region[(x, y)] = buffer[(area.x + x, area.y + y)].clone();
+        }
+    }
+    region
 }
 
 fn start_repository_command(
@@ -153,16 +162,8 @@ fn empty_search_draws_the_shared_page_panes() {
     terminal.draw(|frame| workbench.render(frame)).unwrap();
 
     let pane_area = tool_areas(workbench_areas(Rect::new(0, 0, 20, 12)).content).content;
-    let seam = workbench.pane_split.areas(pane_area).trailing.x;
-    assert_eq!(
-        terminal.backend().buffer()[(seam, pane_area.y)].symbol(),
-        "┌"
-    );
     let marker = workbench.pane_split.seam_marker_area(pane_area);
-    let marker_cell = &terminal.backend().buffer()[(marker.x, marker.y)];
-    assert_eq!(marker_cell.symbol(), interaction::PANE_DRAG);
-    assert_eq!(marker_cell.fg, theme::TEXT);
-    assert!(marker_cell.modifier.contains(Modifier::BOLD));
+    insta::assert_debug_snapshot!(terminal.backend().buffer());
     assert!(
         workbench
             .pane_split
@@ -237,16 +238,11 @@ fn command_progress_survives_activity_switching_and_animates_the_app_border() {
     }
     terminal.draw(|frame| workbench.render(frame)).unwrap();
 
-    let screen = terminal
-        .backend()
-        .buffer()
-        .content
-        .iter()
-        .map(ratatui::buffer::Cell::symbol)
-        .collect::<String>();
     assert_eq!(workbench.active, Activity::Explorer);
-    assert!(screen.contains("Fetching"));
-    assert!(screen.contains(interaction::DISMISS));
+    insta::assert_debug_snapshot!(buffer_region(
+        terminal.backend().buffer(),
+        Rect::new(59, 1, 40, 3),
+    ));
     assert_ne!(terminal.backend().buffer()[(0, 0)].fg, first_border);
 }
 
@@ -280,6 +276,7 @@ fn clicking_the_progress_marker_requests_cancellation_until_acknowledged() {
 
 #[test]
 fn operation_toasts_render_in_diff_and_explorer() {
+    let mut rendered = Vec::new();
     for activity in [Activity::Diff, Activity::Explorer] {
         let mut workbench = Workbench::new(RepositorySnapshot::default());
         workbench.active = activity;
@@ -304,19 +301,12 @@ fn operation_toasts_render_in_diff_and_explorer() {
         let mut terminal = Terminal::new(backend).unwrap();
 
         terminal.draw(|frame| workbench.render(frame)).unwrap();
-
-        let screen = terminal
-            .backend()
-            .buffer()
-            .content
-            .iter()
-            .map(ratatui::buffer::Cell::symbol)
-            .collect::<String>();
-        assert!(
-            screen.contains("Pulled 1 commit"),
-            "missing operation toast in {activity:?}"
-        );
+        rendered.push((
+            activity,
+            buffer_region(terminal.backend().buffer(), Rect::new(59, 25, 40, 4)),
+        ));
     }
+    insta::assert_debug_snapshot!(rendered);
 }
 
 #[test]
@@ -397,20 +387,14 @@ fn explorer_palette_combines_shared_and_explorer_commands() {
     let mut workbench = Workbench::new(RepositorySnapshot::default());
     workbench.active = Activity::Explorer;
     workbench.open_active_palette();
-    let backend = TestBackend::new(100, 30);
-    let mut terminal = Terminal::new(backend).unwrap();
+    let commands = workbench
+        .active_palette()
+        .matches()
+        .into_iter()
+        .map(|command| (command.id, command.label))
+        .collect::<Vec<_>>();
 
-    terminal.draw(|frame| workbench.render(frame)).unwrap();
-
-    let screen = terminal
-        .backend()
-        .buffer()
-        .content
-        .iter()
-        .map(ratatui::buffer::Cell::symbol)
-        .collect::<String>();
-    assert!(screen.contains("Git: Fetch"));
-    assert!(screen.contains("Explorer: Collapse All Folders"));
+    insta::assert_debug_snapshot!(commands);
 }
 
 #[test]

@@ -107,7 +107,7 @@ pub fn render_activity_bar(frame: &mut Frame, area: Rect, active: Activity) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ratatui::{Terminal, backend::TestBackend, style::Modifier};
+    use ratatui::{Terminal, backend::TestBackend};
 
     #[test]
     fn reserves_the_full_left_edge_and_maps_buttons() {
@@ -136,22 +136,6 @@ mod tests {
         terminal
             .draw(|frame| render_activity_bar(frame, frame.area(), Activity::Search))
             .unwrap();
-        let buffer = terminal.backend().buffer();
-        let cell = |symbol: &str| {
-            buffer
-                .content
-                .iter()
-                .find(|cell| cell.symbol() == symbol)
-                .unwrap()
-        };
-
-        assert_eq!(cell("▤").fg, theme::TEXT);
-        assert_eq!(cell("≠").fg, theme::TEXT);
-        assert_eq!(cell("▌").fg, theme::TEXT);
-        assert_eq!(cell("⌕").fg, theme::TEXT);
-        assert!(cell("▤").modifier.contains(Modifier::BOLD));
-        assert!(cell("≠").modifier.contains(Modifier::BOLD));
-        assert!(cell("⌕").modifier.contains(Modifier::BOLD));
-        assert_eq!(buffer[(4, 0)].fg, theme::CHROME);
+        insta::assert_debug_snapshot!(terminal.backend().buffer());
     }
 }

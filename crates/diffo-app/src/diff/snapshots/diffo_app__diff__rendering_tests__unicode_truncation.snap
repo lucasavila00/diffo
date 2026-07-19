@@ -1,0 +1,5 @@
+---
+source: crates/diffo-app/src/diff/rendering_tests.rs
+expression: line
+---
+Line::from(Span::from(" branch feature/日本語-…").white().bold())

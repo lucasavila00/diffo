@@ -1,0 +1,44 @@
+---
+source: crates/diffo-app/src/diff/rendering_tests/diff.rs
+assertion_line: 449
+expression: "buffer_region(terminal.backend().buffer(),\nRect::new(renderer.scrollbars.vertical_area.x,\nrenderer.scrollbars.vertical_area.y, 2,\nrenderer.scrollbars.vertical_area.height,),)"
+---
+Buffer {
+    area: Rect { x: 0, y: 0, width: 2, height: 25 },
+    content: [
+        "█▪",
+        "█│",
+        "█│",
+        "█│",
+        "█│",
+        "█│",
+        "║│",
+        "║│",
+        "║│",
+        "║│",
+        "║│",
+        "║│",
+        "║│",
+        "║│",
+        "║│",
+        "║│",
+        "║│",
+        "║│",
+        "║│",
+        "║│",
+        "║│",
+        "║▪",
+        "║│",
+        "║│",
+        "║│",
+    ],
+    styles: [
+        x: 0, y: 0, fg: DarkGray, bg: Reset, underline: Reset, modifier: NONE,
+        x: 1, y: 0, fg: White, bg: Reset, underline: Reset, modifier: NONE,
+        x: 0, y: 1, fg: DarkGray, bg: Reset, underline: Reset, modifier: NONE,
+        x: 0, y: 2, fg: DarkGray, bg: Indexed(52), underline: Reset, modifier: NONE,
+        x: 1, y: 2, fg: DarkGray, bg: Reset, underline: Reset, modifier: NONE,
+        x: 0, y: 3, fg: DarkGray, bg: Indexed(22), underline: Reset, modifier: NONE,
+        x: 1, y: 3, fg: DarkGray, bg: Reset, underline: Reset, modifier: NONE,
+    ]
+}

@@ -1,0 +1,28 @@
+---
+source: crates/diffo-ui/src/command_palette.rs
+assertion_line: 404
+expression: "(rendered, selected_style)"
+---
+(
+    [
+        "┌ Command Palette ───────────────────────────────────────────────────┐",
+        "│ > █                                                                │",
+        "│ ────────────────────────────────────────────────────────────────── │",
+        "│ › Git: Fetch                                                       │",
+        "│   Git: Pull                                                        │",
+        "│                                                                    │",
+        "│                                                                    │",
+        "│                                                                    │",
+        "│                                                                    │",
+        "│                                                                    │",
+        "│                                                                    │",
+        "│                                                                    │",
+        "│                                                                    │",
+        "│                                                                    │",
+        "│                                                                    │",
+        "│                                                                    │",
+        "│ ↑/↓ select · Enter run · Esc close                                 │",
+        "└────────────────────────────────────────────────────────────────────┘",
+    ],
+    Style::new().white().on_dark_gray().underline_color(Color::Reset).bold(),
+)

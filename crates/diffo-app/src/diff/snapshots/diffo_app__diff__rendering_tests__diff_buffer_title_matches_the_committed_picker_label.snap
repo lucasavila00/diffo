@@ -1,0 +1,15 @@
+---
+source: crates/diffo-app/src/diff/rendering_tests.rs
+expression: "buffer_region(terminal.backend().buffer(), Rect::new(diff.x, diff.y, 30, 1),)"
+---
+Buffer {
+    area: Rect { x: 0, y: 0, width: 30, height: 1 },
+    content: [
+        "┌M src/main.rs───────────────",
+    ],
+    styles: [
+        x: 0, y: 0, fg: DarkGray, bg: Reset, underline: Reset, modifier: NONE,
+        x: 1, y: 0, fg: Yellow, bg: Reset, underline: Reset, modifier: NONE,
+        x: 15, y: 0, fg: DarkGray, bg: Reset, underline: Reset, modifier: NONE,
+    ]
+}

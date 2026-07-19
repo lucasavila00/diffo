@@ -17,18 +17,6 @@ fn rows(count: usize) -> Vec<Row<usize>> {
         .collect()
 }
 
-fn rendered_row(buffer: &ratatui::buffer::Buffer, area: Rect) -> String {
-    (area.x..area.right())
-        .map(|column| buffer[(column, area.y)].symbol())
-        .collect()
-}
-
-fn assert_enabled_control(cell: &ratatui::buffer::Cell) {
-    assert_eq!(cell.fg, theme::TEXT);
-    assert_ne!(cell.fg, theme::CHROME);
-    assert!(cell.modifier.contains(Modifier::BOLD));
-}
-
 #[test]
 fn flat_navigation_and_scrollbar_use_one_contract() {
     let mut picker = FilePicker::default();
@@ -138,23 +126,7 @@ fn rendering_preserves_label_style_and_owns_the_action_style() {
 
     terminal.draw(|frame| picker.render(frame, true)).unwrap();
 
-    let buffer = terminal.backend().buffer();
-    let marker = &buffer[(1, 1)];
-    assert_eq!(marker.symbol(), "D");
-    assert_eq!(marker.fg, Color::LightRed);
-    let filename = &buffer[(3, 1)];
-    assert_eq!(filename.symbol(), "d");
-    assert_eq!(filename.fg, Color::LightRed);
-    assert_eq!(filename.bg, theme::SELECTION_BACKGROUND);
-    assert!(filename.modifier.contains(Modifier::CROSSED_OUT));
-    assert!(filename.modifier.contains(Modifier::BOLD));
-
-    let action = &buffer[(26, 1)];
-    assert_eq!(action.symbol(), "[");
-    assert_enabled_control(action);
-    assert_eq!(action.bg, theme::SELECTION_BACKGROUND);
-    assert_eq!(marker.bg, theme::SELECTION_BACKGROUND);
-    assert!(marker.modifier.contains(Modifier::BOLD));
+    insta::assert_debug_snapshot!("styled_selected_row", terminal.backend().buffer());
 }
 
 #[test]
@@ -167,14 +139,7 @@ fn panel_actions_are_high_contrast_and_distinct_from_borders() {
     let mut terminal = Terminal::new(backend).unwrap();
     terminal.draw(|frame| flat.render(frame, false)).unwrap();
 
-    let buffer = terminal.backend().buffer();
-    let plus = buffer
-        .content
-        .iter()
-        .find(|cell| cell.symbol() == "+")
-        .expect("flat panel action");
-    assert_enabled_control(plus);
-    assert_eq!(buffer[(0, 0)].fg, theme::CHROME);
+    insta::assert_debug_snapshot!("flat_panel_action", terminal.backend().buffer());
 
     let mut tree = FilePicker::default();
     tree.prepare(
@@ -184,16 +149,7 @@ fn panel_actions_are_high_contrast_and_distinct_from_borders() {
     );
     terminal.draw(|frame| tree.render(frame, false)).unwrap();
 
-    let buffer = terminal.backend().buffer();
-    for symbol in ["-", "+"] {
-        let control = buffer
-            .content
-            .iter()
-            .find(|cell| cell.symbol() == symbol)
-            .unwrap_or_else(|| panic!("tree {symbol} action"));
-        assert_enabled_control(control);
-    }
-    assert_eq!(buffer[(0, 0)].fg, theme::CHROME);
+    insta::assert_debug_snapshot!("tree_panel_actions", terminal.backend().buffer());
 }
 
 #[test]
@@ -266,9 +222,7 @@ fn flat_rows_start_with_their_label_without_a_dot() {
     let mut terminal = Terminal::new(backend).unwrap();
     terminal.draw(|frame| picker.render(frame, false)).unwrap();
 
-    let buffer = terminal.backend().buffer();
-    assert_eq!(buffer[(1, 1)].symbol(), "f");
-    assert!(!rendered_row(buffer, picker.metrics().list_area).contains('·'));
+    insta::assert_debug_snapshot!(terminal.backend().buffer());
 }
 
 #[test]
@@ -289,22 +243,11 @@ fn tree_rows_keep_their_structure_when_selected() {
     let mut terminal = Terminal::new(backend).unwrap();
     terminal.draw(|frame| picker.render(frame, false)).unwrap();
 
-    let buffer = terminal.backend().buffer();
-    assert_eq!(buffer[(1, 1)].symbol(), "▸");
-    assert_eq!(buffer[(3, 1)].symbol(), file_icons::FOLDER);
-    assert!(!rendered_row(buffer, Rect::new(1, 1, 18, 1)).contains('·'));
-    assert!(!rendered_row(buffer, Rect::new(1, 2, 18, 1)).contains('·'));
+    insta::assert_debug_snapshot!("unfocused", terminal.backend().buffer());
 
     terminal.draw(|frame| picker.render(frame, true)).unwrap();
 
-    let buffer = terminal.backend().buffer();
-    assert_eq!(buffer[(1, 1)].symbol(), "▸");
-    assert_eq!(buffer[(3, 1)].symbol(), file_icons::FOLDER);
-    assert!(!rendered_row(buffer, Rect::new(1, 1, 18, 1)).contains('›'));
-    let selected_label = &buffer[(4, 1)];
-    assert_eq!(selected_label.symbol(), "s");
-    assert_eq!(selected_label.bg, theme::SELECTION_BACKGROUND);
-    assert!(selected_label.modifier.contains(Modifier::BOLD));
+    insta::assert_debug_snapshot!("focused", terminal.backend().buffer());
 }
 
 #[test]
@@ -326,17 +269,11 @@ fn tree_caret_tracks_expansion_and_the_folder_icon_stays_fixed() {
     let mut terminal = Terminal::new(backend).unwrap();
 
     terminal.draw(|frame| picker.render(frame, false)).unwrap();
-    let buffer = terminal.backend().buffer();
-    assert_eq!(buffer[(1, 1)].symbol(), "▸");
-    assert_eq!(buffer[(3, 1)].symbol(), file_icons::FOLDER);
-    assert_eq!(buffer[(4, 1)].symbol(), "s");
+    insta::assert_debug_snapshot!("collapsed", terminal.backend().buffer());
 
     picker.navigate(Navigation::Activate);
     terminal.draw(|frame| picker.render(frame, false)).unwrap();
-    let buffer = terminal.backend().buffer();
-    assert_eq!(buffer[(1, 1)].symbol(), "▾");
-    assert_eq!(buffer[(3, 1)].symbol(), file_icons::FOLDER);
-    assert_eq!(buffer[(4, 1)].symbol(), "s");
+    insta::assert_debug_snapshot!("expanded", terminal.backend().buffer());
 }
 
 #[test]
@@ -358,23 +295,7 @@ fn long_labels_use_three_dots_without_hiding_row_actions() {
     let mut terminal = Terminal::new(backend).unwrap();
     terminal.draw(|frame| flat.render(frame, false)).unwrap();
 
-    let row = rendered_row(terminal.backend().buffer(), flat.metrics().list_area);
-    assert!(row.contains("..."), "{row:?}");
-    assert!(row.ends_with("[+]"), "{row:?}");
-    let first_dot = terminal
-        .backend()
-        .buffer()
-        .content
-        .iter()
-        .find(|cell| cell.symbol() == ".")
-        .expect("truncation dots");
-    assert_eq!(first_dot.fg, Color::Yellow);
-    let action = &terminal.backend().buffer()[(
-        flat.metrics().list_area.right().saturating_sub(3),
-        flat.metrics().list_area.y,
-    )];
-    assert_eq!(action.symbol(), "[");
-    assert_enabled_control(action);
+    insta::assert_debug_snapshot!("flat_truncation", terminal.backend().buffer());
 
     let mut tree = FilePicker::default();
     tree.prepare(
@@ -387,9 +308,7 @@ fn long_labels_use_three_dots_without_hiding_row_actions() {
     );
     terminal.draw(|frame| tree.render(frame, false)).unwrap();
 
-    let row = rendered_row(terminal.backend().buffer(), tree.metrics().list_area);
-    assert!(row.contains("..."), "{row:?}");
-    assert!(!row.starts_with('·'), "{row:?}");
+    insta::assert_debug_snapshot!("tree_truncation", terminal.backend().buffer());
 }
 
 #[test]
@@ -454,42 +373,7 @@ fn context_menu_renders_spacing_and_shortcuts() {
         })
         .unwrap();
 
-    let copy_action = terminal
-        .backend()
-        .buffer()
-        .content
-        .iter()
-        .find(|cell| cell.symbol() == "C")
-        .expect("copy action");
-    assert_enabled_control(copy_action);
-    let shortcut = terminal
-        .backend()
-        .buffer()
-        .content
-        .iter()
-        .find(|cell| cell.symbol() == "c")
-        .expect("menu shortcut");
-    assert_enabled_control(shortcut);
-    assert_eq!(
-        rendered_row(terminal.backend().buffer(), Rect::new(3, 2, 22, 1)),
-        "[a] Copy absolute path"
-    );
-    assert_eq!(
-        rendered_row(terminal.backend().buffer(), Rect::new(3, 3, 22, 1)).trim(),
-        ""
-    );
-    assert_eq!(
-        rendered_row(terminal.backend().buffer(), Rect::new(3, 4, 22, 1)),
-        "[r] Copy relative path"
-    );
-    let dismiss = terminal
-        .backend()
-        .buffer()
-        .content
-        .iter()
-        .find(|cell| cell.symbol() == interaction::DISMISS)
-        .expect("menu dismiss control");
-    assert_enabled_control(dismiss);
+    insta::assert_debug_snapshot!(terminal.backend().buffer());
 }
 
 #[test]

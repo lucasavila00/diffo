@@ -1,0 +1,28 @@
+---
+source: crates/diffo-ui/src/file_picker/tests.rs
+expression: terminal.backend().buffer()
+---
+Buffer {
+    area: Rect { x: 0, y: 0, width: 20, height: 5 },
+    content: [
+        "┌ Explorer ─[-] [+]┐",
+        "│▸ src            │",
+        "│                  │",
+        "│                  │",
+        "└──────────────────┘",
+    ],
+    styles: [
+        x: 0, y: 0, fg: DarkGray, bg: Reset, underline: Reset, modifier: NONE,
+        x: 1, y: 0, fg: White, bg: Reset, underline: Reset, modifier: NONE,
+        x: 11, y: 0, fg: DarkGray, bg: Reset, underline: Reset, modifier: NONE,
+        x: 12, y: 0, fg: White, bg: Reset, underline: Reset, modifier: BOLD,
+        x: 19, y: 0, fg: DarkGray, bg: Reset, underline: Reset, modifier: NONE,
+        x: 1, y: 1, fg: White, bg: Reset, underline: Reset, modifier: BOLD,
+        x: 3, y: 1, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 19, y: 1, fg: DarkGray, bg: Reset, underline: Reset, modifier: NONE,
+        x: 1, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 19, y: 2, fg: DarkGray, bg: Reset, underline: Reset, modifier: NONE,
+        x: 1, y: 3, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 19, y: 3, fg: DarkGray, bg: Reset, underline: Reset, modifier: NONE,
+    ]
+}

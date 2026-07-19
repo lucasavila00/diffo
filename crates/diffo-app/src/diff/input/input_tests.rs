@@ -25,34 +25,36 @@ fn model() -> Model {
 
 #[test]
 fn maps_fixed_key_bindings() {
-    let cases = [
-        (KeyCode::Char('q'), Message::Quit),
-        (KeyCode::Char('2'), Message::ToggleHelp),
-        (KeyCode::F(2), Message::ToggleHelp),
-        (KeyCode::Esc, Message::Quit),
-        (KeyCode::Up, Message::ScrollDiffVerticalBy(-4)),
-        (KeyCode::Down, Message::ScrollDiffVerticalBy(4)),
-        (KeyCode::PageUp, Message::ScrollDiffPageUp(1)),
-        (KeyCode::PageDown, Message::ScrollDiffPageDown(1)),
-        (KeyCode::Left, Message::ScrollDiffHorizontalBy(-4)),
-        (KeyCode::Right, Message::ScrollDiffHorizontalBy(4)),
-        (KeyCode::Char('r'), Message::ToggleDiffView),
-        (KeyCode::Char('n'), Message::JumpToNextChange),
-        (KeyCode::Char('p'), Message::JumpToPreviousChange),
-        (KeyCode::Char(' '), Message::ToggleStageSelected),
-        (KeyCode::Char('a'), Message::ToggleStageAll),
+    let keys = [
+        KeyCode::Char('q'),
+        KeyCode::Char('2'),
+        KeyCode::F(2),
+        KeyCode::Esc,
+        KeyCode::Up,
+        KeyCode::Down,
+        KeyCode::PageUp,
+        KeyCode::PageDown,
+        KeyCode::Left,
+        KeyCode::Right,
+        KeyCode::Char('r'),
+        KeyCode::Char('n'),
+        KeyCode::Char('p'),
+        KeyCode::Char(' '),
+        KeyCode::Char('a'),
     ];
     let model = model();
-    for (key, expected) in cases {
-        assert_eq!(
+    let mappings = keys.map(|key| {
+        format!(
+            "{key:?} -> {:?}",
             map_event(
                 &Event::Key(KeyEvent::new(key, KeyModifiers::NONE)),
                 &model,
                 Rect::default(),
-            ),
-            Some(expected)
-        );
-    }
+            )
+        )
+    });
+
+    insta::assert_debug_snapshot!(mappings);
 }
 
 #[test]
@@ -72,15 +74,11 @@ fn bindings_are_unique_and_generate_help() {
         }
     }
 
-    let rows = help_rows();
-    assert!(rows.contains(&("r".to_owned(), "Toggle inline / side-by-side view")));
-    assert!(rows.contains(&("Space".to_owned(), "Stage / unstage selected file")));
-    assert!(rows.contains(&("j / w".to_owned(), "Previous file")));
-    assert!(rows.contains(&("k / l / s".to_owned(), "Next file")));
-    assert!(rows.contains(&("c".to_owned(), "Open path menu")));
-    assert!(rows.contains(&("n".to_owned(), "Next change")));
-    assert!(rows.contains(&("p".to_owned(), "Previous change")));
-    assert!(rows.contains(&("q / Esc / Ctrl+c".to_owned(), "Quit")));
+    let help = help_rows()
+        .into_iter()
+        .map(|(keys, action)| format!("{keys}: {action}"))
+        .collect::<Vec<_>>();
+    insta::assert_debug_snapshot!(help);
 }
 
 #[test]

@@ -3,55 +3,42 @@ use std::{fs, path::Path};
 use diffo_ui::{
     command_progress_style, design, disabled_control_style, enabled_control_style, theme,
 };
-use ratatui::layout::Margin;
-use ratatui::style::{Color, Modifier};
 
 #[test]
 fn semantic_palette_is_fixed() {
-    assert_eq!(theme::TEXT, Color::White);
-    assert_eq!(theme::CHROME, Color::DarkGray);
-    assert_eq!(theme::INFORMATION, Color::LightCyan);
-    assert_eq!(theme::SELECTION_BACKGROUND, theme::CHROME);
-    assert_eq!(theme::SUCCESS, Color::LightGreen);
-    assert_eq!(theme::WARNING, Color::Yellow);
-    assert_eq!(theme::DANGER, Color::LightRed);
-    assert_eq!(theme::CONFLICT_FOREGROUND, Color::LightYellow);
-    assert_eq!(theme::CONFLICT_BACKGROUND, Color::Indexed(58));
-    assert_eq!(command_progress_style(0).fg, Some(Color::Indexed(24)));
-    assert_eq!(command_progress_style(4).fg, Some(Color::Indexed(25)));
+    insta::assert_debug_snapshot!((
+        [
+            ("text", theme::TEXT),
+            ("chrome", theme::CHROME),
+            ("information", theme::INFORMATION),
+            ("selection background", theme::SELECTION_BACKGROUND),
+            ("success", theme::SUCCESS),
+            ("warning", theme::WARNING),
+            ("danger", theme::DANGER),
+            ("conflict foreground", theme::CONFLICT_FOREGROUND),
+            ("conflict background", theme::CONFLICT_BACKGROUND),
+        ],
+        [command_progress_style(0), command_progress_style(4)],
+    ));
 }
 
 #[test]
 fn enabled_controls_are_distinct_from_chrome() {
-    let style = enabled_control_style();
-    assert_eq!(style.fg, Some(theme::TEXT));
-    assert_ne!(style.fg, Some(theme::CHROME));
-    assert!(style.add_modifier.contains(Modifier::BOLD));
-    assert_eq!(disabled_control_style().fg, Some(theme::CHROME));
+    insta::assert_debug_snapshot!((enabled_control_style(), disabled_control_style()));
 }
 
 #[test]
 fn structural_geometry_is_fixed() {
-    assert_eq!(design::BORDER_WIDTH, 1);
-    assert_eq!(
+    insta::assert_debug_snapshot!((
+        design::BORDER_WIDTH,
         design::PANEL_INSET,
-        Margin {
-            horizontal: 1,
-            vertical: 1,
-        }
-    );
-    assert_eq!(
         design::DIALOG_INSET,
-        Margin {
-            horizontal: 2,
-            vertical: 1,
-        }
-    );
-    assert_eq!(design::ACTIVITY_RAIL_WIDTH, 5);
-    assert_eq!(design::COMMAND_PALETTE_WIDTH.resolve(100), 70);
-    assert_eq!(design::COMMAND_PALETTE_WIDTH.resolve(20), 20);
-    assert_eq!(design::HELP_WIDTH.resolve(200), 90);
-    assert_eq!(design::COMMIT_EDITOR_WIDTH.resolve(100), 70);
+        design::ACTIVITY_RAIL_WIDTH,
+        design::COMMAND_PALETTE_WIDTH.resolve(100),
+        design::COMMAND_PALETTE_WIDTH.resolve(20),
+        design::HELP_WIDTH.resolve(200),
+        design::COMMIT_EDITOR_WIDTH.resolve(100),
+    ));
 }
 
 #[test]

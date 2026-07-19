@@ -1,0 +1,18 @@
+---
+source: crates/diffo-app/src/diff/rendering_tests/chrome.rs
+assertion_line: 48
+expression: "buffer_region(terminal.backend().buffer(),\nRect::new(area.x, area.y, area.width, 1),)"
+---
+Buffer {
+    area: Rect { x: 0, y: 0, width: 80, height: 1 },
+    content: [
+        "┌ Commit message ─✎┐┌M src/main.rs──────────────────────── File Diff · Inline ┐",
+    ],
+    styles: [
+        x: 0, y: 0, fg: DarkGray, bg: Reset, underline: Reset, modifier: NONE,
+        x: 18, y: 0, fg: White, bg: Reset, underline: Reset, modifier: BOLD,
+        x: 19, y: 0, fg: DarkGray, bg: Reset, underline: Reset, modifier: NONE,
+        x: 21, y: 0, fg: Yellow, bg: Reset, underline: Reset, modifier: NONE,
+        x: 35, y: 0, fg: DarkGray, bg: Reset, underline: Reset, modifier: NONE,
+    ]
+}

@@ -1,0 +1,119 @@
+---
+source: crates/diffo-diff/src/tests.rs
+assertion_line: 13
+expression: document
+---
+DiffDocument {
+    hunks: [
+        Hunk {
+            header: "@@ -1,4 +1,4 @@",
+            old_start: 1,
+            new_start: 1,
+            blocks: [
+                Context(
+                    [
+                        DiffLine {
+                            old_number: Some(
+                                1,
+                            ),
+                            new_number: Some(
+                                1,
+                            ),
+                            text: "same",
+                        },
+                    ],
+                ),
+                Change {
+                    removed: [
+                        DiffLine {
+                            old_number: Some(
+                                2,
+                            ),
+                            new_number: None,
+                            text: "old one",
+                        },
+                        DiffLine {
+                            old_number: Some(
+                                3,
+                            ),
+                            new_number: None,
+                            text: "old two",
+                        },
+                    ],
+                    added: [
+                        DiffLine {
+                            old_number: None,
+                            new_number: Some(
+                                2,
+                            ),
+                            text: "new one",
+                        },
+                        DiffLine {
+                            old_number: None,
+                            new_number: Some(
+                                3,
+                            ),
+                            text: "new two",
+                        },
+                    ],
+                    alignment: [
+                        LinePair {
+                            old: Some(
+                                DiffLine {
+                                    old_number: Some(
+                                        2,
+                                    ),
+                                    new_number: None,
+                                    text: "old one",
+                                },
+                            ),
+                            new: Some(
+                                DiffLine {
+                                    old_number: None,
+                                    new_number: Some(
+                                        2,
+                                    ),
+                                    text: "new one",
+                                },
+                            ),
+                        },
+                        LinePair {
+                            old: Some(
+                                DiffLine {
+                                    old_number: Some(
+                                        3,
+                                    ),
+                                    new_number: None,
+                                    text: "old two",
+                                },
+                            ),
+                            new: Some(
+                                DiffLine {
+                                    old_number: None,
+                                    new_number: Some(
+                                        3,
+                                    ),
+                                    text: "new two",
+                                },
+                            ),
+                        },
+                    ],
+                },
+                Context(
+                    [
+                        DiffLine {
+                            old_number: Some(
+                                4,
+                            ),
+                            new_number: Some(
+                                4,
+                            ),
+                            text: "end",
+                        },
+                    ],
+                ),
+            ],
+        },
+    ],
+    binary: false,
+}

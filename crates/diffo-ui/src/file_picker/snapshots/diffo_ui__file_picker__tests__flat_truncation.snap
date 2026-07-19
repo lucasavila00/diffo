@@ -1,0 +1,23 @@
+---
+source: crates/diffo-ui/src/file_picker/tests.rs
+expression: terminal.backend().buffer()
+---
+Buffer {
+    area: Rect { x: 0, y: 0, width: 18, height: 4 },
+    content: [
+        "┌ Files ─────────┐",
+        "│very-long... [+]│",
+        "│                │",
+        "└────────────────┘",
+    ],
+    styles: [
+        x: 0, y: 0, fg: DarkGray, bg: Reset, underline: Reset, modifier: NONE,
+        x: 1, y: 0, fg: White, bg: Reset, underline: Reset, modifier: NONE,
+        x: 8, y: 0, fg: DarkGray, bg: Reset, underline: Reset, modifier: NONE,
+        x: 1, y: 1, fg: Yellow, bg: Reset, underline: Reset, modifier: NONE,
+        x: 14, y: 1, fg: White, bg: Reset, underline: Reset, modifier: BOLD,
+        x: 17, y: 1, fg: DarkGray, bg: Reset, underline: Reset, modifier: NONE,
+        x: 1, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 17, y: 2, fg: DarkGray, bg: Reset, underline: Reset, modifier: NONE,
+    ]
+}

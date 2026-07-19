@@ -1,0 +1,27 @@
+---
+source: crates/diffo-app/src/diff/rendering_tests/diff.rs
+assertion_line: 377
+expression: skeleton
+---
+[
+    Line::from(Span::from(" 599   ").dark_gray()),
+    Line::from(Span::from(" 600   ").dark_gray()),
+    Line::from(Span::from(" 601   ").dark_gray()),
+    Line::from(Span::from(" 602   ").dark_gray()),
+    Line::from(Span::from(" 603   ").dark_gray()),
+    Line::from(Span::from(" 604   ").dark_gray()),
+    Line::from(Span::from(" 605   ").dark_gray()),
+    Line::from(Span::from(" 606   ").dark_gray()),
+    Line::from(Span::from(" 607   ").dark_gray()),
+    Line::from(Span::from(" 608   ").dark_gray()),
+    Line::from(Span::from(" 609   ").dark_gray()),
+    Line::from(Span::from(" 610   ").dark_gray()),
+    Line::from(Span::from(" 611   ").dark_gray()),
+    Line::from(Span::from(" 612   ").dark_gray()),
+    Line::from(Span::from(" 613   ").dark_gray()),
+    Line::from(Span::from(" 614   ").dark_gray()),
+    Line::from(Span::from(" 615   ").dark_gray()),
+    Line::from(Span::from(" 616   ").dark_gray()),
+    Line::from(Span::from(" 617   ").dark_gray()),
+    Line::from(Span::from(" 618   ").dark_gray()),
+]

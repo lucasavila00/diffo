@@ -1,0 +1,19 @@
+---
+source: crates/diffo-app/src/explorer/view.rs
+assertion_line: 481
+expression: terminal.backend().buffer()
+---
+Buffer {
+    area: Rect { x: 0, y: 0, width: 40, height: 4 },
+    content: [
+        "┌  pending.rs──────────────────────────┐",
+        "│   1                                  │",
+        "│                                      │",
+        "└──────────────────────────────────────┘",
+    ],
+    styles: [
+        x: 0, y: 0, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 1, y: 1, fg: DarkGray, bg: Reset, underline: Reset, modifier: NONE,
+        x: 6, y: 1, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+    ]
+}

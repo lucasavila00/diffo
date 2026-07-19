@@ -1,0 +1,159 @@
+---
+source: crates/diffo-diff/src/tests.rs
+assertion_line: 22
+expression: "(inline, side)"
+---
+(
+    [
+        RenderLine {
+            number: None,
+            text: "@@ -1,4 +1,4 @@",
+            kind: Header,
+        },
+        RenderLine {
+            number: Some(
+                1,
+            ),
+            text: "same",
+            kind: Context,
+        },
+        RenderLine {
+            number: Some(
+                2,
+            ),
+            text: "old one",
+            kind: Removed,
+        },
+        RenderLine {
+            number: Some(
+                3,
+            ),
+            text: "old two",
+            kind: Removed,
+        },
+        RenderLine {
+            number: Some(
+                2,
+            ),
+            text: "new one",
+            kind: Added,
+        },
+        RenderLine {
+            number: Some(
+                3,
+            ),
+            text: "new two",
+            kind: Added,
+        },
+        RenderLine {
+            number: Some(
+                4,
+            ),
+            text: "end",
+            kind: Context,
+        },
+    ],
+    [
+        SideBySideRow {
+            old: Some(
+                RenderLine {
+                    number: None,
+                    text: "@@ -1,4 +1,4 @@",
+                    kind: Header,
+                },
+            ),
+            new: Some(
+                RenderLine {
+                    number: None,
+                    text: "@@ -1,4 +1,4 @@",
+                    kind: Header,
+                },
+            ),
+            kind: Header,
+        },
+        SideBySideRow {
+            old: Some(
+                RenderLine {
+                    number: Some(
+                        1,
+                    ),
+                    text: "same",
+                    kind: Context,
+                },
+            ),
+            new: Some(
+                RenderLine {
+                    number: Some(
+                        1,
+                    ),
+                    text: "same",
+                    kind: Context,
+                },
+            ),
+            kind: Context,
+        },
+        SideBySideRow {
+            old: Some(
+                RenderLine {
+                    number: Some(
+                        2,
+                    ),
+                    text: "old one",
+                    kind: Removed,
+                },
+            ),
+            new: Some(
+                RenderLine {
+                    number: Some(
+                        2,
+                    ),
+                    text: "new one",
+                    kind: Added,
+                },
+            ),
+            kind: Changed,
+        },
+        SideBySideRow {
+            old: Some(
+                RenderLine {
+                    number: Some(
+                        3,
+                    ),
+                    text: "old two",
+                    kind: Removed,
+                },
+            ),
+            new: Some(
+                RenderLine {
+                    number: Some(
+                        3,
+                    ),
+                    text: "new two",
+                    kind: Added,
+                },
+            ),
+            kind: Changed,
+        },
+        SideBySideRow {
+            old: Some(
+                RenderLine {
+                    number: Some(
+                        4,
+                    ),
+                    text: "end",
+                    kind: Context,
+                },
+            ),
+            new: Some(
+                RenderLine {
+                    number: Some(
+                        4,
+                    ),
+                    text: "end",
+                    kind: Context,
+                },
+            ),
+            kind: Context,
+        },
+    ],
+)

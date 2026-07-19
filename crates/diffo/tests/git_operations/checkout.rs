@@ -24,6 +24,7 @@ fn checkout_waits_for_real_git_completion_before_installing_the_new_branch() -> 
         .press(Key::Enter)?
         .wait_for_text("Checkout to")?
         .type_text("topic")?
+        .wait_for(&Selector::selected_row("topic"))?
         .press(Key::Enter)?
         .wait_for_text("Checking out topic")?;
     gate.wait_until_blocked()?;

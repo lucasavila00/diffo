@@ -167,7 +167,7 @@ fn prepare_viewer(
         };
     };
     let lines = text.lines().map(terminal_safe_text).collect::<Vec<_>>();
-    let markers = change_markers(&file.patch, file.deleted, status, &lines);
+    let markers = change_markers(&file.patch, status, &lines);
     let syntax_eligible = lines.len() < MAX_HIGHLIGHT_FILE_LINES;
     let range = visible_range(first_line, viewport_rows, lines.len());
     let styles = if syntax_eligible {
@@ -255,7 +255,6 @@ fn file_document(lines: &[String], range: LineRange) -> DiffDocument {
 
 fn change_markers(
     patch: &str,
-    deleted: bool,
     status: Option<ChangeKind>,
     lines: &[String],
 ) -> HashMap<usize, GutterMarker> {
@@ -270,15 +269,6 @@ fn change_markers(
                 DiffBlock::Context(context) => {
                     if let Some(number) = context.last().and_then(|line| line.new_number) {
                         new_cursor = number.saturating_add(1);
-                    }
-                }
-                DiffBlock::Change {
-                    removed, added: _, ..
-                } if deleted => {
-                    for line in removed {
-                        if let Some(number) = line.old_number {
-                            markers.insert(number as usize, GutterMarker::Deleted);
-                        }
                     }
                 }
                 DiffBlock::Change {
@@ -351,20 +341,7 @@ mod tests {
     fn maps_added_modified_and_deleted_lines_to_file_numbers() {
         let patch = "@@ -1,4 +1,4 @@\n same\n-old\n+new\n-gone\n tail\n+added\n";
         let lines = ["same", "new", "tail", "added"].map(str::to_owned);
-        let markers = change_markers(patch, false, Some(ChangeKind::Modified), &lines);
-        let mut markers = markers.into_iter().collect::<Vec<_>>();
-        markers.sort_by_key(|(line, _)| *line);
-        insta::assert_debug_snapshot!(markers);
-    }
-
-    #[test]
-    fn deleted_file_uses_old_line_numbers() {
-        let markers = change_markers(
-            "@@ -1,2 +0,0 @@\n-one\n-two\n",
-            true,
-            Some(ChangeKind::Deleted),
-            &["one".to_owned(), "two".to_owned()],
-        );
+        let markers = change_markers(patch, Some(ChangeKind::Modified), &lines);
         let mut markers = markers.into_iter().collect::<Vec<_>>();
         markers.sort_by_key(|(line, _)| *line);
         insta::assert_debug_snapshot!(markers);
@@ -380,7 +357,7 @@ mod tests {
             ">>>>>>> theirs",
         ]
         .map(str::to_owned);
-        let markers = change_markers("", false, Some(ChangeKind::Conflicted), &lines);
+        let markers = change_markers("", Some(ChangeKind::Conflicted), &lines);
         let mut markers = markers.into_iter().collect::<Vec<_>>();
         markers.sort_by_key(|(line, _)| *line);
         insta::assert_debug_snapshot!(markers);
@@ -400,7 +377,6 @@ mod tests {
             ExplorerFile {
                 content: ExplorerFileContent::Text(text),
                 patch: String::new(),
-                deleted: false,
             },
             0,
             20,
@@ -417,7 +393,6 @@ mod tests {
             ExplorerFile {
                 content: ExplorerFileContent::Text("value\n".repeat(10_000)),
                 patch: String::new(),
-                deleted: false,
             },
             0,
             20,
@@ -436,7 +411,6 @@ mod tests {
             ExplorerFile {
                 content: ExplorerFileContent::Text("before\t\x1b[2J\x08after\n".to_owned()),
                 patch: String::new(),
-                deleted: false,
             },
             0,
             20,

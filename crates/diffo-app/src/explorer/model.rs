@@ -88,7 +88,6 @@ impl ExplorerModel {
     }
 
     pub(crate) fn install_paths(&mut self, mut paths: Vec<PathBuf>) {
-        paths.extend(self.snapshot.files.iter().map(|file| file.path.clone()));
         paths.sort();
         paths.dedup();
         self.paths = paths;
@@ -280,7 +279,7 @@ mod tests {
     }
 
     #[test]
-    fn preserves_a_file_and_directory_with_the_same_path() {
+    fn does_not_synthesize_deleted_snapshot_paths() {
         let snapshot = RepositorySnapshot {
             files: vec![FileState {
                 path: PathBuf::from("foo"),
@@ -296,13 +295,12 @@ mod tests {
         let mut model = ExplorerModel::new(snapshot);
         model.install_paths(vec![PathBuf::from("foo/bar.rs")]);
 
-        assert_eq!(model.entries.len(), 2);
+        assert_eq!(model.entries.len(), 1);
         assert_eq!(
             model.entries[0].id,
             EntryId::Directory(PathBuf::from("foo"))
         );
         assert_eq!(model.entries[0].children.len(), 1);
-        assert_eq!(model.entries[1].id, EntryId::File(PathBuf::from("foo")));
-        assert_eq!(model.entries[1].status, Some(ChangeKind::Deleted));
+        assert!(model.file_entry(Path::new("foo")).is_none());
     }
 }

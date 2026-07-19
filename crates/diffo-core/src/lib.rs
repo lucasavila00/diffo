@@ -65,7 +65,6 @@ pub struct FileDiff {
 pub struct ExplorerFile {
     pub content: ExplorerFileContent,
     pub patch: String,
-    pub deleted: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -227,6 +226,7 @@ pub trait Repository: RepositorySource {
             .snapshot()?
             .files
             .into_iter()
+            .filter(|file| file.kind != ChangeKind::Deleted)
             .map(|file| file.path)
             .collect())
     }

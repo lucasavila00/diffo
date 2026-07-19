@@ -104,33 +104,31 @@ fn delayed_explorer_open_commits_only_the_latest_syntax_ready_file() -> Result<(
 }
 
 #[test]
-fn explorer_colliding_file_and_directory_collapse_and_open_atomically() -> Result<()> {
+fn explorer_removes_a_deleted_file_without_showing_head_content() -> Result<()> {
     let repository = TestRepository::new()?;
-    fs::write(repository.worktree.join("foo"), "FILE_VERSION\n")?;
-    git(&repository.worktree, &["add", "foo"])?;
-    git(&repository.worktree, &["commit", "-m", "Add file foo"])?;
-    fs::remove_file(repository.worktree.join("foo"))?;
-    fs::create_dir(repository.worktree.join("foo"))?;
-    fs::write(repository.worktree.join("foo/bar.rs"), "CHILD_VERSION\n")?;
+    fs::write(repository.worktree.join("keep.txt"), "KEEP_CONTENT\n")?;
+    fs::write(repository.worktree.join("removed.txt"), "REMOVED_CONTENT\n")?;
+    git(&repository.worktree, &["add", "keep.txt", "removed.txt"])?;
+    git(
+        &repository.worktree,
+        &["commit", "-m", "Add Explorer files"],
+    )?;
     let mut screen = repository.screen_with_explorer_delay()?;
 
     screen
         .press(Key::Tab)?
         .wait_for_text("Explorer")?
-        .click(&Selector::selected_row("foo"))?
-        .wait_for_text("bar.rs")?
-        .press(Key::Char('1'))?
-        .wait_for_text("Command Palette")?
-        .type_text("collapse all")?
-        .press(Key::Enter)?
-        .wait_for_text_gone("bar.rs")?
-        .click(&Selector::selected_row("foo"))?
-        .wait_for_text("bar.rs")?
+        .wait_for_text("KEEP_CONTENT")?
         .press(Key::Char('k'))?
-        .press(Key::Char('k'))?
-        .wait_for_text("FILE_VERSION")?;
+        .wait_for_text("REMOVED_CONTENT")?;
 
-    assert!(!screen.contents().contains("CHILD_VERSION"));
+    fs::remove_file(repository.worktree.join("removed.txt"))?;
+
+    screen
+        .wait_for_text_gone("removed.txt")?
+        .wait_for_text("KEEP_CONTENT")?;
+
+    assert!(!screen.contents().contains("REMOVED_CONTENT"));
     Ok(())
 }
 

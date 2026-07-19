@@ -213,6 +213,10 @@ fn fetches_and_pulls_from_the_configured_remote() {
 fn explorer_lists_unchanged_and_untracked_but_not_ignored_paths() {
     let repo = test_repository();
     fs::write(repo.path().join("untracked.txt"), "new\n").expect("write untracked file");
+    fs::write(repo.path().join("removed.txt"), "remove\n").expect("write removable file");
+    git(repo.path(), &["add", "removed.txt"]);
+    git(repo.path(), &["commit", "-m", "add removable file"]);
+    fs::remove_file(repo.path().join("removed.txt")).expect("remove tracked file");
     fs::write(repo.path().join("ignored.txt"), "ignored\n").expect("write ignored file");
     fs::write(repo.path().join(".gitignore"), "ignored.txt\n").expect("write ignore file");
     let source = super::GitRepositorySource::new(repo.path());
@@ -223,10 +227,11 @@ fn explorer_lists_unchanged_and_untracked_but_not_ignored_paths() {
     assert!(paths.contains(&PathBuf::from("untracked.txt")));
     assert!(paths.contains(&PathBuf::from(".gitignore")));
     assert!(!paths.contains(&PathBuf::from("ignored.txt")));
+    assert!(!paths.contains(&PathBuf::from("removed.txt")));
 }
 
 #[test]
-fn explorer_reads_worktree_and_deleted_head_contents() {
+fn explorer_reads_worktree_contents_and_rejects_removed_paths() {
     let repo = test_repository();
     let source = super::GitRepositorySource::new(repo.path());
     fs::write(repo.path().join("tracked.txt"), "changed\n").expect("modify file");
@@ -239,20 +244,12 @@ fn explorer_reads_worktree_and_deleted_head_contents() {
         ExplorerFileContent::Text("changed\n".to_owned())
     );
     assert!(changed.patch.contains("+changed"));
-    assert!(!changed.deleted);
 
     fs::remove_file(repo.path().join("tracked.txt")).expect("delete file");
-    fs::create_dir(repo.path().join("tracked.txt")).expect("replace file with directory");
-    fs::write(repo.path().join("tracked.txt/child.txt"), "child\n")
-        .expect("write replacement child");
-    let deleted = source
+    let error = source
         .explorer_file(Path::new("tracked.txt"))
-        .expect("deleted file");
-    assert_eq!(
-        deleted.content,
-        ExplorerFileContent::Text("base\n".to_owned())
-    );
-    assert!(deleted.deleted);
+        .expect_err("removed file must not be readable in Explorer");
+    assert!(error.to_string().contains("failed to inspect file"));
 }
 
 #[test]

@@ -18,18 +18,17 @@ or work to the rendering loop.
 ## Decision
 
 Color changed files in the Explorer picker with the existing fixed Git styles. File
-rows retain status-specific modifiers: deleted files are struck out and conflicted
-files are bold.
+rows retain the conflict-specific bold modifier. Deleted paths are absent from
+Explorer as required by ADR 0035.
 
 Propagate status recursively to every ancestor directory while building the complete
 Explorer tree. A directory stores the strongest descendant status using this fixed
 precedence:
 
 1. conflicted;
-2. deleted;
-3. modified;
-4. renamed or copied;
-5. added or untracked.
+2. modified;
+3. renamed or copied;
+4. added or untracked.
 
 Directories inherit only the foreground color. They are never struck out or made
 bold because of a descendant. The folder icon and name receive the color; disclosure
@@ -62,7 +61,7 @@ its compact disclosure layout and its ban on Explorer status letters.
 - Test that repository refresh removes obsolete directory status.
 - Render a collapsed changed folder and verify its caret stays neutral while its icon
   and name are colored.
-- Verify file-only deleted and conflict modifiers.
+- Verify the file-only conflict modifier.
 - Verify viewer titles remain neutral and letter-free.
 - Run `make all` when implementing the ADR.
 

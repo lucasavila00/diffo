@@ -205,7 +205,7 @@ fn explorer_commands_use_the_same_state_transitions_as_header_buttons() {
 }
 
 #[test]
-fn colliding_file_and_directory_collapse_independently() {
+fn deleted_snapshot_path_is_absent_from_the_tree() {
     let snapshot = RepositorySnapshot {
         files: vec![diffo_core::FileState {
             path: PathBuf::from("foo"),
@@ -225,14 +225,14 @@ fn colliding_file_and_directory_collapse_independently() {
     });
     explorer.prepare_frame(Rect::new(0, 0, 100, 30), PaneSplit::default());
 
-    assert_eq!(explorer.picker.visible_rows(), 2);
+    assert_eq!(explorer.picker.visible_rows(), 1);
     assert_eq!(
         explorer.picker.selected(),
         Some(&EntryId::Directory(PathBuf::from("foo")))
     );
 
     assert!(explorer.execute_command(EXPAND_ALL_COMMAND));
-    assert_eq!(explorer.picker.visible_rows(), 3);
+    assert_eq!(explorer.picker.visible_rows(), 2);
     explorer
         .picker
         .navigate(diffo_ui::file_picker::Navigation::Next);
@@ -242,16 +242,17 @@ fn colliding_file_and_directory_collapse_independently() {
     );
 
     assert!(explorer.execute_command(COLLAPSE_ALL_COMMAND));
-    assert_eq!(explorer.picker.visible_rows(), 2);
+    assert_eq!(explorer.picker.visible_rows(), 1);
     assert_eq!(
         explorer.picker.selected(),
         Some(&EntryId::Directory(PathBuf::from("foo")))
     );
-
-    explorer
-        .picker
-        .navigate(diffo_ui::file_picker::Navigation::Last);
-    assert_eq!(explorer.selected_file(), Some(&PathBuf::from("foo")));
+    assert!(
+        explorer
+            .model
+            .file_entry(std::path::Path::new("foo"))
+            .is_none()
+    );
 }
 
 #[test]

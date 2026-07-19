@@ -1,5 +1,5 @@
 use diffo_core::ChangeKind;
-use diffo_file_picker::{Document as PickerDocument, FilePicker, Row as PickerRow};
+use diffo_file_picker::{Document as PickerDocument, FilePicker, TreeNode as PickerTreeNode};
 use diffo_text_view::render_lines;
 use diffo_text_view::{Viewport, ViewportMetrics, render_scrollbars, viewport_metrics};
 use diffo_ui::{
@@ -13,7 +13,7 @@ use ratatui::{
     widgets::{Block, Borders, Clear, Paragraph},
 };
 
-use super::model::{ExplorerModel, GutterMarker, TreeEntry};
+use super::model::{EntryId, ExplorerModel, GutterMarker, TreeEntry};
 
 pub(crate) const VIEWER_GUTTER_WIDTH: u16 = 7;
 
@@ -38,7 +38,7 @@ pub(crate) fn render(
     area: Rect,
     split: PaneSplit,
     model: &ExplorerModel,
-    picker: &FilePicker<std::path::PathBuf>,
+    picker: &FilePicker<EntryId>,
     skeleton: bool,
 ) {
     frame.render_widget(Clear, area);
@@ -59,19 +59,8 @@ pub(crate) fn tree_document(
     model: &ExplorerModel,
     border_style: Style,
     loading: bool,
-) -> PickerDocument<std::path::PathBuf> {
-    let rows = model
-        .entries
-        .iter()
-        .map(|entry| {
-            PickerRow::tree(
-                entry.path.clone(),
-                entry_label(entry),
-                entry.depth,
-                entry.directory,
-            )
-        })
-        .collect();
+) -> PickerDocument<EntryId> {
+    let rows = model.entries.iter().map(picker_tree_node).collect();
     let mut document = PickerDocument::tree("Explorer", rows);
     document.border_style = border_style;
     if loading {
@@ -80,13 +69,25 @@ pub(crate) fn tree_document(
     document
 }
 
+fn picker_tree_node(entry: &TreeEntry) -> PickerTreeNode<EntryId> {
+    if entry.directory() {
+        PickerTreeNode::branch(
+            entry.id.clone(),
+            entry_label(entry),
+            entry.children.iter().map(picker_tree_node).collect(),
+        )
+    } else {
+        PickerTreeNode::leaf(entry.id.clone(), entry_label(entry))
+    }
+}
+
 pub(crate) fn entry_label(entry: &TreeEntry) -> Line<'static> {
     let name = entry
-        .path
+        .path()
         .file_name()
-        .unwrap_or(entry.path.as_os_str())
+        .unwrap_or(entry.path().as_os_str())
         .to_string_lossy();
-    let prefix = if entry.directory {
+    let prefix = if entry.directory() {
         ""
     } else {
         match entry.status {
@@ -268,18 +269,16 @@ mod tests {
         assert_eq!(status_style(ChangeKind::Deleted).fg, Some(Color::LightRed));
 
         let unchanged = TreeEntry {
-            path: "plain.txt".into(),
-            depth: 0,
-            directory: false,
+            id: EntryId::File("plain.txt".into()),
             status: None,
+            children: Vec::new(),
         };
         assert_eq!(entry_style(&unchanged).fg, Some(Color::White));
 
         let directory = TreeEntry {
-            path: "src".into(),
-            depth: 0,
-            directory: true,
+            id: EntryId::Directory("src".into()),
             status: None,
+            children: Vec::new(),
         };
         assert_eq!(entry_style(&directory).fg, Some(theme::TEXT));
     }
@@ -318,10 +317,9 @@ mod tests {
     #[test]
     fn viewer_title_matches_the_committed_tree_label() {
         let entry = TreeEntry {
-            path: "deleted.rs".into(),
-            depth: 0,
-            directory: false,
+            id: EntryId::File("deleted.rs".into()),
             status: Some(ChangeKind::Deleted),
+            children: Vec::new(),
         };
         let title = entry_label(&entry);
         let mut model = ExplorerModel::new(diffo_core::RepositorySnapshot::default());

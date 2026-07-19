@@ -18,7 +18,7 @@ use diffo_text_view::{
 use diffo_ui::{PaneSplit, design, maximum_scroll, scroll_offset, wheel_scroll_delta};
 use ratatui::{Frame, layout::Rect};
 
-use model::ExplorerModel;
+use model::{EntryId, ExplorerModel};
 use view::{VIEWER_GUTTER_WIDTH, entry_label, explorer_areas, tree_document, viewer_metrics};
 pub use worker::{ExplorerOutcome, ExplorerRequest, ExplorerWorker};
 
@@ -44,7 +44,7 @@ static COMMANDS: [Command; 2] = [
 
 pub struct ExplorerActivity {
     model: ExplorerModel,
-    picker: FilePicker<PathBuf>,
+    picker: FilePicker<EntryId>,
     next_id: u64,
     latest_paths: u64,
     latest_file: u64,
@@ -95,7 +95,7 @@ impl ExplorerActivity {
     fn request_file(&mut self, path: PathBuf, first_line: usize) {
         let Some((status, title)) = self
             .model
-            .entry(&path)
+            .file_entry(&path)
             .map(|entry| (entry.status, entry_label(entry)))
         else {
             return;
@@ -242,10 +242,15 @@ impl ExplorerActivity {
                 self.selection_changed();
             }
             return match outcome {
-                PickerOutcome::CopyPath { id, absolute } => {
-                    Some(ExplorerEvent::CopyPath { path: id, absolute })
+                PickerOutcome::CopyPath {
+                    id: EntryId::File(path),
+                    absolute,
+                } => Some(ExplorerEvent::CopyPath { path, absolute }),
+                PickerOutcome::CopyPath {
+                    id: EntryId::Directory(_),
+                    ..
                 }
-                PickerOutcome::Consumed
+                | PickerOutcome::Consumed
                 | PickerOutcome::Selected(_)
                 | PickerOutcome::Activated(_)
                 | PickerOutcome::RowAction(_)
@@ -334,9 +339,10 @@ impl ExplorerActivity {
     }
 
     fn selected_file(&self) -> Option<&PathBuf> {
-        self.picker
-            .selected()
-            .filter(|path| self.model.entry(path).is_some_and(|entry| !entry.directory))
+        match self.picker.selected() {
+            Some(EntryId::File(path)) => Some(path),
+            Some(EntryId::Directory(_)) | None => None,
+        }
     }
 
     fn scroll_viewer(&mut self, amount: i64) {

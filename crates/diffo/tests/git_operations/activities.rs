@@ -104,6 +104,37 @@ fn delayed_explorer_open_commits_only_the_latest_syntax_ready_file() -> Result<(
 }
 
 #[test]
+fn explorer_colliding_file_and_directory_collapse_and_open_atomically() -> Result<()> {
+    let repository = TestRepository::new()?;
+    fs::write(repository.worktree.join("foo"), "FILE_VERSION\n")?;
+    git(&repository.worktree, &["add", "foo"])?;
+    git(&repository.worktree, &["commit", "-m", "Add file foo"])?;
+    fs::remove_file(repository.worktree.join("foo"))?;
+    fs::create_dir(repository.worktree.join("foo"))?;
+    fs::write(repository.worktree.join("foo/bar.rs"), "CHILD_VERSION\n")?;
+    let mut screen = repository.screen_with_explorer_delay()?;
+
+    screen
+        .press(Key::Tab)?
+        .wait_for_text("Explorer")?
+        .click(&Selector::selected_row("foo"))?
+        .wait_for_text("bar.rs")?
+        .press(Key::Char('1'))?
+        .wait_for_text("Command Palette")?
+        .type_text("collapse all")?
+        .press(Key::Enter)?
+        .wait_for_text_gone("bar.rs")?
+        .click(&Selector::selected_row("foo"))?
+        .wait_for_text("bar.rs")?
+        .press(Key::Char('k'))?
+        .press(Key::Char('k'))?
+        .wait_for_text("FILE_VERSION")?;
+
+    assert!(!screen.contents().contains("CHILD_VERSION"));
+    Ok(())
+}
+
+#[test]
 fn explorer_horizontal_pan_is_bounded_and_terminal_safe() -> Result<()> {
     let repository = TestRepository::new()?;
     let line = format!("START_{}\x1b[2JCONTROL_RIGHT_EDGE\n", "x".repeat(100));

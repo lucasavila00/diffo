@@ -25,7 +25,7 @@ use ratatui::{
 mod actions;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum Mode {
+enum Mode {
     Flat,
     Tree,
 }
@@ -44,8 +44,6 @@ pub enum Navigation {
 pub struct Row<K> {
     pub id: K,
     pub label: Line<'static>,
-    pub depth: usize,
-    pub branch: bool,
     pub action: Option<String>,
     pub context_menu: bool,
 }
@@ -55,21 +53,8 @@ impl<K> Row<K> {
         Self {
             id,
             label,
-            depth: 0,
-            branch: false,
             action: None,
             context_menu: true,
-        }
-    }
-
-    pub fn tree(id: K, label: Line<'static>, depth: usize, branch: bool) -> Self {
-        Self {
-            id,
-            label,
-            depth,
-            branch,
-            action: None,
-            context_menu: !branch,
         }
     }
 
@@ -81,10 +66,48 @@ impl<K> Row<K> {
 }
 
 #[derive(Clone, Debug)]
+pub struct TreeNode<K> {
+    id: K,
+    label: Line<'static>,
+    branch: bool,
+    children: Vec<Self>,
+}
+
+impl<K> TreeNode<K> {
+    pub fn leaf(id: K, label: Line<'static>) -> Self {
+        Self {
+            id,
+            label,
+            branch: false,
+            children: Vec::new(),
+        }
+    }
+
+    pub fn branch(id: K, label: Line<'static>, children: Vec<Self>) -> Self {
+        Self {
+            id,
+            label,
+            branch: true,
+            children,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+struct DocumentRow<K> {
+    id: K,
+    label: Line<'static>,
+    depth: usize,
+    branch: bool,
+    action: Option<String>,
+    context_menu: bool,
+}
+
+#[derive(Clone, Debug)]
 pub struct Document<K> {
     pub title: String,
-    pub mode: Mode,
-    pub rows: Vec<Row<K>>,
+    mode: Mode,
+    rows: Vec<DocumentRow<K>>,
     pub panel_action: Option<String>,
     pub empty_message: String,
     pub border_style: Style,
@@ -95,14 +118,28 @@ impl<K> Document<K> {
         Self {
             title: title.into(),
             mode: Mode::Flat,
-            rows,
+            rows: rows
+                .into_iter()
+                .map(|row| DocumentRow {
+                    id: row.id,
+                    label: row.label,
+                    depth: 0,
+                    branch: false,
+                    action: row.action,
+                    context_menu: row.context_menu,
+                })
+                .collect(),
             panel_action: None,
             empty_message: "No files.".to_owned(),
             border_style: Style::default().fg(theme::CHROME),
         }
     }
 
-    pub fn tree(title: impl Into<String>, rows: Vec<Row<K>>) -> Self {
+    pub fn tree(title: impl Into<String>, nodes: Vec<TreeNode<K>>) -> Self {
+        let mut rows = Vec::new();
+        for node in nodes {
+            append_tree_rows(&mut rows, node, 0);
+        }
         Self {
             title: title.into(),
             mode: Mode::Tree,
@@ -111,6 +148,26 @@ impl<K> Document<K> {
             empty_message: "No files.".to_owned(),
             border_style: Style::default().fg(theme::CHROME),
         }
+    }
+}
+
+fn append_tree_rows<K>(rows: &mut Vec<DocumentRow<K>>, node: TreeNode<K>, depth: usize) {
+    let TreeNode {
+        id,
+        label,
+        branch,
+        children,
+    } = node;
+    rows.push(DocumentRow {
+        id,
+        label,
+        depth,
+        branch,
+        action: None,
+        context_menu: !branch,
+    });
+    for child in children {
+        append_tree_rows(rows, child, depth.saturating_add(1));
     }
 }
 
@@ -511,7 +568,7 @@ where
         self.metrics.offset = self.offset;
     }
 
-    fn list_item(&self, row: &Row<K>) -> ListItem<'static> {
+    fn list_item(&self, row: &DocumentRow<K>) -> ListItem<'static> {
         let mut spans = vec![Span::styled(
             if self.document.mode == Mode::Flat {
                 interaction::FLAT_ROW
@@ -594,7 +651,7 @@ where
             .copied()
     }
 
-    fn row_action_contains(&self, row: &Row<K>, column: u16) -> bool {
+    fn row_action_contains(&self, row: &DocumentRow<K>, column: u16) -> bool {
         row.action.as_ref().is_some_and(|action| {
             let width = u16::try_from(action.chars().count()).unwrap_or(u16::MAX);
             column >= self.metrics.list_area.right().saturating_sub(width)
@@ -620,7 +677,7 @@ where
             .map(|index| &self.document.rows[*index].id)
     }
 
-    fn row(&self, id: &K) -> Option<&Row<K>> {
+    fn row(&self, id: &K) -> Option<&DocumentRow<K>> {
         self.document.rows.iter().find(|row| &row.id == id)
     }
 }

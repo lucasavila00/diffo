@@ -254,6 +254,9 @@ fn explorer_reads_worktree_and_deleted_head_contents() {
     assert!(!changed.deleted);
 
     fs::remove_file(repo.path().join("tracked.txt")).expect("delete file");
+    fs::create_dir(repo.path().join("tracked.txt")).expect("replace file with directory");
+    fs::write(repo.path().join("tracked.txt/child.txt"), "child\n")
+        .expect("write replacement child");
     let deleted = source
         .explorer_file(Path::new("tracked.txt"))
         .expect("deleted file");

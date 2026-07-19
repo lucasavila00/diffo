@@ -21,7 +21,7 @@ use ratatui::{
 
 use super::{
     Renderer, RendererEvent, contrast_ratio, contrasting_foreground, diff_background,
-    diff_background_rgb, diff_file_lines, file_kind_style, horizontal_panes, main_area,
+    diff_background_rgb, diff_file_lines, file_kind_style, file_label, horizontal_panes, main_area,
     overview_position, picker_document, row_style, scrollbar_position_count,
     should_syntax_highlight, status_line,
 };
@@ -120,16 +120,7 @@ fn diff_buffer_title_matches_the_committed_picker_label() {
     let mut renderer = Renderer::new();
     renderer.prepare_frame(&model, area);
 
-    let picker_label = picker_document(
-        "Changes",
-        "[+] Stage All",
-        model.snapshot.files.iter(),
-        ChangeArea::Unstaged,
-        Style::default(),
-    )
-    .rows
-    .remove(0)
-    .label;
+    let picker_label = file_label(&model.snapshot.files[0]);
     assert_eq!(renderer.displayed_key().unwrap().title, picker_label);
 
     let backend = TestBackend::new(area.width, area.height);

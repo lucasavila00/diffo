@@ -205,6 +205,56 @@ fn explorer_commands_use_the_same_state_transitions_as_header_buttons() {
 }
 
 #[test]
+fn colliding_file_and_directory_collapse_independently() {
+    let snapshot = RepositorySnapshot {
+        files: vec![diffo_core::FileState {
+            path: PathBuf::from("foo"),
+            old_path: None,
+            kind: diffo_core::ChangeKind::Deleted,
+            staged: None,
+            unstaged: Some(diffo_core::FileDiff {
+                text: String::new(),
+            }),
+        }],
+        ..RepositorySnapshot::default()
+    };
+    let mut explorer = ExplorerActivity::new(snapshot);
+    explorer.accept(ExplorerOutcome::Paths {
+        id: 1,
+        result: Ok(vec![PathBuf::from("foo/bar.rs")]),
+    });
+    explorer.prepare_frame(Rect::new(0, 0, 100, 30), PaneSplit::default());
+
+    assert_eq!(explorer.picker.visible_rows(), 2);
+    assert_eq!(
+        explorer.picker.selected(),
+        Some(&EntryId::Directory(PathBuf::from("foo")))
+    );
+
+    assert!(explorer.execute_command(EXPAND_ALL_COMMAND));
+    assert_eq!(explorer.picker.visible_rows(), 3);
+    explorer
+        .picker
+        .navigate(diffo_file_picker::Navigation::Next);
+    assert_eq!(
+        explorer.picker.selected(),
+        Some(&EntryId::File(PathBuf::from("foo/bar.rs")))
+    );
+
+    assert!(explorer.execute_command(COLLAPSE_ALL_COMMAND));
+    assert_eq!(explorer.picker.visible_rows(), 2);
+    assert_eq!(
+        explorer.picker.selected(),
+        Some(&EntryId::Directory(PathBuf::from("foo")))
+    );
+
+    explorer
+        .picker
+        .navigate(diffo_file_picker::Navigation::Last);
+    assert_eq!(explorer.selected_file(), Some(&PathBuf::from("foo")));
+}
+
+#[test]
 fn horizontal_pan_clamps_to_the_visible_code_width_and_returns_to_zero() {
     let mut explorer = ExplorerActivity::new(RepositorySnapshot::default());
     explorer.model.viewer = Some(Viewer {

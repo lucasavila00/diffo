@@ -11,6 +11,12 @@ impl GitRepositorySource {
     fn explorer_contents(&self, path: &Path) -> Result<(Vec<u8>, bool)> {
         let full_path = self.root.join(path);
         match fs::symlink_metadata(&full_path) {
+            Ok(metadata) if metadata.is_dir() => {
+                let spec = format!("HEAD:{}", path.to_string_lossy());
+                self.git(&["show", &spec])
+                    .map(|bytes| (bytes, true))
+                    .with_context(|| format!("failed to read deleted file {}", path.display()))
+            }
             Ok(metadata) => {
                 let bytes = if metadata.file_type().is_symlink() {
                     fs::read_link(&full_path)

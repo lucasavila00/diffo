@@ -1,7 +1,8 @@
 //! Pure Explorer tree and viewer state.
 
 use std::{
-    collections::{BTreeSet, HashMap},
+    collections::{BTreeMap, HashMap},
+    ffi::OsString,
     path::{Path, PathBuf},
 };
 
@@ -29,12 +30,29 @@ pub struct Viewer {
     pub(crate) message: Option<String>,
 }
 
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub(crate) enum EntryId {
+    Directory(PathBuf),
+    File(PathBuf),
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct TreeEntry {
-    pub(crate) path: PathBuf,
-    pub(crate) depth: usize,
-    pub(crate) directory: bool,
+    pub(crate) id: EntryId,
     pub(crate) status: Option<ChangeKind>,
+    pub(crate) children: Vec<Self>,
+}
+
+impl TreeEntry {
+    pub(crate) fn path(&self) -> &Path {
+        match &self.id {
+            EntryId::Directory(path) | EntryId::File(path) => path,
+        }
+    }
+
+    pub(crate) const fn directory(&self) -> bool {
+        matches!(self.id, EntryId::Directory(_))
+    }
 }
 
 pub(crate) struct ExplorerModel {
@@ -84,41 +102,74 @@ impl ExplorerModel {
             .iter()
             .map(|file| (file.path.clone(), file.kind))
             .collect::<HashMap<_, _>>();
-        let directories = self.directory_paths();
-        let mut entries = directories
-            .into_iter()
-            .map(|path| TreeEntry {
-                depth: path.components().count().saturating_sub(1),
-                path,
-                directory: true,
-                status: None,
-            })
-            .chain(self.paths.iter().cloned().map(|path| TreeEntry {
-                depth: path.components().count().saturating_sub(1),
-                status: statuses.get(&path).copied(),
-                path,
-                directory: false,
-            }))
-            .collect::<Vec<_>>();
-        entries.sort_by(|left, right| left.path.cmp(&right.path));
-        self.entries = entries;
+        let mut root = TreeBuilder::default();
+        for path in &self.paths {
+            root.insert(path, statuses.get(path).copied());
+        }
+        self.entries = root.finish(Path::new(""));
     }
 
-    fn directory_paths(&self) -> BTreeSet<PathBuf> {
-        let mut directories = BTreeSet::new();
-        for path in &self.paths {
-            let mut parent = path.parent();
-            while let Some(path) = parent.filter(|path| !path.as_os_str().is_empty()) {
-                directories.insert(path.to_path_buf());
-                parent = path.parent();
+    pub(crate) fn file_entry(&self, path: &Path) -> Option<&TreeEntry> {
+        find_entry(&self.entries, &EntryId::File(path.to_path_buf()))
+    }
+}
+
+#[derive(Default)]
+struct TreeBuilder {
+    directories: BTreeMap<OsString, Self>,
+    files: BTreeMap<OsString, Option<ChangeKind>>,
+}
+
+impl TreeBuilder {
+    fn insert(&mut self, path: &Path, status: Option<ChangeKind>) {
+        let mut components = path.components().peekable();
+        let mut directory = self;
+        while let Some(component) = components.next() {
+            let name = component.as_os_str().to_os_string();
+            if components.peek().is_none() {
+                directory.files.insert(name, status);
+            } else {
+                directory = directory.directories.entry(name).or_default();
             }
         }
-        directories
     }
 
-    pub(crate) fn entry(&self, path: &Path) -> Option<&TreeEntry> {
-        self.entries.iter().find(|entry| entry.path == path)
+    fn finish(self, parent: &Path) -> Vec<TreeEntry> {
+        let mut entries = self
+            .directories
+            .into_iter()
+            .map(|(name, directory)| {
+                let path = parent.join(name);
+                TreeEntry {
+                    id: EntryId::Directory(path.clone()),
+                    status: None,
+                    children: directory.finish(&path),
+                }
+            })
+            .chain(self.files.into_iter().map(|(name, status)| TreeEntry {
+                id: EntryId::File(parent.join(name)),
+                status,
+                children: Vec::new(),
+            }))
+            .collect::<Vec<_>>();
+        entries.sort_by(|left, right| {
+            left.path()
+                .file_name()
+                .cmp(&right.path().file_name())
+                .then_with(|| right.directory().cmp(&left.directory()))
+        });
+        entries
     }
+}
+
+fn find_entry<'a>(entries: &'a [TreeEntry], id: &EntryId) -> Option<&'a TreeEntry> {
+    entries.iter().find_map(|entry| {
+        if &entry.id == id {
+            Some(entry)
+        } else {
+            find_entry(&entry.children, id)
+        }
+    })
 }
 
 #[cfg(test)]
@@ -147,15 +198,48 @@ mod tests {
             PathBuf::from("src/unchanged.rs"),
         ]);
 
-        assert_eq!(model.entries.len(), 4);
+        assert_eq!(model.entries.len(), 2);
         assert_eq!(
-            model.entry(Path::new("src/changed.rs")).unwrap().status,
+            model
+                .file_entry(Path::new("src/changed.rs"))
+                .unwrap()
+                .status,
             Some(ChangeKind::Modified)
         );
         assert_eq!(
-            model.entry(Path::new("src/unchanged.rs")).unwrap().status,
+            model
+                .file_entry(Path::new("src/unchanged.rs"))
+                .unwrap()
+                .status,
             None
         );
-        assert!(model.entry(Path::new("src")).unwrap().directory);
+        assert!(matches!(model.entries[1].id, EntryId::Directory(_)));
+    }
+
+    #[test]
+    fn preserves_a_file_and_directory_with_the_same_path() {
+        let snapshot = RepositorySnapshot {
+            files: vec![FileState {
+                path: PathBuf::from("foo"),
+                old_path: None,
+                kind: ChangeKind::Deleted,
+                staged: None,
+                unstaged: Some(FileDiff {
+                    text: String::new(),
+                }),
+            }],
+            ..RepositorySnapshot::default()
+        };
+        let mut model = ExplorerModel::new(snapshot);
+        model.install_paths(vec![PathBuf::from("foo/bar.rs")]);
+
+        assert_eq!(model.entries.len(), 2);
+        assert_eq!(
+            model.entries[0].id,
+            EntryId::Directory(PathBuf::from("foo"))
+        );
+        assert_eq!(model.entries[0].children.len(), 1);
+        assert_eq!(model.entries[1].id, EntryId::File(PathBuf::from("foo")));
+        assert_eq!(model.entries[1].status, Some(ChangeKind::Deleted));
     }
 }

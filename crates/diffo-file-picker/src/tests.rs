@@ -83,7 +83,7 @@ fn flat_and_tree_wheel_use_the_same_scroll_core() {
         Document::tree(
             "Explorer",
             (0..8)
-                .map(|id| Row::tree(id, Line::raw(format!("file-{id}")), 0, false))
+                .map(|id| TreeNode::leaf(id, Line::raw(format!("file-{id}"))))
                 .collect(),
         ),
         None,
@@ -110,7 +110,7 @@ fn flat_and_tree_wheel_use_the_same_scroll_core() {
         Document::tree(
             "Explorer",
             (0..8)
-                .map(|id| Row::tree(id, Line::raw(format!("file-{id}")), 0, false))
+                .map(|id| TreeNode::leaf(id, Line::raw(format!("file-{id}"))))
                 .collect(),
         ),
         None,
@@ -181,7 +181,7 @@ fn panel_actions_are_high_contrast_and_distinct_from_borders() {
     let mut tree = FilePicker::default();
     tree.prepare(
         Rect::new(0, 0, 30, 4),
-        Document::tree("Explorer", Vec::<Row<usize>>::new()),
+        Document::tree("Explorer", Vec::<TreeNode<usize>>::new()),
         None,
     );
     terminal.draw(|frame| tree.render(frame, false)).unwrap();
@@ -201,15 +201,21 @@ fn panel_actions_are_high_contrast_and_distinct_from_borders() {
 #[test]
 fn tree_expansion_is_the_only_projection_difference() {
     let mut picker = FilePicker::default();
-    let rows = vec![
-        Row::tree(0, Line::raw("README"), 0, false),
-        Row::tree(1, Line::raw("src"), 0, true),
-        Row::tree(2, Line::raw("nested"), 1, true),
-        Row::tree(3, Line::raw("main.rs"), 2, false),
+    let nodes = vec![
+        TreeNode::leaf(0, Line::raw("README")),
+        TreeNode::branch(
+            1,
+            Line::raw("src"),
+            vec![TreeNode::branch(
+                2,
+                Line::raw("nested"),
+                vec![TreeNode::leaf(3, Line::raw("main.rs"))],
+            )],
+        ),
     ];
     picker.prepare(
         Rect::new(0, 0, 20, 8),
-        Document::tree("Explorer", rows),
+        Document::tree("Explorer", nodes),
         None,
     );
     assert_eq!(picker.visible.len(), 2);
@@ -224,6 +230,30 @@ fn tree_expansion_is_the_only_projection_difference() {
     assert_eq!(picker.selected(), Some(&1));
     picker.expand_all();
     assert_eq!(picker.visible.len(), 4);
+}
+
+#[test]
+fn tree_refresh_preserves_expansion_by_stable_node_id() {
+    let document = || {
+        Document::tree(
+            "Explorer",
+            vec![TreeNode::branch(
+                1,
+                Line::raw("src"),
+                vec![TreeNode::leaf(2, Line::raw("main.rs"))],
+            )],
+        )
+    };
+    let mut picker = FilePicker::default();
+    let area = Rect::new(0, 0, 20, 5);
+    picker.prepare(area, document(), None);
+    picker.navigate(Navigation::Activate);
+    assert_eq!(picker.visible_rows(), 2);
+
+    picker.prepare(area, document(), None);
+
+    assert_eq!(picker.visible_rows(), 2);
+    assert_eq!(picker.selected(), Some(&1));
 }
 
 #[test]
@@ -251,8 +281,8 @@ fn tree_rows_keep_their_structure_when_selected() {
         Document::tree(
             "Explorer",
             vec![
-                Row::tree(0, Line::raw("src"), 0, true),
-                Row::tree(1, Line::raw("README"), 0, false),
+                TreeNode::branch(0, Line::raw("src"), Vec::new()),
+                TreeNode::leaf(1, Line::raw("README")),
             ],
         ),
         None,
@@ -321,12 +351,7 @@ fn long_labels_use_three_dots_without_hiding_row_actions() {
         Rect::new(0, 0, 18, 4),
         Document::tree(
             "Explorer",
-            vec![Row::tree(
-                0,
-                Line::raw("very-long-tree-file-name.rs"),
-                0,
-                false,
-            )],
+            vec![TreeNode::leaf(0, Line::raw("very-long-tree-file-name.rs"))],
         ),
         None,
     );

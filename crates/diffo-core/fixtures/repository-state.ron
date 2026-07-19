@@ -27,7 +27,7 @@
             old_path: None,
             kind: Modified,
             staged: None,
-            unstaged: Some((text: "diff --git a/Cargo.toml b/Cargo.toml\n--- a/Cargo.toml\n+++ b/Cargo.toml\n@@ -1,4 +1,5 @@\n [workspace]\n resolver = \"3\"\n-members = []\n+members = [\"crates/diffo\", \"crates/diffo-tui\"]\n+default-members = [\"crates/diffo\"]\n")),
+            unstaged: Some((text: "diff --git a/Cargo.toml b/Cargo.toml\n--- a/Cargo.toml\n+++ b/Cargo.toml\n@@ -1,4 +1,5 @@\n [workspace]\n resolver = \"3\"\n-members = []\n+members = [\"crates/diffo\", \"crates/diffo-app\"]\n+default-members = [\"crates/diffo\"]\n")),
         ),
         (
             path: "README.md",

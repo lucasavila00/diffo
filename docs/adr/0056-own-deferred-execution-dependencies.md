@@ -2,6 +2,9 @@
 
 Status: Accepted
 
+Refined by [ADR 0060](0060-lazy-askpass-image.md), which retains an open startup
+executable and delays private-path materialization until askpass is first needed.
+
 Refines [ADR 0053](0053-broker-git-interactions.md).
 
 ## Problem

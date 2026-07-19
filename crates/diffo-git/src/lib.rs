@@ -14,7 +14,7 @@ mod status;
 pub use askpass::run_askpass_if_requested;
 pub struct GitRepositorySource {
     root: PathBuf,
-    askpass: Option<askpass_image::PreparedAskpass>,
+    askpass: Option<askpass_image::OwnedAskpass>,
 }
 
 impl GitRepositorySource {
@@ -26,24 +26,24 @@ impl GitRepositorySource {
         }
     }
 
-    /// Create a repository source with a private copy of the running executable for
-    /// deferred Git and SSH prompts.
+    /// Create a repository source that retains the running executable for deferred
+    /// Git and SSH prompts.
     ///
     /// # Errors
     ///
-    /// Returns an error when the running executable cannot be copied into a private,
-    /// executable runtime location.
+    /// Returns an error when the running executable cannot be opened and retained.
     pub fn with_owned_askpass(root: impl Into<PathBuf>) -> anyhow::Result<Self> {
         Ok(Self {
             root: root.into(),
-            askpass: Some(askpass_image::PreparedAskpass::prepare()?),
+            askpass: Some(askpass_image::OwnedAskpass::capture()?),
         })
     }
 
-    fn askpass_executable(&self) -> Option<&std::path::Path> {
+    fn askpass_executable(&self) -> anyhow::Result<Option<PathBuf>> {
         self.askpass
             .as_ref()
-            .map(askpass_image::PreparedAskpass::executable)
+            .map(askpass_image::OwnedAskpass::executable)
+            .transpose()
     }
 }
 

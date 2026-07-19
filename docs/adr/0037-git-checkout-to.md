@@ -59,7 +59,7 @@ On failure or cancellation, keep the old snapshot. Failure shows a persistent er
 Successful cancellation shows no result toast.
 
 Put shared types in `diffo-core`. Keep picker code out of activities and
-`diffo-file-picker`. Rendering never runs Git.
+`diffo-ui::file_picker`. Rendering never runs Git.
 
 ## Verification
 

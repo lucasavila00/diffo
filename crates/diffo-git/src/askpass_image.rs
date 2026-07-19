@@ -1,24 +1,69 @@
 use std::{
     env, fs,
     fs::{File, OpenOptions},
-    io,
+    io::{self, Seek as _, SeekFrom},
     os::unix::fs::{OpenOptionsExt as _, PermissionsExt as _},
-    path::{Path, PathBuf},
+    path::PathBuf,
+    sync::Mutex,
 };
 
 use anyhow::{Context, Result};
 
-pub(crate) struct PreparedAskpass {
+pub(crate) struct OwnedAskpass {
+    state: Mutex<AskpassState>,
+}
+
+enum AskpassState {
+    Captured(File),
+    Prepared(PreparedAskpass),
+}
+
+struct PreparedAskpass {
     _directory: tempfile::TempDir,
     executable: PathBuf,
 }
 
-impl PreparedAskpass {
-    pub(crate) fn prepare() -> Result<Self> {
+impl OwnedAskpass {
+    pub(crate) fn capture() -> Result<Self> {
         let running_path =
             env::current_exe().context("failed to locate the running Diffo executable")?;
-        let mut running =
+        let running =
             File::open(&running_path).context("failed to open the running Diffo executable")?;
+        Ok(Self {
+            state: Mutex::new(AskpassState::Captured(running)),
+        })
+    }
+
+    pub(crate) fn executable(&self) -> Result<PathBuf> {
+        let mut state = self
+            .state
+            .lock()
+            .map_err(|_| anyhow::anyhow!("private askpass image state is unavailable"))?;
+        if let AskpassState::Captured(running) = &mut *state {
+            let prepared = PreparedAskpass::prepare(running)?;
+            *state = AskpassState::Prepared(prepared);
+        }
+        match &*state {
+            AskpassState::Prepared(prepared) => Ok(prepared.executable.clone()),
+            AskpassState::Captured(_) => {
+                anyhow::bail!("private askpass image was not materialized")
+            }
+        }
+    }
+
+    #[cfg(test)]
+    fn is_prepared(&self) -> bool {
+        self.state
+            .lock()
+            .is_ok_and(|state| matches!(*state, AskpassState::Prepared(_)))
+    }
+}
+
+impl PreparedAskpass {
+    fn prepare(running: &mut File) -> Result<Self> {
+        running
+            .seek(SeekFrom::Start(0))
+            .context("failed to rewind the running Diffo executable")?;
         let directory = tempfile::Builder::new()
             .prefix("diffo-askpass-image-")
             .tempdir()
@@ -34,11 +79,8 @@ impl PreparedAskpass {
             .mode(0o700)
             .open(&temporary)
             .context("failed to create the private askpass executable")?;
-        io::copy(&mut running, &mut prepared)
+        io::copy(running, &mut prepared)
             .context("failed to copy the running Diffo executable for askpass")?;
-        prepared
-            .sync_all()
-            .context("failed to publish the private askpass executable")?;
         drop(prepared);
         fs::set_permissions(&temporary, fs::Permissions::from_mode(0o700))
             .context("failed to protect the private askpass executable")?;
@@ -50,10 +92,6 @@ impl PreparedAskpass {
             executable,
         })
     }
-
-    pub(crate) fn executable(&self) -> &Path {
-        &self.executable
-    }
 }
 
 #[cfg(test)]
@@ -61,11 +99,20 @@ mod tests {
     use super::*;
 
     #[test]
-    fn prepared_image_is_private_and_executable() {
-        let image = PreparedAskpass::prepare().unwrap();
+    fn captured_image_is_materialized_lazily_and_privately() {
+        let image = OwnedAskpass::capture().unwrap();
+        assert!(!image.is_prepared());
+
+        let executable = image.executable().unwrap();
+        assert!(image.is_prepared());
+        assert_eq!(image.executable().unwrap(), executable);
 
         assert_eq!(
-            fs::metadata(image.executable())
+            fs::metadata(&executable).unwrap().permissions().mode() & 0o777,
+            0o700
+        );
+        assert_eq!(
+            fs::metadata(executable.parent().unwrap())
                 .unwrap()
                 .permissions()
                 .mode()
@@ -73,15 +120,7 @@ mod tests {
             0o700
         );
         assert_eq!(
-            fs::metadata(image.executable().parent().unwrap())
-                .unwrap()
-                .permissions()
-                .mode()
-                & 0o777,
-            0o700
-        );
-        assert_eq!(
-            fs::metadata(image.executable()).unwrap().len(),
+            fs::metadata(executable).unwrap().len(),
             fs::metadata(env::current_exe().unwrap()).unwrap().len()
         );
     }

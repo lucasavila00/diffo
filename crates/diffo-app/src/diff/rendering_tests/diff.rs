@@ -1,44 +1,49 @@
 use super::*;
 
+const PREPARATION_TIMEOUT: Duration = Duration::from_secs(5);
+
 fn diff_lines(
     renderer: &mut Renderer,
     model: &Model,
     first_row: usize,
 ) -> Vec<ratatui::text::Line<'static>> {
-    for _ in 0..200 {
+    let deadline = Instant::now() + PREPARATION_TIMEOUT;
+    loop {
         renderer.prepare_frame(model, Rect::new(0, 0, 100, 30));
         let lines = renderer.diff_lines(model, 80, first_row, 100);
         if !renderer.is_preparing() {
             return lines;
         }
+        assert!(Instant::now() < deadline, "diff preparation timed out");
         sleep(Duration::from_millis(1));
     }
-    panic!("diff preparation timed out");
 }
 
 fn wait_for_viewport_transition(
     renderer: &mut Renderer,
     model: &Model,
 ) -> crate::diff::ViewportTransition {
-    for _ in 0..200 {
+    let deadline = Instant::now() + PREPARATION_TIMEOUT;
+    loop {
         let preparation = renderer.prepare_frame(model, Rect::new(0, 0, 100, 30));
         if let Some(viewport) = preparation.viewport_transition {
             return viewport;
         }
+        assert!(Instant::now() < deadline, "viewport preparation timed out");
         sleep(Duration::from_millis(1));
     }
-    panic!("viewport preparation timed out");
 }
 
 fn wait_for_syntax_ready(renderer: &mut Renderer, model: &Model) {
-    for _ in 0..200 {
+    let deadline = Instant::now() + PREPARATION_TIMEOUT;
+    loop {
         let preparation = renderer.prepare_frame(model, Rect::new(0, 0, 100, 30));
         if preparation.syntax_ready {
             return;
         }
+        assert!(Instant::now() < deadline, "syntax preparation timed out");
         sleep(Duration::from_millis(1));
     }
-    panic!("syntax preparation timed out");
 }
 
 #[test]
@@ -124,17 +129,18 @@ fn commits_a_new_file_and_its_first_change_position_together() {
     assert_eq!(renderer.diff_lines(&model, 80, 0, 100), previous);
     assert_eq!((model.diff_scroll, model.diff_horizontal_scroll), (7, 9));
 
-    let committed = (0..200)
-        .find_map(|_| {
-            let preparation = renderer.prepare_frame(&model, area);
-            if preparation.viewport_transition.is_some() {
-                Some(preparation)
-            } else {
-                sleep(Duration::from_millis(1));
-                None
-            }
-        })
-        .expect("second diff preparation timed out");
+    let deadline = Instant::now() + PREPARATION_TIMEOUT;
+    let committed = loop {
+        let preparation = renderer.prepare_frame(&model, area);
+        if preparation.viewport_transition.is_some() {
+            break preparation;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "second diff preparation timed out"
+        );
+        sleep(Duration::from_millis(1));
+    };
     let transition = committed.viewport_transition.unwrap();
     assert_eq!(committed.displayed_file, model.selected);
     assert_eq!(transition.vertical, 450);

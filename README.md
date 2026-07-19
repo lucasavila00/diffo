@@ -56,7 +56,9 @@ unencrypted PKCS#8 PEM private key as the `DIFFO_UPDATE_SIGNING_KEY` repository 
 and store the base64 of its raw 32-byte public key as the
 `DIFFO_UPDATE_PUBLIC_KEY` repository variable. The workflow derives the public key
 from the secret and fails before building if they do not match. Never commit the
-private key. Stable tags must exactly match `v<workspace-version>`.
+private key. A stable `v<major>.<minor>.<patch>` tag is the release version; the
+workflow embeds that version in the binary and signed update metadata independently
+of the Cargo package version.
 
 For debugging, `DIFFO_DUMP_PATH=state.ron make diffo` writes one repository snapshot
 and exits without opening the TUI. The launcher accepts only the fixed `update`

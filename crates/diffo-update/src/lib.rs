@@ -17,6 +17,14 @@ const MANIFEST_NAME: &str = "update-v1.json";
 const SIGNATURE_NAME: &str = "update-v1.json.sig";
 const MAX_METADATA_BYTES: u64 = 1024 * 1024;
 const MAX_SIGNATURE_BYTES: u64 = 1024;
+const BUILD_VERSION: &str = selected_build_version(option_env!("DIFFO_RELEASE_VERSION"));
+
+const fn selected_build_version(release_version: Option<&'static str>) -> &'static str {
+    match release_version {
+        Some(version) => version,
+        None => env!("CARGO_PKG_VERSION"),
+    }
+}
 
 // RFC 8032 test-vector key. Production release builds must replace this at compile
 // time with DIFFO_UPDATE_PUBLIC_KEY; the release workflow enforces that contract.
@@ -104,7 +112,7 @@ impl UpdateClient {
             })?,
         };
         let http = Client::builder()
-            .user_agent(concat!("diffo/", env!("CARGO_PKG_VERSION")))
+            .user_agent(format!("diffo/{BUILD_VERSION}"))
             .redirect(Policy::custom(|attempt| {
                 if attempt.previous().len() >= 10 {
                     return attempt.stop();
@@ -133,12 +141,7 @@ impl UpdateClient {
     pub fn check(&self) -> Result<CheckOutcome, UpdateError> {
         let manifest = self.fetch_limited(MANIFEST_NAME, MAX_METADATA_BYTES)?;
         let signature = self.fetch_limited(SIGNATURE_NAME, MAX_SIGNATURE_BYTES)?;
-        protocol::verify_manifest(
-            &manifest,
-            &signature,
-            &self.public_key,
-            env!("CARGO_PKG_VERSION"),
-        )
+        protocol::verify_manifest(&manifest, &signature, &self.public_key, BUILD_VERSION)
     }
 
     /// Downloads and installs the latest strictly newer verified release.
@@ -254,7 +257,13 @@ pub fn permission_hint() -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::redirect_is_secure;
+    use super::{redirect_is_secure, selected_build_version};
+
+    #[test]
+    fn release_version_overrides_cargo_package_version() {
+        assert_eq!(selected_build_version(Some("9.8.7")), "9.8.7");
+        assert_eq!(selected_build_version(None), env!("CARGO_PKG_VERSION"));
+    }
 
     #[test]
     fn secure_update_endpoints_never_redirect_to_an_insecure_scheme() {

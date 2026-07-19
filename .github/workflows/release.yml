@@ -28,15 +28,14 @@ jobs:
           SIGNING_KEY: ${{ secrets.DIFFO_UPDATE_SIGNING_KEY }}
         run: |
           set -euo pipefail
-          version=$(sed -n 's/^version = "\([^"]*\)"/\1/p' Cargo.toml | head -n1)
-          [[ "${version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
-          test "${GITHUB_REF_NAME}" = "v${version}"
+          [[ "${GITHUB_REF_NAME}" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)$ ]]
+          version="${BASH_REMATCH[1]}"
           test -n "${DIFFO_UPDATE_PUBLIC_KEY}"
           test -n "${SIGNING_KEY}"
           printf '%s' "${SIGNING_KEY}" | base64 --decode > "${RUNNER_TEMP}/diffo-signing-key.pem"
           derived=$(openssl pkey -in "${RUNNER_TEMP}/diffo-signing-key.pem" -pubout -outform DER | tail -c 32 | base64 -w0)
           test "${derived}" = "${DIFFO_UPDATE_PUBLIC_KEY}"
-          printf 'VERSION=%s\n' "${version}" >> "${GITHUB_ENV}"
+          printf 'VERSION=%s\nDIFFO_RELEASE_VERSION=%s\n' "${version}" "${version}" >> "${GITHUB_ENV}"
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable

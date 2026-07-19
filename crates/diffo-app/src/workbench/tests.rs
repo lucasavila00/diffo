@@ -88,7 +88,7 @@ fn every_activity_renders_the_same_repository_footer() {
 }
 
 #[test]
-fn diff_e_opens_the_commit_modal_and_normal_enter_commits() {
+fn diff_m_opens_the_commit_modal_and_normal_enter_commits() {
     let snapshot = RepositorySnapshot {
         files: vec![FileState {
             path: "src/main.rs".into(),
@@ -105,7 +105,7 @@ fn diff_e_opens_the_commit_modal_and_normal_enter_commits() {
     let mut workbench = Workbench::new(snapshot);
     workbench.prepare_frame(area);
 
-    let _ = workbench.handle_events(&[key(KeyCode::Char('e'))], area);
+    let _ = workbench.handle_events(&[key(KeyCode::Char('m'))], area);
     assert!(matches!(workbench.modal, Some(Modal::CommitEditor)));
     let _ = workbench.handle_events(&[key(KeyCode::Esc)], area);
     assert!(workbench.modal.is_none());

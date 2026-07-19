@@ -17,7 +17,7 @@ expression: help
     "←: Scroll diff left by four columns",
     "→: Scroll diff right by four columns",
     "r: Toggle inline / side-by-side view",
-    "e: Edit commit message",
+    "m: Edit commit message",
     "Enter: Commit staged changes",
     "n: Next change",
     "p: Previous change",

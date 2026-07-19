@@ -12,7 +12,7 @@ expression: mappings
     "Left -> Some(ScrollDiffHorizontalBy(-4))",
     "Right -> Some(ScrollDiffHorizontalBy(4))",
     "Char('r') -> Some(ToggleDiffView)",
-    "Char('e') -> Some(FocusCommitInput)",
+    "Char('m') -> Some(FocusCommitInput)",
     "Enter -> Some(ExecuteCommit)",
     "Char('n') -> Some(JumpToNextChange)",
     "Char('p') -> Some(JumpToPreviousChange)",

@@ -79,7 +79,7 @@ pub(super) static KEY_BINDINGS: &[KeyBinding] = &[
         description: "Toggle inline / side-by-side view",
     },
     KeyBinding {
-        keys: &[KeyChord::plain(KeyCode::Char('e'))],
+        keys: &[KeyChord::plain(KeyCode::Char('m'))],
         message: Message::FocusCommitInput,
         description: "Edit commit message",
     },

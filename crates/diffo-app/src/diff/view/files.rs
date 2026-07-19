@@ -8,13 +8,22 @@ use diffo_ui::{design, disabled_control_style, enabled_control_style, file_icons
 
 pub(in crate::diff) fn file_panel_areas(area: Rect) -> std::rc::Rc<[Rect]> {
     Layout::vertical([
-        Constraint::Length(design::COMMIT_FIELD_HEIGHT),
+        Constraint::Length(design::COMMIT_COMPOSER_HEIGHT),
         Constraint::Min(design::MIN_FILE_GROUP_HEIGHT),
     ])
     .split(area)
 }
 
+fn commit_composer_areas(area: Rect) -> std::rc::Rc<[Rect]> {
+    Layout::vertical([
+        Constraint::Length(design::COMMIT_FIELD_HEIGHT),
+        Constraint::Length(design::COMMIT_ACTION_HEIGHT),
+    ])
+    .split(area)
+}
+
 pub(in crate::diff) fn render_commit_composer(frame: &mut Frame, area: Rect, model: &Model) {
+    let sections = commit_composer_areas(area);
     let empty = model.commit_message.is_empty();
     let message = if empty {
         model
@@ -34,13 +43,23 @@ pub(in crate::diff) fn render_commit_composer(frame: &mut Frame, area: Rect, mod
                 Block::default()
                     .borders(Borders::ALL)
                     .border_style(resize_border_style(model))
-                    .title(" Commit message ")
-                    .title(
-                        Line::styled(icons::EDIT, enabled_control_style())
-                            .alignment(Alignment::Right),
-                    ),
+                    .title(Line::from(vec![
+                        Span::raw("Commit message "),
+                        Span::styled("(m)", enabled_control_style()),
+                    ])),
             ),
-        area,
+        sections[0],
+    );
+    let style = if model.commit_enabled() {
+        enabled_control_style().bg(theme::SELECTION_BACKGROUND)
+    } else {
+        disabled_control_style()
+    };
+    frame.render_widget(
+        Paragraph::new("[ Commit (Enter) ]")
+            .alignment(Alignment::Center)
+            .style(style),
+        sections[1],
     );
 }
 
@@ -52,8 +71,12 @@ pub(crate) fn commit_action_at_position(
 ) -> Option<crate::diff::Message> {
     let columns = horizontal_panes(main_area(area), model.file_pane_percent);
     let file_areas = file_panel_areas(columns[0]);
-    if file_areas[0].contains((column, row).into()) {
+    let sections = commit_composer_areas(file_areas[0]);
+    if sections[0].contains((column, row).into()) {
         return Some(crate::diff::Message::FocusCommitInput);
+    }
+    if sections[1].contains((column, row).into()) && model.commit_enabled() {
+        return Some(crate::diff::Message::ExecuteCommit);
     }
     None
 }

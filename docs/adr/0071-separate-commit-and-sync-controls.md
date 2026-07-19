@@ -13,13 +13,15 @@ Commit-message editing has no key. Sync has no direct global key.
 
 Remove the changing primary button.
 
-Commit belongs to commit edit mode:
+Commit stays local and fixed:
 
-- `e` opens the commit-message modal;
+- show one `[ Commit (Enter) ]` button beneath the commit-message field;
+- the button never changes into Sync;
+- show `m` beside the commit-message field and use it to open the commit-message modal;
 - the modal has `[ Commit (Enter) ]` and `[ Cancel (Esc) ]`;
 - `Enter` commits inside the modal;
 - `Enter` also commits from normal Diff mode, using the draft or generated message;
-- no Commit button outside the modal.
+- the fixed button uses the same draft or generated message.
 
 Sync is global:
 

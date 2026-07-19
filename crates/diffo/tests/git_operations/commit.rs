@@ -43,7 +43,9 @@ fn generated_commit_message_commits_staged_changes() -> Result<()> {
     git(&repository.worktree, &["add", "tracked.txt"])?;
     let mut screen = repository.screen()?;
 
-    screen.wait_for_text("Update 1 file")?.press(Key::Enter)?;
+    screen
+        .wait_for_text("Update 1 file")?
+        .click(&Selector::text("[ Commit (Enter) ]"))?;
     wait_for("generated commit message", || {
         Ok(git_output(&repository.worktree, &["log", "-1", "--format=%s"])? == "Update 1 file")
     })?;
@@ -60,7 +62,7 @@ fn commit_input_keeps_focus_across_live_repository_refresh() -> Result<()> {
 
     screen
         .wait_for_text("Update 1 file")?
-        .press(Key::Char('e'))?;
+        .press(Key::Char('m'))?;
     fs::write(repository.worktree.join("new.txt"), "watcher refresh\n")?;
     screen
         .wait_for_text("new.txt")?

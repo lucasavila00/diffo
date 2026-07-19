@@ -52,9 +52,9 @@ fn commit_message_and_file_diff_boxes_share_the_chrome_border() {
 }
 
 #[test]
-fn commit_composer_panel_action_uses_the_enabled_control_style() {
+fn disabled_commit_composer_action_uses_the_disabled_control_style() {
     let model = model();
-    let backend = TestBackend::new(20, 6);
+    let backend = TestBackend::new(20, 5);
     let mut terminal = Terminal::new(backend).unwrap();
     terminal
         .draw(|frame| crate::diff::render_commit_composer(frame, frame.area(), &model))
@@ -64,9 +64,12 @@ fn commit_composer_panel_action_uses_the_enabled_control_style() {
 }
 
 #[test]
-fn commit_composer_has_no_action_button() {
-    let model = model();
-    let backend = TestBackend::new(40, 6);
+fn fixed_commit_composer_action_uses_the_enabled_control_style() {
+    let mut model = model();
+    model.snapshot.files[0].staged = Some(FileDiff {
+        text: String::new(),
+    });
+    let backend = TestBackend::new(40, 5);
     let mut terminal = Terminal::new(backend).unwrap();
     terminal
         .draw(|frame| crate::diff::render_commit_composer(frame, frame.area(), &model))

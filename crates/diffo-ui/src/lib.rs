@@ -118,7 +118,9 @@ pub mod design {
     pub const ACTIVITY_CONTROL_HEIGHT: u16 = 3;
     pub const ACTIVITY_CONTROL_CONTENT_OFFSET: u16 = 1;
     pub const MIN_FILE_GROUP_HEIGHT: u16 = 2;
+    pub const COMMIT_COMPOSER_HEIGHT: u16 = 5;
     pub const COMMIT_FIELD_HEIGHT: u16 = 3;
+    pub const COMMIT_ACTION_HEIGHT: u16 = 2;
 
     pub const COMMAND_PALETTE_WIDTH: ResponsiveWidth = ResponsiveWidth::new(70, 30, 80);
     pub const COMMAND_PALETTE_TOP_PERCENT: u16 = 20;

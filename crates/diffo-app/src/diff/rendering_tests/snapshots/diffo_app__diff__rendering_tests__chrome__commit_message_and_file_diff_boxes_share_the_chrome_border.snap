@@ -5,11 +5,11 @@ expression: "buffer_region(terminal.backend().buffer(),\nRect::new(area.x, area.
 Buffer {
     area: Rect { x: 0, y: 0, width: 80, height: 1 },
     content: [
-        "┌ Commit message ─┐┌M src/main.rs─────────────────────────────── Inline ───  ┐",
+        "┌Commit message (m)┐┌M src/main.rs─────────────────────────────── Inline ───  ┐",
     ],
     styles: [
         x: 0, y: 0, fg: DarkGray, bg: Reset, underline: Reset, modifier: NONE,
-        x: 18, y: 0, fg: White, bg: Reset, underline: Reset, modifier: BOLD,
+        x: 16, y: 0, fg: White, bg: Reset, underline: Reset, modifier: BOLD,
         x: 19, y: 0, fg: DarkGray, bg: Reset, underline: Reset, modifier: NONE,
         x: 21, y: 0, fg: Yellow, bg: Reset, underline: Reset, modifier: NONE,
         x: 35, y: 0, fg: DarkGray, bg: Reset, underline: Reset, modifier: NONE,

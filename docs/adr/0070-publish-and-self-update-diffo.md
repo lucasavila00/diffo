@@ -24,15 +24,15 @@ drafts and prereleases.
 
 Support only Debian stable and Ubuntu 24.04 or newer on x86_64 GNU/Linux. Other Linux
 distributions and architectures are unsupported. Compile exactly one production
-`x86_64-unknown-linux-gnu` executable on Ubuntu 24.04 for both distributions. Run
-`DIFFO_E2E_BINARY=<absolute-production-path> make all`; every black-box E2E test must
-launch those exact bytes and must not build another Diffo. Smoke-test the same file on
-Ubuntu 24.04 and Debian stable, then publish it as the single Linux asset with SHA-256
-digests, signed update metadata, and a GitHub artifact attestation. Installation
-documentation tells users to verify the binary and place it at any path they choose.
+`x86_64-unknown-linux-gnu` executable on Ubuntu 24.04 for both distributions. Stage
+those exact bytes without rebuilding them. Smoke-test the same file on Ubuntu 24.04
+and Debian stable, then publish it as the single Linux asset with SHA-256 digests,
+signed update metadata, and a GitHub artifact attestation. The release workflow does
+not repeat the full `make all` suite owned by repository CI. Installation documentation
+tells users to verify the binary and place it at any path they choose.
 
-`DIFFO_E2E_BINARY` is a developer and release-test hook, not user configuration. When
-unset, local `make all` keeps its normal development-profile behavior.
+`DIFFO_E2E_BINARY` is a developer and test hook, not user configuration. When unset,
+local `make all` keeps its normal development-profile behavior.
 
 ### Launcher
 
@@ -108,6 +108,6 @@ and relaunch.
 - Fault every filesystem stage and prove only complete verified bytes become visible.
 - Test permission failures without elevation or partial replacement.
 - Test passive discovery without focus changes, F1 availability, and persistent results.
-- Before publication, prove every black-box E2E process used `DIFFO_E2E_BINARY`, then
-  update the previous release on Debian stable and Ubuntu 24.04 and verify the new
-  binary starts and its launcher can still check for updates.
+- Before publication, smoke-test the staged production file on Debian stable and
+  Ubuntu 24.04, then update the previous release on both distributions and verify the
+  new binary starts and its launcher can still check for updates.

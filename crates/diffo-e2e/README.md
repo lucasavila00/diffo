@@ -26,4 +26,4 @@ workspace test suite. `make all` does not invoke `make e2e` separately because
 
 When `DIFFO_E2E_BINARY` is set to an absolute production executable, every black-box
 suite launches those exact bytes and the standalone E2E package skips its normal local
-Diffo build. Release validation uses this developer-only hook before publication.
+Diffo build. This developer-only hook supports focused tests of a prebuilt binary.

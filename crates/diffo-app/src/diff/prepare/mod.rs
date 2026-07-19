@@ -122,7 +122,7 @@ fn projection_highlight_ranges(
     request: ProjectionHighlightRequest,
 ) -> (Option<LineRange>, Option<LineRange>) {
     let window_viewports = request.prefetch_viewports.max(1);
-    debug_assert!(window_viewports % 2 == 1);
+    debug_assert_eq!(window_viewports % 2, 1);
     let rows = request
         .viewport_rows
         .max(1)

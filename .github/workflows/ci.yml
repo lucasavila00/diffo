@@ -33,3 +33,35 @@ jobs:
 
       - name: Run all checks
         run: make all
+
+  stress:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install OpenSSH server
+        run: sudo apt-get update && sudo apt-get install --yes openssh-server
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo build
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build workspace tests
+        run: cargo test --workspace --no-run
+
+      - name: Run tests repeatedly under scheduler contention
+        shell: bash
+        run: |
+          set -euo pipefail
+          for iteration in 1 2 3 4 5; do
+            echo "::group::Stress iteration ${iteration}"
+            timeout --signal=TERM --kill-after=10s 180s \
+              taskset --cpu-list 0 \
+              cargo test --workspace -- --test-threads=8
+            echo "::endgroup::"
+          done

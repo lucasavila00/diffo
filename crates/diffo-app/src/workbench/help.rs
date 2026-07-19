@@ -1,10 +1,13 @@
 use diffo_ui::{design, theme};
 use ratatui::{
     Frame,
-    layout::{Constraint, Layout, Rect},
+    layout::{Alignment, Constraint, Layout, Rect},
     style::{Modifier, Style},
     widgets::{Block, Borders, Cell, Clear, Paragraph, Row, Table},
 };
+
+const BUILD_TAG: &str = env!("DIFFO_BUILD_TAG");
+const BUILD_SHA: &str = env!("DIFFO_BUILD_SHA");
 
 pub(super) fn render(frame: &mut Frame, content_area: Rect, rows: Vec<(String, &'static str)>) {
     let area = layout(content_area);
@@ -46,9 +49,19 @@ pub(super) fn render(frame: &mut Frame, content_area: Rect, rows: Vec<(String, &
     )
     .column_spacing(design::HELP_COLUMN_GAP);
     frame.render_widget(table, sections[0]);
+    let build = format!("tag {BUILD_TAG} · sha {BUILD_SHA}");
+    let footer = Layout::horizontal([
+        Constraint::Min(design::SINGLE_LINE_HEIGHT),
+        Constraint::Length(u16::try_from(build.chars().count()).unwrap_or(u16::MAX)),
+    ])
+    .split(sections[1]);
+    let footer_style = Style::default().fg(theme::CHROME);
+    frame.render_widget(Paragraph::new("Esc: close").style(footer_style), footer[0]);
     frame.render_widget(
-        Paragraph::new("Esc: close").style(Style::default().fg(theme::CHROME)),
-        sections[1],
+        Paragraph::new(build)
+            .style(footer_style)
+            .alignment(Alignment::Right),
+        footer[1],
     );
 }
 
@@ -70,9 +83,31 @@ fn layout(area: Rect) -> Rect {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ratatui::{Terminal, backend::TestBackend};
 
     #[test]
     fn help_layout_uses_the_shared_dialog_contract() {
         assert_eq!(layout(Rect::new(5, 3, 100, 30)), Rect::new(15, 3, 80, 30));
+    }
+
+    #[test]
+    fn help_footer_shows_the_build_tag_and_sha() {
+        let area = Rect::new(0, 0, 100, 30);
+        let backend = TestBackend::new(area.width, area.height);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal
+            .draw(|frame| render(frame, area, Vec::new()))
+            .unwrap();
+
+        let help_area = layout(area);
+        let footer_y = help_area.bottom() - 3;
+        let footer = (help_area.x..help_area.right())
+            .map(|x| terminal.backend().buffer()[(x, footer_y)].symbol())
+            .collect::<String>();
+        assert!(footer.contains("Esc: close"), "{footer}");
+        assert!(
+            footer.contains(&format!("tag {BUILD_TAG} · sha {BUILD_SHA}")),
+            "{footer}"
+        );
     }
 }

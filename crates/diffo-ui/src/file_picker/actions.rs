@@ -1,6 +1,6 @@
 use std::hash::Hash;
 
-use crate::{design, enabled_control_style, interaction, theme};
+use crate::{design, enabled_control_style, icons, theme};
 use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind};
 use ratatui::{
     Frame,
@@ -142,7 +142,7 @@ where
                         Span::raw(" "),
                     ]))
                     .title(
-                        Line::styled(interaction::DISMISS, enabled_control_style())
+                        Line::styled(icons::DISMISS, enabled_control_style())
                             .alignment(Alignment::Right),
                     )
                     .borders(Borders::ALL)

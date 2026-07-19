@@ -5,8 +5,8 @@ expression: "buffer_region(terminal.backend().buffer(), Rect::new(55, 1, 44, 3),
 Buffer {
     area: Rect { x: 0, y: 0, width: 44, height: 3 },
     content: [
-        "┌─────────────────────────────────────────×┐",
-        "│◑ Fetching…                               │",
+        "┌─────────────────────────────────────────┐",
+        "│ Fetching…                               │",
         "└──────────────────────────────────────────┘",
     ],
     styles: [

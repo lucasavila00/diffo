@@ -352,10 +352,10 @@ mod tests {
         Buffer {
             area: Rect { x: 0, y: 0, width: 30, height: 5 },
             content: [
-                "┌ Explorer ───────────[-] [+]┐",
+                "┌ Explorer ───────────     ┐",
                 "│  conflicted.rs            │",
                 "│  modified.rs              │",
-                "│▸ src                      │",
+                "│ src                      │",
                 "└────────────────────────────┘",
             ],
             styles: [

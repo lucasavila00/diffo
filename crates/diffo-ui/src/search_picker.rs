@@ -10,7 +10,7 @@ use ratatui::{
 };
 
 use crate::{
-    design, disabled_control_style, enabled_control_style, fuzzy_score, maximum_scroll,
+    design, disabled_control_style, enabled_control_style, fuzzy_score, icons, maximum_scroll,
     modal_block, render_scrollbar, terminal_safe_text, theme, wheel_scroll_delta,
 };
 
@@ -235,7 +235,7 @@ where
                 .filter(|selected| *selected < viewport)
         });
         let list = List::new(items)
-            .highlight_symbol("› ")
+            .highlight_symbol(icons::SELECTION)
             .highlight_style(enabled_control_style().bg(theme::SELECTION_BACKGROUND));
         let mut state = ListState::default().with_selected(selected);
         frame.render_stateful_widget(list, results, &mut state);

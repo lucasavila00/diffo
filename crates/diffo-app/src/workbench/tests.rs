@@ -119,7 +119,7 @@ fn full_screen_diff_renders_styled_raw_hunks_and_x_closes_it() {
     terminal.draw(|frame| workbench.render(frame)).unwrap();
     assert_eq!(
         terminal.backend().buffer()[(entry.x, entry.y)].symbol(),
-        diffo_ui::interaction::MAXIMIZE,
+        diffo_ui::icons::MAXIMIZE,
     );
     let normal_header = (0..area.width)
         .map(|column| terminal.backend().buffer()[(column, area.y)].symbol())
@@ -148,7 +148,7 @@ fn full_screen_diff_renders_styled_raw_hunks_and_x_closes_it() {
     assert_eq!(terminal.backend().buffer()[(0, 0)].fg, Color::Yellow);
     assert_eq!(
         terminal.backend().buffer()[(area.right().saturating_sub(1), 0)].symbol(),
-        "X",
+        diffo_ui::icons::DISMISS,
     );
     assert!(row(1).starts_with("@@ -1 +1 @@"));
     assert!(row(2).starts_with("-let old = true;"));

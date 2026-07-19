@@ -5,8 +5,8 @@ expression: terminal.backend().buffer()
 Buffer {
     area: Rect { x: 0, y: 0, width: 20, height: 5 },
     content: [
-        "┌ Explorer ─[-] [+]┐",
-        "│▸ src            │",
+        "┌ Explorer ─     ┐",
+        "│ src            │",
         "│                  │",
         "│                  │",
         "└──────────────────┘",

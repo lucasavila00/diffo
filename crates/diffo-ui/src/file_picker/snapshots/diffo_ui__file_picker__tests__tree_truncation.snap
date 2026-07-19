@@ -5,7 +5,7 @@ expression: terminal.backend().buffer()
 Buffer {
     area: Rect { x: 0, y: 0, width: 18, height: 4 },
     content: [
-        "┌ Explorer -] [+]┐",
+        "┌ Explorer     ┐",
         "│  very-long-t...│",
         "│                │",
         "└────────────────┘",

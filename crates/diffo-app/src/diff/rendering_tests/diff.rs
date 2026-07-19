@@ -390,7 +390,7 @@ fn uncached_scroll_uses_one_viewport_and_skeleton_until_syntax_is_ready() {
     let marker_column = renderer.scrollbars.vertical_area.x.saturating_add(1);
     assert_eq!(
         terminal.backend().buffer()[(marker_column, marker_row)].symbol(),
-        "▪"
+        diffo_ui::icons::CHANGE_MARKER
     );
     assert!(renderer.hunk_buttons.previous.is_some());
 

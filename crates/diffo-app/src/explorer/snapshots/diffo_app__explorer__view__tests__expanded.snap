@@ -5,9 +5,9 @@ expression: terminal.backend().buffer()
 Buffer {
     area: Rect { x: 0, y: 0, width: 30, height: 6 },
     content: [
-        "┌ Explorer ───────────[-] [+]┐",
-        "│▾ directory                │",
-        "│  ▸ nested                 │",
+        "┌ Explorer ───────────     ┐",
+        "│ directory                │",
+        "│   nested                 │",
         "│    plain.rs               │",
         "│  file.txt                 │",
         "└────────────────────────────┘",

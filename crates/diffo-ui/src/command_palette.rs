@@ -1,6 +1,6 @@
 //! Command palette state, input handling, layout, and rendering.
 
-use crate::{design, enabled_control_style, fuzzy_score, modal_block, theme};
+use crate::{design, enabled_control_style, fuzzy_score, icons, modal_block, theme};
 use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind};
 use ratatui::{
     Frame,
@@ -190,7 +190,7 @@ impl CommandPalette {
                 .collect()
         };
         let list = List::new(items)
-            .highlight_symbol("› ")
+            .highlight_symbol(icons::SELECTION)
             .highlight_style(enabled_control_style().bg(theme::SELECTION_BACKGROUND));
         let mut state = ListState::default().with_selected(
             (!commands.is_empty()).then_some(self.selected.min(commands.len().saturating_sub(1))),

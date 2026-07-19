@@ -71,21 +71,21 @@ fn mouse_wheel_scrolls_diff_file_panels_independently() -> Result<()> {
     let mut screen = repository.screen()?;
 
     screen
-        .wait_for(&Selector::file_action("Staged", "00-staged.txt", "[-]"))?
-        .wait_for(&Selector::file_action("Changes", "00-change.txt", "[+]"))?
+        .wait_for(&Selector::file_action("Staged", "00-staged.txt", ""))?
+        .wait_for(&Selector::file_action("Changes", "00-change.txt", ""))?
         .scroll_many_at(
-            &Selector::file_action("Staged", "00-staged.txt", "[-]"),
+            &Selector::file_action("Staged", "00-staged.txt", ""),
             ScrollDirection::Down,
             4,
         )?
-        .wait_for(&Selector::file_action("Staged", "10-staged.txt", "[-]"))?
-        .wait_for(&Selector::file_action("Changes", "00-change.txt", "[+]"))?;
+        .wait_for(&Selector::file_action("Staged", "10-staged.txt", ""))?
+        .wait_for(&Selector::file_action("Changes", "00-change.txt", ""))?;
 
     screen
         .scroll_many_at(&Selector::text("Changes"), ScrollDirection::Down, 4)?
-        .wait_for(&Selector::file_action("Changes", "09-change.txt", "[+]"))?
+        .wait_for(&Selector::file_action("Changes", "09-change.txt", ""))?
         .scroll_many_at(&Selector::text("Changes"), ScrollDirection::Up, 4)?
-        .wait_for(&Selector::file_action("Changes", "00-change.txt", "[+]"))?;
+        .wait_for(&Selector::file_action("Changes", "00-change.txt", ""))?;
     Ok(())
 }
 
@@ -175,14 +175,14 @@ fn large_hunk_buttons_click_between_changes_without_wrapping() -> Result<()> {
     let mut screen = repository.screen()?;
     screen
         .wait_for_text("FIRST_CHANGE")?
-        .click(&Selector::text("↓ Next change (n)"))?
+        .click(&Selector::text(" Next change (n)"))?
         .wait_for_text("MIDDLE_CHANGE")?;
-    assert!(screen.contents().contains("↑ Previous change (p)"));
+    assert!(screen.contents().contains(" Previous change (p)"));
     screen
-        .click(&Selector::text("↓ Next change (n)"))?
+        .click(&Selector::text(" Next change (n)"))?
         .wait_for_text("LAST_CHANGE")?
-        .wait_for_text_gone("↓ Next change (n)")?
-        .click(&Selector::text("↑ Previous change (p)"))?
+        .wait_for_text_gone(" Next change (n)")?
+        .click(&Selector::text(" Previous change (p)"))?
         .wait_for_text("MIDDLE_CHANGE")?;
     Ok(())
 }
@@ -227,23 +227,23 @@ fn fully_visible_changes_are_skipped_in_both_directions_without_wrapping() -> Re
     let mut screen = repository.screen()?;
     screen
         .wait_for_text("EARLY_CLUSTER_CHANGE")?
-        .wait_for_text_gone("↑ Previous change (p)")?
+        .wait_for_text_gone(" Previous change (p)")?
         .press(Key::Char('n'))?
         .wait_for_text("CLUSTER_CHANGE_A")?
         .wait_for_text("CLUSTER_CHANGE_B")?
         .wait_for_text("CLUSTER_CHANGE_C")?
-        .click(&Selector::text("↑ Previous change (p)"))?
+        .click(&Selector::text(" Previous change (p)"))?
         .wait_for_text("EARLY_CLUSTER_CHANGE")?;
 
     screen.press(Key::Char('p'))?;
     thread::sleep(Duration::from_millis(100));
     screen
         .wait_for_text("EARLY_CLUSTER_CHANGE")?
-        .click(&Selector::text("↓ Next change (n)"))?
+        .click(&Selector::text(" Next change (n)"))?
         .wait_for_text("CLUSTER_CHANGE_A")?
-        .click(&Selector::text("↓ Next change (n)"))?
+        .click(&Selector::text(" Next change (n)"))?
         .wait_for_text("LATE_CLUSTER_CHANGE")?
-        .wait_for_text_gone("↓ Next change (n)")?
+        .wait_for_text_gone(" Next change (n)")?
         .press(Key::Char('n'))?;
     thread::sleep(Duration::from_millis(100));
     screen
@@ -267,15 +267,15 @@ fn one_change_taller_than_the_viewport_advances_and_retreats_by_one_page() -> Re
     let mut screen = repository.screen()?;
     screen
         .wait_for_text("OLD_TALL_CHANGE_000")?
-        .click(&Selector::text("↓ Next change (n)"))?
+        .click(&Selector::text(" Next change (n)"))?
         .wait_for_text("OLD_TALL_CHANGE_030")?
         .wait_for_text_gone("OLD_TALL_CHANGE_000")?
-        .click(&Selector::text("↑ Previous change (p)"))?
+        .click(&Selector::text(" Previous change (p)"))?
         .wait_for_text("OLD_TALL_CHANGE_000")?
         .press(Key::Char('n'))?
         .wait_for_text("OLD_TALL_CHANGE_030")?;
-    assert!(screen.contents().contains("↓ Next change (n)"));
-    assert!(screen.contents().contains("↑ Previous change (p)"));
+    assert!(screen.contents().contains(" Next change (n)"));
+    assert!(screen.contents().contains(" Previous change (p)"));
     Ok(())
 }
 
@@ -293,12 +293,12 @@ fn inline_and_side_by_side_modes_use_their_own_change_bounds() -> Result<()> {
     let mut screen = repository.screen()?;
     screen
         .wait_for_text("OLD_PROJECTION_CHANGE_00")?
-        .wait_for_text("↓ Next change (n)")?
+        .wait_for_text(" Next change (n)")?
         .press(Key::Char('r'))?
         .wait_for_text("Side by side")?
         .wait_for_text("NEW_PROJECTION_CHANGE_00")?
-        .wait_for_text_gone("↓ Next change (n)")?
-        .wait_for_text_gone("↑ Previous change (p)")?
+        .wait_for_text_gone(" Next change (n)")?
+        .wait_for_text_gone(" Previous change (p)")?
         .press(Key::Char('n'))?;
     thread::sleep(Duration::from_millis(100));
     screen.wait_for_text("NEW_PROJECTION_CHANGE_00")?;

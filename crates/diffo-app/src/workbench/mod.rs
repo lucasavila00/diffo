@@ -17,7 +17,7 @@ use diffo_core::{
 };
 use diffo_ui::command_palette::{Command, CommandId};
 use diffo_ui::text_view::{TextRenderMode, TextSurfacePreparation};
-use diffo_ui::{PaneSplit, command_progress_style, enabled_control_style, interaction, tool_areas};
+use diffo_ui::{PaneSplit, command_progress_style, enabled_control_style, icons, tool_areas};
 use ratatui::{
     Frame,
     layout::Rect,
@@ -676,7 +676,7 @@ fn render_pane_drag_marker(frame: &mut Frame, area: Rect, split: PaneSplit) {
     let marker = split.seam_marker_area(area);
     if !marker.is_empty() {
         frame.render_widget(
-            Paragraph::new(interaction::PANE_DRAG).style(enabled_control_style()),
+            Paragraph::new(icons::PANE_DRAG).style(enabled_control_style()),
             marker,
         );
     }

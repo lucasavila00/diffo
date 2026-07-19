@@ -37,15 +37,25 @@ pub mod theme {
     pub const CONFLICT_BACKGROUND: Color = Color::Indexed(58);
 }
 
-/// Fixed markers for mouse-interactive surfaces.
-pub mod interaction {
-    pub const TREE_COLLAPSED: &str = "▸ ";
-    pub const TREE_EXPANDED: &str = "▾ ";
+/// Fixed Nerd Font icons used by Diffo's interface.
+pub mod icons {
+    pub const ACTIVITY_EXPLORER: &str = "";
+    pub const ACTIVITY_SEARCH: &str = "";
+    pub const ACTIVITY_DIFF: &str = "";
+    pub const TREE_COLLAPSED: &str = " ";
+    pub const TREE_EXPANDED: &str = " ";
     pub const TREE_LEAF: &str = "  ";
-    pub const EDIT: &str = "✎";
-    pub const DISMISS: &str = "×";
+    pub const EDIT: &str = "";
+    pub const DISMISS: &str = "";
     pub const MAXIMIZE: &str = "";
-    pub const PANE_DRAG: &str = "↔";
+    pub const PANE_DRAG: &str = "";
+    pub const CHANGE_PREVIOUS: &str = "";
+    pub const CHANGE_NEXT: &str = "";
+    pub const CHANGE_MARKER: &str = "";
+    pub const ADD: &str = "";
+    pub const REMOVE: &str = "";
+    pub const SELECTION: &str = " ";
+    pub const SPINNER: [&str; 4] = ["", "", "", ""];
 }
 
 #[must_use]
@@ -429,6 +439,42 @@ mod tests {
     use super::*;
     use crossterm::event::MouseEventKind;
     use diffo_highlight::{HighlightedLine, Rgb, StyledSpan};
+    use ratatui::text::Line;
+
+    #[test]
+    fn interface_icons_are_one_cell_nerd_font_glyphs() {
+        let icons = [
+            icons::ACTIVITY_EXPLORER,
+            icons::ACTIVITY_SEARCH,
+            icons::ACTIVITY_DIFF,
+            icons::TREE_COLLAPSED,
+            icons::TREE_EXPANDED,
+            icons::EDIT,
+            icons::DISMISS,
+            icons::MAXIMIZE,
+            icons::PANE_DRAG,
+            icons::CHANGE_PREVIOUS,
+            icons::CHANGE_NEXT,
+            icons::CHANGE_MARKER,
+            icons::ADD,
+            icons::REMOVE,
+            icons::SELECTION,
+        ]
+        .into_iter()
+        .chain(icons::SPINNER);
+
+        for icon in icons {
+            let glyphs = icon.chars().filter(|character| !character.is_whitespace());
+            assert!(
+                glyphs
+                    .clone()
+                    .all(|glyph| ('\u{e000}'..='\u{f8ff}').contains(&glyph)),
+                "icon {icon:?} is outside the Nerd Font private-use range"
+            );
+            assert_eq!(glyphs.count(), 1, "icon {icon:?} must contain one glyph");
+            assert_eq!(Line::raw(icon.trim_end()).width(), 1, "icon {icon:?}");
+        }
+    }
 
     #[test]
     fn pane_split_drags_and_bounds_width() {

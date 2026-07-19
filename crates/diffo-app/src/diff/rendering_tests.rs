@@ -56,7 +56,7 @@ fn file_picker_renders_every_git_change_kind_with_its_status_color() {
         Rect::new(0, 0, 40, 10),
         picker_document(
             "Changes",
-            "[+] Stage All",
+            " Stage All",
             files.iter(),
             ChangeArea::Unstaged,
             Style::default(),
@@ -110,7 +110,7 @@ fn diff_file_icon_inherits_status_style_in_a_narrow_row() {
         Rect::new(0, 0, 15, 4),
         picker_document(
             "Changes",
-            "[+] Stage All",
+            " Stage All",
             files.iter(),
             ChangeArea::Unstaged,
             Style::default(),

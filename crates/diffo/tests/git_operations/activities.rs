@@ -58,9 +58,9 @@ fn activity_bar_clicks_select_tools_and_diff_returns_intact() -> Result<()> {
 
     screen
         .wait_for_text("Changes")?
-        .click(&Selector::text("⌕"))?
+        .click(&Selector::text(""))?
         .wait_for_text_gone("Changes")?
-        .click(&Selector::text("≠"))?
+        .click(&Selector::text(""))?
         .wait_for_text("Changes")?;
     Ok(())
 }

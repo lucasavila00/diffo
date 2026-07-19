@@ -4,9 +4,7 @@ use crate::diff::{
     Style, change_kind_style, horizontal_panes, main_area, terminal_safe_text,
 };
 use diffo_ui::file_picker::{Document, Row as PickerRow};
-use diffo_ui::{
-    design, disabled_control_style, enabled_control_style, file_icons, interaction, theme,
-};
+use diffo_ui::{design, disabled_control_style, enabled_control_style, file_icons, icons, theme};
 
 pub(in crate::diff) fn file_panel_areas(area: Rect) -> std::rc::Rc<[Rect]> {
     Layout::vertical([
@@ -48,7 +46,7 @@ pub(in crate::diff) fn render_commit_composer(frame: &mut Frame, area: Rect, mod
                     .border_style(resize_border_style(model))
                     .title(" Commit message ")
                     .title(
-                        Line::styled(interaction::EDIT, enabled_control_style())
+                        Line::styled(icons::EDIT, enabled_control_style())
                             .alignment(Alignment::Right),
                     ),
             ),
@@ -117,8 +115,8 @@ pub(in crate::diff) fn picker_document<'a>(
                 area: change_area,
             };
             let action = match change_area {
-                ChangeArea::Staged => "[-]",
-                ChangeArea::Unstaged => "[+]",
+                ChangeArea::Staged => icons::REMOVE,
+                ChangeArea::Unstaged => icons::ADD,
             };
             PickerRow::flat(key, file_label(file)).with_action(action)
         })
@@ -169,7 +167,13 @@ pub(in crate::diff) fn status_line(
     let mut divergence = model.snapshot.upstream.as_ref().and_then(|upstream| {
         (upstream.ahead != 0 || upstream.behind != 0).then(|| {
             Span::styled(
-                format!(" · ↓{} ↑{}", upstream.behind, upstream.ahead),
+                format!(
+                    " · {}{} {}{}",
+                    icons::CHANGE_NEXT,
+                    upstream.behind,
+                    icons::CHANGE_PREVIOUS,
+                    upstream.ahead
+                ),
                 Style::default().fg(theme::TEXT),
             )
         })

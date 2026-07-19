@@ -124,7 +124,7 @@ fn cancelling_a_blocked_git_client_releases_the_next_queued_command() -> Result<
     assert!(!screen.contents().contains("Pulling"));
 
     screen
-        .click(&Selector::text("×"))?
+        .click(&Selector::text(""))?
         .wait_for_text_gone("Fetching")?;
     wait_for("queued pull to update the worktree", || {
         Ok(repository.worktree.join("remote.txt").exists())

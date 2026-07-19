@@ -5,7 +5,7 @@ use super::{
     side_by_side_line, side_by_side_skeleton_line, terminal_safe_text,
 };
 use diffo_ui::text_view::{Viewport, ViewportMetrics, render_lines, render_scrollbars};
-use diffo_ui::{design, enabled_control_style, theme};
+use diffo_ui::{design, enabled_control_style, icons, theme};
 
 pub(in crate::diff) mod files;
 pub(in crate::diff) mod geometry;
@@ -40,7 +40,7 @@ pub(in crate::diff) fn render_change_markers(
             1,
         );
         frame.render_widget(
-            Paragraph::new("▪").style(Style::default().fg(if visible {
+            Paragraph::new(icons::CHANGE_MARKER).style(Style::default().fg(if visible {
                 theme::TEXT
             } else {
                 theme::CHROME
@@ -289,10 +289,18 @@ impl Renderer {
             next: next_area,
         };
         if let Some(button) = self.hunk_buttons.previous {
-            render_hunk_button(frame, button, "↑ Previous change (p)");
+            render_hunk_button(
+                frame,
+                button,
+                &format!("{} Previous change (p)", icons::CHANGE_PREVIOUS),
+            );
         }
         if let Some(button) = self.hunk_buttons.next {
-            render_hunk_button(frame, button, "↓ Next change (n)");
+            render_hunk_button(
+                frame,
+                button,
+                &format!("{} Next change (n)", icons::CHANGE_NEXT),
+            );
         }
     }
 

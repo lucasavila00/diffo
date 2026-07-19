@@ -7,7 +7,7 @@ use crate::{
     design, enabled_control_style, maximum_scroll, render_scrollbar, scroll_offset,
     scrollbar_position, terminal_safe_text, theme, wheel_scroll_delta,
 };
-use crate::{file_icons, interaction};
+use crate::{file_icons, icons};
 use crossterm::event::{
     Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind,
 };
@@ -159,7 +159,11 @@ where
             .title(title);
         if self.document.mode == Mode::Tree && self.area.width >= design::TREE_HEADER_MIN_WIDTH {
             block = block.title(
-                Line::styled("[-] [+]", enabled_control_style()).alignment(Alignment::Right),
+                Line::styled(
+                    format!(" {}   {} ", icons::REMOVE, icons::ADD),
+                    enabled_control_style(),
+                )
+                .alignment(Alignment::Right),
             );
         }
         frame.render_widget(block, self.area);
@@ -440,12 +444,12 @@ where
             spans.push(Span::styled(
                 if row.branch {
                     if self.expanded.contains(&row.id) {
-                        interaction::TREE_EXPANDED
+                        icons::TREE_EXPANDED
                     } else {
-                        interaction::TREE_COLLAPSED
+                        icons::TREE_COLLAPSED
                     }
                 } else {
-                    interaction::TREE_LEAF
+                    icons::TREE_LEAF
                 },
                 enabled_control_style(),
             ));

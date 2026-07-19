@@ -54,7 +54,7 @@ fn full_screen_diff_shows_raw_hunks_and_exits_by_key_or_x() -> Result<()> {
         .wait_for_text("Changes")?
         .press(Key::Char('f'))?
         .wait_for_text_gone("Changes")?
-        .click(&Selector::text("X"))?
+        .click(&Selector::text(""))?
         .wait_for_text("Changes")?;
     Ok(())
 }

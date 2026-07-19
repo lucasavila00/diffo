@@ -3,8 +3,7 @@ use crate::diff::{
     Style, Toast, ToastKind, terminal_safe_text,
 };
 use diffo_ui::{
-    command_progress_style, design, disabled_control_style, enabled_control_style, interaction,
-    theme,
+    command_progress_style, design, disabled_control_style, enabled_control_style, icons, theme,
 };
 
 #[derive(Clone, Copy)]
@@ -19,8 +18,6 @@ pub fn render_command_progress(
     progress: CommandProgress<'_>,
     content_area: Rect,
 ) {
-    const SPINNER: [&str; 4] = ["◐", "◓", "◑", "◒"];
-
     let Some(area) = command_progress_area(content_area) else {
         return;
     };
@@ -29,7 +26,7 @@ pub fn render_command_progress(
     } else {
         format!(
             "{} {}…",
-            SPINNER[(progress.animation_tick / 2) % SPINNER.len()],
+            icons::SPINNER[(progress.animation_tick / 2) % icons::SPINNER.len()],
             progress.label
         )
     };
@@ -43,7 +40,7 @@ pub fn render_command_progress(
                     .borders(Borders::ALL)
                     .border_style(Style::default().fg(theme::CHROME))
                     .title(
-                        Line::styled(interaction::DISMISS, enabled_control_style())
+                        Line::styled(icons::DISMISS, enabled_control_style())
                             .alignment(Alignment::Right),
                     ),
             ),
@@ -95,7 +92,7 @@ pub fn render_toasts(frame: &mut Frame, toasts: &[Toast], content_area: Rect) {
                         .borders(Borders::ALL)
                         .border_style(Style::default().fg(theme::CHROME))
                         .title(
-                            Line::styled(interaction::DISMISS, enabled_control_style())
+                            Line::styled(icons::DISMISS, enabled_control_style())
                                 .alignment(Alignment::Right),
                         ),
                 ),

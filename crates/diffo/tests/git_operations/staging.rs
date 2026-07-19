@@ -46,7 +46,7 @@ fn slow_stage_shows_progress_then_commits_only_the_list_change() -> Result<()> {
     screen.wait_for_text("Staging")?;
     gate.release()?;
     screen
-        .wait_for(&Selector::file_action("Staged", "tracked.txt", "[-]"))?
+        .wait_for(&Selector::file_action("Staged", "tracked.txt", ""))?
         .wait_for_text_gone("Staging")?;
     assert!(!screen.contents().contains("Stage complete"));
     Ok(())
@@ -113,7 +113,7 @@ fn changes_header_stages_all_files() -> Result<()> {
     let repository = changed_repository()?;
     let mut screen = repository.screen()?;
 
-    screen.click(&Selector::panel_action("Changes", "+"))?;
+    screen.click(&Selector::panel_action("Changes", ""))?;
 
     wait_for("header action to stage all files", || {
         all_changes_are_staged(&repository.worktree)
@@ -126,7 +126,7 @@ fn staged_header_unstages_all_files() -> Result<()> {
     git(&repository.worktree, &["add", "."])?;
     let mut screen = repository.screen()?;
 
-    screen.click(&Selector::panel_action("Staged", "-"))?;
+    screen.click(&Selector::panel_action("Staged", ""))?;
 
     wait_for("header action to unstage all files", || {
         Ok(cached_paths(&repository.worktree)?.is_empty())
@@ -139,7 +139,7 @@ fn plus_button_stages_clicked_file() -> Result<()> {
     fs::write(repository.worktree.join("tracked.txt"), "changed\n")?;
     let mut screen = repository.screen()?;
 
-    screen.click(&Selector::file_action("Changes", "tracked.txt", "[+]"))?;
+    screen.click(&Selector::file_action("Changes", "tracked.txt", ""))?;
 
     wait_for("clicked file to be staged", || {
         Ok(cached_paths(&repository.worktree)?.contains("tracked.txt"))
@@ -153,7 +153,7 @@ fn minus_button_unstages_clicked_file() -> Result<()> {
     git(&repository.worktree, &["add", "tracked.txt"])?;
     let mut screen = repository.screen()?;
 
-    screen.click(&Selector::file_action("Staged", "tracked.txt", "[-]"))?;
+    screen.click(&Selector::file_action("Staged", "tracked.txt", ""))?;
 
     wait_for("clicked file to be unstaged", || {
         Ok(!cached_paths(&repository.worktree)?.contains("tracked.txt"))

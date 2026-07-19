@@ -353,7 +353,7 @@ impl Renderer {
             file_groups[0],
             picker_document(
                 "Staged",
-                "[-] Unstage All",
+                " Unstage All",
                 staged_files(&model.snapshot),
                 ChangeArea::Staged,
                 border_style,
@@ -364,7 +364,7 @@ impl Renderer {
             file_groups[1],
             picker_document(
                 "Changes",
-                "[+] Stage All",
+                " Stage All",
                 unstaged_files(&model.snapshot),
                 ChangeArea::Unstaged,
                 border_style,

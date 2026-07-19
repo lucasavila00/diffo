@@ -1,5 +1,5 @@
 use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind};
-use diffo_ui::{PaneSplit, design, enabled_control_style, interaction, tool_areas};
+use diffo_ui::{PaneSplit, design, enabled_control_style, icons, tool_areas};
 use ratatui::{
     Frame,
     layout::{Constraint, Layout, Rect},
@@ -45,7 +45,7 @@ pub(super) fn render_header(frame: &mut Frame, area: Rect, title: Line<'static>)
     let areas = areas(area);
     frame.render_widget(Clear, area);
     frame.render_widget(Paragraph::new(title), areas.header);
-    frame.render_widget(Paragraph::new("X"), areas.close);
+    frame.render_widget(Paragraph::new(icons::DISMISS), areas.close);
 }
 
 #[must_use]
@@ -116,7 +116,7 @@ impl Workbench {
             return;
         }
         frame.render_widget(
-            Paragraph::new(interaction::MAXIMIZE).style(enabled_control_style()),
+            Paragraph::new(icons::MAXIMIZE).style(enabled_control_style()),
             entry_area(frame.area(), self.pane_split),
         );
     }

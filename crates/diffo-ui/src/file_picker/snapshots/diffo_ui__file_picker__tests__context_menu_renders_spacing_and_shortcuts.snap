@@ -6,7 +6,7 @@ Buffer {
     area: Rect { x: 0, y: 0, width: 30, height: 8 },
     content: [
         "┌ Files ───────────┐          ",
-        "│f┌ Path [c] ───────────×┐    ",
+        "│f┌ Path [c] ───────────┐    ",
         "│ │[a] Copy absolute path│    ",
         "│ │                      │    ",
         "└─│[r] Copy relative path│    ",

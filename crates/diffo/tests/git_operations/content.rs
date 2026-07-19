@@ -22,8 +22,8 @@ fn real_renamed_file_renders_unchanged_content() -> Result<()> {
     let mut screen = repository.screen()?;
 
     screen
-        .wait_for_text("src/content-...")?
-        .click(&Selector::text("src/content-..."))?
+        .wait_for_text("src/content-an...")?
+        .click(&Selector::text("src/content-an..."))?
         .wait_for_text("pub struct RenamedFile")?
         .wait_for_text("Content is unchanged by the rename")?;
     Ok(())

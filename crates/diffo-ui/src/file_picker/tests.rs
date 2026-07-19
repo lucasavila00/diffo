@@ -117,7 +117,10 @@ fn rendering_preserves_label_style_and_owns_the_action_style() {
         Rect::new(0, 0, 30, 4),
         Document::flat(
             "Files",
-            vec![Row::flat(0, Line::styled("D deleted.txt", label_style)).with_action("[+]")],
+            vec![
+                Row::flat(0, Line::styled("D deleted.txt", label_style))
+                    .with_action(crate::icons::ADD),
+            ],
         ),
         None,
     );
@@ -132,7 +135,7 @@ fn rendering_preserves_label_style_and_owns_the_action_style() {
 #[test]
 fn panel_actions_are_high_contrast_and_distinct_from_borders() {
     let mut flat_document = Document::flat("Changes", Vec::<Row<usize>>::new());
-    flat_document.panel_action = Some("[+] Stage All".to_owned());
+    flat_document.panel_action = Some(format!("{} Stage All", crate::icons::ADD));
     let mut flat = FilePicker::default();
     flat.prepare(Rect::new(0, 0, 30, 4), flat_document, None);
     let backend = TestBackend::new(30, 4);
@@ -286,7 +289,7 @@ fn long_labels_use_three_dots_without_hiding_row_actions() {
             "Files",
             vec![
                 Row::flat(0, Line::styled("very-long-file-name.rs", label_style))
-                    .with_action("[+]"),
+                    .with_action(crate::icons::ADD),
             ],
         ),
         None,

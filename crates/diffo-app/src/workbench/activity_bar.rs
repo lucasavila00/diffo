@@ -1,5 +1,5 @@
 use super::Activity;
-use diffo_ui::{design, enabled_control_style, theme};
+use diffo_ui::{design, enabled_control_style, icons, theme};
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Layout, Rect},
@@ -52,9 +52,9 @@ pub fn render_activity_bar(frame: &mut Frame, area: Rect, active: Activity) {
         bar,
     );
     for (index, (activity, icon)) in [
-        (Activity::Explorer, "▤"),
-        (Activity::Search, "⌕"),
-        (Activity::Diff, "≠"),
+        (Activity::Explorer, icons::ACTIVITY_EXPLORER),
+        (Activity::Search, icons::ACTIVITY_SEARCH),
+        (Activity::Diff, icons::ACTIVITY_DIFF),
     ]
     .into_iter()
     .enumerate()

@@ -1,0 +1,22 @@
+---
+source: crates/diffo-diff/src/tests.rs
+expression: "(compact_inline, compact_side(&side))"
+---
+(
+    [
+        "Header None: @@ -1,4 +1,4 @@",
+        "Context Some(1): same",
+        "Removed Some(2): old one",
+        "Removed Some(3): old two",
+        "Added Some(2): new one",
+        "Added Some(3): new two",
+        "Context Some(4): end",
+    ],
+    [
+        "Header | Header None: @@ -1,4 +1,4 @@ | Header None: @@ -1,4 +1,4 @@",
+        "Context | Context Some(1): same | Context Some(1): same",
+        "Changed | Removed Some(2): old one | Added Some(2): new one",
+        "Changed | Removed Some(3): old two | Added Some(3): new two",
+        "Context | Context Some(4): end | Context Some(4): end",
+    ],
+)

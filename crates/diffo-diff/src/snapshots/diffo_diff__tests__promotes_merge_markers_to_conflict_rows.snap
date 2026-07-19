@@ -1,0 +1,23 @@
+---
+source: crates/diffo-diff/src/tests.rs
+expression: "(compact_inline, compact_side(&side))"
+---
+(
+    [
+        "Header None: @@ -1 +1,5 @@",
+        "Removed Some(1): old",
+        "Conflict Some(1): <<<<<<< HEAD",
+        "Added Some(2): ours",
+        "Conflict Some(3): =======",
+        "Added Some(4): theirs",
+        "Conflict Some(5): >>>>>>> branch",
+    ],
+    [
+        "Header | Header None: @@ -1 +1,5 @@ | Header None: @@ -1 +1,5 @@",
+        "Changed | Removed Some(1): old | Conflict Some(1): <<<<<<< HEAD",
+        "Changed | ∅ | Added Some(2): ours",
+        "Changed | ∅ | Conflict Some(3): =======",
+        "Changed | ∅ | Added Some(4): theirs",
+        "Changed | ∅ | Conflict Some(5): >>>>>>> branch",
+    ],
+)

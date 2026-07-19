@@ -1,0 +1,12 @@
+---
+source: crates/diffo-git/src/git_tests.rs
+expression: "[unborn.head, detached.head]"
+---
+[
+    Unborn {
+        name: "main",
+    },
+    Detached {
+        commit: "123456789abcdef",
+    },
+]

@@ -1,8 +1,0 @@
----
-source: crates/diffo-app/src/explorer/worker.rs
-assertion_line: 447
-expression: viewer.lines
----
-[
-    "before    ␛[2J␈after",
-]

@@ -1,9 +1,0 @@
----
-source: crates/diffo-ui/tests/theme_contract.rs
-assertion_line: 27
-expression: "(enabled_control_style(), disabled_control_style())"
----
-(
-    Style::new().white().bold(),
-    Style::new().dark_gray(),
-)

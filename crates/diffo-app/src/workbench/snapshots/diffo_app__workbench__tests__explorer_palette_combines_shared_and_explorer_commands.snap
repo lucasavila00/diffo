@@ -1,0 +1,10 @@
+---
+source: crates/diffo-app/src/workbench/tests.rs
+expression: commands
+---
+[
+    "CommandId(\"git.fetch\"): Git: Fetch",
+    "CommandId(\"git.pull\"): Git: Pull",
+    "CommandId(\"explorer.collapse_all\"): Explorer: Collapse All Folders",
+    "CommandId(\"explorer.expand_all\"): Explorer: Expand All Folders",
+]

@@ -1,0 +1,14 @@
+---
+source: crates/diffo-ui/tests/theme_contract.rs
+expression: geometry
+---
+[
+    "border width: 1",
+    "panel inset: Margin { horizontal: 1, vertical: 1 }",
+    "dialog inset: Margin { horizontal: 2, vertical: 1 }",
+    "activity rail width: 5",
+    "command palette width at 100: 70",
+    "command palette width at 20: 20",
+    "help width at 200: 90",
+    "commit editor width at 100: 70",
+]

@@ -1,0 +1,13 @@
+---
+source: crates/diffo-app/src/diff/rendering_tests/diff.rs
+expression: "buffer_region(terminal.backend().buffer(), previous_area)"
+---
+Buffer {
+    area: Rect { x: 0, y: 0, width: 73, height: 1 },
+    content: [
+        "                          ↑ Previous change (p)                          ",
+    ],
+    styles: [
+        x: 0, y: 0, fg: White, bg: DarkGray, underline: Reset, modifier: BOLD,
+    ]
+}

@@ -1,0 +1,18 @@
+---
+source: crates/diffo-app/src/explorer/worker.rs
+expression: markers
+---
+[
+    (
+        1,
+        Conflict,
+    ),
+    (
+        3,
+        Conflict,
+    ),
+    (
+        5,
+        Conflict,
+    ),
+]

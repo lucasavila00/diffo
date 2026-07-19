@@ -1,0 +1,21 @@
+---
+source: crates/diffo-app/src/diff/input/input_tests.rs
+expression: mappings
+---
+[
+    "Char('q') -> Some(Quit)",
+    "Char('2') -> Some(ToggleHelp)",
+    "F(2) -> Some(ToggleHelp)",
+    "Esc -> Some(Quit)",
+    "Up -> Some(ScrollDiffVerticalBy(-4))",
+    "Down -> Some(ScrollDiffVerticalBy(4))",
+    "PageUp -> Some(ScrollDiffPageUp(1))",
+    "PageDown -> Some(ScrollDiffPageDown(1))",
+    "Left -> Some(ScrollDiffHorizontalBy(-4))",
+    "Right -> Some(ScrollDiffHorizontalBy(4))",
+    "Char('r') -> Some(ToggleDiffView)",
+    "Char('n') -> Some(JumpToNextChange)",
+    "Char('p') -> Some(JumpToPreviousChange)",
+    "Char(' ') -> Some(ToggleStageSelected)",
+    "Char('a') -> Some(ToggleStageAll)",
+]

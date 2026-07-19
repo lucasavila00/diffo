@@ -1,8 +1,0 @@
----
-source: crates/diffo-ui/src/lib.rs
-assertion_line: 471
-expression: spans
----
-[
-    Span::from("value").fg(Color::Rgb(1, 2, 3)),
-]

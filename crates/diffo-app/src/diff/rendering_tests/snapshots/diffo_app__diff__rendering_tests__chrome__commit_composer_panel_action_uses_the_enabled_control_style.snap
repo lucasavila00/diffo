@@ -1,0 +1,21 @@
+---
+source: crates/diffo-app/src/diff/rendering_tests/chrome.rs
+expression: terminal.backend().buffer()
+---
+Buffer {
+    area: Rect { x: 0, y: 0, width: 20, height: 6 },
+    content: [
+        "┌ Commit message ─✎┐",
+        "│Type a message…   │",
+        "└──────────────────┘",
+        "     [ Commit ]     ",
+        "                    ",
+        "                    ",
+    ],
+    styles: [
+        x: 0, y: 0, fg: DarkGray, bg: Reset, underline: Reset, modifier: NONE,
+        x: 18, y: 0, fg: White, bg: Reset, underline: Reset, modifier: BOLD,
+        x: 19, y: 0, fg: DarkGray, bg: Reset, underline: Reset, modifier: NONE,
+        x: 0, y: 5, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+    ]
+}

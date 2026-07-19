@@ -1,0 +1,22 @@
+---
+source: crates/diffo-highlight/src/tests.rs
+expression: highlighted
+---
+[
+    (
+        "app.tsx",
+        "\"const\"=#66d9ef | \" \"=#f8f8f2 | \"view\"=#ffffff | \" \"=#f8f8f2 | \"=\"=#f92672 | \" \"=#f8f8f2 | \"<\"=#ffffff | \"main\"=#f92672 | \">\"=#ffffff | \"Hello\"=#f8f8f2 | \"</\"=#ffffff | \"main\"=#f92672 | \">\"=#ffffff | \";\"=#f8f8f2",
+    ),
+    (
+        "script.py",
+        "\"def\"=#f92672 | \" \"=#f8f8f2 | \"hello\"=#a6e22e | \"(\"=#f8f8f2 | \")\"=#f8f8f2 | \":\"=#f8f8f2 | \" \"=#f8f8f2 | \"return\"=#f92672 | \" \"=#f8f8f2 | \"True\"=#be84ff",
+    ),
+    (
+        "Cargo.toml",
+        "\"edition\"=#f92672 | \" \"=#f8f8f2 | \"=\"=#f8f8f2 | \" \"=#f8f8f2 | \"\\\"\"=#e6db74 | \"2024\"=#e6db74 | \"\\\"\"=#e6db74",
+    ),
+    (
+        "README.md",
+        "\"#\"=#fd971f | \" \"=#fd971f | \"Heading\"=#fd971f",
+    ),
+]

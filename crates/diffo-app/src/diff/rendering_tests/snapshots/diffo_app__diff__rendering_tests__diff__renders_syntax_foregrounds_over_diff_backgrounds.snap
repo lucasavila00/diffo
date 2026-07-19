@@ -1,0 +1,27 @@
+---
+source: crates/diffo-app/src/diff/rendering_tests/diff.rs
+expression: "&lines[..3]"
+---
+[
+    Line::from("     @ @@ -1 +1 @@").white(),
+    Line::from_iter([
+        Span::from("   1 - ").light_red().bg(Color::Indexed(52)),
+        Span::from("let").fg(Color::Rgb(102, 217, 239)).bg(Color::Indexed(52)),
+        Span::from(" old ").fg(Color::Rgb(248, 248, 242)).bg(Color::Indexed(52)),
+        Span::from("=").fg(Color::Rgb(250, 103, 156)).bg(Color::Indexed(52)),
+        Span::from(" ").fg(Color::Rgb(248, 248, 242)).bg(Color::Indexed(52)),
+        Span::from("true").fg(Color::Rgb(190, 132, 255)).bg(Color::Indexed(52)),
+        Span::from(";").fg(Color::Rgb(248, 248, 242)).bg(Color::Indexed(52)),
+        Span::from("                                                          ").bg(Color::Indexed(52)),
+    ]),
+    Line::from_iter([
+        Span::from("   1 + ").light_green().bg(Color::Indexed(22)),
+        Span::from("let").fg(Color::Rgb(102, 217, 239)).bg(Color::Indexed(22)),
+        Span::from(" new ").fg(Color::Rgb(248, 248, 242)).bg(Color::Indexed(22)),
+        Span::from("=").fg(Color::Rgb(253, 189, 212)).bg(Color::Indexed(22)),
+        Span::from(" ").fg(Color::Rgb(248, 248, 242)).bg(Color::Indexed(22)),
+        Span::from("false").fg(Color::Rgb(216, 181, 255)).bg(Color::Indexed(22)),
+        Span::from(";").fg(Color::Rgb(248, 248, 242)).bg(Color::Indexed(22)),
+        Span::from("                                                         ").bg(Color::Indexed(22)),
+    ]),
+]

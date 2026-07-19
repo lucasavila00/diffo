@@ -1,0 +1,50 @@
+---
+source: crates/diffo-ui/tests/theme_contract.rs
+expression: "([(\"text\", theme::TEXT), (\"chrome\", theme::CHROME),\n(\"information\", theme::INFORMATION),\n(\"selection background\", theme::SELECTION_BACKGROUND),\n(\"success\", theme::SUCCESS), (\"warning\", theme::WARNING),\n(\"danger\", theme::DANGER),\n(\"conflict foreground\", theme::CONFLICT_FOREGROUND),\n(\"conflict background\", theme::CONFLICT_BACKGROUND),],\n[command_progress_style(0), command_progress_style(4)],)"
+---
+(
+    [
+        (
+            "text",
+            White,
+        ),
+        (
+            "chrome",
+            DarkGray,
+        ),
+        (
+            "information",
+            LightCyan,
+        ),
+        (
+            "selection background",
+            DarkGray,
+        ),
+        (
+            "success",
+            LightGreen,
+        ),
+        (
+            "warning",
+            Yellow,
+        ),
+        (
+            "danger",
+            LightRed,
+        ),
+        (
+            "conflict foreground",
+            LightYellow,
+        ),
+        (
+            "conflict background",
+            Indexed(
+                58,
+            ),
+        ),
+    ],
+    [
+        Style::new().fg(Color::Indexed(24)).bold(),
+        Style::new().fg(Color::Indexed(25)).bold(),
+    ],
+)

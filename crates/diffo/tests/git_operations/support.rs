@@ -81,6 +81,7 @@ pub(super) struct ScrollFrame {
 
 #[derive(Deserialize)]
 pub(super) struct BufferFrame {
+    pub(super) input_events: Vec<String>,
     pub(super) requested_diff: Option<String>,
     pub(super) displayed_diff: Option<String>,
     pub(super) viewport_transition: Option<(usize, usize)>,

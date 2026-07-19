@@ -108,20 +108,34 @@ fn projection_highlight_ranges(
     side_by_side_changes: &[usize],
     request: ProjectionHighlightRequest,
 ) -> (Option<LineRange>, Option<LineRange>) {
+    let window_viewports = request.prefetch_viewports.max(1);
+    debug_assert!(window_viewports % 2 == 1);
     let rows = request
         .viewport_rows
         .max(1)
-        .saturating_mul(request.prefetch_viewports.max(1));
-    let inline_start = request
+        .saturating_mul(window_viewports);
+    let inline_target = request
         .target_scroll
         .filter(|_| request.mode == DiffViewMode::Inline)
         .or_else(|| inline_changes.first().copied())
         .unwrap_or(0);
-    let side_start = request
+    let side_target = request
         .target_scroll
         .filter(|_| request.mode == DiffViewMode::SideBySide)
         .or_else(|| side_by_side_changes.first().copied())
         .unwrap_or(0);
+    let inline_start = centered_window_start(
+        inline_target,
+        inline.len(),
+        request.viewport_rows,
+        window_viewports,
+    );
+    let side_start = centered_window_start(
+        side_target,
+        side_by_side.len(),
+        request.viewport_rows,
+        window_viewports,
+    );
     let mut old = None;
     let mut new = None;
     let include_inline = request.target_scroll.is_none() || request.mode == DiffViewMode::Inline;
@@ -150,6 +164,20 @@ fn projection_highlight_ranges(
         include_line(&mut new, row.new.as_ref().and_then(|line| line.number));
     }
     (old, new)
+}
+
+fn centered_window_start(
+    target: usize,
+    projection_rows: usize,
+    viewport_rows: usize,
+    window_viewports: usize,
+) -> usize {
+    let viewport_rows = viewport_rows.max(1);
+    let window_rows = viewport_rows.saturating_mul(window_viewports);
+    let rows_before = viewport_rows.saturating_mul(window_viewports / 2);
+    target
+        .saturating_sub(rows_before)
+        .min(projection_rows.saturating_sub(window_rows))
 }
 
 fn include_line(range: &mut Option<LineRange>, line: Option<u32>) {

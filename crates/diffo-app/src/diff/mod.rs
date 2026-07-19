@@ -626,12 +626,9 @@ fn picker_event(outcome: PickerOutcome<FileKey>, area: ChangeArea) -> RendererEv
 }
 
 fn highlight_prefetch_viewports(previous: usize, current: usize, viewport_rows: usize) -> usize {
-    if current < previous {
-        return 4;
-    }
-    match current - previous {
-        distance if distance >= viewport_rows => 12,
-        1.. => 6,
+    match current.abs_diff(previous) {
+        distance if distance >= viewport_rows.max(1) => 13,
+        1.. => 7,
         0 => HIGHLIGHT_PREFETCH_VIEWPORTS,
     }
 }

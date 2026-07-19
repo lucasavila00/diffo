@@ -253,3 +253,65 @@ fn cold_large_file_open_commits_at_a_syntax_ready_first_change() -> Result<()> {
     assert!(first_change > 8_900);
     Ok(())
 }
+
+#[test]
+fn delayed_open_prefetches_one_page_in_both_scroll_directions() -> Result<()> {
+    let repository = TestRepository::new()?;
+    let path = repository.worktree.join("middle-syntax.rs");
+    fs::write(&path, middle_syntax_file(false)?)?;
+    git(&repository.worktree, &["add", "middle-syntax.rs"])?;
+    git(
+        &repository.worktree,
+        &["commit", "-m", "Add middle syntax fixture"],
+    )?;
+    fs::write(&path, middle_syntax_file(true)?)?;
+    let trace_path = repository.root.path().join("direction-neutral-frames.ronl");
+    let mut screen = DiffoScreen::launch_with_env(
+        env!("CARGO_BIN_EXE_diffo"),
+        &repository.worktree,
+        &[
+            ("DIFFO_TRACE_FRAMES", trace_path.as_os_str()),
+            ("DIFFO_E2E_DIFF_PREP_DELAY_MS", OsStr::new("300")),
+        ],
+    )?;
+    screen
+        .wait_for_text("MIDDLE_CHANGE")?
+        .press(Key::PageUp)?
+        .wait_for_text("LINE_0325")?
+        .press(Key::PageDown)?
+        .wait_for_text("MIDDLE_CHANGE")?
+        .press(Key::Char('q'))?
+        .wait_for_exit()?;
+    drop(screen);
+
+    let trace = fs::read_to_string(&trace_path).context("read direction-neutral frame trace")?;
+    let frames = trace
+        .lines()
+        .map(ron::from_str::<BufferFrame>)
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+    for key in ["PageUp", "PageDown"] {
+        let frame = frames
+            .iter()
+            .find(|frame| frame.input_events.iter().any(|event| event.contains(key)))
+            .with_context(|| format!("trace has no {key} input frame:\n{trace}"))?;
+        assert!(
+            frame.syntax_ready,
+            "{key} exposed an unprepared syntax viewport:\n{trace}"
+        );
+    }
+    Ok(())
+}
+
+fn middle_syntax_file(changed: bool) -> Result<String> {
+    let mut contents = String::new();
+    for line in 1..=700 {
+        if changed && line == 350 {
+            writeln!(contents, "pub const MIDDLE_CHANGE: usize = 0;")
+                .context("build middle syntax target")?;
+        } else {
+            writeln!(contents, "pub const LINE_{line:04}: usize = {line};")
+                .context("build middle syntax fixture")?;
+        }
+    }
+    Ok(contents)
+}

@@ -215,6 +215,22 @@ fn initial_highlighting_is_bounded_around_the_first_change() {
     assert!(cache.highlighted_lines_processed < 800);
     assert!(!cache.highlighted.new.contains_key(&1));
     assert!(cache.highlighted.new.contains_key(&9_000));
+    assert!(
+        cache
+            .highlighted_new_coverage
+            .iter()
+            .any(|range| range.contains(8_990)),
+        "initial coverage must include an equal opportunity to scroll upward"
+    );
+}
+
+#[test]
+fn syntax_prefetch_size_ignores_scroll_direction() {
+    assert_eq!(highlight_prefetch_viewports(100, 96, 20), 7);
+    assert_eq!(highlight_prefetch_viewports(100, 104, 20), 7);
+    assert_eq!(highlight_prefetch_viewports(100, 80, 20), 13);
+    assert_eq!(highlight_prefetch_viewports(100, 120, 20), 13);
+    assert_eq!(highlight_prefetch_viewports(100, 100, 20), 3);
 }
 
 #[test]

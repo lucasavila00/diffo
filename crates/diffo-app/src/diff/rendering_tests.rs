@@ -22,9 +22,9 @@ use ratatui::{
 
 use super::{
     Renderer, RendererEvent, contrast_ratio, contrasting_foreground, diff_background,
-    diff_background_rgb, diff_file_lines, file_label, horizontal_panes, main_area,
-    overview_position, picker_document, render_status, row_style, scrollbar_position_count,
-    should_syntax_highlight, status_line,
+    diff_background_rgb, diff_file_lines, file_label, highlight_prefetch_viewports,
+    horizontal_panes, main_area, overview_position, picker_document, render_status, row_style,
+    scrollbar_position_count, should_syntax_highlight, status_line,
 };
 
 #[test]

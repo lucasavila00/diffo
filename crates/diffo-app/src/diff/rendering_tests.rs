@@ -11,6 +11,7 @@ use crossterm::event::{
 use diffo_core::{ChangeKind, FileDiff, FileState, HeadState, RepositorySnapshot, UpstreamState};
 use diffo_diff::RowKind;
 use diffo_highlight::Rgb;
+use diffo_ui::tool_areas;
 use ratatui::{
     Terminal,
     backend::TestBackend,
@@ -22,7 +23,7 @@ use ratatui::{
 use super::{
     Renderer, RendererEvent, contrast_ratio, contrasting_foreground, diff_background,
     diff_background_rgb, diff_file_lines, file_label, horizontal_panes, main_area,
-    overview_position, picker_document, row_style, scrollbar_position_count,
+    overview_position, picker_document, render_status, row_style, scrollbar_position_count,
     should_syntax_highlight, status_line,
 };
 
@@ -375,7 +376,10 @@ fn rendered_footer_keeps_newline_errors_on_the_footer_row() {
     let mut terminal = Terminal::new(backend).unwrap();
 
     terminal
-        .draw(|frame| renderer.render(frame, &model))
+        .draw(|frame| {
+            renderer.render(frame, &model);
+            render_status(frame, tool_areas(area).status, &model);
+        })
         .unwrap();
 
     insta::assert_debug_snapshot!(terminal.backend().buffer());

@@ -4,8 +4,6 @@ expression: mappings
 ---
 [
     "Char('q') -> Some(Quit)",
-    "Char('2') -> Some(ToggleHelp)",
-    "F(2) -> Some(ToggleHelp)",
     "Esc -> Some(Quit)",
     "Up -> Some(ScrollDiffVerticalBy(-4))",
     "Down -> Some(ScrollDiffVerticalBy(4))",

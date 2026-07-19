@@ -1,6 +1,6 @@
 use crate::diff::{
-    Alignment, Block, Borders, Cell, Clear, Constraint, Frame, Layout, Line, Model, Modifier,
-    Paragraph, Rect, Row, Style, Table, Toast, ToastKind, input, terminal_safe_text,
+    Alignment, Block, Borders, Clear, Constraint, Frame, Layout, Line, Model, Paragraph, Rect,
+    Style, Toast, ToastKind, terminal_safe_text,
 };
 use diffo_ui::{
     command_progress_style, design, disabled_control_style, enabled_control_style, interaction,
@@ -70,59 +70,6 @@ fn command_progress_area(area: Rect) -> Option<Rect> {
         width,
         design::TOAST_MIN_HEIGHT,
     ))
-}
-
-pub(in crate::diff) fn render_help(frame: &mut Frame, model: &Model, content_area: Rect) {
-    if !model.help_open {
-        return;
-    }
-    let area = help_layout(content_area);
-    frame.render_widget(Clear, area);
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .border_style(Style::default().fg(theme::CHROME))
-        .title(" Help ");
-    let inner = block.inner(area).inner(design::DIALOG_INSET);
-    frame.render_widget(block, area);
-    let sections = Layout::vertical([
-        Constraint::Min(design::SINGLE_LINE_HEIGHT),
-        Constraint::Length(design::SINGLE_LINE_HEIGHT),
-    ])
-    .split(inner);
-    let rows = std::iter::once(("Tab".to_owned(), "Next activity"))
-        .chain(input::help_rows())
-        .map(|(keys, description)| {
-            Row::new([
-                Cell::from(keys).style(
-                    Style::default()
-                        .fg(theme::TEXT)
-                        .add_modifier(Modifier::BOLD),
-                ),
-                Cell::from(description).style(Style::default().fg(theme::TEXT)),
-            ])
-        });
-    let table = Table::new(
-        rows,
-        [
-            Constraint::Length(design::HELP_SHORTCUT_COLUMN_WIDTH),
-            Constraint::Min(design::HELP_ACTION_MIN_WIDTH),
-        ],
-    )
-    .header(
-        Row::new(["Shortcut", "Action"])
-            .style(
-                Style::default()
-                    .fg(theme::TEXT)
-                    .add_modifier(Modifier::BOLD),
-            )
-            .bottom_margin(design::SINGLE_LINE_HEIGHT),
-    )
-    .column_spacing(design::HELP_COLUMN_GAP);
-    frame.render_widget(table, sections[0]);
-    frame.render_widget(
-        Paragraph::new("Esc: close").style(Style::default().fg(theme::CHROME)),
-        sections[1],
-    );
 }
 
 pub fn render_toasts(frame: &mut Frame, toasts: &[Toast], content_area: Rect) {
@@ -196,10 +143,7 @@ pub fn toast_at_position(toasts: &[Toast], area: Rect, column: u16, row: u16) ->
         .find_map(|(toast, area)| area.contains((column, row).into()).then_some(toast.id))
 }
 
-pub(in crate::diff) fn render_commit_editor(frame: &mut Frame, model: &Model, content_area: Rect) {
-    if !model.commit_input_focused() {
-        return;
-    }
+pub(crate) fn render_commit_editor(frame: &mut Frame, model: &Model, content_area: Rect) {
     let (area, input, commit, cancel, footer) = commit_editor_layout(content_area);
     frame.render_widget(Clear, area);
     frame.render_widget(
@@ -326,18 +270,4 @@ pub(crate) fn commit_editor_action_at_position(
         return Some(crate::diff::Message::ExecutePrimaryAction);
     }
     None
-}
-
-pub(in crate::diff) fn help_layout(area: Rect) -> Rect {
-    let width = design::HELP_WIDTH.resolve(area.width);
-    let top = area
-        .y
-        .saturating_add(area.height.saturating_mul(design::HELP_TOP_PERCENT) / 100);
-    let height = design::HELP_MAX_HEIGHT.min(area.bottom().saturating_sub(top));
-    Rect::new(
-        area.x + area.width.saturating_sub(width) / 2,
-        top,
-        width,
-        height,
-    )
 }

@@ -341,6 +341,10 @@ where
         self.context_menu.is_some()
     }
 
+    pub fn dismiss_menu(&mut self) {
+        self.context_menu = None;
+    }
+
     #[must_use]
     pub fn visible_rows(&self) -> usize {
         self.visible.len()

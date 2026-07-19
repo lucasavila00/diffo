@@ -1,19 +1,5 @@
 use super::bindings::KEY_BINDINGS;
-use super::{Event, KeyCode, KeyEventKind, KeyModifiers, Message};
-
-pub(super) fn map_help_event(event: &Event) -> Option<Message> {
-    let Event::Key(key) = event else {
-        return None;
-    };
-    if key.kind != KeyEventKind::Press {
-        return None;
-    }
-    match key.code {
-        KeyCode::Esc => Some(Message::CloseHelp),
-        KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => Some(Message::Quit),
-        _ => None,
-    }
-}
+use super::{KeyCode, KeyEventKind, KeyModifiers, Message};
 
 pub(super) fn map_key(code: KeyCode, modifiers: KeyModifiers) -> Option<Message> {
     KEY_BINDINGS

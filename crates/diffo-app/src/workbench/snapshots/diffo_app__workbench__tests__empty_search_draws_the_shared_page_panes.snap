@@ -16,7 +16,7 @@ Buffer {
         "    ││  ││         │",
         "    ││  ││         │",
         "    │└──┘└─────────┘",
-        "    │               ",
+        "    │ branch HEAD (…",
     ],
     styles: [
         x: 0, y: 0, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
@@ -80,6 +80,6 @@ Buffer {
         x: 4, y: 10, fg: DarkGray, bg: Reset, underline: Reset, modifier: NONE,
         x: 0, y: 11, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
         x: 4, y: 11, fg: DarkGray, bg: Reset, underline: Reset, modifier: NONE,
-        x: 5, y: 11, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 5, y: 11, fg: White, bg: Reset, underline: Reset, modifier: BOLD,
     ]
 }

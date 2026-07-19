@@ -8,7 +8,7 @@ use crossterm::event::{
 use diffo_core::{ChangeKind, FileDiff, FileState, RepositorySnapshot};
 use ratatui::layout::Rect;
 
-use super::{KEY_BINDINGS, help_rows, map_event, map_key};
+use super::{KEY_BINDINGS, help_rows, map_commit_event, map_event, map_key};
 
 fn model() -> Model {
     Model::new(RepositorySnapshot {
@@ -27,8 +27,6 @@ fn model() -> Model {
 fn maps_fixed_key_bindings() {
     let keys = [
         KeyCode::Char('q'),
-        KeyCode::Char('2'),
-        KeyCode::F(2),
         KeyCode::Esc,
         KeyCode::Up,
         KeyCode::Down,
@@ -131,12 +129,11 @@ fn maps_control_c() {
 }
 
 #[test]
-fn focused_commit_input_keeps_control_c_as_global_quit() {
-    let mut model = model();
-    model.focus_commit_input();
+fn commit_input_keeps_control_c_as_global_quit() {
+    let model = model();
 
     assert_eq!(
-        map_event(
+        map_commit_event(
             &Event::Key(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL,)),
             &model,
             Rect::default(),
@@ -144,7 +141,7 @@ fn focused_commit_input_keeps_control_c_as_global_quit() {
         Some(Message::Quit)
     );
     assert_eq!(
-        map_event(
+        map_commit_event(
             &Event::Key(KeyEvent::new(KeyCode::Char('q'), KeyModifiers::NONE)),
             &model,
             Rect::default(),
@@ -209,14 +206,12 @@ fn maps_commit_input_and_only_the_enabled_primary_button() {
     model.snapshot.files[0].staged = Some(FileDiff {
         text: String::new(),
     });
-    model.focus_commit_input();
     model.commit_message_input('x');
     assert_eq!(
-        map_event(&click(2, 3), &model, area),
+        map_commit_event(&click(2, 3), &model, area),
         Some(Message::BlurCommitInput),
         "a click outside the modal closes it"
     );
-    model.blur_commit_input();
     assert_eq!(
         map_event(&click(2, 3), &model, area),
         Some(Message::ExecutePrimaryAction)
@@ -229,7 +224,6 @@ fn commit_editor_captures_mouse_and_keyboard_until_closed() {
     model.snapshot.files[0].staged = Some(FileDiff {
         text: String::new(),
     });
-    model.focus_commit_input();
     let area = Rect::new(0, 0, 100, 30);
     let click = |column, row| {
         Event::Mouse(MouseEvent {
@@ -240,13 +234,13 @@ fn commit_editor_captures_mouse_and_keyboard_until_closed() {
         })
     };
 
-    assert_eq!(map_event(&click(50, 11), &model, area), None);
+    assert_eq!(map_commit_event(&click(50, 11), &model, area), None);
     assert_eq!(
-        map_event(&click(65, 14), &model, area),
+        map_commit_event(&click(65, 14), &model, area),
         Some(Message::BlurCommitInput)
     );
     assert_eq!(
-        map_event(
+        map_commit_event(
             &Event::Key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE)),
             &model,
             area,
@@ -254,7 +248,7 @@ fn commit_editor_captures_mouse_and_keyboard_until_closed() {
         Some(Message::BlurCommitInput)
     );
     assert_eq!(
-        map_event(
+        map_commit_event(
             &Event::Key(KeyEvent::new(KeyCode::Char('s'), KeyModifiers::NONE)),
             &model,
             area,

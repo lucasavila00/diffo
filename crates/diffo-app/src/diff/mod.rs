@@ -31,12 +31,16 @@ use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Cell, Clear, Paragraph, Row, Table},
+    widgets::{Block, Borders, Clear, Paragraph},
 };
 
 mod input;
 mod prepare;
 mod view;
+
+pub(crate) use input::{help_rows, map_commit_event};
+pub(crate) use view::files::render_status;
+pub(crate) use view::overlays::render_commit_editor;
 
 #[cfg(test)]
 #[cfg(test)]
@@ -45,16 +49,16 @@ use prepare::{diff_file_lines, should_syntax_highlight};
 use view::files::status_line;
 use view::files::{
     commit_action_at_position, file_group_areas, file_label, file_panel_areas, picker_document,
-    render_commit_composer, render_status, resize_border_style, staged_files, unstaged_files,
+    render_commit_composer, resize_border_style, staged_files, unstaged_files,
 };
 #[cfg(test)]
 use view::geometry::scrollbar_position_count;
 use view::geometry::{horizontal_panes, main_area, overview_position};
+use view::overlays::commit_editor_action_at_position;
 pub use view::overlays::{
     CommandProgress, command_cancel_at_position, render_command_progress, render_toasts,
     toast_at_position,
 };
-use view::overlays::{commit_editor_action_at_position, render_commit_editor, render_help};
 #[cfg(test)]
 use view::style::{
     contrast_ratio, contrasting_foreground, diff_background, diff_background_rgb, row_style,
@@ -94,6 +98,11 @@ impl Renderer {
         self.staged_picker.has_open_menu() || self.unstaged_picker.has_open_menu()
     }
 
+    pub fn dismiss_picker_menus(&mut self) {
+        self.staged_picker.dismiss_menu();
+        self.unstaged_picker.dismiss_menu();
+    }
+
     pub fn render(&mut self, frame: &mut Frame, model: &Model) {
         self.render_in(frame, model, frame.area());
     }
@@ -119,9 +128,6 @@ impl Renderer {
                 .is_some_and(|selected| selected.area == ChangeArea::Unstaged),
         );
         self.render_diff(frame, panes[1], model);
-        render_status(frame, areas.status, model);
-        render_help(frame, model, area);
-        render_commit_editor(frame, model, area);
         self.staged_picker.render_menu(frame);
         self.unstaged_picker.render_menu(frame);
     }
@@ -421,9 +427,6 @@ impl Renderer {
         if let Some(outcome) = self.map_open_picker_menu(event, area) {
             return Some(outcome);
         }
-        if model.help_open {
-            return input::map_event(event, model, area).map(RendererEvent::Message);
-        }
         if let Some(outcome) = self.map_picker_input(event, model, area) {
             return Some(outcome);
         }
@@ -519,8 +522,7 @@ impl Renderer {
         model: &Model,
         area: Rect,
     ) -> Option<RendererEvent> {
-        if !model.commit_input_focused()
-            && let Event::Key(key) = event
+        if let Event::Key(key) = event
             && let Some(command) = diffo_ui::file_picker::navigation(key)
         {
             return self

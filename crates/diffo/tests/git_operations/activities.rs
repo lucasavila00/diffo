@@ -1,7 +1,7 @@
 use super::support::*;
 
 #[test]
-fn tab_cycles_activities_and_restores_diff_overlay_state() -> Result<()> {
+fn command_palette_blocks_activity_switching_and_does_not_restore_hidden_state() -> Result<()> {
     let repository = changed_repository()?;
     let mut screen = repository.screen()?;
 
@@ -11,15 +11,19 @@ fn tab_cycles_activities_and_restores_diff_overlay_state() -> Result<()> {
         .wait_for_text("Command Palette")?
         .type_text("pull")?
         .press(Key::Tab)?
-        .wait_for_text("Explorer")?
+        .wait_for_text("Command Palette")?
+        .wait_for_text("Changes")?
+        .press(Key::Escape)?
         .wait_for_text_gone("Command Palette")?
+        .press(Key::Tab)?
+        .wait_for_text("Explorer")?
         .wait_for_text_gone("Changes")?;
 
     screen
         .press(Key::Tab)?
         .press(Key::Tab)?
-        .wait_for_text("Command Palette")?
-        .wait_for_text("pull")?;
+        .wait_for_text("Changes")?
+        .wait_for_text_gone("Command Palette")?;
     Ok(())
 }
 
@@ -32,10 +36,14 @@ fn activity_palettes_share_git_commands_and_keep_specific_catalogs_separate() ->
         .press(Key::Char('1'))?
         .wait_for_text("Git: Fetch")?
         .wait_for_text_gone("Explorer: Collapse All Folders")?
+        .press(Key::Escape)?
+        .wait_for_text_gone("Command Palette")?
         .press(Key::Tab)?
         .press(Key::Char('1'))?
         .wait_for_text("Git: Fetch")?
         .wait_for_text("Explorer: Collapse All Folders")?
+        .press(Key::Escape)?
+        .wait_for_text_gone("Command Palette")?
         .press(Key::Tab)?
         .press(Key::Char('1'))?
         .wait_for_text("Git: Fetch")?

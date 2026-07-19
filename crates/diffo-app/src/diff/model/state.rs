@@ -92,13 +92,6 @@ impl NetworkOperation {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-enum CommitComposerState {
-    #[default]
-    Idle,
-    Focused,
-}
-
 impl PrimaryAction {
     #[must_use]
     pub const fn label(self) -> &'static str {
@@ -136,9 +129,7 @@ pub struct Model {
     pub diff_view_mode: DiffViewMode,
     pub file_pane_percent: u16,
     pub resizing_file_pane: bool,
-    pub help_open: bool,
     pub commit_message: String,
-    commit_composer_state: CommitComposerState,
     commit_message_cursor: usize,
     pending_operation: Option<RepositoryAction>,
     cursor: usize,
@@ -164,22 +155,12 @@ impl Model {
             diff_view_mode: DiffViewMode::default(),
             file_pane_percent: 25,
             resizing_file_pane: false,
-            help_open: false,
             commit_message: String::new(),
-            commit_composer_state: CommitComposerState::Idle,
             commit_message_cursor: 0,
             pending_operation: None,
             cursor,
             pending_file_action: None,
         }
-    }
-
-    pub fn toggle_help(&mut self) {
-        self.help_open = !self.help_open;
-    }
-
-    pub fn close_help(&mut self) {
-        self.help_open = false;
     }
 }
 

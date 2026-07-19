@@ -1,22 +1,8 @@
-use super::{CommitComposerState, Model, NetworkOperation, PrimaryAction, RepositoryAction};
+use super::{Model, NetworkOperation, PrimaryAction, RepositoryAction};
 
 impl Model {
-    pub fn focus_commit_input(&mut self) {
-        self.help_open = false;
-        self.commit_composer_state = CommitComposerState::Focused;
-    }
-
-    pub fn blur_commit_input(&mut self) {
-        self.commit_composer_state = CommitComposerState::Idle;
-    }
-
-    #[must_use]
-    pub fn commit_input_focused(&self) -> bool {
-        self.commit_composer_state == CommitComposerState::Focused
-    }
-
     pub fn commit_message_input(&mut self, character: char) {
-        if self.commit_input_focused() && !character.is_control() {
+        if !character.is_control() {
             let byte = byte_index_at_char(&self.commit_message, self.commit_message_cursor);
             self.commit_message.insert(byte, character);
             self.commit_message_cursor = self.commit_message_cursor.saturating_add(1);
@@ -24,7 +10,7 @@ impl Model {
     }
 
     pub fn commit_message_backspace(&mut self) {
-        if self.commit_input_focused() && self.commit_message_cursor > 0 {
+        if self.commit_message_cursor > 0 {
             let start = byte_index_at_char(
                 &self.commit_message,
                 self.commit_message_cursor.saturating_sub(1),
@@ -36,18 +22,14 @@ impl Model {
     }
 
     pub fn commit_message_cursor_left(&mut self) {
-        if self.commit_input_focused() {
-            self.commit_message_cursor = self.commit_message_cursor.saturating_sub(1);
-        }
+        self.commit_message_cursor = self.commit_message_cursor.saturating_sub(1);
     }
 
     pub fn commit_message_cursor_right(&mut self) {
-        if self.commit_input_focused() {
-            self.commit_message_cursor = self
-                .commit_message_cursor
-                .saturating_add(1)
-                .min(self.commit_message.chars().count());
-        }
+        self.commit_message_cursor = self
+            .commit_message_cursor
+            .saturating_add(1)
+            .min(self.commit_message.chars().count());
     }
 
     #[must_use]
@@ -121,7 +103,6 @@ impl Model {
             PrimaryAction::Pull => RepositoryAction::Pull,
             PrimaryAction::PushAndPull | PrimaryAction::Disabled => return None,
         };
-        self.commit_composer_state = CommitComposerState::Idle;
         self.error = None;
         self.pending_operation = Some(action.clone());
         Some(action)

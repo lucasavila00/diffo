@@ -20,7 +20,6 @@ pub(crate) const VIEWER_GUTTER_WIDTH: u16 = 7;
 pub(crate) struct ExplorerAreas {
     pub(crate) tree: Rect,
     pub(crate) viewer: Rect,
-    pub(crate) status: Rect,
 }
 
 pub(crate) fn explorer_areas(area: Rect, split: PaneSplit) -> ExplorerAreas {
@@ -29,7 +28,6 @@ pub(crate) fn explorer_areas(area: Rect, split: PaneSplit) -> ExplorerAreas {
     ExplorerAreas {
         tree: horizontal.leading,
         viewer: horizontal.trailing,
-        status: vertical.status,
     }
 }
 
@@ -46,12 +44,6 @@ pub(crate) fn render(
     let border_style = split.border_style();
     picker.render(frame, true);
     render_viewer(frame, areas.viewer, model, border_style, skeleton);
-    frame.render_widget(
-        Paragraph::new(
-            " j/w: previous  k/l/s: next  enter/click: expand  f: full screen  1/f1: commands  ↑/↓: scroll ",
-        ),
-        areas.status,
-    );
     picker.render_menu(frame);
 }
 

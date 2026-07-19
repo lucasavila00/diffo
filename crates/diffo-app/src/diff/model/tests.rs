@@ -184,15 +184,6 @@ fn passive_and_unrelated_results_cannot_finish_a_push() {
 }
 
 #[test]
-fn help_is_a_toggle() {
-    let mut model = model();
-    update(&mut model, Message::ToggleHelp);
-    assert!(model.help_open);
-    update(&mut model, Message::ToggleHelp);
-    assert!(!model.help_open);
-}
-
-#[test]
 fn scrolls_four_lines_in_the_arrow_direction() {
     let mut model = model();
 

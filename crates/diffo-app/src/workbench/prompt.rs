@@ -8,7 +8,7 @@ use ratatui::{
     widgets::{Block, Borders, Clear, Paragraph},
 };
 
-use super::{CommandState, PromptResponse, Workbench, WorkbenchEffect};
+use super::{CommandState, Modal, PromptResponse, Workbench, WorkbenchEffect};
 
 pub(super) struct PromptModal {
     pub(super) command_id: ApplicationCommandId,
@@ -16,6 +16,18 @@ pub(super) struct PromptModal {
     pub(super) prompt: GitPrompt,
     input: String,
     pub(super) confirm_choice: ConfirmChoice,
+}
+
+impl PromptModal {
+    fn new(command_id: ApplicationCommandId, id: PromptId, prompt: GitPrompt) -> Self {
+        Self {
+            command_id,
+            id,
+            prompt,
+            input: String::new(),
+            confirm_choice: ConfirmChoice::Cancel,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -31,7 +43,7 @@ impl Workbench {
         id: PromptId,
         prompt: GitPrompt,
     ) -> bool {
-        if self.prompt.is_some()
+        if matches!(self.modal, Some(Modal::GitPrompt(_)))
             || !self.commands.active().is_some_and(|command| {
                 command.id == command_id
                     && matches!(
@@ -43,25 +55,16 @@ impl Workbench {
         {
             return false;
         }
-        self.full_screen = false;
-        self.full_screen_pending = false;
-        self.prompt = Some(PromptModal {
-            command_id,
-            id,
-            prompt,
-            input: String::new(),
-            confirm_choice: ConfirmChoice::Cancel,
-        });
+        self.set_modal(Modal::GitPrompt(PromptModal::new(command_id, id, prompt)));
         true
     }
 
     pub(super) fn close_prompt(&mut self, command_id: ApplicationCommandId) {
-        if self
-            .prompt
-            .as_ref()
-            .is_some_and(|prompt| prompt.command_id == command_id)
-        {
-            self.prompt = None;
+        if matches!(
+            self.modal,
+            Some(Modal::GitPrompt(ref prompt)) if prompt.command_id == command_id
+        ) {
+            self.close_modal();
         }
         self.last_prompt_id = None;
     }
@@ -71,7 +74,9 @@ impl Workbench {
         event: &Event,
         area: Rect,
     ) -> Option<WorkbenchEffect> {
-        let modal = self.prompt.as_mut()?;
+        let Some(Modal::GitPrompt(modal)) = self.modal.as_mut() else {
+            return None;
+        };
         let response = match event {
             Event::Key(key) if key.kind == KeyEventKind::Press => match key.code {
                 KeyCode::Esc => Some(PromptResponse::Cancel),
@@ -141,7 +146,9 @@ impl Workbench {
             _ => None,
         };
         let response = response?;
-        let prompt = self.prompt.take()?;
+        let Modal::GitPrompt(prompt) = self.modal.take()? else {
+            return None;
+        };
         self.last_prompt_id = Some(prompt.id);
         if matches!(response, PromptResponse::Cancel) {
             self.commands.cancel(prompt.command_id);

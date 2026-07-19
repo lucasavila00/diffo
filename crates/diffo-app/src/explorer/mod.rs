@@ -287,9 +287,33 @@ impl ExplorerActivity {
         self.picker.has_open_menu()
     }
 
+    pub fn dismiss_picker_menu(&mut self) {
+        self.picker.dismiss_menu();
+    }
+
     #[must_use]
     pub fn commands(&self) -> &'static [Command] {
         &COMMANDS
+    }
+
+    #[must_use]
+    pub fn help_rows(&self) -> Vec<(String, &'static str)> {
+        diffo_ui::file_picker::help_rows()
+            .into_iter()
+            .chain([
+                ("Enter".to_owned(), "Expand / collapse selected folder"),
+                ("1 / F1".to_owned(), "Open command palette"),
+                ("f".to_owned(), "Toggle full-screen viewer"),
+                ("2 / F2".to_owned(), "Toggle help"),
+                ("q / Esc / Ctrl+c".to_owned(), "Quit"),
+                ("↑".to_owned(), "Scroll viewer up by four lines"),
+                ("↓".to_owned(), "Scroll viewer down by four lines"),
+                ("Page Up".to_owned(), "Scroll viewer up one page"),
+                ("Page Down".to_owned(), "Scroll viewer down one page"),
+                ("←".to_owned(), "Scroll viewer left by four columns"),
+                ("→".to_owned(), "Scroll viewer right by four columns"),
+            ])
+            .collect()
     }
 
     pub fn execute_command(&mut self, command: CommandId) -> bool {

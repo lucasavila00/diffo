@@ -235,29 +235,23 @@ fn preserves_scroll_when_the_selected_file_changes_content() {
 }
 
 #[test]
-fn preserves_commit_input_focus_across_repository_refresh() {
+fn preserves_commit_draft_across_repository_refresh() {
     let mut app = Model::new(snapshot());
-    app.focus_commit_input();
 
     app.repository_changed(snapshot());
     app.commit_message_input('x');
 
-    assert!(app.commit_input_focused());
     assert_eq!(app.commit_message, "x");
 }
 
 #[test]
 fn edits_commit_message_at_a_preserved_character_cursor() {
     let mut app = Model::new(snapshot());
-    app.focus_commit_input();
     for character in "ac".chars() {
         app.commit_message_input(character);
     }
     app.commit_message_cursor_left();
     app.commit_message_input('b');
-    app.blur_commit_input();
-    app.focus_commit_input();
-
     assert_eq!(app.commit_message, "abc");
     assert_eq!(app.commit_message_cursor(), 2);
     app.commit_message_backspace();

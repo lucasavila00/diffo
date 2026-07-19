@@ -36,14 +36,6 @@ pub(super) struct KeyBinding {
 pub(super) static KEY_BINDINGS: &[KeyBinding] = &[
     KeyBinding {
         keys: &[
-            KeyChord::plain(KeyCode::Char('2')),
-            KeyChord::plain(KeyCode::F(2)),
-        ],
-        message: Message::ToggleHelp,
-        description: "Toggle help",
-    },
-    KeyBinding {
-        keys: &[
             KeyChord::plain(KeyCode::Char('q')),
             KeyChord::plain(KeyCode::Esc),
             KeyChord::control('c'),
@@ -114,6 +106,7 @@ pub(crate) fn help_rows() -> Vec<(String, &'static str)> {
             "f".to_owned(),
             "Toggle full-screen buffer",
         )))
+        .chain(std::iter::once(("2 / F2".to_owned(), "Toggle help")))
         .chain(KEY_BINDINGS.iter().map(|binding| {
             let keys = binding
                 .keys

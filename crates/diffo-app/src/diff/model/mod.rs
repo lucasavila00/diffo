@@ -14,8 +14,6 @@ pub use state::{
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Message {
     Quit,
-    ToggleHelp,
-    CloseHelp,
     SelectFile(FileKey),
     ScrollDiffUp,
     ScrollDiffDown,
@@ -63,8 +61,6 @@ pub enum Effect {
 pub fn update(model: &mut Model, message: Message) -> Option<Effect> {
     match message {
         Message::Quit => model.should_quit = true,
-        Message::ToggleHelp => model.toggle_help(),
-        Message::CloseHelp => model.close_help(),
         Message::SelectFile(file) => model.select_file(&file),
         Message::ScrollDiffUp => model.scroll_diff_up(),
         Message::ScrollDiffDown => model.scroll_diff_down(),
@@ -78,7 +74,9 @@ pub fn update(model: &mut Model, message: Message) -> Option<Effect> {
         Message::ScrollDiffHorizontalBy(columns) => model.scroll_diff_horizontal_by(columns),
         Message::JumpDiffToPosition(_)
         | Message::JumpToPreviousChange
-        | Message::JumpToNextChange => {}
+        | Message::JumpToNextChange
+        | Message::FocusCommitInput
+        | Message::BlurCommitInput => {}
         Message::ToggleDiffView => model.toggle_diff_view(),
         Message::BeginFilePaneResize => model.begin_file_pane_resize(),
         Message::ResizeFilePane(percent) => model.resize_file_pane(percent),
@@ -91,8 +89,6 @@ pub fn update(model: &mut Model, message: Message) -> Option<Effect> {
         Message::UnstageAll => return model.unstage_all().map(Effect::Repository),
         Message::StageFile(path) => return model.stage_file(path).map(Effect::Repository),
         Message::UnstageFile(path) => return model.unstage_file(path).map(Effect::Repository),
-        Message::FocusCommitInput => model.focus_commit_input(),
-        Message::BlurCommitInput => model.blur_commit_input(),
         Message::CommitMessageInput(character) => model.commit_message_input(character),
         Message::CommitMessageBackspace => model.commit_message_backspace(),
         Message::CommitMessageCursorLeft => model.commit_message_cursor_left(),

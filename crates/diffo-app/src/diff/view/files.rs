@@ -148,11 +148,7 @@ pub(in crate::diff) fn file_label(file: &FileState) -> Line<'static> {
     )
 }
 
-pub(in crate::diff) fn render_status(
-    frame: &mut Frame,
-    area: ratatui::layout::Rect,
-    model: &Model,
-) {
+pub(crate) fn render_status(frame: &mut Frame, area: ratatui::layout::Rect, model: &Model) {
     frame.render_widget(
         Paragraph::new(status_line(model, 0, usize::from(area.width))),
         area,

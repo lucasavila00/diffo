@@ -78,6 +78,7 @@ fn full_screen_explorer_shows_only_scrollable_file_text() -> Result<()> {
         .click(&Selector::text(""))?
         .wait_for_text_gone("Explorer")?
         .wait_for_text_gone("previous")?
+        .wait_for_text_gone("branch master")?
         .wait_for_text("line 0")?;
     let contents = screen.contents();
     assert!(contents.contains("tracked.txt"));

@@ -1,6 +1,6 @@
 use super::{
-    CommitComposerState, FileKey, Model, OperationFailure, OperationResult, PendingFileAction,
-    RepositoryAction, RepositorySnapshot, file_keys,
+    FileKey, Model, OperationFailure, OperationResult, PendingFileAction, RepositoryAction,
+    RepositorySnapshot, file_keys,
 };
 
 impl Model {
@@ -111,9 +111,6 @@ impl Model {
             .pending_file_action
             .as_ref()
             .is_some_and(|pending| pending.matches_repository_action(&failure.action));
-        if matches!(self.pending_operation, Some(RepositoryAction::Commit(_))) {
-            self.commit_composer_state = CommitComposerState::Focused;
-        }
         self.pending_operation = None;
         if pending_file_action_failed {
             self.pending_file_action = None;

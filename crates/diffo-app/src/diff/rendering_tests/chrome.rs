@@ -86,7 +86,6 @@ fn commit_dialog_actions_use_the_enabled_control_style() {
     model.snapshot.files[0].staged = Some(FileDiff {
         text: String::new(),
     });
-    model.focus_commit_input();
     model.commit_message_input('x');
     let area = Rect::new(0, 0, 80, 24);
     let backend = TestBackend::new(area.width, area.height);

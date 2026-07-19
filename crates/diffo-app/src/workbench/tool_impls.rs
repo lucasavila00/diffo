@@ -47,9 +47,15 @@ impl Tool for DiffActivity {
     }
 
     fn captures_global_input(&self) -> bool {
-        self.model.commit_input_focused()
-            || self.model.help_open
-            || self.renderer.has_open_picker_menu()
+        self.renderer.has_open_picker_menu()
+    }
+
+    fn help_rows(&self) -> Vec<(String, &'static str)> {
+        crate::diff::help_rows()
+    }
+
+    fn dismiss_popover(&mut self) {
+        self.renderer.dismiss_picker_menus();
     }
 }
 
@@ -89,6 +95,14 @@ impl Tool for ExplorerActivity {
 
     fn commands(&self) -> &'static [Command] {
         ExplorerActivity::commands(self)
+    }
+
+    fn help_rows(&self) -> Vec<(String, &'static str)> {
+        ExplorerActivity::help_rows(self)
+    }
+
+    fn dismiss_popover(&mut self) {
+        self.dismiss_picker_menu();
     }
 
     fn execute_command(&mut self, command: CommandId) -> bool {
@@ -140,5 +154,13 @@ impl Tool for SearchActivity {
 
     fn is_preparing(&self) -> bool {
         false
+    }
+
+    fn help_rows(&self) -> Vec<(String, &'static str)> {
+        vec![
+            ("1 / F1".to_owned(), "Open command palette"),
+            ("2 / F2".to_owned(), "Toggle help"),
+            ("q / Esc / Ctrl+c".to_owned(), "Quit"),
+        ]
     }
 }

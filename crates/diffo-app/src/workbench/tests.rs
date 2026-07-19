@@ -1,6 +1,5 @@
 use super::*;
 use crate::diff::NetworkOperation;
-use crate::explorer::COLLAPSE_ALL_COMMAND;
 use crossterm::event::{KeyEvent, KeyEventState, MouseEvent};
 use diffo_core::{ChangeKind, FileDiff, FileState};
 use ratatui::{Terminal, backend::TestBackend, buffer::Buffer, style::Color};
@@ -47,6 +46,39 @@ fn tab_cycles_activities_without_changing_diff_state() {
     let _ = workbench.handle_event(&tab, area);
     assert_eq!(workbench.active, Activity::Diff);
     assert_eq!(workbench.diff.model.diff_scroll, 17);
+}
+
+#[test]
+fn every_activity_renders_the_same_repository_footer() {
+    let snapshot = RepositorySnapshot {
+        head: diffo_core::HeadState::Named {
+            name: "main".to_owned(),
+            commit: "123456789abcdef".to_owned(),
+        },
+        ..RepositorySnapshot::default()
+    };
+    let area = Rect::new(0, 0, 100, 30);
+    let status = tool_areas(workbench_areas(area).content).status;
+    let mut footers = Vec::new();
+
+    for activity in [Activity::Diff, Activity::Explorer, Activity::Search] {
+        let mut workbench = Workbench::new(snapshot.clone());
+        workbench.active = activity;
+        let backend = TestBackend::new(area.width, area.height);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|frame| workbench.render(frame)).unwrap();
+        footers.push(buffer_region(terminal.backend().buffer(), status));
+    }
+
+    assert_eq!(footers[0], footers[1]);
+    assert_eq!(footers[1], footers[2]);
+    let text = footers[0]
+        .content
+        .iter()
+        .map(ratatui::buffer::Cell::symbol)
+        .collect::<String>();
+    assert!(text.starts_with(" branch main · clean"), "{text}");
+    assert!(text.ends_with("1/f1: commands  2/f2: help "), "{text}");
 }
 
 #[test]
@@ -140,7 +172,7 @@ fn full_screen_diff_renders_styled_raw_hunks_and_x_closes_it() {
 #[test]
 fn commit_input_keeps_f_as_text_instead_of_opening_full_screen() {
     let mut workbench = Workbench::new(RepositorySnapshot::default());
-    workbench.diff.model.focus_commit_input();
+    workbench.set_modal(Modal::CommitEditor);
 
     assert!(
         workbench
@@ -208,7 +240,7 @@ fn explorer_picker_menu_captures_global_shortcuts() {
         let _ = workbench.handle_event(&key(code), area);
     }
     assert_eq!(workbench.pane_split.percent(), 25);
-    assert!(!workbench.active_palette().is_open());
+    assert!(workbench.modal.is_none());
     assert!(!workbench.should_quit());
     assert!(workbench.explorer.has_open_picker_menu());
 
@@ -259,32 +291,6 @@ fn empty_search_draws_the_shared_page_panes() {
         workbench
             .pane_split
             .contains_seam(pane_area, marker.x, marker.y)
-    );
-}
-
-#[test]
-fn palettes_keep_separate_state_for_each_activity() {
-    let mut workbench = Workbench::new(RepositorySnapshot::default());
-    let area = Rect::new(0, 0, 100, 30);
-
-    let _ = workbench.handle_event(&key(KeyCode::Char('1')), area);
-    let _ = workbench.handle_event(&key(KeyCode::Char('p')), area);
-    let _ = workbench.handle_event(&key(KeyCode::Tab), area);
-    let _ = workbench.handle_event(&key(KeyCode::Char('1')), area);
-    let _ = workbench.handle_event(&key(KeyCode::Char('c')), area);
-    let _ = workbench.handle_event(&key(KeyCode::Tab), area);
-    let _ = workbench.handle_event(&key(KeyCode::Tab), area);
-
-    assert_eq!(workbench.active, Activity::Diff);
-    assert_eq!(workbench.active_palette().query(), "p");
-    let _ = workbench.handle_event(&key(KeyCode::Tab), area);
-    assert_eq!(workbench.active_palette().query(), "c");
-    assert!(
-        workbench
-            .active_palette()
-            .matches()
-            .iter()
-            .any(|command| command.id == COLLAPSE_ALL_COMMAND)
     );
 }
 
@@ -462,24 +468,14 @@ fn network_activity_does_not_own_the_toast_queue() {
 }
 
 #[test]
-fn command_palette_shortcut_does_not_capture_commit_message_input() {
-    let mut workbench = Workbench::new(RepositorySnapshot::default());
-    let _ = update(&mut workbench.diff.model, Message::FocusCommitInput);
-
-    let effects = workbench.handle_events(&[key(KeyCode::Char('1'))], Rect::default());
-
-    assert!(effects.is_empty());
-    assert_eq!(workbench.diff.model.commit_message, "1");
-    assert!(!workbench.active_palette().is_open());
-}
-
-#[test]
 fn explorer_palette_combines_shared_and_explorer_commands() {
     let mut workbench = Workbench::new(RepositorySnapshot::default());
     workbench.active = Activity::Explorer;
     workbench.open_active_palette();
-    let commands = workbench
-        .active_palette()
+    let Some(Modal::CommandPalette(palette)) = workbench.modal.as_ref() else {
+        panic!("command palette modal should be open");
+    };
+    let commands = palette
         .matches()
         .into_iter()
         .map(|command| format!("{:?}: {}", command.id, command.label))
@@ -583,7 +579,10 @@ fn ssh_confirmation_is_cancel_first_and_supports_picker_controls() {
     let command_id = start_repository_command(&mut workbench, RepositoryAction::Fetch);
     assert!(workbench.open_prompt(command_id, PromptId(1), prompt()));
     assert_eq!(
-        workbench.prompt.as_ref().map(|modal| modal.confirm_choice),
+        match workbench.modal.as_ref() {
+            Some(Modal::GitPrompt(modal)) => Some(modal.confirm_choice),
+            _ => None,
+        },
         Some(ConfirmChoice::Cancel)
     );
     assert_eq!(

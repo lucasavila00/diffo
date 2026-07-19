@@ -22,21 +22,6 @@ use keyboard::map_key;
 
 #[must_use]
 pub fn map_event(event: &Event, model: &Model, area: Rect) -> Option<Message> {
-    if model.help_open {
-        if let Event::Key(key) = event
-            && key.kind == KeyEventKind::Press
-            && matches!(key.code, KeyCode::Char('2') | KeyCode::F(2))
-        {
-            return Some(Message::ToggleHelp);
-        }
-        return keyboard::map_help_event(event);
-    }
-    if model.commit_input_focused() {
-        return match event {
-            Event::Key(key) => keyboard::map_commit_key(key),
-            _ => mouse::map_commit_event(event, model, area),
-        };
-    }
     match event {
         Event::Key(key) if key.kind == KeyEventKind::Press => {
             keyboard::map_key(key.code, key.modifiers).map(|message| {
@@ -53,6 +38,14 @@ pub fn map_event(event: &Event, model: &Model, area: Rect) -> Option<Message> {
             })
         }
         _ => mouse::map_event(event, model, area),
+    }
+}
+
+#[must_use]
+pub(crate) fn map_commit_event(event: &Event, model: &Model, area: Rect) -> Option<Message> {
+    match event {
+        Event::Key(key) => keyboard::map_commit_key(key),
+        _ => mouse::map_commit_event(event, model, area),
     }
 }
 

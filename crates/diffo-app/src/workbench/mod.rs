@@ -4,7 +4,7 @@ use std::{collections::HashMap, time::Instant};
 
 use crate::diff::{
     CommandProgress, FramePreparation, Renderer, RendererEvent, command_cancel_at_position,
-    render_command_progress, render_toasts, toast_at_position,
+    render_command_progress, render_status, render_toasts, toast_at_position,
 };
 use crate::diff::{Effect, Message, Model, ToastKind, ToastQueue, update};
 use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind};
@@ -12,7 +12,7 @@ use diffo_core::{
     ApplicationCommandId, GitPrompt, OperationFailure, OperationResult, PromptId, RepositoryAction,
     RepositorySnapshot,
 };
-use diffo_ui::command_palette::{Command, CommandId, CommandPalette, PaletteEvent};
+use diffo_ui::command_palette::{Command, CommandId};
 use diffo_ui::text_view::{TextRenderMode, TextSurfacePreparation};
 use diffo_ui::{PaneSplit, command_progress_style, enabled_control_style, interaction, tool_areas};
 use ratatui::{
@@ -26,9 +26,12 @@ use crate::explorer::{ExplorerActivity, ExplorerEvent, ExplorerOutcome, Explorer
 mod activity_bar;
 mod command_queue;
 mod full_screen;
+mod help;
+mod modal;
 mod pending_scroll;
 mod prompt;
 
+use modal::Modal;
 use pending_scroll::PendingScroll;
 #[cfg(test)]
 use prompt::{ConfirmChoice, prompt_layout};
@@ -118,7 +121,6 @@ pub struct Workbench {
     diff: DiffActivity,
     explorer: ExplorerActivity,
     search: SearchActivity,
-    palettes: ActivityPalettes,
     pane_split: PaneSplit,
     toasts: ToastQueue,
     toast_deadlines: HashMap<u64, Instant>,
@@ -127,7 +129,7 @@ pub struct Workbench {
     should_quit: bool,
     full_screen: bool,
     full_screen_pending: bool,
-    prompt: Option<PromptModal>,
+    modal: Option<Modal>,
     last_prompt_id: Option<PromptId>,
 }
 
@@ -137,13 +139,6 @@ struct DiffActivity {
 }
 
 struct SearchActivity;
-
-#[derive(Default)]
-struct ActivityPalettes {
-    diff: CommandPalette,
-    explorer: CommandPalette,
-    search: CommandPalette,
-}
 
 const FETCH_COMMAND: CommandId = CommandId::new("git.fetch");
 const PULL_COMMAND: CommandId = CommandId::new("git.pull");
@@ -175,6 +170,8 @@ trait Tool {
     fn commands(&self) -> &'static [Command] {
         &[]
     }
+    fn help_rows(&self) -> Vec<(String, &'static str)>;
+    fn dismiss_popover(&mut self) {}
     fn execute_command(&mut self, _command: CommandId) -> bool {
         false
     }
@@ -191,7 +188,6 @@ impl Workbench {
             },
             explorer: ExplorerActivity::new(snapshot),
             search: SearchActivity,
-            palettes: ActivityPalettes::default(),
             pane_split: PaneSplit::default(),
             toasts: ToastQueue::new(),
             toast_deadlines: HashMap::new(),
@@ -200,7 +196,7 @@ impl Workbench {
             should_quit: false,
             full_screen: false,
             full_screen_pending: false,
-            prompt: None,
+            modal: None,
             last_prompt_id: None,
         }
     }
@@ -226,9 +222,10 @@ impl Workbench {
 
     #[must_use]
     pub fn secret_prompt_open(&self) -> bool {
-        self.prompt
-            .as_ref()
-            .is_some_and(|modal| matches!(modal.prompt, GitPrompt::Secret { .. }))
+        matches!(
+            self.modal,
+            Some(Modal::GitPrompt(ref modal)) if matches!(modal.prompt, GitPrompt::Secret { .. })
+        )
     }
 
     pub fn tick(&mut self) {
@@ -290,6 +287,7 @@ impl Workbench {
             Activity::Explorer => self.explorer.render(frame, content, self.pane_split),
             Activity::Search => self.search.render(frame, content, self.pane_split),
         }
+        render_status(frame, tool_areas(content).status, &self.diff.model);
         self.render_full_screen_entry(frame);
         render_pane_drag_marker(frame, tool_areas(content).content, self.pane_split);
         render_toasts(frame, self.toasts.as_slice(), content);
@@ -304,7 +302,6 @@ impl Workbench {
                 content,
             );
         }
-        self.active_palette().render(frame, content);
         render_activity_bar(frame, area, self.active);
         if self.commands.active().is_some() {
             frame.render_widget(
@@ -314,9 +311,7 @@ impl Workbench {
                 area,
             );
         }
-        if let Some(prompt) = self.prompt.as_ref() {
-            render_prompt(frame, prompt, area);
-        }
+        self.render_modal(frame, content, area);
     }
 
     pub fn handle_events(&mut self, events: &[Event], area: Rect) -> Vec<WorkbenchEffect> {
@@ -345,28 +340,13 @@ impl Workbench {
     }
 
     fn handle_event(&mut self, event: &Event, area: Rect) -> Option<WorkbenchCommand> {
-        if self.prompt.is_some() {
-            return self
-                .handle_prompt_event(event, area)
-                .map(WorkbenchCommand::Effect);
+        if self.modal.is_some() {
+            return self.handle_modal_event(event, area);
         }
         if !self.full_screen && self.select_activity(event, area) {
             return None;
         }
         let content = workbench_areas(area).content;
-        if self.active_palette().is_open() {
-            let palette_event = self.active_palette_mut().handle_event(event, content);
-            return match palette_event {
-                Some(PaletteEvent::Execute(command)) => self
-                    .execute_palette_command(command)
-                    .map(WorkbenchCommand::Effect),
-                Some(PaletteEvent::Quit) => {
-                    self.should_quit = true;
-                    None
-                }
-                Some(PaletteEvent::Consumed) | None => None,
-            };
-        }
         let tool_captures_global_input = match self.active {
             Activity::Diff => self.diff.captures_global_input(),
             Activity::Explorer => self.explorer.captures_global_input(),
@@ -415,6 +395,15 @@ impl Workbench {
             self.open_active_palette();
             return None;
         }
+        if let Event::Key(key) = event
+            && key.kind == KeyEventKind::Press
+            && matches!(key.code, KeyCode::Char('2') | KeyCode::F(2))
+            && key.modifiers == KeyModifiers::NONE
+            && !tool_captures_global_input
+        {
+            self.set_modal(Modal::Help);
+            return None;
+        }
         if self.active != Activity::Diff
             && !tool_captures_global_input
             && let Event::Key(key) = event
@@ -441,6 +430,7 @@ impl Workbench {
             && key.code == KeyCode::Tab
             && key.modifiers == KeyModifiers::NONE
         {
+            self.dismiss_active_popover();
             self.active = self.active.next();
             return true;
         }
@@ -448,6 +438,7 @@ impl Workbench {
             && mouse.kind == MouseEventKind::Down(MouseButton::Left)
             && let Some(activity) = activity_at_position(area, mouse.column, mouse.row)
         {
+            self.dismiss_active_popover();
             self.active = activity;
             return true;
         }
@@ -494,13 +485,20 @@ impl Workbench {
         self.diff.model.resizing_file_pane = self.pane_split.is_dragging();
     }
 
+    fn dismiss_active_popover(&mut self) {
+        match self.active {
+            Activity::Diff => self.diff.dismiss_popover(),
+            Activity::Explorer => self.explorer.dismiss_popover(),
+            Activity::Search => self.search.dismiss_popover(),
+        }
+    }
+
     pub fn take_task(&mut self) -> Option<WorkbenchTask> {
         self.explorer.take_request().map(WorkbenchTask::Explorer)
     }
 
     pub fn take_repository_command(&mut self) -> Option<ApplicationCommand> {
         let command = self.commands.start_next()?;
-        self.prompt = None;
         self.last_prompt_id = None;
         let _ = self
             .diff
@@ -516,14 +514,33 @@ impl Workbench {
     }
 
     fn update_diff(&mut self, message: Message) -> Option<WorkbenchEffect> {
+        if message == Message::FocusCommitInput {
+            self.set_modal(Modal::CommitEditor);
+            return None;
+        }
+        if message == Message::BlurCommitInput {
+            self.close_modal();
+            return None;
+        }
+        let commit_submission = message == Message::ExecutePrimaryAction;
+        let reopen_commit_editor = matches!(
+            &message,
+            Message::ActionFailed(OperationFailure {
+                action: RepositoryAction::Commit(_),
+                ..
+            })
+        );
         match &message {
             Message::SnapshotLoaded(snapshot) | Message::OperationCompleted(_, _, snapshot) => {
                 self.explorer.repository_changed(snapshot.clone());
             }
             _ => {}
         }
-        match update(&mut self.diff.model, message) {
+        let effect = match update(&mut self.diff.model, message) {
             Some(Effect::Repository(action)) => {
+                if commit_submission {
+                    self.close_modal();
+                }
                 self.commands.enqueue(action);
                 None
             }
@@ -532,23 +549,11 @@ impl Workbench {
                 None
             }
             None => None,
+        };
+        if reopen_commit_editor {
+            self.set_modal(Modal::CommitEditor);
         }
-    }
-
-    fn active_palette(&self) -> &CommandPalette {
-        match self.active {
-            Activity::Diff => &self.palettes.diff,
-            Activity::Explorer => &self.palettes.explorer,
-            Activity::Search => &self.palettes.search,
-        }
-    }
-
-    fn active_palette_mut(&mut self) -> &mut CommandPalette {
-        match self.active {
-            Activity::Diff => &mut self.palettes.diff,
-            Activity::Explorer => &mut self.palettes.explorer,
-            Activity::Search => &mut self.palettes.search,
-        }
+        effect
     }
 
     fn active_commands(&self) -> &'static [Command] {
@@ -560,15 +565,23 @@ impl Workbench {
     }
 
     fn open_active_palette(&mut self) {
-        if self.active == Activity::Diff {
-            let _ = update(&mut self.diff.model, Message::CloseHelp);
-        }
         let commands = SHARED_COMMANDS
             .iter()
             .chain(self.active_commands())
             .copied()
             .collect::<Vec<_>>();
-        self.active_palette_mut().open(commands);
+        self.set_modal(Modal::command_palette(commands));
+    }
+
+    fn active_help_rows(&self) -> Vec<(String, &'static str)> {
+        let activity_rows = match self.active {
+            Activity::Diff => self.diff.help_rows(),
+            Activity::Explorer => self.explorer.help_rows(),
+            Activity::Search => self.search.help_rows(),
+        };
+        std::iter::once(("Tab".to_owned(), "Next activity"))
+            .chain(activity_rows)
+            .collect()
     }
 
     fn execute_palette_command(&mut self, command: CommandId) -> Option<WorkbenchEffect> {

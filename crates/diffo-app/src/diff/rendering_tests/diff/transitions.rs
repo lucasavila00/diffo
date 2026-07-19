@@ -1,6 +1,63 @@
 use super::*;
 
 #[test]
+fn discards_a_stale_prepared_buffer_before_committing_the_latest() {
+    let mut model = model();
+    for path in ["src/b.rs", "src/c.rs"] {
+        model.snapshot.files.push(FileState {
+            path: PathBuf::from(path),
+            old_path: None,
+            kind: ChangeKind::Modified,
+            staged: None,
+            unstaged: Some(FileDiff {
+                text: format!("@@ -1 +1 @@\n-old {path}\n+new {path}\n"),
+            }),
+        });
+    }
+    let mut renderer = Renderer::new();
+    renderer.prepare_frame(&model, Rect::new(0, 0, 100, 30));
+    let initial = renderer.displayed_key().cloned().unwrap();
+
+    model.select_next();
+    let stale_key = renderer.requested_key(&model).unwrap();
+    model.select_next();
+    let latest_key = renderer.requested_key(&model).unwrap();
+    let outcome = |key: DiffKey| {
+        let request = PrepareRequest {
+            key: key.clone(),
+            viewport_rows: 28,
+            mode: model.diff_view_mode,
+            target_scroll: None,
+            prefetch_viewports: HIGHLIGHT_PREFETCH_VIEWPORTS,
+        };
+        PrepareOutcome {
+            key,
+            target_scroll: None,
+            cache: prepare_diff(request, &renderer.highlighter),
+        }
+    };
+    let stale = outcome(stale_key.clone());
+    let latest = outcome(latest_key.clone());
+    renderer.requested = Some(latest_key.clone());
+    renderer.submitted = vec![(stale_key, None), (latest_key.clone(), None)];
+
+    assert!(
+        renderer
+            .accept_prepared_outcome(Some(&latest_key), stale)
+            .is_none()
+    );
+    assert_eq!(renderer.displayed_key(), Some(&initial));
+    assert_eq!(renderer.submitted, vec![(latest_key.clone(), None)]);
+
+    let commit = renderer
+        .accept_prepared_outcome(Some(&latest_key), latest)
+        .expect("latest prepared buffer must commit");
+    assert!(commit.target_scroll.is_none());
+    assert_eq!(renderer.displayed_key(), Some(&latest_key));
+    assert!(renderer.submitted.is_empty());
+}
+
+#[test]
 fn ready_discrete_jump_commits_in_one_frame_without_preparation() {
     let mut model = model();
     model.snapshot.files[0].unstaged.as_mut().unwrap().text =

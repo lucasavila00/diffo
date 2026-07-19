@@ -1,4 +1,8 @@
 use super::*;
+use crate::diff::prepare::{
+    prepare_diff,
+    state::{DiffKey, HIGHLIGHT_PREFETCH_VIEWPORTS, PrepareOutcome, PrepareRequest},
+};
 
 const PREPARATION_TIMEOUT: Duration = Duration::from_secs(5);
 

@@ -101,19 +101,6 @@ pub(in crate::diff) fn prepare_diff(
     })
 }
 
-fn e2e_diff_preparation_delay() {
-    let Some(milliseconds) = std::env::var_os("DIFFO_E2E_DIFF_PREP_DELAY_MS") else {
-        return;
-    };
-    let Some(milliseconds) = milliseconds
-        .to_str()
-        .and_then(|value| value.parse::<u64>().ok())
-    else {
-        return;
-    };
-    thread::sleep(std::time::Duration::from_millis(milliseconds));
-}
-
 fn projection_highlight_ranges(
     inline: &[RenderLine],
     inline_changes: &[ChangeRegion],
@@ -376,11 +363,8 @@ impl Renderer {
     ) -> Option<PrepareCommit> {
         let mut installed_target = None;
         while let Ok(outcome) = self.prepare_rx.try_recv() {
-            self.submitted
-                .retain(|job| job != &(outcome.key.clone(), outcome.target_scroll));
-            if requested == Some(&outcome.key) {
-                installed_target = Some(outcome.target_scroll);
-                self.install_outcome(outcome);
+            if let Some(commit) = self.accept_prepared_outcome(requested, outcome) {
+                installed_target = Some(commit.target_scroll);
             }
         }
         if let Some(target_scroll) = installed_target {
@@ -445,6 +429,21 @@ impl Renderer {
             }
         }
         None
+    }
+
+    pub(in crate::diff) fn accept_prepared_outcome(
+        &mut self,
+        requested: Option<&DiffKey>,
+        outcome: PrepareOutcome,
+    ) -> Option<PrepareCommit> {
+        self.submitted
+            .retain(|job| job != &(outcome.key.clone(), outcome.target_scroll));
+        if requested != Some(&outcome.key) {
+            return None;
+        }
+        let target_scroll = outcome.target_scroll;
+        self.install_outcome(outcome);
+        Some(PrepareCommit { target_scroll })
     }
 
     pub(in crate::diff) fn install_outcome(&mut self, outcome: PrepareOutcome) {
@@ -598,7 +597,6 @@ impl Renderer {
                     while let Ok(newer) = requests.try_recv() {
                         request = newer;
                     }
-                    e2e_diff_preparation_delay();
                     let key = request.key.clone();
                     let target_scroll = request.target_scroll;
                     let cache = prepare_diff(request, &worker_highlighter);

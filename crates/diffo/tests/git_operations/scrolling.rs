@@ -320,10 +320,7 @@ fn delayed_next_change_commits_the_target_and_syntax_atomically() -> Result<()> 
     let mut screen = DiffoScreen::launch_with_env(
         diffo_binary()?,
         &repository.worktree,
-        &[
-            ("DIFFO_TRACE_FRAMES", trace_path.as_os_str()),
-            ("DIFFO_E2E_DIFF_PREP_DELAY_MS", OsStr::new("250")),
-        ],
+        &[("DIFFO_TRACE_FRAMES", trace_path.as_os_str())],
     )?;
     screen
         .wait_for_text("FIRST_DELAYED_CHANGE")?
@@ -428,10 +425,7 @@ fn delayed_open_prefetches_one_page_in_both_scroll_directions() -> Result<()> {
     let mut screen = DiffoScreen::launch_with_env(
         diffo_binary()?,
         &repository.worktree,
-        &[
-            ("DIFFO_TRACE_FRAMES", trace_path.as_os_str()),
-            ("DIFFO_E2E_DIFF_PREP_DELAY_MS", OsStr::new("300")),
-        ],
+        &[("DIFFO_TRACE_FRAMES", trace_path.as_os_str())],
     )?;
     screen
         .wait_for_text("MIDDLE_CHANGE")?

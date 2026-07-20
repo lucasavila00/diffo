@@ -10,7 +10,7 @@ impl Activity {
         }
     }
 }
-use diffo_ui::{design, enabled_control_style, icons, theme};
+use diffo_ui::{design, icons, mouse_target_style, theme};
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Layout, Rect},
@@ -85,7 +85,7 @@ pub fn render_activity_bar(frame: &mut Frame, area: Rect, active: Activity) {
             design::ACTIVITY_CONTROL_HEIGHT.min(bar.bottom().saturating_sub(y)),
         );
         let selected = activity == active;
-        let style = enabled_control_style();
+        let style = mouse_target_style();
         frame.render_widget(
             Paragraph::new(icon)
                 .alignment(Alignment::Center)

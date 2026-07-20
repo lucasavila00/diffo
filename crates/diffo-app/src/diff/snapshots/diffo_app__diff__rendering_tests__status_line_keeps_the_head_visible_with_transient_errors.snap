@@ -3,9 +3,9 @@ source: crates/diffo-app/src/diff/rendering_tests.rs
 expression: line
 ---
 Line::from_iter([
-    Span::from(" branch ma…").white().bold(),
+    Span::from(" main · 1234567").white(),
     Span::from("  "),
-    Span::from("Checkout …").light_red(),
+    Span::from("Check…").light_red(),
     Span::default(),
     Span::from("[ Sync (9 / F9) ]").white().bold(),
 ])

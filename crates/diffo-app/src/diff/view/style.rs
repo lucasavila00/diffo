@@ -1,6 +1,6 @@
 use crate::diff::{
-    Color, HighlightedDiff, HighlightedLine, Line, Modifier, RenderLine, Rgb, RowKind,
-    SideBySideRow, Span, Style, StyledSpan, terminal_safe_text,
+    Color, HighlightedDiff, HighlightedLine, Line, RenderLine, Rgb, RowKind, SideBySideRow, Span,
+    Style, StyledSpan, terminal_safe_text,
 };
 use diffo_ui::theme;
 
@@ -302,8 +302,7 @@ pub(in crate::diff) fn row_style(kind: RowKind) -> Style {
         RowKind::Added => Style::default().fg(Color::Green),
         RowKind::Conflict => Style::default()
             .fg(theme::CONFLICT_FOREGROUND)
-            .bg(theme::CONFLICT_BACKGROUND)
-            .add_modifier(Modifier::BOLD),
+            .bg(theme::CONFLICT_BACKGROUND),
         RowKind::Meta => Style::default().fg(theme::WARNING),
         RowKind::Context | RowKind::Changed => Style::default(),
     }

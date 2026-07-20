@@ -1,8 +1,6 @@
 use std::{fs, path::Path};
 
-use diffo_ui::{
-    command_progress_style, design, disabled_control_style, enabled_control_style, theme,
-};
+use diffo_ui::{command_progress_style, design, disabled_control_style, mouse_target_style, theme};
 
 #[test]
 fn semantic_palette_is_fixed() {
@@ -24,7 +22,7 @@ fn semantic_palette_is_fixed() {
 
 #[test]
 fn enabled_controls_are_distinct_from_chrome() {
-    insta::assert_debug_snapshot!((enabled_control_style(), disabled_control_style()));
+    insta::assert_debug_snapshot!((mouse_target_style(), disabled_control_style()));
 }
 
 #[test]
@@ -52,9 +50,10 @@ fn structural_geometry_is_fixed() {
 }
 
 #[test]
-fn chrome_renderers_use_design_system_tokens() {
+fn renderers_use_design_system_tokens() {
     let workspace = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let crate_sources = [
+        "crates/diffo-ui/src/lib.rs",
         "crates/diffo-ui/src/command_palette.rs",
         "crates/diffo-app/src/explorer",
         "crates/diffo-ui/src/file_picker.rs",
@@ -64,12 +63,21 @@ fn chrome_renderers_use_design_system_tokens() {
         "crates/diffo-app/src/workbench",
     ];
     let exceptions = [
+        "crates/diffo-ui/src/lib.rs",
         "crates/diffo-ui/src/file_picker/tests.rs",
         "crates/diffo-app/src/diff/rendering_tests.rs",
         "crates/diffo-app/src/diff/rendering_tests/chrome.rs",
         "crates/diffo-app/src/diff/rendering_tests/diff.rs",
         "crates/diffo-app/src/diff/rendering_tests/diff/transitions.rs",
         "crates/diffo-app/src/diff/view/style.rs",
+        "crates/diffo-app/src/workbench/tests.rs",
+    ];
+    let test_sources = [
+        "crates/diffo-ui/src/file_picker/tests.rs",
+        "crates/diffo-app/src/diff/rendering_tests.rs",
+        "crates/diffo-app/src/diff/rendering_tests/chrome.rs",
+        "crates/diffo-app/src/diff/rendering_tests/diff.rs",
+        "crates/diffo-app/src/diff/rendering_tests/diff/transitions.rs",
         "crates/diffo-app/src/workbench/tests.rs",
     ];
 
@@ -81,16 +89,29 @@ fn chrome_renderers_use_design_system_tokens() {
         let relative = path
             .strip_prefix(&workspace)
             .expect("chrome source should be inside the workspace");
+        let source = fs::read_to_string(&path).expect("chrome source should be readable");
+        let production = source
+            .rfind("#[cfg(test)]\nmod tests {")
+            .map_or(source.as_str(), |tests| &source[..tests]);
+        if !test_sources
+            .iter()
+            .any(|test_source| relative == Path::new(test_source))
+        {
+            let bold_uses = production.matches("Modifier::BOLD").count();
+            let allowed = usize::from(relative == Path::new("crates/diffo-ui/src/lib.rs"));
+            assert_eq!(
+                bold_uses,
+                allowed,
+                "{} uses bold outside mouse_target_style",
+                relative.display()
+            );
+        }
         if exceptions
             .iter()
             .any(|exception| relative == Path::new(exception))
         {
             continue;
         }
-        let source = fs::read_to_string(&path).expect("chrome source should be readable");
-        let production = source
-            .rfind("#[cfg(test)]\nmod tests {")
-            .map_or(source.as_str(), |tests| &source[..tests]);
         assert!(
             !production.contains("Color::"),
             "{} chooses a raw color; use a diffo_ui::theme role",

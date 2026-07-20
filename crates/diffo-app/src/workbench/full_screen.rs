@@ -1,5 +1,5 @@
 use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind};
-use diffo_ui::{PaneSplit, design, enabled_control_style, icons, tool_areas};
+use diffo_ui::{PaneSplit, design, icons, mouse_target_style, tool_areas};
 use ratatui::{
     Frame,
     layout::{Constraint, Layout, Rect},
@@ -116,7 +116,7 @@ impl Workbench {
             return;
         }
         frame.render_widget(
-            Paragraph::new(icons::MAXIMIZE).style(enabled_control_style()),
+            Paragraph::new(icons::MAXIMIZE).style(mouse_target_style()),
             entry_area(frame.area(), self.pane_split),
         );
     }

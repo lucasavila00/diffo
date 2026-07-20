@@ -1,11 +1,11 @@
 //! Command palette state, input handling, layout, and rendering.
 
-use crate::{design, enabled_control_style, fuzzy_score, icons, modal_block, theme};
+use crate::{design, fuzzy_score, icons, modal_block, mouse_target_style, theme};
 use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind};
 use ratatui::{
     Frame,
     layout::{Constraint, Layout, Rect},
-    style::{Modifier, Style},
+    style::Style,
     text::Line,
     widgets::{Clear, List, ListItem, ListState, Paragraph},
 };
@@ -169,11 +169,7 @@ impl CommandPalette {
         let inner = area.inner(design::DIALOG_INSET);
         let sections = command_palette_sections(inner);
         frame.render_widget(
-            Paragraph::new(format!("> {}█", self.query)).style(
-                Style::default()
-                    .fg(theme::TEXT)
-                    .add_modifier(Modifier::BOLD),
-            ),
+            Paragraph::new(format!("> {}█", self.query)).style(Style::default().fg(theme::TEXT)),
             sections[0],
         );
         frame.render_widget(
@@ -186,12 +182,12 @@ impl CommandPalette {
         } else {
             commands
                 .iter()
-                .map(|command| ListItem::new(command.label).style(enabled_control_style()))
+                .map(|command| ListItem::new(command.label).style(mouse_target_style()))
                 .collect()
         };
         let list = List::new(items)
             .highlight_symbol(icons::SELECTION)
-            .highlight_style(enabled_control_style().bg(theme::SELECTION_BACKGROUND));
+            .highlight_style(mouse_target_style().bg(theme::SELECTION_BACKGROUND));
         let mut state = ListState::default().with_selected(
             (!commands.is_empty()).then_some(self.selected.min(commands.len().saturating_sub(1))),
         );

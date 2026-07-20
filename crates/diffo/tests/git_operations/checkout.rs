@@ -18,7 +18,7 @@ fn checkout_waits_for_real_git_completion_before_installing_the_new_branch() -> 
     )?;
 
     screen
-        .wait_for_text(&format!("branch {original}"))?
+        .wait_for_text(&format!(" {original} ·"))?
         .press(Key::Char('1'))?
         .type_text("checkout")?
         .press(Key::Enter)?
@@ -34,12 +34,12 @@ fn checkout_waits_for_real_git_completion_before_installing_the_new_branch() -> 
         "topic"
     );
     let blocked_frame = screen.contents();
-    assert!(!blocked_frame.contains("branch topic"));
+    assert!(!blocked_frame.contains(" topic ·"));
     assert!(!blocked_frame.contains("Checked out topic"));
 
     gate.release()?;
     screen
-        .wait_for_text("branch topic")?
+        .wait_for_text(" topic ·")?
         .wait_for_text("Checked out topic")?;
     Ok(())
 }
@@ -94,6 +94,6 @@ fn watcher_refresh_between_down_and_enter_preserves_the_checkout_target() -> Res
 
     fs::write(repository.worktree.join("tracked.txt"), "watcher refresh\n")?;
     screen.wait_for_text("watcher refresh")?;
-    screen.press(Key::Enter)?.wait_for_text("branch zzz")?;
+    screen.press(Key::Enter)?.wait_for_text(" zzz ·")?;
     Ok(())
 }

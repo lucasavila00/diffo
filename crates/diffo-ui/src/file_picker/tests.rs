@@ -1,6 +1,10 @@
 use super::*;
 use crossterm::event::{MouseEvent, MouseEventKind};
-use ratatui::{Terminal, backend::TestBackend, style::Color};
+use ratatui::{
+    Terminal,
+    backend::TestBackend,
+    style::{Color, Modifier},
+};
 
 fn mouse(kind: MouseEventKind, column: u16, row: u16) -> Event {
     Event::Mouse(MouseEvent {

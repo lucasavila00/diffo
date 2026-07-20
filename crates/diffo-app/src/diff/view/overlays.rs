@@ -3,7 +3,7 @@ use crate::diff::{
     Style, Toast, ToastKind, terminal_safe_text,
 };
 use diffo_ui::{
-    command_progress_style, design, disabled_control_style, enabled_control_style, icons, theme,
+    command_progress_style, design, disabled_control_style, icons, mouse_target_style, theme,
 };
 
 #[derive(Clone, Copy)]
@@ -40,7 +40,7 @@ pub fn render_command_progress(
                     .borders(Borders::ALL)
                     .border_style(Style::default().fg(theme::CHROME))
                     .title(
-                        Line::styled(icons::DISMISS, enabled_control_style())
+                        Line::styled(icons::DISMISS, mouse_target_style())
                             .alignment(Alignment::Right),
                     ),
             ),
@@ -92,7 +92,7 @@ pub fn render_toasts(frame: &mut Frame, toasts: &[Toast], content_area: Rect) {
                         .borders(Borders::ALL)
                         .border_style(Style::default().fg(theme::CHROME))
                         .title(
-                            Line::styled(icons::DISMISS, enabled_control_style())
+                            Line::styled(icons::DISMISS, mouse_target_style())
                                 .alignment(Alignment::Right),
                         ),
                 ),
@@ -189,7 +189,7 @@ pub(crate) fn render_commit_editor(frame: &mut Frame, model: &Model, content_are
     frame.render_widget(input_block, input);
 
     let commit_style = if model.commit_enabled() {
-        enabled_control_style()
+        mouse_target_style()
     } else {
         disabled_control_style()
     };
@@ -202,13 +202,13 @@ pub(crate) fn render_commit_editor(frame: &mut Frame, model: &Model, content_are
     frame.render_widget(
         Paragraph::new("[ Cancel (Esc) ]")
             .alignment(Alignment::Center)
-            .style(enabled_control_style()),
+            .style(mouse_target_style()),
         cancel,
     );
     frame.render_widget(
         Paragraph::new("Click outside to close")
             .alignment(Alignment::Center)
-            .style(enabled_control_style()),
+            .style(Style::default().fg(theme::CHROME)),
         footer,
     );
 

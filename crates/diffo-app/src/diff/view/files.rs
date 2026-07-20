@@ -1,10 +1,10 @@
 use crate::diff::{
     Alignment, Block, Borders, ChangeArea, ChangeKind, Constraint, Direction, FileKey, FileState,
-    Frame, HeadState, Layout, Line, Model, Modifier, Paragraph, Rect, RepositorySnapshot, Span,
-    Style, change_kind_style, horizontal_panes, main_area, terminal_safe_text,
+    Frame, HeadState, Layout, Line, Model, Paragraph, Rect, RepositorySnapshot, Span, Style,
+    change_kind_style, horizontal_panes, main_area, terminal_safe_text,
 };
 use diffo_ui::file_picker::{Document, Row as PickerRow};
-use diffo_ui::{design, disabled_control_style, enabled_control_style, file_icons, icons, theme};
+use diffo_ui::{design, disabled_control_style, file_icons, icons, mouse_target_style, theme};
 
 pub(in crate::diff) fn file_panel_areas(area: Rect) -> std::rc::Rc<[Rect]> {
     Layout::vertical([
@@ -45,13 +45,13 @@ pub(in crate::diff) fn render_commit_composer(frame: &mut Frame, area: Rect, mod
                     .border_style(resize_border_style(model))
                     .title(Line::from(vec![
                         Span::raw("Commit message "),
-                        Span::styled("(m)", enabled_control_style()),
+                        Span::styled("(m)", mouse_target_style()),
                     ])),
             ),
         sections[0],
     );
     let style = if model.commit_enabled() {
-        enabled_control_style()
+        mouse_target_style()
     } else {
         disabled_control_style()
     };
@@ -134,7 +134,7 @@ pub(in crate::diff) fn file_label(file: &FileState) -> Line<'static> {
             file_icons::file_icon(&file.path),
             file.path.display()
         )),
-        change_kind_style(file.kind, false),
+        change_kind_style(file.kind),
     )
 }
 
@@ -157,10 +157,11 @@ pub(crate) enum FooterControl {
 }
 
 fn sync_control_span(model: &Model, width: usize) -> Span<'static> {
+    let fully_visible = Span::raw(SYNC_CONTROL).width() <= width;
     let mut sync = Span::styled(
         SYNC_CONTROL,
-        if model.sync_enabled() {
-            enabled_control_style()
+        if model.sync_enabled() && fully_visible {
+            mouse_target_style()
         } else {
             disabled_control_style()
         },
@@ -198,7 +199,7 @@ pub(in crate::diff) fn status_line(
         })
     });
     let mut transient = transient_status(model, animation_tick);
-    let control_style = enabled_control_style();
+    let control_style = mouse_target_style();
     let mut commands = Some(Span::styled(COMMANDS_CONTROL, control_style));
     let mut help = Some(Span::styled(HELP_CONTROL, control_style));
 
@@ -292,9 +293,7 @@ fn transient_status(model: &Model, _animation_tick: usize) -> Option<Span<'stati
                 "Resizing file pane: {}% · release mouse to finish",
                 model.file_pane_percent
             ),
-            Style::default()
-                .fg(theme::TEXT)
-                .add_modifier(Modifier::BOLD),
+            Style::default().fg(theme::TEXT),
         ))
     } else {
         None
@@ -321,12 +320,8 @@ impl RepositoryStatus {
 
     fn style(self) -> Style {
         match self {
-            Self::Conflicts => Style::default()
-                .fg(theme::DANGER)
-                .add_modifier(Modifier::BOLD),
-            Self::Staged => Style::default()
-                .fg(theme::SUCCESS)
-                .add_modifier(Modifier::BOLD),
+            Self::Conflicts => Style::default().fg(theme::DANGER),
+            Self::Staged => Style::default().fg(theme::SUCCESS),
             Self::Changes => Style::default().fg(theme::WARNING),
             Self::Clean => Style::default().fg(theme::CHROME),
         }
@@ -355,19 +350,10 @@ fn repository_status(snapshot: &RepositorySnapshot) -> RepositoryStatus {
 
 fn head_label(head: &HeadState) -> String {
     match head {
-        HeadState::Named { name, commit } => {
-            format!(" branch {name} · {}", short_commit(commit))
-        }
-        HeadState::Unborn { name } => format!(" branch {name} (unborn)"),
+        HeadState::Named { name, commit } => format!(" {name} · {}", short_commit(commit)),
+        HeadState::Unborn { name } => format!(" {name} (unborn)"),
         HeadState::Detached { commit } => format!(" detached {}", short_commit(commit)),
     }
-}
-
-pub(crate) fn head_control_at_position(model: &Model, area: Rect, column: u16, row: u16) -> bool {
-    row == area.y
-        && column >= area.x
-        && usize::from(column.saturating_sub(area.x))
-            < Line::raw(head_label(&model.snapshot.head)).width()
 }
 
 fn short_commit(commit: &str) -> String {
@@ -375,9 +361,7 @@ fn short_commit(commit: &str) -> String {
 }
 
 fn head_style() -> Style {
-    Style::default()
-        .fg(theme::TEXT)
-        .add_modifier(Modifier::BOLD)
+    Style::default().fg(theme::TEXT)
 }
 
 fn status_width(
@@ -457,13 +441,8 @@ fn truncate_width(value: &str, width: usize) -> String {
     result
 }
 
-pub(in crate::diff) fn resize_border_style(model: &Model) -> Style {
-    let style = Style::default().fg(theme::CHROME);
-    if model.resizing_file_pane {
-        style.add_modifier(Modifier::BOLD)
-    } else {
-        style
-    }
+pub(in crate::diff) fn resize_border_style(_model: &Model) -> Style {
+    Style::default().fg(theme::CHROME)
 }
 
 pub(in crate::diff) fn unstaged_files(

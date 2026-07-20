@@ -14,7 +14,7 @@ Buffer {
         x: 0, y: 0, fg: DarkGray, bg: Reset, underline: Reset, modifier: NONE,
         x: 1, y: 0, fg: White, bg: Reset, underline: Reset, modifier: NONE,
         x: 8, y: 0, fg: DarkGray, bg: Reset, underline: Reset, modifier: NONE,
-        x: 1, y: 1, fg: LightRed, bg: DarkGray, underline: Reset, modifier: BOLD | CROSSED_OUT,
+        x: 1, y: 1, fg: LightRed, bg: DarkGray, underline: Reset, modifier: CROSSED_OUT,
         x: 28, y: 1, fg: White, bg: DarkGray, underline: Reset, modifier: BOLD | CROSSED_OUT,
         x: 29, y: 1, fg: DarkGray, bg: Reset, underline: Reset, modifier: NONE,
         x: 1, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,

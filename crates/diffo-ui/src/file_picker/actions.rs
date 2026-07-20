@@ -1,6 +1,6 @@
 use std::hash::Hash;
 
-use crate::{design, enabled_control_style, icons, theme};
+use crate::{design, icons, mouse_target_style, theme};
 use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind};
 use ratatui::{
     Frame,
@@ -130,19 +130,19 @@ where
         frame.render_widget(Clear, area);
         frame.render_widget(
             List::new([
-                ListItem::new("[a] Copy absolute path").style(enabled_control_style()),
+                ListItem::new("[a] Copy absolute path").style(mouse_target_style()),
                 ListItem::new(""),
-                ListItem::new("[r] Copy relative path").style(enabled_control_style()),
+                ListItem::new("[r] Copy relative path").style(mouse_target_style()),
             ])
             .block(
                 Block::default()
                     .title(Line::from(vec![
                         Span::raw(" Path "),
-                        Span::styled("[c]", enabled_control_style()),
+                        Span::styled("[c]", mouse_target_style()),
                         Span::raw(" "),
                     ]))
                     .title(
-                        Line::styled(icons::DISMISS, enabled_control_style())
+                        Line::styled(icons::DISMISS, mouse_target_style())
                             .alignment(Alignment::Right),
                     )
                     .borders(Borders::ALL)

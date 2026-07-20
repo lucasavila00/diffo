@@ -17,7 +17,7 @@ use diffo_core::{
 };
 use diffo_ui::command_palette::{Command, CommandId};
 use diffo_ui::text_view::{TextRenderMode, TextSurfacePreparation};
-use diffo_ui::{PaneSplit, command_progress_style, enabled_control_style, icons, tool_areas};
+use diffo_ui::{PaneSplit, command_progress_style, icons, mouse_target_style, tool_areas};
 use ratatui::{
     Frame,
     layout::Rect,
@@ -400,9 +400,6 @@ impl Workbench {
             return None;
         }
         let content = workbench_areas(area).content;
-        if self.open_checkout_from_head_click(event, content) {
-            return None;
-        }
         let tool_captures_global_input = match self.active {
             Activity::Diff => self.diff.captures_global_input(),
             Activity::Explorer => self.explorer.captures_global_input(),
@@ -682,7 +679,7 @@ fn render_pane_drag_marker(frame: &mut Frame, area: Rect, split: PaneSplit) {
     let marker = split.seam_marker_area(area);
     if !marker.is_empty() {
         frame.render_widget(
-            Paragraph::new(icons::PANE_DRAG).style(enabled_control_style()),
+            Paragraph::new(icons::PANE_DRAG).style(mouse_target_style()),
             marker,
         );
     }

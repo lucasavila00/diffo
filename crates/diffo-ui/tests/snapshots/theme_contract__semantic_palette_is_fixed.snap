@@ -44,7 +44,7 @@ expression: "([(\"text\", theme::TEXT), (\"chrome\", theme::CHROME),\n(\"informa
         ),
     ],
     [
-        Style::new().fg(Color::Indexed(24)).bold(),
-        Style::new().fg(Color::Indexed(25)).bold(),
+        Style::new().fg(Color::Indexed(24)),
+        Style::new().fg(Color::Indexed(25)),
     ],
 )

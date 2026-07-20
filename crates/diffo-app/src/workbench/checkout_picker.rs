@@ -1,9 +1,8 @@
-use crossterm::event::{Event, MouseButton, MouseEventKind};
+use crossterm::event::Event;
 use diffo_core::{
     BranchKind, BranchRef, CheckoutTarget, HeadState, RepositoryQueryId, RepositorySnapshot,
 };
 use diffo_ui::search_picker::{SearchItem, SearchPicker, SearchPickerEvent};
-use diffo_ui::tool_areas;
 use ratatui::{Frame, layout::Rect};
 
 use super::{Message, Modal, ToastKind, Workbench};
@@ -139,32 +138,17 @@ impl Workbench {
         self.set_modal(Modal::CheckoutPicker(CheckoutPicker::loading(query_id)));
         self.pending_branch_query = Some(query_id);
     }
-
-    pub(super) fn open_checkout_from_head_click(&mut self, event: &Event, content: Rect) -> bool {
-        let Event::Mouse(mouse) = event else {
-            return false;
-        };
-        if mouse.kind != MouseEventKind::Down(MouseButton::Left)
-            || !crate::diff::head_control_at_position(
-                &self.diff.model,
-                tool_areas(content).status,
-                mouse.column,
-                mouse.row,
-            )
-        {
-            return false;
-        }
-        self.open_checkout_picker();
-        true
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::workbench::{Activity, ApplicationAction, CHECKOUT_COMMAND, workbench_areas};
-    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseEvent};
+    use crossterm::event::{
+        KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
+    };
     use diffo_core::{RepositoryAction, UpstreamState};
+    use diffo_ui::tool_areas;
 
     fn key(code: KeyCode) -> Event {
         Event::Key(KeyEvent::new(code, KeyModifiers::NONE))
@@ -236,7 +220,7 @@ mod tests {
     }
 
     #[test]
-    fn shared_branch_status_opens_checkout_from_every_activity() {
+    fn shared_branch_status_does_not_open_checkout_from_any_activity() {
         let area = Rect::new(0, 0, 100, 30);
         let status = tool_areas(workbench_areas(area).content).status;
         let click = Event::Mouse(MouseEvent {
@@ -257,8 +241,8 @@ mod tests {
 
             let _ = workbench.handle_event(&click, area);
 
-            assert_eq!(workbench.take_branch_query(), Some(RepositoryQueryId(1)));
-            assert!(matches!(workbench.modal, Some(Modal::CheckoutPicker(_))));
+            assert_eq!(workbench.take_branch_query(), None);
+            assert!(workbench.modal.is_none());
         }
     }
 

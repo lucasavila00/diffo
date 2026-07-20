@@ -1,10 +1,10 @@
 use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind};
 use diffo_core::{ApplicationCommandId, GitPrompt, PromptId};
-use diffo_ui::{design, enabled_control_style, modal_block, terminal_safe_text, theme};
+use diffo_ui::{design, modal_block, mouse_target_style, terminal_safe_text, theme};
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Layout, Rect},
-    style::{Modifier, Style},
+    style::Style,
     widgets::{Block, Borders, Clear, Paragraph},
 };
 
@@ -276,21 +276,19 @@ pub(super) fn render_prompt(frame: &mut Frame, modal: &PromptModal, area: Rect) 
             "Enter: continue · Esc: cancel"
         })
         .alignment(Alignment::Center)
-        .style(enabled_control_style()),
+        .style(Style::default().fg(theme::CHROME)),
         layout.footer,
     );
 }
 
 fn prompt_button_style(selected: bool, enabled: bool) -> Style {
     let mut style = if enabled {
-        enabled_control_style()
+        mouse_target_style()
     } else {
         Style::default().fg(theme::CHROME)
     };
     if selected {
-        style = style
-            .bg(theme::SELECTION_BACKGROUND)
-            .add_modifier(Modifier::BOLD);
+        style = style.bg(theme::SELECTION_BACKGROUND);
     }
     style
 }

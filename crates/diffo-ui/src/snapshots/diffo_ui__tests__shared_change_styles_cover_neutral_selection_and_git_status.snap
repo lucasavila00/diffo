@@ -6,36 +6,29 @@ expression: styles
     (
         Added,
         Style::new().light_green(),
-        Style::new().light_green().bold(),
     ),
     (
         Modified,
         Style::new().yellow(),
-        Style::new().yellow().bold(),
     ),
     (
         Deleted,
         Style::new().light_red().crossed_out(),
-        Style::new().light_red().bold().crossed_out(),
     ),
     (
         Renamed,
         Style::new().light_cyan(),
-        Style::new().light_cyan().bold(),
     ),
     (
         Copied,
         Style::new().light_cyan(),
-        Style::new().light_cyan().bold(),
     ),
     (
         Untracked,
         Style::new().light_green(),
-        Style::new().light_green().bold(),
     ),
     (
         Conflicted,
-        Style::new().light_red().bold(),
-        Style::new().light_red().bold(),
+        Style::new().light_red(),
     ),
 ]

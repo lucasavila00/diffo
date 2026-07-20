@@ -22,9 +22,9 @@ use ratatui::{
 
 use super::{
     Renderer, RendererEvent, contrast_ratio, contrasting_foreground, diff_background,
-    diff_background_rgb, diff_file_lines, file_label, highlight_prefetch_viewports,
-    horizontal_panes, main_area, overview_position, picker_document, render_status, row_style,
-    scrollbar_position_count, should_syntax_highlight, status_line,
+    diff_background_rgb, diff_file_lines, file_label, footer_control_at_position,
+    highlight_prefetch_viewports, horizontal_panes, main_area, overview_position, picker_document,
+    render_status, row_style, scrollbar_position_count, should_syntax_highlight, status_line,
 };
 
 #[test]
@@ -143,7 +143,7 @@ fn conflict_markers_have_a_dedicated_high_contrast_style() {
     let marker = row_style(RowKind::Conflict);
     assert_eq!(marker.fg, Some(Color::LightYellow));
     assert_eq!(marker.bg, Some(Color::Indexed(58)));
-    assert!(marker.add_modifier.contains(Modifier::BOLD));
+    assert!(!marker.add_modifier.contains(Modifier::BOLD));
     assert_eq!(diff_background(RowKind::Conflict).bg, marker.bg);
 }
 
@@ -317,6 +317,42 @@ fn status_line_distinguishes_unborn_and_detached_head() {
         commit: "123456789abcdef".to_owned(),
     };
     insta::assert_debug_snapshot!("detached", status_line(&model, 0, 80));
+}
+
+#[test]
+fn footer_bold_spans_match_mouse_targets() {
+    let model = Model::new(RepositorySnapshot {
+        head: HeadState::Named {
+            name: "main".to_owned(),
+            commit: "123456789abcdef".to_owned(),
+        },
+        ..RepositorySnapshot::default()
+    });
+    let area = Rect::new(3, 7, 100, 1);
+    let line = status_line(&model, 0, usize::from(area.width));
+
+    assert!(!line.spans[0].style.add_modifier.contains(Modifier::BOLD));
+    for offset in 0..area.width {
+        let mut start = 0_u16;
+        let bold = line.spans.iter().find_map(|span| {
+            let width = u16::try_from(span.width()).unwrap_or(u16::MAX);
+            let contains = offset >= start && offset < start.saturating_add(width);
+            start = start.saturating_add(width);
+            contains.then(|| span.style.add_modifier.contains(Modifier::BOLD))
+        });
+        let control =
+            footer_control_at_position(&model, area, area.x.saturating_add(offset), area.y);
+        assert_eq!(bold.unwrap_or(false), control.is_some(), "offset {offset}");
+    }
+
+    let narrow = Rect::new(0, 0, 1, 1);
+    assert!(
+        status_line(&model, 0, usize::from(narrow.width))
+            .spans
+            .iter()
+            .all(|span| !span.style.add_modifier.contains(Modifier::BOLD))
+    );
+    assert_eq!(footer_control_at_position(&model, narrow, 0, 0), None);
 }
 
 #[test]

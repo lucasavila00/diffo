@@ -10,8 +10,8 @@ use ratatui::{
 };
 
 use crate::{
-    design, disabled_control_style, enabled_control_style, fuzzy_score, icons, maximum_scroll,
-    modal_block, render_scrollbar, terminal_safe_text, theme, wheel_scroll_delta,
+    design, disabled_control_style, fuzzy_score, icons, maximum_scroll, modal_block,
+    mouse_target_style, render_scrollbar, terminal_safe_text, theme, wheel_scroll_delta,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -204,7 +204,7 @@ where
         let sections = search_picker_sections(inner);
         frame.render_widget(
             Paragraph::new(format!("> {}█", terminal_safe_text(&self.query)))
-                .style(enabled_control_style()),
+                .style(Style::default().fg(theme::TEXT)),
             sections[0],
         );
         frame.render_widget(
@@ -222,7 +222,7 @@ where
                 .take(viewport)
                 .map(|(_, item)| {
                     ListItem::new(terminal_safe_text(&item.label)).style(if item.enabled {
-                        enabled_control_style()
+                        mouse_target_style()
                     } else {
                         disabled_control_style()
                     })
@@ -236,7 +236,7 @@ where
         });
         let list = List::new(items)
             .highlight_symbol(icons::SELECTION)
-            .highlight_style(enabled_control_style().bg(theme::SELECTION_BACKGROUND));
+            .highlight_style(mouse_target_style().bg(theme::SELECTION_BACKGROUND));
         let mut state = ListState::default().with_selected(selected);
         frame.render_stateful_widget(list, results, &mut state);
         let maximum = maximum_scroll(matches.len(), viewport);
@@ -260,7 +260,7 @@ where
         frame.render_widget(
             Paragraph::new(Line::styled(
                 "↑/↓ select · Enter choose · Esc close",
-                enabled_control_style(),
+                Style::default().fg(theme::CHROME),
             )),
             sections[3],
         );

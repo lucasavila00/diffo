@@ -27,7 +27,7 @@ use diffo_ui::{design, maximum_scroll, tool_areas, wheel_scroll_delta};
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style},
+    style::{Color, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Clear, Paragraph},
 };
@@ -43,7 +43,6 @@ pub(crate) use view::overlays::render_commit_editor;
 #[cfg(test)]
 #[cfg(test)]
 use prepare::{diff_file_lines, should_syntax_highlight};
-pub(crate) use view::files::head_control_at_position;
 #[cfg(test)]
 use view::files::status_line;
 use view::files::{

@@ -40,12 +40,12 @@ fn full_screen_diff_shows_raw_hunks_and_exits_by_key_or_x() -> Result<()> {
         .press(Key::Char('f'))?
         .wait_for_text_gone("Changes")?
         .wait_for_text("@@ -1 +1 @@")?
-        .wait_for_text_gone("branch master")?;
+        .wait_for_text_gone(" master ·")?;
     let contents = screen.contents();
     assert!(contents.contains("-base"));
     assert!(contents.contains("+changed"));
     assert!(!contents.contains("File Diff"));
-    assert!(!contents.contains("branch master"));
+    assert!(!contents.contains(" master ·"));
 
     screen
         .press(Key::Char('F'))?
@@ -78,12 +78,12 @@ fn full_screen_explorer_shows_only_scrollable_file_text() -> Result<()> {
         .click(&Selector::text(""))?
         .wait_for_text_gone("Explorer")?
         .wait_for_text_gone("previous")?
-        .wait_for_text_gone("branch master")?
+        .wait_for_text_gone(" master ·")?
         .wait_for_text("line 0")?;
     let contents = screen.contents();
     assert!(contents.contains("tracked.txt"));
     assert!(!contents.contains("previous"));
-    assert!(!contents.contains("branch master"));
+    assert!(!contents.contains(" master ·"));
     assert!(!contents.contains('█'));
     assert!(!contents.contains('║'));
     assert!(!contents.contains('═'));

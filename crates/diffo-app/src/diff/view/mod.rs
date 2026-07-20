@@ -5,7 +5,7 @@ use super::{
     side_by_side_line, side_by_side_skeleton_line, terminal_safe_text,
 };
 use diffo_ui::text_view::{Viewport, ViewportMetrics, render_lines, render_scrollbars};
-use diffo_ui::{design, enabled_control_style, icons, theme};
+use diffo_ui::{design, icons, mouse_target_style, theme};
 
 pub(in crate::diff) mod files;
 pub(in crate::diff) mod geometry;
@@ -16,7 +16,7 @@ pub(in crate::diff) fn render_hunk_button(frame: &mut Frame, area: Rect, label: 
     frame.render_widget(
         Paragraph::new(label)
             .alignment(Alignment::Center)
-            .style(enabled_control_style()),
+            .style(mouse_target_style()),
         area,
     );
 }

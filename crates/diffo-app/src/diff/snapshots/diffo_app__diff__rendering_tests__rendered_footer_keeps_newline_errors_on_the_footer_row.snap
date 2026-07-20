@@ -16,7 +16,7 @@ Buffer {
         "┌ Changes  Stage A┐│                                                          │",
         "│No files.         ││                                                          │",
         "└──────────────────┘└──────────────────────────────────────────────────────────┘",
-        " branch main · 1234567  Fetch failed␊SSH host is unknown       [ Sync (9 / F9) ]",
+        " main · 1234567  Fetch failed␊SSH host is unknown              [ Sync (9 / F9) ]",
     ],
     styles: [
         x: 0, y: 0, fg: DarkGray, bg: Reset, underline: Reset, modifier: NONE,
@@ -50,10 +50,10 @@ Buffer {
         x: 19, y: 9, fg: DarkGray, bg: Reset, underline: Reset, modifier: NONE,
         x: 21, y: 9, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
         x: 79, y: 9, fg: DarkGray, bg: Reset, underline: Reset, modifier: NONE,
-        x: 0, y: 11, fg: White, bg: Reset, underline: Reset, modifier: BOLD,
-        x: 22, y: 11, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
-        x: 24, y: 11, fg: LightRed, bg: Reset, underline: Reset, modifier: NONE,
-        x: 56, y: 11, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 0, y: 11, fg: White, bg: Reset, underline: Reset, modifier: NONE,
+        x: 15, y: 11, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 17, y: 11, fg: LightRed, bg: Reset, underline: Reset, modifier: NONE,
+        x: 49, y: 11, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
         x: 63, y: 11, fg: White, bg: Reset, underline: Reset, modifier: BOLD,
     ]
 }

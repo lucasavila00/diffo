@@ -3,7 +3,7 @@ source: crates/diffo-app/src/diff/rendering_tests.rs
 expression: minimum
 ---
 Line::from_iter([
-    Span::default().white().bold(),
+    Span::default().white(),
     Span::default(),
-    Span::from("…").white().bold(),
+    Span::from("…").dark_gray(),
 ])

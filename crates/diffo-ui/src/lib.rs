@@ -61,9 +61,7 @@ pub mod icons {
 #[must_use]
 pub fn command_progress_style(tick: usize) -> Style {
     const GRADIENT: [u8; 12] = [24, 25, 31, 37, 43, 42, 36, 30, 24, 60, 54, 53];
-    Style::default()
-        .fg(Color::Indexed(GRADIENT[(tick / 4) % GRADIENT.len()]))
-        .add_modifier(Modifier::BOLD)
+    Style::default().fg(Color::Indexed(GRADIENT[(tick / 4) % GRADIENT.len()]))
 }
 
 /// Fixed layout tokens for Diffo's structural chrome.
@@ -335,12 +333,7 @@ impl PaneSplit {
 
     #[must_use]
     pub fn border_style(self) -> Style {
-        let style = Style::default().fg(theme::CHROME);
-        if self.dragging {
-            style.add_modifier(Modifier::BOLD)
-        } else {
-            style
-        }
+        Style::default().fg(theme::CHROME)
     }
 }
 
@@ -364,28 +357,21 @@ pub fn tool_areas(area: Rect) -> ToolAreas {
 }
 
 #[must_use]
-pub fn change_kind_style(kind: ChangeKind, selected: bool) -> Style {
-    let style = match kind {
+pub fn change_kind_style(kind: ChangeKind) -> Style {
+    match kind {
         ChangeKind::Added | ChangeKind::Untracked => Style::default().fg(theme::SUCCESS),
         ChangeKind::Modified => Style::default().fg(theme::WARNING),
         ChangeKind::Deleted => Style::default()
             .fg(theme::DANGER)
             .add_modifier(Modifier::CROSSED_OUT),
         ChangeKind::Renamed | ChangeKind::Copied => Style::default().fg(theme::INFORMATION),
-        ChangeKind::Conflicted => Style::default()
-            .fg(theme::DANGER)
-            .add_modifier(Modifier::BOLD),
-    };
-    if selected {
-        style.add_modifier(Modifier::BOLD)
-    } else {
-        style
+        ChangeKind::Conflicted => Style::default().fg(theme::DANGER),
     }
 }
 
-/// Returns the fixed style for an enabled interactive control.
+/// Returns the fixed style for a visible mouse target.
 #[must_use]
-pub fn enabled_control_style() -> Style {
+pub fn mouse_target_style() -> Style {
     Style::default()
         .fg(theme::TEXT)
         .add_modifier(Modifier::BOLD)
@@ -534,13 +520,7 @@ mod tests {
             ChangeKind::Untracked,
             ChangeKind::Conflicted,
         ]
-        .map(|kind| {
-            (
-                kind,
-                change_kind_style(kind, false),
-                change_kind_style(kind, true),
-            )
-        });
+        .map(|kind| (kind, change_kind_style(kind)));
 
         insta::assert_debug_snapshot!(styles);
     }

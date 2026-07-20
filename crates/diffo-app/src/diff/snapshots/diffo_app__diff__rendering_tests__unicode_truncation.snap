@@ -3,7 +3,7 @@ source: crates/diffo-app/src/diff/rendering_tests.rs
 expression: line
 ---
 Line::from_iter([
-    Span::from(" b…").white().bold(),
+    Span::from(" f…").white(),
     Span::from("  "),
     Span::from("C…").light_red(),
     Span::default(),

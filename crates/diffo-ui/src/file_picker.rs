@@ -4,7 +4,7 @@ use std::collections::HashSet;
 use std::hash::Hash;
 
 use crate::{
-    design, enabled_control_style, maximum_scroll, render_scrollbar, scroll_offset,
+    design, maximum_scroll, mouse_target_style, render_scrollbar, scroll_offset,
     scrollbar_position, terminal_safe_text, theme, wheel_scroll_delta,
 };
 use crate::{file_icons, icons};
@@ -14,7 +14,7 @@ use crossterm::event::{
 use ratatui::{
     Frame,
     layout::{Alignment, Rect},
-    style::{Modifier, Style},
+    style::Style,
     text::{Line, Span},
     widgets::{Block, Borders, List, ListItem, ListState, Paragraph, ScrollbarOrientation},
 };
@@ -142,7 +142,7 @@ where
                         ),
                         Span::styled(
                             format!("{} ", terminal_safe_text(action)),
-                            enabled_control_style(),
+                            mouse_target_style(),
                         ),
                     ])
                 },
@@ -161,7 +161,7 @@ where
             block = block.title(
                 Line::styled(
                     format!(" {}   {} ", icons::REMOVE, icons::ADD),
-                    enabled_control_style(),
+                    mouse_target_style(),
                 )
                 .alignment(Alignment::Right),
             );
@@ -190,11 +190,8 @@ where
             .skip(self.metrics.offset)
             .take(usize::from(self.metrics.list_area.height))
             .map(|index| self.list_item(&self.document.rows[*index]));
-        let list = List::new(items).highlight_style(
-            Style::default()
-                .bg(theme::SELECTION_BACKGROUND)
-                .add_modifier(Modifier::BOLD),
-        );
+        let list =
+            List::new(items).highlight_style(Style::default().bg(theme::SELECTION_BACKGROUND));
         let mut state = ListState::default().with_selected(selected);
         frame.render_stateful_widget(list, self.metrics.list_area, &mut state);
         if self.metrics.maximum_offset > 0 && !self.metrics.scrollbar_area.is_empty() {
@@ -451,7 +448,7 @@ where
                 } else {
                     icons::TREE_LEAF
                 },
-                enabled_control_style(),
+                mouse_target_style(),
             ));
             if row.branch {
                 spans.push(Span::raw(file_icons::FOLDER));
@@ -467,7 +464,7 @@ where
             let used = Line::from(spans.clone()).width();
             let spacing = available.saturating_sub(used.saturating_add(action_width));
             spans.push(Span::raw(" ".repeat(spacing)));
-            spans.push(Span::styled(action.clone(), enabled_control_style()));
+            spans.push(Span::styled(action.clone(), mouse_target_style()));
         } else {
             spans = truncate_spans(&spans, usize::from(self.metrics.list_area.width));
         }

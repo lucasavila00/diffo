@@ -8,7 +8,7 @@ use diffo_ui::{
 use ratatui::{
     Frame,
     layout::{Constraint, Layout, Rect},
-    style::{Modifier, Style},
+    style::Style,
     text::{Line, Span},
     widgets::{Block, Borders, Clear, Paragraph},
 };
@@ -123,7 +123,7 @@ fn picker_entry_style(entry: &TreeEntry) -> Style {
     let Some(status) = entry.status else {
         return Style::default().fg(theme::TEXT);
     };
-    let status_style = change_kind_style(status, false);
+    let status_style = change_kind_style(status);
     if entry.directory() {
         Style::default().fg(status_style.fg.unwrap_or(theme::TEXT))
     } else {
@@ -282,8 +282,7 @@ fn marker_style(marker: Option<GutterMarker>) -> Style {
         Some(GutterMarker::Deleted) => Style::default().fg(theme::DANGER),
         Some(GutterMarker::Conflict) => Style::default()
             .fg(theme::CONFLICT_FOREGROUND)
-            .bg(theme::CONFLICT_BACKGROUND)
-            .add_modifier(Modifier::BOLD),
+            .bg(theme::CONFLICT_BACKGROUND),
         None => Style::default(),
     }
 }
@@ -365,7 +364,7 @@ mod tests {
                 x: 22, y: 0, fg: White, bg: Reset, underline: Reset, modifier: BOLD,
                 x: 29, y: 0, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
                 x: 1, y: 1, fg: White, bg: Reset, underline: Reset, modifier: BOLD,
-                x: 3, y: 1, fg: LightRed, bg: Reset, underline: Reset, modifier: BOLD,
+                x: 3, y: 1, fg: LightRed, bg: Reset, underline: Reset, modifier: NONE,
                 x: 29, y: 1, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
                 x: 1, y: 2, fg: White, bg: Reset, underline: Reset, modifier: BOLD,
                 x: 3, y: 2, fg: Yellow, bg: Reset, underline: Reset, modifier: NONE,

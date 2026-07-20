@@ -2,7 +2,7 @@ use diffo_ui::{design, theme};
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Layout, Rect},
-    style::{Modifier, Style},
+    style::Style,
     widgets::{Block, Borders, Cell, Clear, Paragraph, Row, Table},
 };
 
@@ -25,11 +25,7 @@ pub(super) fn render(frame: &mut Frame, content_area: Rect, rows: Vec<(String, &
     .split(inner);
     let rows = rows.into_iter().map(|(keys, description)| {
         Row::new([
-            Cell::from(keys).style(
-                Style::default()
-                    .fg(theme::TEXT)
-                    .add_modifier(Modifier::BOLD),
-            ),
+            Cell::from(keys).style(Style::default().fg(theme::TEXT)),
             Cell::from(description).style(Style::default().fg(theme::TEXT)),
         ])
     });
@@ -40,13 +36,7 @@ pub(super) fn render(frame: &mut Frame, content_area: Rect, rows: Vec<(String, &
             Constraint::Min(design::HELP_ACTION_MIN_WIDTH),
         ],
     )
-    .header(
-        Row::new(["Shortcut", "Action"]).style(
-            Style::default()
-                .fg(theme::TEXT)
-                .add_modifier(Modifier::BOLD),
-        ),
-    )
+    .header(Row::new(["Shortcut", "Action"]).style(Style::default().fg(theme::TEXT)))
     .column_spacing(design::HELP_COLUMN_GAP);
     frame.render_widget(table, sections[0]);
     let build = format!("tag {BUILD_TAG} · sha {BUILD_SHA}");

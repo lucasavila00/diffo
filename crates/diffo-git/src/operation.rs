@@ -19,7 +19,9 @@ use nix::{
 use super::{
     GitRepositorySource,
     askpass::{ASKPASS_MARKER, ASKPASS_SOCKET, AskpassBridge},
+    create_branch::{configure_create_branch, operation_result as create_branch_result},
     failure::{classify_failure, command_output, finish_sync_command, operation_failure},
+    refs::{checkout_local_name, ref_exists},
 };
 
 impl GitRepositorySource {
@@ -70,6 +72,9 @@ impl GitRepositorySource {
             }
             RepositoryAction::Checkout(target) => {
                 configure_checkout(self, &mut command, action, target)?;
+            }
+            RepositoryAction::CreateBranch(target) => {
+                configure_create_branch(self, &mut command, action, target)?;
             }
         }
 
@@ -471,6 +476,9 @@ pub(super) fn run_cancellable(
     command: &mut Command,
     cancellation: &CancellationHandle,
 ) -> io::Result<CommandOutcome> {
+    if cancellation.is_cancelled() {
+        return Ok(CommandOutcome::Cancelled);
+    }
     command
         .process_group(0)
         .stdout(Stdio::piped())
@@ -575,6 +583,7 @@ fn collect_operation_result(
         RepositoryAction::Checkout(target) => Ok(OperationResult::Checkout {
             branch: checkout_local_name(action, target)?,
         }),
+        RepositoryAction::CreateBranch(target) => Ok(create_branch_result(target)),
     }
 }
 
@@ -638,7 +647,7 @@ fn configure_checkout(
     Ok(())
 }
 
-fn verify_checkout_target(
+pub(super) fn verify_checkout_target(
     source: &GitRepositorySource,
     action: &RepositoryAction,
     target: &CheckoutTarget,
@@ -651,7 +660,7 @@ fn verify_checkout_target(
         return Err(operation_failure(
             action,
             FailureKind::RefChanged,
-            "selected branch is no longer available; reopen the checkout picker",
+            "selected branch is no longer available; reopen the branch picker",
         ));
     }
     let object_id = source
@@ -663,38 +672,8 @@ fn verify_checkout_target(
         return Err(operation_failure(
             action,
             FailureKind::RefChanged,
-            "selected branch changed; reopen the checkout picker",
+            "selected branch changed; reopen the branch picker",
         ));
     }
     Ok(())
-}
-
-fn checkout_local_name(
-    action: &RepositoryAction,
-    target: &CheckoutTarget,
-) -> std::result::Result<String, OperationFailure> {
-    let name = match target.kind {
-        BranchKind::Local => target.full_ref.strip_prefix("refs/heads/"),
-        BranchKind::Remote => target
-            .full_ref
-            .strip_prefix("refs/remotes/")
-            .and_then(|name| name.split_once('/').map(|(_, branch)| branch)),
-    };
-    name.filter(|name| !name.is_empty())
-        .map(str::to_owned)
-        .ok_or_else(|| {
-            operation_failure(
-                action,
-                FailureKind::RefChanged,
-                "selected branch ref is invalid",
-            )
-        })
-}
-
-fn ref_exists(source: &GitRepositorySource, full_ref: &str) -> io::Result<bool> {
-    Command::new("git")
-        .args(["show-ref", "--verify", "--quiet", full_ref])
-        .current_dir(&source.root)
-        .status()
-        .map(|status| status.success())
 }

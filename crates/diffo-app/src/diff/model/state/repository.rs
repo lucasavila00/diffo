@@ -67,6 +67,7 @@ impl Model {
                 | OperationResult::Sync { .. }
                 | OperationResult::Commit { .. }
                 | OperationResult::Checkout { .. }
+                | OperationResult::CreateBranch { .. }
         );
         let finishes_pending = self.pending_operation.as_ref() == Some(action);
         if is_async_result && !finishes_pending {
@@ -162,5 +163,9 @@ pub(super) fn same_repository_operation(left: &RepositoryAction, right: &Reposit
             | (RepositoryAction::StageAll, RepositoryAction::StageAll)
             | (RepositoryAction::UnstageAll, RepositoryAction::UnstageAll)
             | (RepositoryAction::Checkout(_), RepositoryAction::Checkout(_))
+            | (
+                RepositoryAction::CreateBranch(_),
+                RepositoryAction::CreateBranch(_)
+            )
     )
 }

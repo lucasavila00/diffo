@@ -108,6 +108,18 @@ pub struct CheckoutTarget {
     pub object_id: String,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CreateBranchTarget {
+    pub name: String,
+    pub start_point: CreateBranchStartPoint,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum CreateBranchStartPoint {
+    Head(HeadState),
+    Branch(CheckoutTarget),
+}
+
 pub trait RepositorySource: Send + Sync {
     /// Build the current repository snapshot.
     ///
@@ -127,6 +139,7 @@ pub enum RepositoryAction {
     Sync,
     Commit(String),
     Checkout(Box<CheckoutTarget>),
+    CreateBranch(Box<CreateBranchTarget>),
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -137,6 +150,7 @@ pub enum OperationResult {
     Sync { plan: Box<SyncPlan> },
     Commit { hash: String },
     Checkout { branch: String },
+    CreateBranch { branch: String },
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

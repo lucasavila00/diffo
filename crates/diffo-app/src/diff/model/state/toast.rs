@@ -58,6 +58,9 @@ pub(crate) fn operation_result_toast(result: &OperationResult) -> Option<(ToastK
         OperationResult::Sync { plan } => sync_result_title(plan),
         OperationResult::Commit { hash } => format!("Committed {}", short_hash(hash)),
         OperationResult::Checkout { branch } => format!("Checked out {branch}"),
+        OperationResult::CreateBranch { branch } => {
+            format!("Created and checked out {branch}")
+        }
     };
     Some((ToastKind::Success, title))
 }
@@ -70,6 +73,7 @@ pub(crate) fn operation_failure_title(failure: &OperationFailure) -> String {
         RepositoryAction::Sync => "Sync",
         RepositoryAction::Commit(_) => "Commit",
         RepositoryAction::Checkout(_) => "Checkout",
+        RepositoryAction::CreateBranch(_) => "Create branch",
     };
     match failure.kind {
         FailureKind::PushRejected | FailureKind::HookRejected => {

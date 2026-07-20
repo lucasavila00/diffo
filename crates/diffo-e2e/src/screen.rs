@@ -15,7 +15,8 @@ use crate::{
     input::key_bytes,
     reader::read_output,
     selectors::{
-        find_dialog_action, find_file_action, find_in_row, find_panel_action, find_text, positions,
+        find_dialog_action, find_file_action, find_in_row, find_panel_action, find_text,
+        find_toast_action, positions,
     },
 };
 
@@ -402,6 +403,7 @@ impl DiffoScreen {
                 })
                 .collect(),
             Selector::DialogAction { dialog, action } => find_dialog_action(&cells, dialog, action),
+            Selector::ToastAction { toast, action } => find_toast_action(&cells, toast, action),
             Selector::VerticalScrollbarEnd => {
                 let row = ROWS.saturating_sub(4);
                 let column = COLUMNS.saturating_sub(2);

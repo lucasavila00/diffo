@@ -53,6 +53,12 @@ pub(super) fn classify_failure(action: &RepositoryAction, output: &str) -> Opera
             FailureKind::DirtyWorktree,
             "local changes block the operation",
         )
+    } else if matches!(action, RepositoryAction::CreateBranch(_)) && text.contains("already exists")
+    {
+        (
+            FailureKind::BranchConflict,
+            "a local branch with that name already exists",
+        )
     } else {
         (FailureKind::Unknown, "Git operation failed")
     };

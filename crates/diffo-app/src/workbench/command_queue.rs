@@ -138,6 +138,9 @@ fn command_label(action: &ApplicationAction) -> String {
                 .or_else(|| target.full_ref.strip_prefix("refs/remotes/"))
                 .unwrap_or(&target.full_ref)
         ),
+        ApplicationAction::Repository(RepositoryAction::CreateBranch(target)) => {
+            format!("Creating branch {}", target.name)
+        }
         ApplicationAction::Update => "Updating Diffo".to_owned(),
     }
 }

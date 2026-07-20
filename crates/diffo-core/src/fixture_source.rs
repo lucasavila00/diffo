@@ -322,7 +322,8 @@ impl Repository for MutableFixtureRepository {
                 }
                 RepositoryAction::Fetch
                 | RepositoryAction::Sync
-                | RepositoryAction::Checkout(_) => {
+                | RepositoryAction::Checkout(_)
+                | RepositoryAction::CreateBranch(_) => {
                     bail!("mock repository cannot execute {action:?}: no remote configured")
                 }
             }

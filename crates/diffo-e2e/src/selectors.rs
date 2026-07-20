@@ -62,6 +62,25 @@ pub(super) fn find_dialog_action(
         .collect()
 }
 
+pub(super) fn find_toast_action(
+    cells: &[Vec<String>],
+    toast: &str,
+    action: &str,
+) -> Vec<(u16, u16)> {
+    cells
+        .iter()
+        .enumerate()
+        .filter(|(_, row)| !find_in_row(row, toast).is_empty())
+        .flat_map(|(toast_row, _)| {
+            toast_row.saturating_sub(1)
+                ..=toast_row
+                    .saturating_add(1)
+                    .min(cells.len().saturating_sub(1))
+        })
+        .flat_map(|row| positions(row, find_in_row(&cells[row], action), action))
+        .collect()
+}
+
 pub(super) fn find_text(cells: &[Vec<String>], text: &str) -> Vec<(u16, u16)> {
     cells
         .iter()

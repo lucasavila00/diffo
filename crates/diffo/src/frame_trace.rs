@@ -24,6 +24,8 @@ pub struct FrameRecord {
     frame: u64,
     input_events: Vec<String>,
     refresh_generation: u64,
+    head: String,
+    repository_files: Vec<String>,
     selected_file: Option<String>,
     requested_diff: Option<String>,
     displayed_diff: Option<String>,
@@ -84,6 +86,26 @@ impl FrameRecord {
             frame: 0,
             input_events,
             refresh_generation,
+            head: match &model.snapshot.head {
+                diffo_core::HeadState::Named { name, commit } => {
+                    format!("named:{name}:{commit}")
+                }
+                diffo_core::HeadState::Unborn { name } => format!("unborn:{name}"),
+                diffo_core::HeadState::Detached { commit } => format!("detached:{commit}"),
+            },
+            repository_files: model
+                .snapshot
+                .files
+                .iter()
+                .map(|file| {
+                    format!(
+                        "{}:staged={}:unstaged={}",
+                        file.path.display(),
+                        file.staged.is_some(),
+                        file.unstaged.is_some()
+                    )
+                })
+                .collect(),
             selected_file: model
                 .selected
                 .as_ref()

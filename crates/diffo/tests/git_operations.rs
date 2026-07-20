@@ -8,6 +8,8 @@ mod checkout;
 mod commit;
 #[path = "git_operations/content.rs"]
 mod content;
+#[path = "git_operations/create_branch.rs"]
+mod create_branch;
 #[path = "git_operations/navigation.rs"]
 mod navigation;
 #[path = "git_operations/network.rs"]

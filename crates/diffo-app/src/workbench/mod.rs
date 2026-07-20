@@ -31,6 +31,7 @@ mod application_update;
 mod bindings;
 mod checkout_picker;
 mod command_queue;
+mod create_branch;
 mod full_screen;
 mod help;
 mod modal;
@@ -176,7 +177,7 @@ const SYNC_COMMAND: CommandId = CommandId::new("git.sync");
 const CHECKOUT_COMMAND: CommandId = CommandId::new("git.checkout_to");
 const UPDATE_COMMAND: CommandId = CommandId::new("application.update");
 
-const SHARED_COMMANDS: [Command; 4] = [
+const SHARED_COMMANDS: [Command; 6] = [
     Command {
         id: FETCH_COMMAND,
         label: "Git: Fetch",
@@ -189,6 +190,8 @@ const SHARED_COMMANDS: [Command; 4] = [
         id: CHECKOUT_COMMAND,
         label: "Git: Checkout to...",
     },
+    create_branch::CREATE_BRANCH_PALETTE_COMMAND,
+    create_branch::CREATE_BRANCH_FROM_PALETTE_COMMAND,
     Command {
         id: UPDATE_COMMAND,
         label: "Application: Update Diffo",
@@ -652,6 +655,8 @@ impl Workbench {
             return self.update_diff(Message::ExecuteSync);
         } else if command == CHECKOUT_COMMAND {
             self.open_checkout_picker();
+            return None;
+        } else if self.execute_create_branch_command(command) {
             return None;
         } else if command == UPDATE_COMMAND {
             self.commands.enqueue_update();

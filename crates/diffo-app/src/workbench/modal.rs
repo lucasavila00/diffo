@@ -1,10 +1,12 @@
 use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers};
+use diffo_core::CreateBranchStartPoint;
 use diffo_ui::command_palette::{Command, CommandPalette, PaletteEvent};
 use ratatui::{Frame, layout::Rect};
 
 use super::{
     PromptModal, Workbench, WorkbenchCommand,
     checkout_picker::{CheckoutPicker, CheckoutPickerEvent},
+    create_branch::{CreateBranchEvent, CreateBranchModal},
     help, render_prompt,
 };
 
@@ -12,6 +14,7 @@ pub(super) enum Modal {
     Help,
     CommandPalette(CommandPalette),
     CheckoutPicker(CheckoutPicker),
+    CreateBranch(CreateBranchModal),
     CommitEditor,
     GitPrompt(PromptModal),
 }
@@ -29,14 +32,20 @@ impl Workbench {
         self.dismiss_active_popover();
         self.full_screen = false;
         self.full_screen_pending = false;
-        if matches!(self.modal, Some(Modal::CheckoutPicker(_))) {
+        if matches!(
+            self.modal,
+            Some(Modal::CheckoutPicker(_) | Modal::CreateBranch(_))
+        ) {
             self.pending_branch_query = None;
         }
         self.modal = Some(modal);
     }
 
     pub(super) fn close_modal(&mut self) {
-        if matches!(self.modal, Some(Modal::CheckoutPicker(_))) {
+        if matches!(
+            self.modal,
+            Some(Modal::CheckoutPicker(_) | Modal::CreateBranch(_))
+        ) {
             self.pending_branch_query = None;
         }
         self.modal = None;
@@ -47,6 +56,7 @@ impl Workbench {
             Some(Modal::Help) => help::render(frame, content, self.active_help_rows()),
             Some(Modal::CommandPalette(palette)) => palette.render(frame, content),
             Some(Modal::CheckoutPicker(picker)) => picker.render(frame, area),
+            Some(Modal::CreateBranch(modal)) => modal.render(frame, area),
             Some(Modal::CommitEditor) => {
                 crate::diff::render_commit_editor(frame, &self.diff.model, content);
             }
@@ -64,11 +74,34 @@ impl Workbench {
             Modal::Help => self.handle_help_event(event),
             Modal::CommandPalette(_) => self.handle_palette_event(event, area),
             Modal::CheckoutPicker(_) => self.handle_checkout_picker_event(event, area),
+            Modal::CreateBranch(_) => self.handle_create_branch_event(event, area),
             Modal::CommitEditor => self.handle_commit_editor_event(event, area),
             Modal::GitPrompt(_) => self
                 .handle_prompt_event(event, area)
                 .map(WorkbenchCommand::Effect),
         }
+    }
+
+    fn handle_create_branch_event(
+        &mut self,
+        event: &Event,
+        area: Rect,
+    ) -> Option<WorkbenchCommand> {
+        let modal_event = match self.modal.as_mut() {
+            Some(Modal::CreateBranch(modal)) => modal.handle_event(event, area),
+            _ => return None,
+        };
+        match modal_event {
+            CreateBranchEvent::Close => self.close_modal(),
+            CreateBranchEvent::Create(target) => {
+                self.close_modal();
+                self.commands
+                    .enqueue(diffo_core::RepositoryAction::CreateBranch(Box::new(target)));
+            }
+            CreateBranchEvent::Quit => self.should_quit = true,
+            CreateBranchEvent::Consumed => {}
+        }
+        None
     }
 
     fn handle_checkout_picker_event(
@@ -86,6 +119,16 @@ impl Workbench {
                 self.close_modal();
                 self.commands
                     .enqueue(diffo_core::RepositoryAction::Checkout(Box::new(target)));
+            }
+            CheckoutPickerEvent::CreateBranch(target) => {
+                let branches = match self.modal.as_ref() {
+                    Some(Modal::CheckoutPicker(picker)) => picker.branches(),
+                    _ => Vec::new(),
+                };
+                self.set_modal(Modal::CreateBranch(CreateBranchModal::ready(
+                    branches,
+                    CreateBranchStartPoint::Branch(target),
+                )));
             }
             CheckoutPickerEvent::Quit => self.should_quit = true,
             CheckoutPickerEvent::Consumed => {}
@@ -223,6 +266,7 @@ mod tests {
             Modal::Help,
             Modal::command_palette(Vec::new()),
             Modal::CheckoutPicker(CheckoutPicker::loading(RepositoryQueryId(1))),
+            Modal::CreateBranch(CreateBranchModal::loading(RepositoryQueryId(1))),
             Modal::CommitEditor,
         ] {
             let help = matches!(modal, Modal::Help);

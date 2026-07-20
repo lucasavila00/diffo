@@ -7,19 +7,27 @@ use diffo_core::{
 use diffo_ui::search_picker::{SearchItem, SearchPicker, SearchPickerEvent};
 use ratatui::{Frame, layout::Rect};
 
-use super::{Message, Modal, ToastKind, Workbench};
+use super::{Message, Modal, ToastKind, Workbench, create_branch::CreateBranchModal};
 
 pub(super) enum CheckoutPickerEvent {
     Consumed,
     Close,
     Checkout(CheckoutTarget),
+    CreateBranch(CheckoutTarget),
     Quit,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum CheckoutPickerPurpose {
+    Checkout,
+    CreateBranch,
 }
 
 pub(super) struct CheckoutPicker {
     pub(super) query_id: RepositoryQueryId,
     branches: Vec<BranchRef>,
     loaded_at_unix_seconds: i64,
+    purpose: CheckoutPickerPurpose,
     picker: SearchPicker<CheckoutIdentity, CheckoutTarget>,
 }
 
@@ -31,11 +39,24 @@ struct CheckoutIdentity {
 
 impl CheckoutPicker {
     pub(super) fn loading(query_id: RepositoryQueryId) -> Self {
+        Self::loading_for(query_id, CheckoutPickerPurpose::Checkout)
+    }
+
+    pub(super) fn loading_create_branch(query_id: RepositoryQueryId) -> Self {
+        Self::loading_for(query_id, CheckoutPickerPurpose::CreateBranch)
+    }
+
+    fn loading_for(query_id: RepositoryQueryId, purpose: CheckoutPickerPurpose) -> Self {
+        let title = match purpose {
+            CheckoutPickerPurpose::Checkout => "Checkout to",
+            CheckoutPickerPurpose::CreateBranch => "Create branch from",
+        };
         Self {
             query_id,
             branches: Vec::new(),
             loaded_at_unix_seconds: 0,
-            picker: SearchPicker::new("Checkout to", "Loading branches..."),
+            purpose,
+            picker: SearchPicker::new(title, "Loading branches..."),
         }
     }
 
@@ -68,9 +89,12 @@ impl CheckoutPicker {
             .branches
             .iter()
             .map(|branch| {
-                let enabled = match branch.kind {
-                    BranchKind::Local => current != Some(branch.name.as_str()),
-                    BranchKind::Remote => tracked_remote != Some(branch.name.as_str()),
+                let enabled = match self.purpose {
+                    CheckoutPickerPurpose::CreateBranch => true,
+                    CheckoutPickerPurpose::Checkout => match branch.kind {
+                        BranchKind::Local => current != Some(branch.name.as_str()),
+                        BranchKind::Remote => tracked_remote != Some(branch.name.as_str()),
+                    },
                 };
                 let aliases = match branch.kind {
                     BranchKind::Local => Vec::new(),
@@ -107,13 +131,20 @@ impl CheckoutPicker {
         match self.picker.handle_event(event, area) {
             SearchPickerEvent::Consumed => CheckoutPickerEvent::Consumed,
             SearchPickerEvent::Cancel => CheckoutPickerEvent::Close,
-            SearchPickerEvent::Activate(target) => CheckoutPickerEvent::Checkout(target),
+            SearchPickerEvent::Activate(target) => match self.purpose {
+                CheckoutPickerPurpose::Checkout => CheckoutPickerEvent::Checkout(target),
+                CheckoutPickerPurpose::CreateBranch => CheckoutPickerEvent::CreateBranch(target),
+            },
             SearchPickerEvent::Quit => CheckoutPickerEvent::Quit,
         }
     }
 
     pub(super) fn render(&self, frame: &mut Frame, area: Rect) {
         self.picker.render(frame, area);
+    }
+
+    pub(super) fn branches(&self) -> Vec<BranchRef> {
+        self.branches.clone()
     }
 }
 
@@ -166,17 +197,22 @@ impl Workbench {
 
     pub fn branches_loaded(&mut self, query_id: RepositoryQueryId, branches: Vec<BranchRef>) {
         let snapshot = self.diff.model.snapshot.clone();
-        if let Some(Modal::CheckoutPicker(picker)) = self.modal.as_mut().filter(
-            |modal| matches!(modal, Modal::CheckoutPicker(picker) if picker.query_id == query_id),
-        ) {
-            picker.install(branches, &snapshot);
+        match self.modal.as_mut() {
+            Some(Modal::CheckoutPicker(picker)) if picker.query_id == query_id => {
+                picker.install(branches, &snapshot);
+            }
+            Some(Modal::CreateBranch(modal)) if modal.query_id == Some(query_id) => {
+                modal.install(branches, snapshot.head);
+            }
+            _ => {}
         }
     }
 
     pub fn branches_load_failed(&mut self, query_id: RepositoryQueryId, message: &str) {
-        if self.modal.as_ref().is_some_and(
-            |modal| matches!(modal, Modal::CheckoutPicker(picker) if picker.query_id == query_id),
-        ) {
+        if self.modal.as_ref().is_some_and(|modal| {
+            matches!(modal, Modal::CheckoutPicker(picker) if picker.query_id == query_id)
+                || matches!(modal, Modal::CreateBranch(create) if create.query_id == Some(query_id))
+        }) {
             self.close_modal();
             self.show_toast(
                 ToastKind::Error,
@@ -191,16 +227,35 @@ impl Workbench {
         self.set_modal(Modal::CheckoutPicker(CheckoutPicker::loading(query_id)));
         self.pending_branch_query = Some(query_id);
     }
+
+    pub(super) fn open_create_branch(&mut self) {
+        let query_id = RepositoryQueryId(self.next_query_id);
+        self.next_query_id = self.next_query_id.saturating_add(1);
+        self.set_modal(Modal::CreateBranch(CreateBranchModal::loading(query_id)));
+        self.pending_branch_query = Some(query_id);
+    }
+
+    pub(super) fn open_create_branch_from(&mut self) {
+        let query_id = RepositoryQueryId(self.next_query_id);
+        self.next_query_id = self.next_query_id.saturating_add(1);
+        self.set_modal(Modal::CheckoutPicker(
+            CheckoutPicker::loading_create_branch(query_id),
+        ));
+        self.pending_branch_query = Some(query_id);
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::workbench::{Activity, ApplicationAction, CHECKOUT_COMMAND, workbench_areas};
+    use crate::workbench::{
+        Activity, ApplicationAction, CHECKOUT_COMMAND, create_branch::CREATE_BRANCH_FROM_COMMAND,
+        workbench_areas,
+    };
     use crossterm::event::{
         KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
     };
-    use diffo_core::{RepositoryAction, UpstreamState};
+    use diffo_core::{CreateBranchStartPoint, RepositoryAction, UpstreamState};
     use diffo_ui::tool_areas;
     use ratatui::{Terminal, backend::TestBackend};
 
@@ -343,6 +398,47 @@ mod tests {
                 object_id: "bbb".to_owned(),
             })))
         );
+    }
+
+    #[test]
+    fn create_branch_from_reuses_picker_and_enables_the_current_branch() {
+        let snapshot = RepositorySnapshot {
+            head: HeadState::Named {
+                name: "main".to_owned(),
+                commit: "aaa".to_owned(),
+            },
+            ..RepositorySnapshot::default()
+        };
+        let mut workbench = Workbench::new(snapshot);
+        let area = Rect::new(0, 0, 100, 30);
+
+        let _ = workbench.execute_palette_command(CREATE_BRANCH_FROM_COMMAND);
+        let query_id = workbench.take_branch_query().expect("branch query queued");
+        workbench.branches_loaded(
+            query_id,
+            vec![
+                branch(BranchKind::Local, "main", "aaa"),
+                branch(BranchKind::Local, "topic", "bbb"),
+            ],
+        );
+        let _ = workbench.handle_event(&key(KeyCode::Enter), area);
+        assert!(matches!(workbench.modal, Some(Modal::CreateBranch(_))));
+        for character in "new-topic".chars() {
+            let _ = workbench.handle_event(&key(KeyCode::Char(character)), area);
+        }
+        let _ = workbench.handle_event(&key(KeyCode::Enter), area);
+
+        let command = workbench
+            .take_application_command(std::time::Instant::now())
+            .expect("create branch queued");
+        assert!(matches!(
+            command.action,
+            ApplicationAction::Repository(RepositoryAction::CreateBranch(target))
+                if target.name == "new-topic"
+                    && matches!(&target.start_point, CreateBranchStartPoint::Branch(
+                        CheckoutTarget { full_ref, object_id, .. }
+                    ) if full_ref == "refs/heads/main" && object_id == "aaa")
+        ));
     }
 
     #[test]

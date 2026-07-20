@@ -39,6 +39,10 @@ pub enum Selector {
         dialog: String,
         action: String,
     },
+    ToastAction {
+        toast: String,
+        action: String,
+    },
     VerticalScrollbarEnd,
 }
 
@@ -78,6 +82,14 @@ impl Selector {
     pub fn dialog_action(dialog: impl Into<String>, action: impl Into<String>) -> Self {
         Self::DialogAction {
             dialog: dialog.into(),
+            action: action.into(),
+        }
+    }
+
+    #[must_use]
+    pub fn toast_action(toast: impl Into<String>, action: impl Into<String>) -> Self {
+        Self::ToastAction {
+            toast: toast.into(),
             action: action.into(),
         }
     }

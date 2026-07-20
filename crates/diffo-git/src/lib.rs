@@ -14,11 +14,13 @@ const NO_CHANGE: char = '.';
 mod askpass;
 mod branches;
 mod command;
+mod create_branch;
 mod explorer;
 mod failure;
 mod operation;
 #[cfg(test)]
 mod operation_tests;
+mod refs;
 mod snapshot;
 mod status;
 pub use askpass::run_askpass_if_requested;

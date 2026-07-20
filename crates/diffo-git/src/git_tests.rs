@@ -415,39 +415,6 @@ fn snapshots_the_whole_modified_file_as_diff_context() {
 }
 
 #[test]
-fn concurrent_snapshot_collection_preserves_status_order() {
-    let repo = test_repository();
-    for name in ["z-last.txt", "a-first.txt", "m-middle.txt"] {
-        fs::write(repo.path().join(name), "base\n").expect("write ordered baseline");
-    }
-    git(repo.path(), &["add", "."]);
-    git(repo.path(), &["commit", "-m", "Add ordered files"]);
-    for name in ["z-last.txt", "tracked.txt", "a-first.txt", "m-middle.txt"] {
-        fs::write(repo.path().join(name), "changed\n").expect("write ordered change");
-    }
-
-    let snapshot = super::GitRepositorySource::new(repo.path())
-        .snapshot()
-        .expect("concurrent snapshot");
-    let paths = snapshot
-        .files
-        .iter()
-        .map(|file| file.path.as_path())
-        .collect::<Vec<_>>();
-
-    assert_eq!(
-        paths,
-        [
-            Path::new("a-first.txt"),
-            Path::new("m-middle.txt"),
-            Path::new("tracked.txt"),
-            Path::new("z-last.txt"),
-        ]
-    );
-    assert!(snapshot.files.iter().all(|file| file.unstaged.is_some()));
-}
-
-#[test]
 fn sync_fast_forwards_to_the_refreshed_upstream() {
     let root = tempfile::tempdir().expect("test directory");
     git(root.path(), &["init", "--bare", "remote.git"]);

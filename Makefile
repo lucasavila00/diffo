@@ -1,4 +1,4 @@
-.PHONY: all check-e2e-binary check-file-lines diffo install diffo-mock e2e e2e-review measure-cpu measure-text-readiness
+.PHONY: all check-e2e-binary check-file-lines diffo install diffo-mock e2e e2e-review measure-cpu measure-startup measure-text-readiness
 
 # Run every automated repository check once. Workspace tests include the black-box
 # diffo-e2e package and the diffo integration tests.
@@ -49,6 +49,11 @@ e2e-review:
 measure-cpu:
 	cargo build --release --package diffo
 	cargo run --release --package diffo-measure
+
+# Measure time to first terminal output and usable repository state at startup.
+measure-startup:
+	cargo build --release --package diffo
+	cargo run --release --package diffo-measure -- --startup
 
 # Measure deterministic 100x30 Diff and Explorer text-readiness workloads.
 measure-text-readiness:

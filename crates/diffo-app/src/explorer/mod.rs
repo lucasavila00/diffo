@@ -63,7 +63,7 @@ pub struct ExplorerActivity {
 
 impl ExplorerActivity {
     #[must_use]
-    pub fn new(snapshot: RepositorySnapshot) -> Self {
+    pub fn new(snapshot: &RepositorySnapshot) -> Self {
         let mut activity = Self {
             model: ExplorerModel::new(snapshot),
             picker: FilePicker::default(),
@@ -118,7 +118,7 @@ impl ExplorerActivity {
         });
     }
 
-    pub fn repository_changed(&mut self, snapshot: RepositorySnapshot) {
+    pub fn repository_changed(&mut self, snapshot: &RepositorySnapshot) {
         if !self.model.repository_changed(snapshot) {
             return;
         }

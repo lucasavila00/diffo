@@ -6,7 +6,7 @@ use std::collections::HashMap;
 
 #[test]
 fn explorer_errors_render_embedded_newlines_as_inert_text() {
-    let mut explorer = ExplorerActivity::new(RepositorySnapshot::default());
+    let mut explorer = ExplorerActivity::new(&RepositorySnapshot::default());
     explorer.model.error = Some("File load failed\ntry another file".to_owned());
     let area = Rect::new(0, 0, 80, 12);
     let split = PaneSplit::default();
@@ -31,7 +31,7 @@ fn explorer_errors_render_embedded_newlines_as_inert_text() {
 
 #[test]
 fn stale_file_results_do_not_commit() {
-    let mut explorer = ExplorerActivity::new(RepositorySnapshot::default());
+    let mut explorer = ExplorerActivity::new(&RepositorySnapshot::default());
     explorer.latest_file = 2;
     explorer.pending_path = Some(PathBuf::from("new.rs"));
     explorer.model.viewer = Some(Viewer {
@@ -66,7 +66,7 @@ fn stale_file_results_do_not_commit() {
 
 #[test]
 fn uppercase_shortcuts_are_rejected() {
-    let mut explorer = ExplorerActivity::new(RepositorySnapshot::default());
+    let mut explorer = ExplorerActivity::new(&RepositorySnapshot::default());
     let event = Event::Key(crossterm::event::KeyEvent::new(
         KeyCode::Char('J'),
         KeyModifiers::SHIFT,
@@ -80,7 +80,7 @@ fn uppercase_shortcuts_are_rejected() {
 
 #[test]
 fn clicking_a_directory_toggles_expansion() {
-    let mut explorer = ExplorerActivity::new(RepositorySnapshot::default());
+    let mut explorer = ExplorerActivity::new(&RepositorySnapshot::default());
     explorer.accept(ExplorerOutcome::Paths {
         id: 1,
         result: Ok(vec![PathBuf::from("src/main.rs")]),
@@ -110,7 +110,7 @@ fn clicking_a_directory_toggles_expansion() {
 
 #[test]
 fn tree_header_buttons_expand_and_collapse_every_directory() {
-    let mut explorer = ExplorerActivity::new(RepositorySnapshot::default());
+    let mut explorer = ExplorerActivity::new(&RepositorySnapshot::default());
     explorer.accept(ExplorerOutcome::Paths {
         id: 1,
         result: Ok(vec![PathBuf::from("src/nested/main.rs")]),
@@ -144,7 +144,7 @@ fn tree_header_buttons_expand_and_collapse_every_directory() {
 
 #[test]
 fn explorer_uses_the_shared_path_menu() {
-    let mut explorer = ExplorerActivity::new(RepositorySnapshot::default());
+    let mut explorer = ExplorerActivity::new(&RepositorySnapshot::default());
     explorer.accept(ExplorerOutcome::Paths {
         id: 1,
         result: Ok(vec![PathBuf::from("file.txt")]),
@@ -190,7 +190,7 @@ fn explorer_uses_the_shared_path_menu() {
 
 #[test]
 fn explorer_commands_use_the_same_state_transitions_as_header_buttons() {
-    let mut explorer = ExplorerActivity::new(RepositorySnapshot::default());
+    let mut explorer = ExplorerActivity::new(&RepositorySnapshot::default());
     explorer.accept(ExplorerOutcome::Paths {
         id: 1,
         result: Ok(vec![PathBuf::from("src/nested/main.rs")]),
@@ -218,7 +218,7 @@ fn deleted_snapshot_path_is_absent_from_the_tree() {
         }],
         ..RepositorySnapshot::default()
     };
-    let mut explorer = ExplorerActivity::new(snapshot);
+    let mut explorer = ExplorerActivity::new(&snapshot);
     explorer.accept(ExplorerOutcome::Paths {
         id: 1,
         result: Ok(vec![PathBuf::from("foo/bar.rs")]),
@@ -257,7 +257,7 @@ fn deleted_snapshot_path_is_absent_from_the_tree() {
 
 #[test]
 fn horizontal_pan_clamps_to_the_visible_code_width_and_returns_to_zero() {
-    let mut explorer = ExplorerActivity::new(RepositorySnapshot::default());
+    let mut explorer = ExplorerActivity::new(&RepositorySnapshot::default());
     explorer.model.viewer = Some(Viewer {
         path: PathBuf::from("wide.txt"),
         title: Box::new(Line::raw("  wide.txt")),
@@ -302,7 +302,7 @@ fn horizontal_pan_clamps_to_the_visible_code_width_and_returns_to_zero() {
 
 #[test]
 fn uncached_scroll_uses_the_model_viewport_until_coverage_arrives() {
-    let mut explorer = ExplorerActivity::new(RepositorySnapshot::default());
+    let mut explorer = ExplorerActivity::new(&RepositorySnapshot::default());
     let path = PathBuf::from("large.rs");
     let lines = (1..=100)
         .map(|line| format!("let value_{line} = {line};"))
@@ -358,7 +358,7 @@ fn uncached_scroll_uses_the_model_viewport_until_coverage_arrives() {
 
 #[test]
 fn file_requests_coalesce_to_the_newest_viewport() {
-    let mut explorer = ExplorerActivity::new(RepositorySnapshot::default());
+    let mut explorer = ExplorerActivity::new(&RepositorySnapshot::default());
     explorer.queued.clear();
     explorer
         .model

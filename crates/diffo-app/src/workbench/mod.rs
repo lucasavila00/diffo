@@ -221,13 +221,14 @@ trait Tool {
 impl Workbench {
     #[must_use]
     pub fn new(snapshot: RepositorySnapshot) -> Self {
+        let explorer = ExplorerActivity::new(&snapshot);
         Self {
             active: Activity::Diff,
             diff: DiffActivity {
-                model: Model::new(snapshot.clone()),
+                model: Model::new(snapshot),
                 renderer: Renderer::new(),
             },
-            explorer: ExplorerActivity::new(snapshot),
+            explorer,
             search: SearchActivity,
             pane_split: PaneSplit::default(),
             toasts: ToastQueue::new(),
@@ -603,7 +604,7 @@ impl Workbench {
         );
         match &message {
             Message::SnapshotLoaded(snapshot) | Message::OperationCompleted(_, _, snapshot) => {
-                self.explorer.repository_changed(snapshot.clone());
+                self.explorer.repository_changed(snapshot);
             }
             _ => {}
         }

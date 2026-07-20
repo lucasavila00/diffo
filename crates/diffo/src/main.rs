@@ -158,8 +158,9 @@ fn print_update_error(error: &diffo_update::UpdateError) {
 
 fn run_application() -> Result<()> {
     let shutdown = install_signal_handlers()?;
+    let mock_path = env::var_os("DIFFO_MOCK_FILE");
     let (repository, watch_paths): (Arc<dyn Repository>, Option<Vec<_>>) =
-        if let Some(path) = env::var_os("DIFFO_MOCK_FILE") {
+        if let Some(path) = mock_path {
             (
                 Arc::new(MutableFixtureRepository::new_with_large_files(path)?),
                 None,
@@ -180,7 +181,7 @@ fn run_application() -> Result<()> {
     }
 
     let mut workbench = Workbench::new(snapshot);
-    let tool_tasks = ToolTasks::start(Arc::clone(&repository));
+    let tool_tasks = ToolTasks::start(repository);
     let mut update_tasks = UpdateTasks::new();
     tool_tasks.drain(&mut workbench);
     let mut tracer = FrameTracer::from_environment();
@@ -302,7 +303,6 @@ fn run(
         draw_start_us,
         draw_end_us,
     ));
-    update_tasks.start_passive_check();
     while !workbench.should_quit() && !shutdown.load(Ordering::Relaxed) {
         workbench.tick(Instant::now());
         let poll_timeout = if workbench.is_preparing()
@@ -560,12 +560,11 @@ fn copy_with_tmux(value: &str) -> Result<()> {
 mod tests {
     use std::time::{Duration, Instant};
 
+    use super::{EnableActionMouseCapture, WheelFriction, trace_input_events};
     use crossterm::{
         Command,
         event::{Event, KeyModifiers, MouseEvent, MouseEventKind},
     };
-
-    use super::{EnableActionMouseCapture, WheelFriction, trace_input_events};
 
     #[test]
     fn mouse_capture_requests_only_actionable_events() {

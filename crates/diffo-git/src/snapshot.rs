@@ -4,12 +4,18 @@ use std::{
     fs,
     path::{Path, PathBuf},
     process::Command,
+    thread,
 };
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, anyhow};
 use diffo_core::{ChangeKind, Commit, FileDiff, FileState, RepositorySnapshot, RepositorySource};
 
-use super::{GitRepositorySource, NO_CHANGE, status::parse_status};
+use super::{
+    GitRepositorySource, NO_CHANGE,
+    status::{ParsedFile, parse_status},
+};
+
+const MAX_SNAPSHOT_WORKERS: usize = 8;
 
 impl GitRepositorySource {
     /// Return the worktree and external Git metadata paths that affect snapshots.
@@ -141,6 +147,83 @@ impl GitRepositorySource {
             })
             .collect())
     }
+
+    fn file_state(&self, file: ParsedFile) -> Result<FileState> {
+        let path = file.state.path.to_string_lossy();
+        let old_path = file
+            .state
+            .old_path
+            .as_ref()
+            .map(|path| path.to_string_lossy());
+        let paths = old_path
+            .as_deref()
+            .map_or_else(|| vec![path.as_ref()], |old| vec![old, path.as_ref()]);
+        let conflicted = file.state.kind == ChangeKind::Conflicted;
+        let mut staged = if conflicted || file.index_status == NO_CHANGE {
+            None
+        } else {
+            self.diff(&paths, true)?
+        };
+        let mut unstaged = if matches!(
+            file.state.kind,
+            ChangeKind::Untracked | ChangeKind::Conflicted
+        ) {
+            Some(self.worktree_file_diff(&file.state.path)?)
+        } else if file.worktree_status == NO_CHANGE {
+            None
+        } else {
+            self.diff(&paths, false)?
+        };
+        if matches!(file.state.kind, ChangeKind::Renamed | ChangeKind::Copied) {
+            staged = self.rename_context(staged, &file.state.path, true)?;
+            unstaged = self.rename_context(unstaged, &file.state.path, false)?;
+        }
+        Ok(FileState {
+            staged,
+            unstaged,
+            ..file.state
+        })
+    }
+
+    fn file_states(&self, files: Vec<ParsedFile>) -> Result<Vec<FileState>> {
+        let worker_count = files.len().min(MAX_SNAPSHOT_WORKERS);
+        if worker_count <= 1 {
+            return files
+                .into_iter()
+                .map(|file| self.file_state(file))
+                .collect();
+        }
+
+        let mut buckets = (0..worker_count).map(|_| Vec::new()).collect::<Vec<_>>();
+        for (index, file) in files.into_iter().enumerate() {
+            buckets[index % worker_count].push((index, file));
+        }
+        let mut completed = thread::scope(|scope| {
+            let workers = buckets
+                .into_iter()
+                .map(|bucket| {
+                    scope.spawn(move || {
+                        bucket
+                            .into_iter()
+                            .map(|(index, file)| self.file_state(file).map(|file| (index, file)))
+                            .collect::<Result<Vec<_>>>()
+                    })
+                })
+                .collect::<Vec<_>>();
+            let outcomes = workers
+                .into_iter()
+                .map(std::thread::ScopedJoinHandle::join)
+                .collect::<Vec<_>>();
+            let mut completed = Vec::new();
+            for outcome in outcomes {
+                completed
+                    .extend(outcome.map_err(|_| anyhow!("repository snapshot worker panicked"))??);
+            }
+            Ok::<_, anyhow::Error>(completed)
+        })?;
+        completed.sort_unstable_by_key(|(index, _)| *index);
+        Ok(completed.into_iter().map(|(_, file)| file).collect())
+    }
 }
 
 impl RepositorySource for GitRepositorySource {
@@ -153,44 +236,7 @@ impl RepositorySource for GitRepositorySource {
             "-z",
         ])?;
         let parsed = parse_status(&status)?;
-        let mut files = Vec::with_capacity(parsed.files.len());
-
-        for file in parsed.files {
-            let path = file.state.path.to_string_lossy();
-            let old_path = file
-                .state
-                .old_path
-                .as_ref()
-                .map(|path| path.to_string_lossy());
-            let paths = old_path
-                .as_deref()
-                .map_or_else(|| vec![path.as_ref()], |old| vec![old, path.as_ref()]);
-            let conflicted = file.state.kind == ChangeKind::Conflicted;
-            let mut staged = if conflicted || file.index_status == NO_CHANGE {
-                None
-            } else {
-                self.diff(&paths, true)?
-            };
-            let mut unstaged = if matches!(
-                file.state.kind,
-                ChangeKind::Untracked | ChangeKind::Conflicted
-            ) {
-                Some(self.worktree_file_diff(&file.state.path)?)
-            } else if file.worktree_status == NO_CHANGE {
-                None
-            } else {
-                self.diff(&paths, false)?
-            };
-            if matches!(file.state.kind, ChangeKind::Renamed | ChangeKind::Copied) {
-                staged = self.rename_context(staged, &file.state.path, true)?;
-                unstaged = self.rename_context(unstaged, &file.state.path, false)?;
-            }
-            files.push(FileState {
-                staged,
-                unstaged,
-                ..file.state
-            });
-        }
+        let files = self.file_states(parsed.files)?;
 
         Ok(RepositorySnapshot {
             head: parsed.head,

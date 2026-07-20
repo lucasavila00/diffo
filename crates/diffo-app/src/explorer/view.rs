@@ -299,7 +299,7 @@ mod tests {
 
     #[test]
     fn tree_picker_shows_non_deleted_git_colors_without_status_letters() {
-        let mut model = ExplorerModel::new(RepositorySnapshot {
+        let mut model = ExplorerModel::new(&RepositorySnapshot {
             files: vec![
                 FileState {
                     path: "conflicted.rs".into(),
@@ -379,7 +379,7 @@ mod tests {
 
     #[test]
     fn explorer_aligns_file_and_folder_names_at_each_depth() {
-        let mut model = ExplorerModel::new(RepositorySnapshot::default());
+        let mut model = ExplorerModel::new(&RepositorySnapshot::default());
         model.install_paths(vec![
             "directory/nested/child.rs".into(),
             "directory/plain.rs".into(),
@@ -412,7 +412,7 @@ mod tests {
             children: Vec::new(),
         };
         let title = entry_label(&entry);
-        let mut model = ExplorerModel::new(diffo_core::RepositorySnapshot::default());
+        let mut model = ExplorerModel::new(&diffo_core::RepositorySnapshot::default());
         model.viewer = Some(super::super::model::Viewer {
             path: "different-path.rs".into(),
             title: Box::new(title),
@@ -435,7 +435,7 @@ mod tests {
 
     #[test]
     fn horizontal_pan_keeps_the_gutter_and_renders_control_text_inertly() {
-        let mut model = ExplorerModel::new(diffo_core::RepositorySnapshot::default());
+        let mut model = ExplorerModel::new(&diffo_core::RepositorySnapshot::default());
         model.viewer = Some(super::super::model::Viewer {
             path: "wide.txt".into(),
             title: Box::new(Line::raw("  wide.txt")),
@@ -479,7 +479,7 @@ mod tests {
             .expect("highlighted Rust keyword")
             .foreground;
 
-        let mut model = ExplorerModel::new(diffo_core::RepositorySnapshot::default());
+        let mut model = ExplorerModel::new(&diffo_core::RepositorySnapshot::default());
         model.viewer = Some(super::super::model::Viewer {
             path: "main.rs".into(),
             title: Box::new(Line::raw("  main.rs")),
@@ -540,7 +540,7 @@ mod tests {
 
     #[test]
     fn full_screen_file_text_has_no_scroll_controls() {
-        let mut model = ExplorerModel::new(diffo_core::RepositorySnapshot::default());
+        let mut model = ExplorerModel::new(&diffo_core::RepositorySnapshot::default());
         model.viewer = Some(super::super::model::Viewer {
             path: "many.txt".into(),
             title: Box::new(Line::raw("many.txt")),
@@ -573,7 +573,7 @@ mod tests {
 
     #[test]
     fn skeleton_renders_line_numbers_without_text_or_markers() {
-        let mut model = ExplorerModel::new(diffo_core::RepositorySnapshot::default());
+        let mut model = ExplorerModel::new(&diffo_core::RepositorySnapshot::default());
         model.viewer = Some(super::super::model::Viewer {
             path: "pending.rs".into(),
             title: Box::new(Line::raw("  pending.rs")),

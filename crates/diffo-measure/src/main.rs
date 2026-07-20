@@ -18,6 +18,8 @@ use anyhow::{Context, Result, ensure};
 use portable_pty::{CommandBuilder, PtySize, native_pty_system};
 use serde::Deserialize;
 
+mod startup;
+
 const SETTLE_TIME: Duration = Duration::from_secs(1);
 const SAMPLE_TIME: Duration = Duration::from_secs(5);
 const WARMUP_RUNS: usize = 3;
@@ -78,8 +80,11 @@ fn main() -> Result<()> {
         binary.display()
     );
 
-    if std::env::args().any(|argument| argument == "--text-readiness") {
-        return measure_text_readiness(&binary);
+    match std::env::args().nth(1).as_deref() {
+        Some("--startup") => return startup::measure(&binary, &fixture, &root),
+        Some("--text-readiness") => return measure_text_readiness(&binary),
+        Some(argument) => anyhow::bail!("unknown measurement argument: {argument}"),
+        None => {}
     }
 
     let ticks_per_second = clock_ticks_per_second()?;

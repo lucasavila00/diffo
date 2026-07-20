@@ -56,7 +56,7 @@ impl TreeEntry {
 }
 
 pub(crate) struct ExplorerModel {
-    snapshot: RepositorySnapshot,
+    statuses: HashMap<PathBuf, ChangeKind>,
     paths: Vec<PathBuf>,
     pub(crate) entries: Vec<TreeEntry>,
     pub(crate) viewer_scroll: usize,
@@ -66,9 +66,9 @@ pub(crate) struct ExplorerModel {
 }
 
 impl ExplorerModel {
-    pub(crate) fn new(snapshot: RepositorySnapshot) -> Self {
+    pub(crate) fn new(snapshot: &RepositorySnapshot) -> Self {
         Self {
-            snapshot,
+            statuses: snapshot_statuses(snapshot),
             paths: Vec::new(),
             entries: Vec::new(),
             viewer_scroll: 0,
@@ -78,11 +78,12 @@ impl ExplorerModel {
         }
     }
 
-    pub(crate) fn repository_changed(&mut self, snapshot: RepositorySnapshot) -> bool {
-        if self.snapshot == snapshot {
+    pub(crate) fn repository_changed(&mut self, snapshot: &RepositorySnapshot) -> bool {
+        let statuses = snapshot_statuses(snapshot);
+        if self.statuses == statuses {
             return false;
         }
-        self.snapshot = snapshot;
+        self.statuses = statuses;
         self.rebuild();
         true
     }
@@ -95,15 +96,9 @@ impl ExplorerModel {
     }
 
     fn rebuild(&mut self) {
-        let statuses = self
-            .snapshot
-            .files
-            .iter()
-            .map(|file| (file.path.clone(), file.kind))
-            .collect::<HashMap<_, _>>();
         let mut root = TreeBuilder::default();
         for path in &self.paths {
-            root.insert(path, statuses.get(path).copied());
+            root.insert(path, self.statuses.get(path).copied());
         }
         self.entries = root.finish(Path::new(""));
     }
@@ -111,6 +106,14 @@ impl ExplorerModel {
     pub(crate) fn file_entry(&self, path: &Path) -> Option<&TreeEntry> {
         find_entry(&self.entries, &EntryId::File(path.to_path_buf()))
     }
+}
+
+fn snapshot_statuses(snapshot: &RepositorySnapshot) -> HashMap<PathBuf, ChangeKind> {
+    snapshot
+        .files
+        .iter()
+        .map(|file| (file.path.clone(), file.kind))
+        .collect()
 }
 
 #[derive(Default)]
@@ -204,7 +207,7 @@ mod tests {
             }],
             ..RepositorySnapshot::default()
         };
-        let mut model = ExplorerModel::new(snapshot);
+        let mut model = ExplorerModel::new(&snapshot);
         model.install_paths(vec![
             PathBuf::from("README.md"),
             PathBuf::from("src/changed.rs"),
@@ -229,7 +232,7 @@ mod tests {
         assert!(matches!(model.entries[1].id, EntryId::Directory(_)));
         assert_eq!(model.entries[1].status, Some(ChangeKind::Modified));
 
-        assert!(model.repository_changed(RepositorySnapshot::default()));
+        assert!(model.repository_changed(&RepositorySnapshot::default()));
         assert_eq!(model.entries[1].status, None);
         assert_eq!(
             model
@@ -238,6 +241,29 @@ mod tests {
                 .status,
             None
         );
+    }
+
+    #[test]
+    fn ignores_diff_body_only_repository_changes() {
+        let snapshot = RepositorySnapshot {
+            files: vec![FileState {
+                path: PathBuf::from("src/changed.rs"),
+                old_path: None,
+                kind: ChangeKind::Modified,
+                staged: None,
+                unstaged: Some(FileDiff {
+                    text: "before".to_owned(),
+                }),
+            }],
+            ..RepositorySnapshot::default()
+        };
+        let mut model = ExplorerModel::new(&snapshot);
+        let mut changed = snapshot;
+        changed.files[0].unstaged = Some(FileDiff {
+            text: "after".to_owned(),
+        });
+
+        assert!(!model.repository_changed(&changed));
     }
 
     #[test]
@@ -292,7 +318,7 @@ mod tests {
             }],
             ..RepositorySnapshot::default()
         };
-        let mut model = ExplorerModel::new(snapshot);
+        let mut model = ExplorerModel::new(&snapshot);
         model.install_paths(vec![PathBuf::from("foo/bar.rs")]);
 
         assert_eq!(model.entries.len(), 1);

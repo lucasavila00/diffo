@@ -3,7 +3,7 @@
 set -eu
 
 asset="diffo-x86_64-unknown-linux-gnu"
-release_url="https://github.com/lucasavila00/diffo/releases/latest/download"
+release_url="https://raw.githubusercontent.com/lucasavila00/diffo/release"
 install_directory="/usr/local/bin"
 destination="${install_directory}/diffo"
 

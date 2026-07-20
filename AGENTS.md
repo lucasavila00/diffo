@@ -149,11 +149,14 @@ This repository is a Rust workspace containing small command-line utilities. Eac
 
 ## Release publication
 
-- Stable releases use `<major>.<minor>.<patch>` tags.
+- Publish a stable release for every push to `main`; maintainers do not create release
+  tags. The workflow derives a stable version from the workspace release line and
+  mainline commit count, then atomically replaces the tagless `release` branch.
 - Publish only the GNU/Linux executable, unsigned schema-1 update metadata, and
   `SHA256SUMS`.
-- Embed the tag version in the binary and update metadata independently of
-  the Cargo package version.
+- Embed the workflow-derived version in the binary and update metadata.
+- Keep `install.sh` pointed at the tagless release branch and allow it to replace an
+  existing `/usr/local/bin/diffo` installation.
 
 ## Validation
 

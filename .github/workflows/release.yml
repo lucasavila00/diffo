@@ -2,8 +2,8 @@ name: Release Diffo
 
 on:
   push:
-    tags:
-      - "[0-9]+.[0-9]+.[0-9]+"
+    branches:
+      - main
 
 permissions:
   contents: write
@@ -15,17 +15,28 @@ jobs:
     env:
       TARGET: x86_64-unknown-linux-gnu
       ASSET: diffo-x86_64-unknown-linux-gnu
-      VERSION: ${{ github.ref_name }}
-      DIFFO_RELEASE_VERSION: ${{ github.ref_name }}
 
     steps:
-      - name: Check out immutable tag
+      - name: Check out main commit
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: x86_64-unknown-linux-gnu
+
+      - name: Derive release version
+        run: |
+          set -euo pipefail
+          package_version=$(cargo metadata --no-deps --format-version 1 |
+            jq -r '.packages[] | select(.name == "diffo") | .version')
+          release_line=${package_version%.*}
+          mainline_commit=$(git rev-list --count --first-parent HEAD)
+          version=${release_line}.${mainline_commit}
+          echo "VERSION=${version}" >> "${GITHUB_ENV}"
+          echo "DIFFO_RELEASE_VERSION=${version}" >> "${GITHUB_ENV}"
 
       - name: Cache Cargo build
         uses: Swatinem/rust-cache@v2
@@ -50,15 +61,21 @@ jobs:
             > dist/update-v1.json
           (cd dist && sha256sum "${ASSET}" update-v1.json > SHA256SUMS)
 
-      - name: Publish stable release
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: Publish main commit to release branch
         run: |
-          gh release create "${GITHUB_REF_NAME}" \
-            --repo "${GITHUB_REPOSITORY}" \
-            --title "Diffo ${VERSION}" \
-            --generate-notes \
-            --verify-tag \
-            dist/diffo-x86_64-unknown-linux-gnu \
-            dist/update-v1.json \
-            dist/SHA256SUMS
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          asset_blob=$(git hash-object -w "dist/${ASSET}")
+          manifest_blob=$(git hash-object -w dist/update-v1.json)
+          checksums_blob=$(git hash-object -w dist/SHA256SUMS)
+          publication_tree=$(
+            printf '100644 blob %s\tSHA256SUMS\n100644 blob %s\t%s\n100644 blob %s\tupdate-v1.json\n' \
+              "${checksums_blob}" "${asset_blob}" "${ASSET}" "${manifest_blob}" |
+              git mktree
+          )
+          publication_commit=$(
+            printf 'Publish %s from %s\n' "${VERSION}" "${GITHUB_SHA}" |
+              git commit-tree "${publication_tree}"
+          )
+          git push --force origin "${publication_commit}:refs/heads/release"

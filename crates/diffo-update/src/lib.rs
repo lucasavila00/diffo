@@ -10,7 +10,7 @@ use reqwest::{StatusCode, blocking::Client, redirect::Policy};
 pub use install::{InstallOutcome, resolved_executable};
 pub use protocol::{Asset, CheckOutcome, Manifest, UpdatePlan};
 
-const DEFAULT_BASE_URL: &str = "https://github.com/lucasavila00/diffo/releases/latest/download";
+const DEFAULT_BASE_URL: &str = "https://raw.githubusercontent.com/lucasavila00/diffo/release";
 const MANIFEST_NAME: &str = "update-v1.json";
 const MAX_METADATA_BYTES: u64 = 1024 * 1024;
 const BUILD_VERSION: &str = selected_build_version(option_env!("DIFFO_RELEASE_VERSION"));

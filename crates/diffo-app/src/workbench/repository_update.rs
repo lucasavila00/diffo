@@ -56,8 +56,12 @@ impl Workbench {
                 command_id,
                 failure,
             } => self.action_failed(command_id, failure),
-            RepositoryUpdateKind::CommandCancelled { command_id, action } => {
-                self.operation_cancelled(command_id, action);
+            RepositoryUpdateKind::CommandCancelled {
+                command_id,
+                action,
+                snapshot,
+            } => {
+                self.operation_cancelled(command_id, action, snapshot);
             }
         }
         true
@@ -99,7 +103,12 @@ impl Workbench {
         let _ = self.update_diff(Message::ActionFailed(failure));
     }
 
-    pub fn operation_cancelled(&mut self, id: ApplicationCommandId, action: RepositoryAction) {
+    pub fn operation_cancelled(
+        &mut self,
+        id: ApplicationCommandId,
+        action: RepositoryAction,
+        snapshot: RepositorySnapshot,
+    ) {
         if self
             .commands
             .acknowledge(id, CommandResult::Cancelled)
@@ -110,6 +119,7 @@ impl Workbench {
         self.close_prompt(id);
         self.finish_command_progress(id);
         let _ = self.update_diff(Message::OperationCancelled(action));
+        self.repository_changed(snapshot);
     }
 
     pub(super) fn finish_command_progress(&mut self, id: ApplicationCommandId) {

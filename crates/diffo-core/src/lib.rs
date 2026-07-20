@@ -193,6 +193,7 @@ pub enum RepositoryUpdateKind {
     CommandCancelled {
         command_id: ApplicationCommandId,
         action: RepositoryAction,
+        snapshot: RepositorySnapshot,
     },
 }
 
@@ -254,6 +255,7 @@ pub enum GitPrompt {
     Username { host: String },
     Secret { kind: SecretKind, context: String },
     ConfirmSshHost { host: String, fingerprint: String },
+    ConfirmProtectedBranchPush { destination: String, commits: usize },
 }
 
 pub enum PromptAnswer {

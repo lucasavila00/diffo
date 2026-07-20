@@ -203,6 +203,19 @@ impl PromptHandler for CancelPrompts {
     }
 }
 
+struct ConfirmPrompts;
+
+impl PromptHandler for ConfirmPrompts {
+    fn prompt(
+        &self,
+        _id: PromptId,
+        _prompt: GitPrompt,
+        _cancellation: &CancellationHandle,
+    ) -> PromptAnswer {
+        PromptAnswer::Confirm
+    }
+}
+
 #[test]
 fn cancelling_real_checkout_blocked_inside_fsmonitor_preserves_head_and_worktree() {
     let repo = test_repository();
@@ -430,19 +443,37 @@ fn sync_fast_forwards_to_the_refreshed_upstream() {
 }
 
 #[test]
+fn sync_cannot_push_a_protected_branch_without_confirmation_context() {
+    let repository = sync_repository();
+    fs::write(repository.work.join("local.txt"), "local\n").unwrap();
+    git(&repository.work, &["add", "."]);
+    git(&repository.work, &["commit", "-m", "Local commit"]);
+    let remote_before = remote_head(&repository.seed);
+
+    let failure = super::GitRepositorySource::new(&repository.work)
+        .apply(&RepositoryAction::Sync)
+        .expect_err("protected push without confirmation must stop");
+
+    assert_eq!(failure.kind, FailureKind::Unknown);
+    assert_eq!(
+        failure.detail,
+        "protected branch push confirmation is unavailable"
+    );
+    assert_eq!(remote_head(&repository.seed), remote_before);
+}
+
+#[test]
 fn sync_pushes_local_only_commits_after_fetching() {
     let repository = sync_repository();
     fs::write(repository.work.join("local.txt"), "local\n").unwrap();
     git(&repository.work, &["add", "."]);
     git(&repository.work, &["commit", "-m", "Local commit"]);
 
-    let result = super::GitRepositorySource::new(&repository.work)
-        .apply(&RepositoryAction::Sync)
-        .expect("sync local commit");
+    let result = confirmed_sync(&repository.work).expect("sync local commit");
 
     assert!(matches!(
         result,
-        OperationResult::Sync { plan }
+        OperationOutcome::Completed(OperationResult::Sync { plan })
             if plan.local_only == 1 && plan.upstream_only == 0
     ));
     assert_eq!(
@@ -464,14 +495,12 @@ fn sync_rebases_clean_divergence_and_pushes_without_a_merge_commit() {
     git(&repository.seed, &["push", "origin", "HEAD"]);
     let remote = git_stdout(&repository.seed, &["rev-parse", "HEAD"]);
 
-    let result = super::GitRepositorySource::new(&repository.work)
-        .apply(&RepositoryAction::Sync)
-        .expect("sync divergent commits");
+    let result = confirmed_sync(&repository.work).expect("sync divergent commits");
     let new_local = git_stdout(&repository.work, &["rev-parse", "HEAD"]);
 
     assert!(matches!(
         result,
-        OperationResult::Sync { plan }
+        OperationOutcome::Completed(OperationResult::Sync { plan })
             if plan.local_only == 1 && plan.upstream_only == 1
     ));
     assert_ne!(
@@ -602,6 +631,15 @@ fn sync_repository() -> SyncRepository {
     git(&work, &["config", "user.name", "Diffo Test"]);
     git(&work, &["config", "user.email", "diffo@example.invalid"]);
     SyncRepository { root, seed, work }
+}
+
+fn confirmed_sync(
+    repository: &Path,
+) -> std::result::Result<OperationOutcome, diffo_core::OperationFailure> {
+    let context =
+        RepositoryOperationContext::new(Arc::new(ConfirmPrompts), CancellationHandle::default());
+    super::GitRepositorySource::with_askpass(repository)
+        .apply_with_context(&RepositoryAction::Sync, &context)
 }
 
 fn git_stdout(repo: &Path, args: &[&str]) -> String {

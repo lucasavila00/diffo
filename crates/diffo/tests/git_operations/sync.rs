@@ -2,6 +2,13 @@ use std::{fmt::Write as _, os::unix::fs::PermissionsExt as _};
 
 use super::support::*;
 
+#[derive(Deserialize)]
+struct ProtectedPushFrame {
+    input_events: Vec<String>,
+    protected_push_prompt: bool,
+    head: String,
+}
+
 #[test]
 fn equal_tips_still_fetch_and_show_the_finish_plan() -> Result<()> {
     let repository = TestRepository::new()?;
@@ -56,15 +63,20 @@ fn ahead_branch_shows_the_plan_before_normal_push() -> Result<()> {
     git(&repository.worktree, &["add", "local.txt"])?;
     git(&repository.worktree, &["commit", "-m", "Local commit"])?;
     let remote_before = remote_head(&repository)?;
+    let trace_path = repository.root.path().join("protected-push-frames.ronl");
     let mut gate = diffo_e2e::GitProxy::new("push", diffo_e2e::GitGatePhase::Before)?;
     let path = gate.path()?;
     let mut screen = DiffoScreen::launch_with_env(
         diffo_binary()?,
         &repository.worktree,
-        &[("PATH", path.as_os_str())],
+        &[
+            ("PATH", path.as_os_str()),
+            ("DIFFO_TRACE_FRAMES", trace_path.as_os_str()),
+        ],
     )?;
 
     start_sync(&mut screen)?;
+    confirm_protected_push(&mut screen, 1, "origin/master")?;
     gate.wait_until_blocked()?;
     screen
         .wait_for_text("origin/master has no upstream-only")?
@@ -74,7 +86,75 @@ fn ahead_branch_shows_the_plan_before_normal_push() -> Result<()> {
     assert_eq!(remote_head(&repository)?, remote_before);
 
     gate.release()?;
-    screen.wait_for_text("Pushed master.")?;
+    screen
+        .wait_for_text("Pushed master.")?
+        .press(Key::Char('q'))?
+        .wait_for_exit()?;
+    let trace = fs::read_to_string(&trace_path).context("read protected push frame trace")?;
+    let frames = trace
+        .lines()
+        .map(ron::from_str::<ProtectedPushFrame>)
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+    let modal = frames
+        .iter()
+        .position(|frame| frame.protected_push_prompt)
+        .with_context(|| format!("trace has no protected-push modal frame:\n{trace}"))?;
+    assert!(frames[modal..].iter().any(|frame| {
+        frame
+            .input_events
+            .iter()
+            .any(|event| event.contains("Right"))
+    }));
+    Ok(())
+}
+
+#[test]
+fn cancelling_protected_push_installs_the_fetched_snapshot_without_moving_branches() -> Result<()> {
+    let repository = TestRepository::new()?;
+    fs::write(repository.worktree.join("local.txt"), "local\n")?;
+    git(&repository.worktree, &["add", "local.txt"])?;
+    git(&repository.worktree, &["commit", "-m", "Local commit"])?;
+    let local_before = local_head(&repository)?;
+    let remote = repository.commit_remote("remote.txt", "remote\n", "Remote commit")?;
+    let trace_path = repository.root.path().join("cancelled-push-frames.ronl");
+    let mut screen = DiffoScreen::launch_with_env(
+        diffo_binary()?,
+        &repository.worktree,
+        &[("DIFFO_TRACE_FRAMES", trace_path.as_os_str())],
+    )?;
+
+    start_sync(&mut screen)?;
+    screen
+        .wait_for_text("Confirm push")?
+        .wait_for_text("Push 1 commit directly to origin/master?")?
+        .press(Key::Enter)?
+        .wait_for_text_gone("Confirm push")?
+        .wait_for_text("1 1")?;
+
+    assert_eq!(local_head(&repository)?, local_before);
+    assert_eq!(remote_head(&repository)?, remote);
+    assert_eq!(
+        git_output(&repository.worktree, &["rev-parse", "origin/master"])?,
+        remote
+    );
+    screen.press(Key::Char('q'))?.wait_for_exit()?;
+    let trace = fs::read_to_string(&trace_path).context("read cancelled push frame trace")?;
+    let frames = trace
+        .lines()
+        .map(ron::from_str::<ProtectedPushFrame>)
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+    let modal = frames
+        .iter()
+        .position(|frame| frame.protected_push_prompt)
+        .with_context(|| format!("trace has no protected-push modal frame:\n{trace}"))?;
+    assert!(frames[modal..].iter().any(|frame| {
+        !frame.protected_push_prompt
+            && frame.head.ends_with(&local_before)
+            && frame
+                .input_events
+                .iter()
+                .any(|event| event.contains("Enter"))
+    }));
     Ok(())
 }
 
@@ -98,6 +178,7 @@ fn clean_divergence_in_separate_hunks_rebases_without_a_merge() -> Result<()> {
     let mut screen = repository.screen()?;
 
     start_sync(&mut screen)?;
+    confirm_protected_push(&mut screen, 1, "origin/master")?;
     screen.wait_for_text("Rebased 1 commit and pushed master.")?;
 
     let combined = fs::read_to_string(repository.worktree.join("shared.txt"))?;
@@ -124,6 +205,7 @@ fn conflicting_divergence_aborts_rebase_and_never_pushes() -> Result<()> {
     let mut screen = repository.screen()?;
 
     start_sync(&mut screen)?;
+    confirm_protected_push(&mut screen, 1, "origin/master")?;
     screen
         .wait_for_text("Rebase conflicted in 1 file and was")?
         .wait_for_text("aborted. Nothing was pushed.")?;
@@ -292,6 +374,7 @@ fn local_merge_history_stops_after_fetch_before_rebase_or_push() -> Result<()> {
     let mut screen = repository.screen()?;
 
     start_sync(&mut screen)?;
+    confirm_protected_push(&mut screen, 3, "origin/master")?;
     screen
         .wait_for_text("sync cannot rebase local-only")?
         .wait_for_text("history containing merge commits")?;
@@ -324,6 +407,7 @@ fn rejected_push_after_rebase_keeps_rebased_commits_and_does_not_retry() -> Resu
     let mut screen = repository.screen()?;
 
     start_sync(&mut screen)?;
+    confirm_protected_push(&mut screen, 1, "origin/master")?;
     screen.wait_for_text("Push rejected: rejected by remote hook")?;
     thread::sleep(Duration::from_millis(300));
 

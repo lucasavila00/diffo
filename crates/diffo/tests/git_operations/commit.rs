@@ -26,6 +26,7 @@ fn commit_modal_commits_then_global_sync_publishes() -> Result<()> {
     screen
         .wait_for_text("[ Sync (9 / F9) ]")?
         .click(&Selector::text("[ Sync (9 / F9) ]"))?;
+    confirm_protected_push(&mut screen, 1, "origin/master")?;
     wait_for("global sync", || {
         let local = git_output(&repository.worktree, &["rev-parse", "HEAD"])?;
         let remote = git_output(&repository.worktree, &["ls-remote", "origin", "HEAD"])?;
@@ -146,6 +147,7 @@ fn divergent_global_sync_rebases_and_pushes() -> Result<()> {
     screen
         .wait_for_text("[ Sync (9 / F9) ]")?
         .click(&Selector::text("[ Sync (9 / F9) ]"))?;
+    confirm_protected_push(&mut screen, 2, "origin/master")?;
     gate.wait_until_blocked()?;
     screen
         .wait_for_text("origin/master has 1 upstream-only")?

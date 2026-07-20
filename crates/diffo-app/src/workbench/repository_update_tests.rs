@@ -90,6 +90,40 @@ fn fast_stage_completion_never_reveals_progress_or_creates_a_toast() {
 }
 
 #[test]
+fn cancelled_command_installs_the_post_operation_snapshot() {
+    let mut workbench = Workbench::new(RepositorySnapshot::default());
+    let id = workbench.commands.enqueue(RepositoryAction::Sync);
+    let _ = workbench
+        .take_application_command(Instant::now())
+        .expect("sync command starts");
+    let snapshot = RepositorySnapshot {
+        files: vec![FileState {
+            path: "fetched.txt".into(),
+            old_path: None,
+            kind: ChangeKind::Modified,
+            staged: None,
+            unstaged: Some(FileDiff {
+                text: "fetched".to_owned(),
+            }),
+        }],
+        ..RepositorySnapshot::default()
+    };
+
+    assert!(workbench.accept_repository_update(RepositoryUpdate {
+        generation: 1,
+        kind: RepositoryUpdateKind::CommandCancelled {
+            command_id: id,
+            action: RepositoryAction::Sync,
+            snapshot: snapshot.clone(),
+        },
+    }));
+
+    assert_eq!(workbench.diff.model.snapshot, snapshot);
+    assert!(workbench.commands.active().is_none());
+    assert!(workbench.toasts.as_slice().is_empty());
+}
+
+#[test]
 fn generations_reject_stale_updates_and_only_matching_command_ids_finish_commands() {
     let mut workbench = Workbench::new(RepositorySnapshot::default());
     let id = workbench.commands.enqueue(RepositoryAction::Fetch);

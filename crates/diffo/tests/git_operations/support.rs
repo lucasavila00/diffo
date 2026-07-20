@@ -125,6 +125,22 @@ pub(super) fn wait_for(
     bail!("timed out waiting for {description}")
 }
 
+pub(super) fn confirm_protected_push(
+    screen: &mut DiffoScreen,
+    commits: usize,
+    destination: &str,
+) -> Result<()> {
+    let noun = if commits == 1 { "commit" } else { "commits" };
+    screen
+        .wait_for_text("Confirm push")?
+        .wait_for_text(&format!("Push {commits} {noun} directly to {destination}?"))?
+        .wait_for_text("This bypasses the branch and pull-request workflow.")?
+        .press(Key::Right)?
+        .press(Key::Enter)?
+        .wait_for_text_gone("Confirm push")?;
+    Ok(())
+}
+
 pub(super) struct TestRepository {
     pub(super) root: tempfile::TempDir,
     seed: PathBuf,

@@ -234,13 +234,27 @@ fn execute_command(
                 },
             }),
         },
-        Ok(OperationOutcome::Cancelled) => RepositoryEvent::Update(RepositoryUpdate {
-            generation: *generation,
-            kind: RepositoryUpdateKind::CommandCancelled {
-                command_id,
-                action: action.clone(),
-            },
-        }),
+        Ok(OperationOutcome::Cancelled) => match repository.snapshot() {
+            Ok(snapshot) => RepositoryEvent::Update(RepositoryUpdate {
+                generation: *generation,
+                kind: RepositoryUpdateKind::CommandCancelled {
+                    command_id,
+                    action: action.clone(),
+                    snapshot,
+                },
+            }),
+            Err(error) => RepositoryEvent::Update(RepositoryUpdate {
+                generation: *generation,
+                kind: RepositoryUpdateKind::CommandFailed {
+                    command_id,
+                    failure: OperationFailure {
+                        action: action.clone(),
+                        kind: diffo_core::FailureKind::Unknown,
+                        detail: error.to_string(),
+                    },
+                },
+            }),
+        },
         Err(failure) => RepositoryEvent::Update(RepositoryUpdate {
             generation: *generation,
             kind: RepositoryUpdateKind::CommandFailed {

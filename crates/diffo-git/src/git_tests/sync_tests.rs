@@ -70,9 +70,7 @@ fn sync_rejects_local_merge_commits_before_rebase_or_push() {
     git(&repository.seed, &["push", "origin", "HEAD"]);
     let remote = git_stdout(&repository.seed, &["rev-parse", "HEAD"]);
 
-    let failure = super::super::GitRepositorySource::new(&repository.work)
-        .apply(&RepositoryAction::Sync)
-        .expect_err("merge history must stop sync");
+    let failure = confirmed_sync(&repository.work).expect_err("merge history must stop sync");
 
     assert_eq!(failure.kind, FailureKind::MergeCommits);
     assert_eq!(
@@ -98,9 +96,7 @@ fn rejected_push_after_rebase_leaves_the_rebased_local_commits() {
     fs::write(&hook, "#!/bin/sh\nexit 1\n").unwrap();
     fs::set_permissions(&hook, fs::Permissions::from_mode(0o755)).unwrap();
 
-    let failure = super::super::GitRepositorySource::new(&repository.work)
-        .apply(&RepositoryAction::Sync)
-        .expect_err("hook must reject the push");
+    let failure = confirmed_sync(&repository.work).expect_err("hook must reject the push");
     let new_local = git_stdout(&repository.work, &["rev-parse", "HEAD"]);
 
     assert_eq!(failure.kind, FailureKind::HookRejected);
@@ -121,9 +117,7 @@ fn conflicting_sync_aborts_rebase_and_does_not_push() {
     git(&repository.seed, &["push", "origin", "HEAD"]);
     let remote = git_stdout(&repository.seed, &["rev-parse", "HEAD"]);
 
-    let failure = super::super::GitRepositorySource::new(&repository.work)
-        .apply(&RepositoryAction::Sync)
-        .expect_err("conflicting sync must stop");
+    let failure = confirmed_sync(&repository.work).expect_err("conflicting sync must stop");
 
     assert_eq!(failure.kind, FailureKind::RebaseConflict);
     assert_eq!(
@@ -165,9 +159,7 @@ fn sync_rebases_non_overlapping_hunks_in_one_file() {
     git(&repository.seed, &["commit", "-am", "Remote hunk"]);
     git(&repository.seed, &["push", "origin", "HEAD"]);
 
-    super::super::GitRepositorySource::new(&repository.work)
-        .apply(&RepositoryAction::Sync)
-        .expect("sync separate hunks");
+    confirmed_sync(&repository.work).expect("sync separate hunks");
 
     let combined = fs::read_to_string(repository.work.join("shared.txt")).unwrap();
     assert!(combined.contains("local 5\n"));
@@ -220,7 +212,7 @@ fn sync_reports_the_plan_before_the_operations_it_runs() {
     git(&repository.seed, &["push", "origin", "HEAD"]);
     let progress = Arc::new(RecordedProgress::default());
     let context = RepositoryOperationContext::with_progress(
-        Arc::new(CancelPrompts),
+        Arc::new(ConfirmPrompts),
         CancellationHandle::default(),
         Arc::clone(&progress) as Arc<dyn ProgressHandler>,
     );
@@ -243,4 +235,104 @@ fn sync_reports_the_plan_before_the_operations_it_runs() {
             SyncProgress::Pushing,
         ]
     ));
+}
+
+#[derive(Default)]
+struct RecordAndCancel(Mutex<Vec<GitPrompt>>);
+
+impl PromptHandler for RecordAndCancel {
+    fn prompt(
+        &self,
+        _id: PromptId,
+        prompt: GitPrompt,
+        _cancellation: &CancellationHandle,
+    ) -> PromptAnswer {
+        self.0.lock().unwrap().push(prompt);
+        PromptAnswer::Cancel
+    }
+}
+
+#[test]
+fn protected_push_confirmation_cancels_after_fetch_without_moving_either_branch() {
+    let repository = sync_repository();
+    git(&repository.work, &["branch", "-m", "work"]);
+    fs::write(repository.work.join("local.txt"), "local\n").unwrap();
+    git(&repository.work, &["add", "."]);
+    git(&repository.work, &["commit", "-m", "Local commit"]);
+    let local_before = git_stdout(&repository.work, &["rev-parse", "HEAD"]);
+    let tracking_before = git_stdout(&repository.work, &["rev-parse", "origin/master"]);
+    fs::write(repository.seed.join("remote.txt"), "remote\n").unwrap();
+    git(&repository.seed, &["add", "."]);
+    git(&repository.seed, &["commit", "-m", "Remote commit"]);
+    git(&repository.seed, &["push", "origin", "HEAD"]);
+    let remote_before = remote_head(&repository.seed);
+    let prompts = Arc::new(RecordAndCancel::default());
+    let context = RepositoryOperationContext::new(
+        Arc::clone(&prompts) as Arc<dyn PromptHandler>,
+        CancellationHandle::default(),
+    );
+
+    let result = super::super::GitRepositorySource::with_askpass(&repository.work)
+        .apply_with_context(&RepositoryAction::Sync, &context)
+        .expect("cancel protected push");
+
+    assert!(matches!(result, OperationOutcome::Cancelled));
+    assert_eq!(
+        prompts.0.lock().unwrap().as_slice(),
+        [GitPrompt::ConfirmProtectedBranchPush {
+            destination: "origin/master".to_owned(),
+            commits: 1,
+        }]
+    );
+    assert_eq!(
+        git_stdout(&repository.work, &["rev-parse", "HEAD"]),
+        local_before
+    );
+    assert_eq!(remote_head(&repository.seed), remote_before);
+    assert_ne!(tracking_before, remote_before);
+    assert_eq!(
+        git_stdout(&repository.work, &["rev-parse", "origin/master"]),
+        remote_before
+    );
+}
+
+struct MoveHeadThenConfirm(PathBuf);
+
+impl PromptHandler for MoveHeadThenConfirm {
+    fn prompt(
+        &self,
+        _id: PromptId,
+        _prompt: GitPrompt,
+        _cancellation: &CancellationHandle,
+    ) -> PromptAnswer {
+        git(
+            &self.0,
+            &["commit", "--allow-empty", "-m", "Concurrent commit"],
+        );
+        PromptAnswer::Confirm
+    }
+}
+
+#[test]
+fn protected_push_confirmation_rejects_a_changed_plan() {
+    let repository = sync_repository();
+    fs::write(repository.work.join("local.txt"), "local\n").unwrap();
+    git(&repository.work, &["add", "."]);
+    git(&repository.work, &["commit", "-m", "Local commit"]);
+    let remote_before = remote_head(&repository.seed);
+    let context = RepositoryOperationContext::new(
+        Arc::new(MoveHeadThenConfirm(repository.work.clone())),
+        CancellationHandle::default(),
+    );
+
+    let failure = super::super::GitRepositorySource::with_askpass(&repository.work)
+        .apply_with_context(&RepositoryAction::Sync, &context)
+        .expect_err("changed plan must stop");
+
+    assert_eq!(failure.kind, FailureKind::RefChanged);
+    assert_eq!(
+        failure.detail,
+        "repository state changed while confirming the push; start Sync again"
+    );
+    assert_eq!(remote_head(&repository.seed), remote_before);
 }

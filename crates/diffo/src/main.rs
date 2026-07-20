@@ -294,6 +294,7 @@ fn run(
     let (preparation, draw_start_us, draw_end_us) = draw_frame(terminal, workbench, tracer)?;
     tracer.record(FrameRecord::new(
         Vec::new(),
+        workbench.protected_push_prompt_open(),
         workbench.repository_generation(),
         workbench.diff_model(),
         &preparation,
@@ -343,6 +344,7 @@ fn run(
         let (preparation, draw_start_us, draw_end_us) = draw_frame(terminal, workbench, tracer)?;
         tracer.record(FrameRecord::new(
             input_events,
+            workbench.protected_push_prompt_open(),
             workbench.repository_generation(),
             workbench.diff_model(),
             &preparation,

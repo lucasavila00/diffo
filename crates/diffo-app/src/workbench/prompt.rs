@@ -37,6 +37,15 @@ pub(super) enum ConfirmChoice {
 }
 
 impl Workbench {
+    #[must_use]
+    pub fn protected_push_prompt_open(&self) -> bool {
+        matches!(
+            self.modal,
+            Some(Modal::GitPrompt(ref modal))
+                if matches!(modal.prompt, GitPrompt::ConfirmProtectedBranchPush { .. })
+        )
+    }
+
     pub fn open_prompt(
         &mut self,
         command_id: ApplicationCommandId,
@@ -85,10 +94,13 @@ impl Workbench {
                     Some(PromptResponse::Cancel)
                 }
                 KeyCode::Enter => match modal.prompt {
-                    GitPrompt::ConfirmSshHost { .. } => Some(match modal.confirm_choice {
-                        ConfirmChoice::Cancel => PromptResponse::Cancel,
-                        ConfirmChoice::Continue => PromptResponse::Confirm,
-                    }),
+                    GitPrompt::ConfirmSshHost { .. }
+                    | GitPrompt::ConfirmProtectedBranchPush { .. } => {
+                        Some(match modal.confirm_choice {
+                            ConfirmChoice::Cancel => PromptResponse::Cancel,
+                            ConfirmChoice::Continue => PromptResponse::Confirm,
+                        })
+                    }
                     GitPrompt::Username { .. } | GitPrompt::Secret { .. }
                         if !modal.input.is_empty() =>
                     {
@@ -96,24 +108,20 @@ impl Workbench {
                     }
                     GitPrompt::Username { .. } | GitPrompt::Secret { .. } => None,
                 },
-                KeyCode::Left | KeyCode::Up
-                    if matches!(modal.prompt, GitPrompt::ConfirmSshHost { .. }) =>
-                {
+                KeyCode::Left | KeyCode::Up if is_confirmation(&modal.prompt) => {
                     modal.confirm_choice = ConfirmChoice::Cancel;
                     None
                 }
-                KeyCode::Right | KeyCode::Down
-                    if matches!(modal.prompt, GitPrompt::ConfirmSshHost { .. }) =>
-                {
+                KeyCode::Right | KeyCode::Down if is_confirmation(&modal.prompt) => {
                     modal.confirm_choice = ConfirmChoice::Continue;
                     None
                 }
-                KeyCode::Backspace if !matches!(modal.prompt, GitPrompt::ConfirmSshHost { .. }) => {
+                KeyCode::Backspace if !is_confirmation(&modal.prompt) => {
                     modal.input.pop();
                     None
                 }
                 KeyCode::Char(character)
-                    if !matches!(modal.prompt, GitPrompt::ConfirmSshHost { .. })
+                    if !is_confirmation(&modal.prompt)
                         && !key
                             .modifiers
                             .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT)
@@ -125,13 +133,16 @@ impl Workbench {
                 _ => None,
             },
             Event::Mouse(mouse) if mouse.kind == MouseEventKind::Down(MouseButton::Left) => {
-                let layout = prompt_layout(area);
+                let layout = prompt_layout(area, is_confirmation(&modal.prompt));
                 let position = (mouse.column, mouse.row).into();
                 if layout.cancel.contains(position) {
                     Some(PromptResponse::Cancel)
                 } else if layout.continue_button.contains(position) {
                     match modal.prompt {
-                        GitPrompt::ConfirmSshHost { .. } => Some(PromptResponse::Confirm),
+                        GitPrompt::ConfirmSshHost { .. }
+                        | GitPrompt::ConfirmProtectedBranchPush { .. } => {
+                            Some(PromptResponse::Confirm)
+                        }
                         GitPrompt::Username { .. } | GitPrompt::Secret { .. }
                             if !modal.input.is_empty() =>
                         {
@@ -139,6 +150,10 @@ impl Workbench {
                         }
                         GitPrompt::Username { .. } | GitPrompt::Secret { .. } => None,
                     }
+                } else if matches!(modal.prompt, GitPrompt::ConfirmProtectedBranchPush { .. })
+                    && !layout.modal.contains(position)
+                {
+                    Some(PromptResponse::Cancel)
                 } else {
                     None
                 }
@@ -162,7 +177,7 @@ impl Workbench {
 }
 
 pub(super) struct PromptLayout {
-    modal: Rect,
+    pub(super) modal: Rect,
     message: Rect,
     input: Rect,
     cancel: Rect,
@@ -170,7 +185,7 @@ pub(super) struct PromptLayout {
     footer: Rect,
 }
 
-pub(super) fn prompt_layout(area: Rect) -> PromptLayout {
+pub(super) fn prompt_layout(area: Rect, confirmation: bool) -> PromptLayout {
     let width = design::COMMIT_EDITOR_WIDTH.resolve(area.width);
     let height = design::COMMIT_EDITOR_MAX_HEIGHT.min(area.height);
     let modal = Rect::new(
@@ -180,8 +195,16 @@ pub(super) fn prompt_layout(area: Rect) -> PromptLayout {
         height,
     );
     let rows = Layout::vertical([
-        Constraint::Length(design::PROMPT_MESSAGE_HEIGHT),
-        Constraint::Length(design::COMMIT_FIELD_HEIGHT),
+        Constraint::Length(if confirmation {
+            design::PROMPT_MESSAGE_HEIGHT.saturating_add(design::COMMIT_FIELD_HEIGHT)
+        } else {
+            design::PROMPT_MESSAGE_HEIGHT
+        }),
+        Constraint::Length(if confirmation {
+            0
+        } else {
+            design::COMMIT_FIELD_HEIGHT
+        }),
         Constraint::Length(design::SINGLE_LINE_HEIGHT),
         Constraint::Min(0),
         Constraint::Length(design::SINGLE_LINE_HEIGHT),
@@ -203,9 +226,14 @@ pub(super) fn prompt_layout(area: Rect) -> PromptLayout {
 }
 
 pub(super) fn render_prompt(frame: &mut Frame, modal: &PromptModal, area: Rect) {
-    let layout = prompt_layout(area);
+    let layout = prompt_layout(area, is_confirmation(&modal.prompt));
     frame.render_widget(Clear, layout.modal);
-    frame.render_widget(modal_block("Git prompt"), layout.modal);
+    let title = if matches!(modal.prompt, GitPrompt::ConfirmProtectedBranchPush { .. }) {
+        "Confirm push"
+    } else {
+        "Git prompt"
+    };
+    frame.render_widget(modal_block(title), layout.modal);
     let (message, secret) = match &modal.prompt {
         GitPrompt::Username { host } => {
             (format!("Username for {}", terminal_safe_text(host)), false)
@@ -225,9 +253,22 @@ pub(super) fn render_prompt(frame: &mut Frame, modal: &PromptModal, area: Rect) 
             ),
             false,
         ),
+        GitPrompt::ConfirmProtectedBranchPush {
+            destination,
+            commits,
+        } => {
+            let noun = if *commits == 1 { "commit" } else { "commits" };
+            (
+                format!(
+                    "Push {commits} {noun} directly to {}?\n\nThis bypasses the branch and pull-request workflow.",
+                    terminal_safe_text(destination)
+                ),
+                false,
+            )
+        }
     };
     frame.render_widget(Paragraph::new(message), layout.message);
-    if !matches!(modal.prompt, GitPrompt::ConfirmSshHost { .. }) {
+    if !is_confirmation(&modal.prompt) {
         let field = Block::default()
             .borders(Borders::ALL)
             .border_style(Style::default().fg(theme::CHROME));
@@ -251,7 +292,7 @@ pub(super) fn render_prompt(frame: &mut Frame, modal: &PromptModal, area: Rect) 
         frame.render_widget(field, layout.input);
         frame.set_cursor_position((inner.x.saturating_add(cursor.min(inner.width)), inner.y));
     }
-    let confirm = matches!(modal.prompt, GitPrompt::ConfirmSshHost { .. });
+    let confirm = is_confirmation(&modal.prompt);
     let cancel_selected = confirm && modal.confirm_choice == ConfirmChoice::Cancel;
     let continue_selected = confirm && modal.confirm_choice == ConfirmChoice::Continue;
     frame.render_widget(
@@ -260,8 +301,13 @@ pub(super) fn render_prompt(frame: &mut Frame, modal: &PromptModal, area: Rect) 
             .style(prompt_button_style(cancel_selected, true)),
         layout.cancel,
     );
+    let continue_label = if matches!(modal.prompt, GitPrompt::ConfirmProtectedBranchPush { .. }) {
+        "[ Push ]"
+    } else {
+        "[ Continue ]"
+    };
     frame.render_widget(
-        Paragraph::new("[ Continue ]")
+        Paragraph::new(continue_label)
             .alignment(Alignment::Center)
             .style(prompt_button_style(
                 continue_selected,
@@ -279,6 +325,13 @@ pub(super) fn render_prompt(frame: &mut Frame, modal: &PromptModal, area: Rect) 
         .style(Style::default().fg(theme::CHROME)),
         layout.footer,
     );
+}
+
+fn is_confirmation(prompt: &GitPrompt) -> bool {
+    matches!(
+        prompt,
+        GitPrompt::ConfirmSshHost { .. } | GitPrompt::ConfirmProtectedBranchPush { .. }
+    )
 }
 
 fn prompt_button_style(selected: bool, enabled: bool) -> Style {

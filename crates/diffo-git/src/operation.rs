@@ -24,6 +24,10 @@ use super::{
     refs::{checkout_local_name, ref_exists},
 };
 
+mod protected_push;
+#[cfg(test)]
+pub(super) use protected_push::protected_push_destination;
+
 impl GitRepositorySource {
     pub(super) fn apply_operation(
         &self,
@@ -154,6 +158,17 @@ impl GitRepositorySource {
         };
         if let Some(context) = context {
             context.progress.progress(SyncProgress::Plan(plan.clone()));
+        }
+
+        if self.confirm_protected_push(
+            &plan,
+            &remote,
+            &upstream_branch,
+            context,
+            cancellation,
+            bridge.as_ref(),
+        )? {
+            return Ok(OperationOutcome::Cancelled);
         }
 
         let cancelled = match (local_only, upstream_only) {

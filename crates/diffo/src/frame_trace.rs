@@ -23,6 +23,7 @@ pub struct FrameTracer {
 pub struct FrameRecord {
     frame: u64,
     input_events: Vec<String>,
+    protected_push_prompt: bool,
     refresh_generation: u64,
     head: String,
     repository_files: Vec<String>,
@@ -73,6 +74,7 @@ impl FrameRecord {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         input_events: Vec<String>,
+        protected_push_prompt: bool,
         refresh_generation: u64,
         model: &Model,
         preparation: &FramePreparation,
@@ -85,6 +87,7 @@ impl FrameRecord {
         Self {
             frame: 0,
             input_events,
+            protected_push_prompt,
             refresh_generation,
             head: match &model.snapshot.head {
                 diffo_core::HeadState::Named { name, commit } => {

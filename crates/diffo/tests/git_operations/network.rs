@@ -176,6 +176,7 @@ fn rejected_push_shows_a_persistent_failure_toast() -> Result<()> {
     screen
         .wait_for_text("[ Sync (9 / F9) ]")?
         .click(&Selector::text("[ Sync (9 / F9) ]"))?;
+    confirm_protected_push(&mut screen, 1, "origin/master")?;
     gate.wait_until_blocked()?;
 
     let remote = repository.commit_remote("remote.txt", "remote\n", "Remote commit")?;
@@ -258,10 +259,9 @@ fn ssh_push_uses_running_image_after_launched_binary_is_replaced() -> Result<()>
         .wait_for_text("[ Sync (9 / F9) ]")?
         .click(&Selector::text("[ Sync (9 / F9) ]"))?
         .wait_for_text("Trust diffo-e2e?")?;
-    screen
-        .press(Key::Right)?
-        .press(Key::Enter)?
-        .wait_for_text("Pushed master.")?;
+    screen.press(Key::Right)?.press(Key::Enter)?;
+    confirm_protected_push(&mut screen, 1, "origin/master")?;
+    screen.wait_for_text("Pushed master.")?;
 
     assert_eq!(
         git_output(

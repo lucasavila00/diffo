@@ -8,7 +8,7 @@ use std::{
     path::{Path, PathBuf},
     sync::{
         Arc,
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
     },
     thread::{self, JoinHandle},
     time::Duration,
@@ -27,6 +27,7 @@ const MAX_FIELD_BYTES: usize = 4_096;
 pub struct AskpassBridge {
     _directory: tempfile::TempDir,
     socket: PathBuf,
+    next_prompt_id: Arc<AtomicU64>,
     stop: Arc<AtomicBool>,
     server: Option<JoinHandle<()>>,
 }
@@ -46,22 +47,24 @@ impl AskpassBridge {
             .context("failed to configure askpass socket")?;
         let stop = Arc::new(AtomicBool::new(false));
         let server_stop = Arc::clone(&stop);
+        let next_prompt_id = Arc::new(AtomicU64::new(1));
+        let server_next_prompt_id = Arc::clone(&next_prompt_id);
         let prompts = Arc::clone(&context.prompts);
         let cancellation = context.cancellation.clone();
         let server = thread::Builder::new()
             .name("diffo-askpass".to_owned())
             .spawn(move || {
-                let mut next_id = 1_u64;
                 while !server_stop.load(Ordering::Acquire) && !cancellation.is_cancelled() {
                     match listener.accept() {
                         Ok((stream, _)) => {
+                            let prompt_id =
+                                PromptId(server_next_prompt_id.fetch_add(1, Ordering::AcqRel));
                             handle_connection(
                                 stream,
-                                PromptId(next_id),
+                                prompt_id,
                                 Arc::clone(&prompts),
                                 &cancellation,
                             );
-                            next_id = next_id.saturating_add(1);
                         }
                         Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
                             thread::sleep(Duration::from_millis(5));
@@ -74,6 +77,7 @@ impl AskpassBridge {
         Ok(Self {
             _directory: directory,
             socket,
+            next_prompt_id,
             stop,
             server: Some(server),
         })
@@ -81,6 +85,10 @@ impl AskpassBridge {
 
     pub fn socket(&self) -> &Path {
         &self.socket
+    }
+
+    pub(super) fn next_prompt_id(&self) -> PromptId {
+        PromptId(self.next_prompt_id.fetch_add(1, Ordering::AcqRel))
     }
 }
 
@@ -159,7 +167,9 @@ impl PromptClass {
     fn of(prompt: &GitPrompt) -> Self {
         match prompt {
             GitPrompt::Username { .. } | GitPrompt::Secret { .. } => Self::Text,
-            GitPrompt::ConfirmSshHost { .. } => Self::Confirm,
+            GitPrompt::ConfirmSshHost { .. } | GitPrompt::ConfirmProtectedBranchPush { .. } => {
+                Self::Confirm
+            }
         }
     }
 }
@@ -195,6 +205,9 @@ fn write_prompt(stream: &mut UnixStream, prompt: &GitPrompt) -> io::Result<()> {
             stream.write_all(&[3])?;
             write_field(stream, host)?;
             write_field(stream, fingerprint)
+        }
+        GitPrompt::ConfirmProtectedBranchPush { .. } => {
+            Err(io::Error::from(io::ErrorKind::InvalidInput))
         }
     }
 }

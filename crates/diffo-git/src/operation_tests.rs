@@ -7,7 +7,29 @@ use std::{
 use diffo_core::CancellationHandle;
 use nix::{errno::Errno, sys::signal::kill, unistd::Pid};
 
-use super::operation::{CommandOutcome, run_cancellable};
+use super::operation::{CommandOutcome, protected_push_destination, run_cancellable};
+
+#[test]
+fn protects_only_pushes_to_exact_main_and_master_destinations() {
+    assert_eq!(
+        protected_push_destination("origin", "refs/heads/main", 2).as_deref(),
+        Some("origin/main")
+    );
+    assert_eq!(
+        protected_push_destination("upstream", "refs/heads/master", 1).as_deref(),
+        Some("upstream/master")
+    );
+    for branch in ["main-next", "masterpiece", "Main", "MASTER", "topic"] {
+        assert_eq!(
+            protected_push_destination("origin", &format!("refs/heads/{branch}"), 1),
+            None
+        );
+    }
+    assert_eq!(
+        protected_push_destination("origin", "refs/heads/main", 0),
+        None
+    );
+}
 
 #[test]
 fn cancellation_reaps_the_operation_process_group() {

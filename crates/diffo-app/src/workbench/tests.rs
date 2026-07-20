@@ -4,6 +4,7 @@ use crossterm::event::{KeyEvent, KeyEventState, MouseEvent};
 use diffo_core::{ChangeKind, FileDiff, FileState, OperationResult, SyncPlan};
 use ratatui::{Terminal, backend::TestBackend, buffer::Buffer, style::Color};
 
+mod prompt;
 mod sync;
 
 fn key(code: KeyCode) -> Event {
@@ -408,7 +409,11 @@ fn clicking_the_progress_marker_requests_cancellation_until_acknowledged() {
         workbench.commands.active().map(|command| command.state),
         Some(CommandState::Cancelling)
     );
-    workbench.operation_cancelled(running.id, RepositoryAction::Fetch);
+    workbench.operation_cancelled(
+        running.id,
+        RepositoryAction::Fetch,
+        RepositorySnapshot::default(),
+    );
     assert!(workbench.commands.active().is_none());
     assert!(workbench.toasts.as_slice().is_empty());
 }
@@ -612,7 +617,7 @@ fn ssh_confirmation_is_cancel_first_and_supports_picker_controls() {
     );
 
     assert!(workbench.open_prompt(command_id, PromptId(3), prompt()));
-    let button = prompt_layout(area).continue_button;
+    let button = prompt_layout(area, true).continue_button;
     let click = Event::Mouse(MouseEvent {
         kind: MouseEventKind::Down(MouseButton::Left),
         column: button.x,
@@ -627,73 +632,4 @@ fn ssh_confirmation_is_cancel_first_and_supports_picker_controls() {
             response: PromptResponse::Confirm,
         }]
     );
-}
-
-#[test]
-fn prompt_rejects_concurrent_stale_ids_and_escape_cancels() {
-    let area = Rect::new(0, 0, 100, 30);
-    let mut workbench = Workbench::new(RepositorySnapshot::default());
-    let command_id = start_repository_command(&mut workbench, RepositoryAction::Fetch);
-    let prompt = GitPrompt::Username {
-        host: "example.com".to_owned(),
-    };
-    assert!(workbench.open_prompt(command_id, PromptId(1), prompt.clone()));
-    assert!(!workbench.open_prompt(command_id, PromptId(2), prompt.clone()));
-    assert_eq!(
-        workbench.handle_events(&[key(KeyCode::Esc)], area),
-        vec![WorkbenchEffect::Prompt {
-            command_id,
-            prompt_id: PromptId(1),
-            response: PromptResponse::Cancel,
-        }]
-    );
-    assert!(!workbench.open_prompt(command_id, PromptId(1), prompt));
-    assert_eq!(
-        workbench.commands.active().map(|command| command.state),
-        Some(CommandState::Cancelling)
-    );
-}
-
-#[test]
-fn prompt_ids_are_scoped_to_the_active_command() {
-    let mut workbench = Workbench::new(RepositorySnapshot::default());
-    let first = start_repository_command(&mut workbench, RepositoryAction::Fetch);
-    workbench.commands.enqueue(RepositoryAction::Sync);
-    assert!(workbench.open_prompt(
-        first,
-        PromptId(1),
-        GitPrompt::Username {
-            host: "example.com".to_owned(),
-        },
-    ));
-    assert!(workbench.take_application_command(Instant::now()).is_none());
-    let _ = workbench.handle_events(
-        &[key(KeyCode::Char('u')), key(KeyCode::Enter)],
-        Rect::default(),
-    );
-    workbench.operation_completed(
-        first,
-        RepositoryAction::Fetch,
-        OperationResult::Fetch { updated_refs: 0 },
-        RepositorySnapshot::default(),
-    );
-
-    let second = workbench
-        .take_application_command(Instant::now())
-        .expect("queued sync starts after fetch completion")
-        .id;
-    assert!(!workbench.open_prompt(
-        first,
-        PromptId(2),
-        GitPrompt::Username {
-            host: "stale.example.com".to_owned(),
-        },
-    ));
-    assert!(workbench.open_prompt(
-        second,
-        PromptId(1),
-        GitPrompt::Username {
-            host: "example.com".to_owned(),
-        },
-    ));
 }

@@ -30,6 +30,8 @@ pub struct FrameRecord {
     selected_file: Option<String>,
     requested_diff: Option<String>,
     displayed_diff: Option<String>,
+    requested_explorer_file: Option<String>,
+    displayed_explorer_file: Option<String>,
     content_revision: u64,
     preparing: bool,
     syntax_ready: bool,
@@ -121,6 +123,14 @@ impl FrameRecord {
                 .displayed_file
                 .as_ref()
                 .map(|file| format!("{:?}:{}", file.area, file.path.display())),
+            requested_explorer_file: preparation
+                .requested_explorer_file
+                .as_ref()
+                .map(|path| path.display().to_string()),
+            displayed_explorer_file: preparation
+                .displayed_explorer_file
+                .as_ref()
+                .map(|path| path.display().to_string()),
             content_revision: preparation.content_revision,
             preparing: preparation.preparing,
             syntax_ready: preparation.syntax_ready,

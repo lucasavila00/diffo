@@ -1,4 +1,9 @@
-use std::{fs, path::Path, process::Command};
+use std::{
+    collections::BTreeSet,
+    fs,
+    path::{Path, PathBuf},
+    process::Command,
+};
 
 use anyhow::{Context, Result, bail};
 use diffo_core::{
@@ -8,6 +13,61 @@ use diffo_core::{
 use super::GitRepositorySource;
 
 impl GitRepositorySource {
+    fn explorer_paths_from(
+        directory: &Path,
+        worktree: &Path,
+        excluded: &BTreeSet<PathBuf>,
+        paths: &mut Vec<PathBuf>,
+    ) -> Result<()> {
+        let entries = match fs::read_dir(directory) {
+            Ok(entries) => entries,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound && directory != worktree => {
+                return Ok(());
+            }
+            Err(error) => {
+                return Err(error)
+                    .with_context(|| format!("failed to read directory {}", directory.display()));
+            }
+        };
+        for entry in entries {
+            let entry = entry
+                .with_context(|| format!("failed to read directory {}", directory.display()))?;
+            let full_path = entry.path();
+            if excluded
+                .iter()
+                .any(|excluded_path| full_path.starts_with(excluded_path))
+            {
+                continue;
+            }
+            let metadata = match fs::symlink_metadata(&full_path) {
+                Ok(metadata) => metadata,
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+                Err(error) => {
+                    return Err(error).with_context(|| {
+                        format!("failed to inspect file {}", full_path.display())
+                    });
+                }
+            };
+            if metadata.is_dir() {
+                Self::explorer_paths_from(&full_path, worktree, excluded, paths)?;
+            } else if metadata.is_file() || metadata.file_type().is_symlink() {
+                paths.push(
+                    full_path
+                        .strip_prefix(worktree)
+                        .with_context(|| {
+                            format!(
+                                "Explorer path {} escaped worktree {}",
+                                full_path.display(),
+                                worktree.display()
+                            )
+                        })?
+                        .to_owned(),
+                );
+            }
+        }
+        Ok(())
+    }
+
     fn explorer_contents(&self, path: &Path) -> Result<Vec<u8>> {
         let full_path = self.root.join(path);
         match fs::symlink_metadata(&full_path) {
@@ -67,6 +127,18 @@ impl GitRepositorySource {
                 return Ok(String::new());
             }
         }
+        let ignored = Command::new("git")
+            .args(["check-ignore", "--quiet", "--"])
+            .arg(path)
+            .current_dir(&self.root)
+            .output()
+            .context("failed to check whether Explorer file is ignored")?;
+        if ignored.status.success() {
+            return Ok(String::new());
+        }
+        if ignored.status.code() != Some(1) {
+            bail!("git failed to check whether Explorer file is ignored");
+        }
         Ok(self.worktree_file_diff(path)?.text)
     }
 }
@@ -77,34 +149,22 @@ impl Repository for GitRepositorySource {
     }
 
     fn explorer_paths(&self) -> Result<Vec<std::path::PathBuf>> {
-        let output = self.git(&[
-            "ls-files",
-            "--cached",
-            "--others",
-            "--exclude-standard",
-            "-z",
-        ])?;
-        let paths = output
-            .split(|byte| *byte == 0)
-            .filter(|path| !path.is_empty())
-            .map(|path| {
-                std::str::from_utf8(path)
-                    .context("git returned a non-UTF-8 Explorer path")
-                    .map(std::path::PathBuf::from)
-            })
-            .collect::<Result<Vec<_>>>()?;
-        paths
+        let watch_paths = self.watch_paths()?;
+        let mut excluded = watch_paths
+            .git_metadata
             .into_iter()
-            .filter_map(|path| match fs::symlink_metadata(self.root.join(&path)) {
-                Ok(metadata) if !metadata.is_dir() => Some(Ok(path)),
-                Ok(_) => None,
-                Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
-                Err(error) => Some(
-                    Err(error)
-                        .with_context(|| format!("failed to inspect file {}", path.display())),
-                ),
-            })
-            .collect()
+            .filter(|path| path.starts_with(&watch_paths.worktree))
+            .collect::<BTreeSet<_>>();
+        excluded.insert(watch_paths.worktree.join(".git"));
+        let mut paths = Vec::new();
+        Self::explorer_paths_from(
+            &watch_paths.worktree,
+            &watch_paths.worktree,
+            &excluded,
+            &mut paths,
+        )?;
+        paths.sort();
+        Ok(paths)
     }
 
     fn explorer_file(&self, path: &Path) -> Result<ExplorerFile> {

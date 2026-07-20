@@ -163,7 +163,11 @@ impl Workbench {
                 );
                 preparation
             }
-            Activity::Explorer => explorer_preparation(self.explorer.prepare_full_screen(buffer)),
+            Activity::Explorer => {
+                let text_surface = self.explorer.prepare_full_screen(buffer);
+                let (requested, displayed) = self.explorer.document_paths();
+                explorer_preparation(text_surface, requested, displayed)
+            }
             Activity::Search => FramePreparation::default(),
         };
         if self.full_screen_pending && !preparation.preparing && preparation.syntax_ready {

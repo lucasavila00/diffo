@@ -73,6 +73,12 @@ pub enum ExplorerFileContent {
     Binary,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RepositoryWatchPaths {
+    pub worktree: PathBuf,
+    pub git_metadata: Vec<PathBuf>,
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Commit {
     pub id: String,
@@ -338,7 +344,7 @@ pub trait Repository: RepositorySource {
         anyhow::bail!("branch discovery is unavailable for this repository source")
     }
 
-    /// List tracked and non-ignored untracked repository paths.
+    /// List files present in the repository worktree for Explorer.
     ///
     /// # Errors
     ///

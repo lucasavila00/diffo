@@ -159,23 +159,25 @@ fn print_update_error(error: &diffo_update::UpdateError) {
 fn run_application() -> Result<()> {
     let shutdown = install_signal_handlers()?;
     let mock_path = env::var_os("DIFFO_MOCK_FILE");
-    let (repository, watch_paths): (Arc<dyn Repository>, Option<Vec<_>>) =
-        if let Some(path) = mock_path {
-            (
-                Arc::new(MutableFixtureRepository::new_with_large_files(path)?),
-                None,
-            )
-        } else {
-            let repository = Arc::new(GitRepositorySource::discover_with_askpass(".")?);
-            let paths = repository.watch_paths()?;
-            (repository, Some(paths))
-        };
+    let (repository, watch_paths): (
+        Arc<dyn Repository>,
+        Option<diffo_core::RepositoryWatchPaths>,
+    ) = if let Some(path) = mock_path {
+        (
+            Arc::new(MutableFixtureRepository::new_with_large_files(path)?),
+            None,
+        )
+    } else {
+        let repository = Arc::new(GitRepositorySource::discover_with_askpass(".")?);
+        let paths = repository.watch_paths()?;
+        (repository, Some(paths))
+    };
     let snapshot = repository.snapshot()?;
     if let Some(path) = env::var_os("DIFFO_DUMP_PATH") {
         return dump_snapshot(Path::new(&path), &snapshot);
     }
     let repository_service =
-        RepositoryService::start(Arc::clone(&repository), watch_paths.as_deref())?;
+        RepositoryService::start(Arc::clone(&repository), watch_paths.as_ref())?;
     if let Some(path) = env::var_os("DIFFO_WATCH_DUMP_PATH") {
         return run_watch_dump(Path::new(&path), &snapshot, &repository_service, &shutdown);
     }
@@ -266,6 +268,7 @@ fn run_watch_dump(
                     );
                 }
                 RepositoryEvent::Update(_)
+                | RepositoryEvent::WorktreeChanged
                 | RepositoryEvent::Progress { .. }
                 | RepositoryEvent::BranchesLoaded { .. }
                 | RepositoryEvent::BranchesLoadFailed { .. } => {}
@@ -471,6 +474,7 @@ fn dispatch_effect(
 fn drain_repository_events(repository_service: &RepositoryService, workbench: &mut Workbench) {
     while let Ok(Some(event)) = repository_service.try_recv() {
         match event {
+            RepositoryEvent::WorktreeChanged => workbench.filesystem_changed(),
             RepositoryEvent::BranchesLoaded { query_id, branches } => {
                 workbench.branches_loaded(query_id, branches);
             }

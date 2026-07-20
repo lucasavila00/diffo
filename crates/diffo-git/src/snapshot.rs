@@ -8,7 +8,10 @@ use std::{
 };
 
 use anyhow::{Context, Result, anyhow};
-use diffo_core::{ChangeKind, Commit, FileDiff, FileState, RepositorySnapshot, RepositorySource};
+use diffo_core::{
+    ChangeKind, Commit, FileDiff, FileState, RepositorySnapshot, RepositorySource,
+    RepositoryWatchPaths,
+};
 
 use super::{
     GitRepositorySource, NO_CHANGE,
@@ -23,18 +26,21 @@ impl GitRepositorySource {
     /// # Errors
     ///
     /// Returns an error when Git cannot resolve repository paths.
-    pub fn watch_paths(&self) -> Result<Vec<PathBuf>> {
-        let mut paths = BTreeSet::new();
-        paths.insert(self.repository_root()?);
+    pub fn watch_paths(&self) -> Result<RepositoryWatchPaths> {
+        let worktree = self.repository_root()?;
+        let mut git_metadata = BTreeSet::new();
         for args in [
             &["rev-parse", "--path-format=absolute", "--git-dir"][..],
             &["rev-parse", "--path-format=absolute", "--git-common-dir"][..],
         ] {
             let output = String::from_utf8(self.git(args)?)
                 .context("git returned a non-UTF-8 repository path")?;
-            paths.insert(PathBuf::from(output.trim()));
+            git_metadata.insert(PathBuf::from(output.trim()));
         }
-        Ok(paths.into_iter().collect())
+        Ok(RepositoryWatchPaths {
+            worktree,
+            git_metadata: git_metadata.into_iter().collect(),
+        })
     }
 
     fn diff(&self, paths: &[&str], staged: bool) -> Result<Option<FileDiff>> {

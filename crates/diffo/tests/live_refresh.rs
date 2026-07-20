@@ -141,7 +141,8 @@ fn wait_for_snapshot(
                 RepositoryEvent::BranchesLoaded { .. }
                 | RepositoryEvent::BranchesLoadFailed { .. }
                 | RepositoryEvent::Prompt { .. }
-                | RepositoryEvent::Progress { .. },
+                | RepositoryEvent::Progress { .. }
+                | RepositoryEvent::WorktreeChanged,
             )) => {}
             Ok(Some(RepositoryEvent::Update(update))) => match update.kind {
                 RepositoryUpdateKind::RefreshFailed(message) => bail!(message),

@@ -323,7 +323,7 @@ impl Workbench {
         match self.active {
             Activity::Diff => self.diff.prepare_frame(content, self.pane_split),
             Activity::Explorer => {
-                explorer_preparation(self.explorer.prepare_frame(content, self.pane_split))
+                explorer_frame_preparation(&mut self.explorer, content, self.pane_split)
             }
             Activity::Search => self.search.prepare_frame(content, self.pane_split),
         }
@@ -692,7 +692,7 @@ fn render_pane_drag_marker(frame: &mut Frame, area: Rect, split: PaneSplit) {
 }
 
 mod tool_impls;
-use tool_impls::explorer_preparation;
+use tool_impls::{explorer_frame_preparation, explorer_preparation};
 
 #[cfg(test)]
 mod repository_update_tests;

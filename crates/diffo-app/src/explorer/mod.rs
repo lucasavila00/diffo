@@ -92,10 +92,12 @@ impl ExplorerActivity {
         let id = self.next_id();
         self.latest_paths = id;
         self.paths_pending = true;
+        self.queued
+            .retain(|request| !matches!(request, ExplorerRequest::Paths { .. }));
         self.queued.push_back(ExplorerRequest::Paths { id });
     }
 
-    fn request_file(&mut self, path: PathBuf, first_line: usize) {
+    fn request_file(&mut self, path: PathBuf, first_line: usize, replace: bool) {
         let Some((status, title)) = self
             .model
             .file_entry(&path)
@@ -113,6 +115,7 @@ impl ExplorerActivity {
             path,
             title,
             status,
+            replace,
             first_line,
             viewport_rows: self.viewport_rows,
         });
@@ -124,7 +127,14 @@ impl ExplorerActivity {
         }
         self.request_paths();
         if let Some(path) = self.selected_file().cloned() {
-            self.request_file(path, self.model.viewer_scroll);
+            self.request_file(path, self.model.viewer_scroll, true);
+        }
+    }
+
+    pub fn filesystem_changed(&mut self) {
+        self.request_paths();
+        if let Some(path) = self.selected_file().cloned() {
+            self.request_file(path, self.model.viewer_scroll, true);
         }
     }
 
@@ -167,7 +177,7 @@ impl ExplorerActivity {
         let text_missing = selected != displayed;
         if text_missing && selected.as_ref() != self.pending_path.as_ref() {
             if let Some(path) = selected.as_ref() {
-                self.request_file(path.clone(), 0);
+                self.request_file(path.clone(), 0, false);
             }
         }
         let syntax_ready = self.viewer_syntax_ready();
@@ -222,13 +232,13 @@ impl ExplorerActivity {
         let text_missing = selected != displayed;
         if text_missing && selected.as_ref() != self.pending_path.as_ref() {
             if let Some(path) = selected.as_ref() {
-                self.request_file(path.clone(), 0);
+                self.request_file(path.clone(), 0, false);
             }
         } else if !self.viewer_syntax_ready()
             && let Some(viewer) = self.model.viewer.as_ref()
             && self.pending_path.as_ref() != Some(&viewer.path)
         {
-            self.request_file(viewer.path.clone(), self.model.viewer_scroll);
+            self.request_file(viewer.path.clone(), self.model.viewer_scroll, false);
         }
         let coverage = self
             .model
@@ -457,7 +467,7 @@ impl ExplorerActivity {
         if let Some(path) = self.selected_file().cloned() {
             let displayed = self.model.viewer.as_ref().map(|viewer| &viewer.path);
             if displayed != Some(&path) && self.pending_path.as_ref() != Some(&path) {
-                self.request_file(path, 0);
+                self.request_file(path, 0, false);
             }
         } else {
             self.pending_path = None;
@@ -469,6 +479,13 @@ impl ExplorerActivity {
             Some(EntryId::File(path)) => Some(path),
             Some(EntryId::Directory(_)) | None => None,
         }
+    }
+
+    pub(crate) fn document_paths(&self) -> (Option<PathBuf>, Option<PathBuf>) {
+        (
+            self.selected_file().cloned(),
+            self.model.viewer.as_ref().map(|viewer| viewer.path.clone()),
+        )
     }
 
     fn scroll_viewer(&mut self, amount: i64) {
@@ -490,7 +507,7 @@ impl ExplorerActivity {
             });
         self.model.viewer_scroll = target;
         if !covered {
-            self.request_file(viewer.path.clone(), target);
+            self.request_file(viewer.path.clone(), target, false);
         }
     }
 
@@ -542,7 +559,11 @@ impl ExplorerActivity {
                     self.model.error = Some(error);
                 }
             },
-            ExplorerOutcome::File { id, result } if id == self.latest_file => {
+            ExplorerOutcome::File {
+                id,
+                replace,
+                result,
+            } if id == self.latest_file => {
                 self.pending_path = None;
                 match result {
                     Ok(mut viewer) => {
@@ -555,11 +576,12 @@ impl ExplorerActivity {
                             self.model.viewer_scroll = 0;
                             self.model.viewer_horizontal_scroll = 0;
                         }
-                        if let Some(displayed) = self
-                            .model
-                            .viewer
-                            .as_ref()
-                            .filter(|displayed| displayed.path == viewer.path)
+                        if !replace
+                            && let Some(displayed) = self
+                                .model
+                                .viewer
+                                .as_ref()
+                                .filter(|displayed| displayed.path == viewer.path)
                         {
                             let mut highlighted = displayed.highlighted.clone();
                             highlighted.extend(std::mem::take(&mut viewer.highlighted));

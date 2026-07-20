@@ -1,5 +1,4 @@
 use std::{
-    path::PathBuf,
     sync::{
         Arc, Mutex,
         atomic::{AtomicBool, Ordering},
@@ -12,7 +11,8 @@ use std::{
 use anyhow::{Context, Result};
 use diffo_core::{
     ApplicationCommandId, BranchRef, CancellationHandle, GitPrompt, PromptAnswer, PromptHandler,
-    PromptId, Repository, RepositoryAction, RepositoryQueryId, RepositoryUpdate, SyncProgress,
+    PromptId, Repository, RepositoryAction, RepositoryQueryId, RepositoryUpdate,
+    RepositoryWatchPaths, SyncProgress,
 };
 #[cfg(test)]
 use diffo_core::{OperationFailure, OperationResult, RepositorySnapshot, RepositoryUpdateKind};
@@ -24,6 +24,7 @@ use crate::{
 
 #[derive(Debug)]
 pub enum RepositoryEvent {
+    WorktreeChanged,
     BranchesLoaded {
         query_id: RepositoryQueryId,
         branches: Vec<BranchRef>,
@@ -234,14 +235,23 @@ impl RepositoryService {
     /// # Errors
     ///
     /// Returns an error when the optional watcher or worker cannot be started.
-    pub fn start(repository: Arc<dyn Repository>, paths: Option<&[PathBuf]>) -> Result<Self> {
+    pub fn start(
+        repository: Arc<dyn Repository>,
+        paths: Option<&RepositoryWatchPaths>,
+    ) -> Result<Self> {
         let (requests, request_rx) = mpsc::channel();
         let (event_tx, events) = mpsc::channel();
         let prompts = Arc::new(PromptBroker::new(event_tx.clone()));
         let refresh_pending = Arc::new(AtomicBool::new(false));
+        let worktree_pending = Arc::new(AtomicBool::new(false));
         let watcher = paths
             .map(|paths| {
-                RepositoryWatcher::start(paths, requests.clone(), Arc::clone(&refresh_pending))
+                RepositoryWatcher::start(
+                    paths,
+                    requests.clone(),
+                    Arc::clone(&refresh_pending),
+                    Arc::clone(&worktree_pending),
+                )
             })
             .transpose()?;
 
@@ -256,6 +266,7 @@ impl RepositoryService {
                     &request_rx,
                     &event_tx,
                     &refresh_pending,
+                    &worktree_pending,
                     &worker_busy,
                     &worker_prompts,
                 );

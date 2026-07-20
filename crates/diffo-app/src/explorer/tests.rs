@@ -46,6 +46,7 @@ fn stale_file_results_do_not_commit() {
     });
     explorer.accept(ExplorerOutcome::File {
         id: 1,
+        replace: false,
         result: Ok(Viewer {
             path: PathBuf::from("old.rs"),
             title: Box::new(Line::raw("M old.rs")),
@@ -62,6 +63,70 @@ fn stale_file_results_do_not_commit() {
     assert_eq!(*viewer.title, Line::raw("M new.rs"));
     assert_eq!(viewer.lines, ["new"]);
     assert_eq!(explorer.pending_path, Some(PathBuf::from("new.rs")));
+}
+
+#[test]
+fn filesystem_change_refreshes_paths_and_selected_content_without_git_changes() {
+    let mut explorer = ExplorerActivity::new(&RepositorySnapshot::default());
+    explorer.accept(ExplorerOutcome::Paths {
+        id: 1,
+        result: Ok(vec![PathBuf::from("ignored.txt")]),
+    });
+    explorer.prepare_frame(Rect::new(0, 0, 100, 30), PaneSplit::default());
+    explorer.queued.clear();
+
+    explorer.filesystem_changed();
+
+    assert_eq!(explorer.queued.len(), 2);
+    assert!(matches!(
+        explorer.queued.front(),
+        Some(ExplorerRequest::Paths { .. })
+    ));
+    assert!(matches!(
+        explorer.queued.back(),
+        Some(ExplorerRequest::File {
+            path,
+            replace: true,
+            ..
+        }) if path == &PathBuf::from("ignored.txt")
+    ));
+}
+
+#[test]
+fn filesystem_replacement_does_not_reuse_old_syntax_coverage() {
+    let mut explorer = ExplorerActivity::new(&RepositorySnapshot::default());
+    explorer.latest_file = 2;
+    explorer.pending_path = Some(PathBuf::from("ignored.rs"));
+    explorer.model.viewer = Some(Viewer {
+        path: PathBuf::from("ignored.rs"),
+        title: Box::new(Line::raw("ignored.rs")),
+        lines: vec!["old".to_owned()],
+        markers: HashMap::new(),
+        highlighted: HashMap::from([(1, diffo_highlight::HighlightedLine::default())]),
+        coverage: vec![diffo_highlight::LineRange { start: 1, end: 1 }],
+        syntax_eligible: true,
+        message: None,
+    });
+
+    explorer.accept(ExplorerOutcome::File {
+        id: 2,
+        replace: true,
+        result: Ok(Viewer {
+            path: PathBuf::from("ignored.rs"),
+            title: Box::new(Line::raw("ignored.rs")),
+            lines: vec!["new".to_owned()],
+            markers: HashMap::new(),
+            highlighted: HashMap::new(),
+            coverage: Vec::new(),
+            syntax_eligible: true,
+            message: None,
+        }),
+    });
+
+    let viewer = explorer.model.viewer.as_ref().unwrap();
+    assert_eq!(viewer.lines, ["new"]);
+    assert!(viewer.highlighted.is_empty());
+    assert!(viewer.coverage.is_empty());
 }
 
 #[test]
@@ -326,6 +391,7 @@ fn uncached_scroll_uses_the_model_viewport_until_coverage_arrives() {
 
     explorer.accept(ExplorerOutcome::File {
         id: request_id,
+        replace: false,
         result: Ok(Viewer {
             path,
             title: Box::new(Line::raw("  large.rs")),
@@ -364,8 +430,8 @@ fn file_requests_coalesce_to_the_newest_viewport() {
         .model
         .install_paths(vec![PathBuf::from("large.rs")]);
 
-    explorer.request_file(PathBuf::from("large.rs"), 20);
-    explorer.request_file(PathBuf::from("large.rs"), 80);
+    explorer.request_file(PathBuf::from("large.rs"), 20, false);
+    explorer.request_file(PathBuf::from("large.rs"), 80, false);
 
     let requests = explorer.queued.iter().collect::<Vec<_>>();
     assert_eq!(requests.len(), 1);

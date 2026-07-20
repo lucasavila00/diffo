@@ -30,6 +30,7 @@ pub enum ExplorerRequest {
         path: PathBuf,
         title: Line<'static>,
         status: Option<ChangeKind>,
+        replace: bool,
         first_line: usize,
         viewport_rows: usize,
     },
@@ -50,6 +51,7 @@ pub enum ExplorerOutcome {
     },
     File {
         id: u64,
+        replace: bool,
         result: Result<Viewer, String>,
     },
 }
@@ -86,10 +88,12 @@ impl ExplorerWorker {
                         path,
                         title,
                         status,
+                        replace,
                         first_line,
                         viewport_rows,
                     } => ExplorerOutcome::File {
                         id,
+                        replace,
                         result: repository
                             .explorer_file(&path)
                             .map(|file| {

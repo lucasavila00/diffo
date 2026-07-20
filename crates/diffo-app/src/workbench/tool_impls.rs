@@ -6,6 +6,10 @@ use super::{
 };
 
 impl Workbench {
+    pub fn filesystem_changed(&mut self) {
+        self.explorer.filesystem_changed();
+    }
+
     #[must_use]
     pub fn is_preparing(&self) -> bool {
         match self.active {
@@ -94,7 +98,7 @@ impl Tool for ExplorerActivity {
     }
 
     fn prepare_frame(&mut self, area: Rect, split: PaneSplit) -> FramePreparation {
-        explorer_preparation(ExplorerActivity::prepare_frame(self, area, split))
+        explorer_frame_preparation(self, area, split)
     }
 
     fn render(&mut self, frame: &mut Frame, area: Rect, split: PaneSplit) {
@@ -126,14 +130,30 @@ impl Tool for ExplorerActivity {
     }
 }
 
-pub(super) fn explorer_preparation(text_surface: TextSurfacePreparation) -> FramePreparation {
+pub(super) fn explorer_preparation(
+    text_surface: TextSurfacePreparation,
+    requested: Option<std::path::PathBuf>,
+    displayed: Option<std::path::PathBuf>,
+) -> FramePreparation {
     FramePreparation {
         content_revision: text_surface.document_revision,
         preparing: text_surface.mode == TextRenderMode::TextSkeleton,
         syntax_ready: text_surface.mode == TextRenderMode::Full,
+        requested_explorer_file: requested,
+        displayed_explorer_file: displayed,
         text_surface: Some(text_surface),
         ..FramePreparation::default()
     }
+}
+
+pub(super) fn explorer_frame_preparation(
+    explorer: &mut ExplorerActivity,
+    area: Rect,
+    split: PaneSplit,
+) -> FramePreparation {
+    let text_surface = explorer.prepare_frame(area, split);
+    let (requested, displayed) = explorer.document_paths();
+    explorer_preparation(text_surface, requested, displayed)
 }
 
 impl Tool for SearchActivity {

@@ -70,6 +70,7 @@ pub(super) fn worker_loop(
     requests: &Receiver<WorkerRequest>,
     events: &Sender<RepositoryEvent>,
     refresh_pending: &AtomicBool,
+    worktree_pending: &AtomicBool,
     busy: &AtomicBool,
     prompts: &Arc<PromptBroker>,
 ) {
@@ -79,7 +80,13 @@ pub(super) fn worker_loop(
         let event = match request {
             WorkerRequest::RefreshRequested => {
                 refresh_pending.store(false, Ordering::Release);
-                match debounce(requests, refresh_pending) {
+                let debounced = debounce(requests, refresh_pending);
+                if worktree_pending.swap(false, Ordering::AcqRel)
+                    && events.send(RepositoryEvent::WorktreeChanged).is_err()
+                {
+                    break;
+                }
+                match debounced {
                     DebouncedRequest::Refresh => Some(collect_refresh(repository, &mut generation)),
                     DebouncedRequest::LoadBranches { query_id } => {
                         if events.send(collect_branches(repository, query_id)).is_err() {
@@ -357,6 +364,7 @@ mod tests {
                     &request_rx,
                     &events,
                     &pending,
+                    &AtomicBool::new(false),
                     &busy,
                     &prompts,
                 );
@@ -380,6 +388,42 @@ mod tests {
     }
 
     #[test]
+    fn worktree_invalidation_is_emitted_independently_of_the_snapshot() {
+        let repository: Arc<dyn Repository> = Arc::new(FakeRepository {
+            collections: AtomicUsize::new(0),
+        });
+        let (requests, request_rx) = mpsc::channel();
+        let (events, event_rx) = mpsc::channel();
+        let prompts = Arc::new(PromptBroker::new(events.clone()));
+        let worker = thread::spawn(move || {
+            worker_loop(
+                &*repository,
+                &request_rx,
+                &events,
+                &AtomicBool::new(false),
+                &AtomicBool::new(true),
+                &AtomicBool::new(false),
+                &prompts,
+            );
+        });
+
+        requests.send(WorkerRequest::RefreshRequested).unwrap();
+        assert!(matches!(
+            event_rx.recv_timeout(Duration::from_secs(1)).unwrap(),
+            RepositoryEvent::WorktreeChanged
+        ));
+        assert!(matches!(
+            event_rx.recv_timeout(Duration::from_secs(1)).unwrap(),
+            RepositoryEvent::Update(RepositoryUpdate {
+                generation: 1,
+                kind: RepositoryUpdateKind::Snapshot(_),
+            })
+        ));
+        requests.send(WorkerRequest::Shutdown).unwrap();
+        worker.join().unwrap();
+    }
+
+    #[test]
     fn discovery_during_refresh_debounce_preserves_both_ordered_results() {
         let repository = Arc::new(FakeRepository {
             collections: AtomicUsize::new(0),
@@ -393,6 +437,7 @@ mod tests {
                 &*worker_repository,
                 &request_rx,
                 &events,
+                &AtomicBool::new(false),
                 &AtomicBool::new(false),
                 &AtomicBool::new(false),
                 &prompts,
@@ -440,6 +485,7 @@ mod tests {
                 &request_rx,
                 &events,
                 &pending,
+                &AtomicBool::new(false),
                 &busy,
                 &prompts,
             );
@@ -505,6 +551,7 @@ mod tests {
                 &*worker_repository,
                 &request_rx,
                 &events,
+                &AtomicBool::new(false),
                 &AtomicBool::new(false),
                 &AtomicBool::new(false),
                 &prompts,

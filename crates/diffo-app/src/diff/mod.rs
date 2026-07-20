@@ -224,6 +224,8 @@ impl Renderer {
             viewport_transition,
             requested_file: self.requested.as_ref().map(|key| key.file.clone()),
             displayed_file: self.displayed_key().map(|key| key.file.clone()),
+            requested_explorer_file: None,
+            displayed_explorer_file: None,
             text_surface: Some(self.text_surface_preparation(
                 rendered_vertical_scroll,
                 syntax_ready,

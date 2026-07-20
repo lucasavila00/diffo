@@ -11,14 +11,15 @@ use std::{
 
 use super::{failure::classify_failure, status::parse_status};
 use diffo_core::{
-    BranchKind, CancellationHandle, ChangeKind, CheckoutTarget, ExplorerFileContent, FailureKind,
-    GitPrompt, HeadState, OperationOutcome, OperationResult, ProgressHandler, PromptAnswer,
-    PromptHandler, PromptId, Repository, RepositoryAction, RepositoryOperationContext,
-    RepositorySource, SyncPlan, SyncProgress,
+    BranchKind, CancellationHandle, ChangeKind, CheckoutTarget, FailureKind, GitPrompt, HeadState,
+    OperationOutcome, OperationResult, ProgressHandler, PromptAnswer, PromptHandler, PromptId,
+    Repository, RepositoryAction, RepositoryOperationContext, RepositorySource, SyncPlan,
+    SyncProgress,
 };
 
 mod checkout;
 mod create_branch;
+mod explorer;
 mod sync_tests;
 
 #[test]
@@ -521,62 +522,6 @@ fn sync_rebases_clean_divergence_and_pushes_without_a_merge_commit() {
         ""
     );
     assert_eq!(new_local, remote_head(&repository.seed));
-}
-
-#[test]
-fn explorer_lists_unchanged_and_untracked_but_not_ignored_paths() {
-    let repo = test_repository();
-    fs::write(repo.path().join("untracked.txt"), "new\n").expect("write untracked file");
-    fs::write(repo.path().join("removed.txt"), "remove\n").expect("write removable file");
-    git(repo.path(), &["add", "removed.txt"]);
-    git(repo.path(), &["commit", "-m", "add removable file"]);
-    fs::remove_file(repo.path().join("removed.txt")).expect("remove tracked file");
-    fs::write(repo.path().join("ignored.txt"), "ignored\n").expect("write ignored file");
-    fs::write(repo.path().join(".gitignore"), "ignored.txt\n").expect("write ignore file");
-    let source = super::GitRepositorySource::new(repo.path());
-
-    let paths = source.explorer_paths().expect("Explorer paths");
-
-    assert!(paths.contains(&PathBuf::from("tracked.txt")));
-    assert!(paths.contains(&PathBuf::from("untracked.txt")));
-    assert!(paths.contains(&PathBuf::from(".gitignore")));
-    assert!(!paths.contains(&PathBuf::from("ignored.txt")));
-    assert!(!paths.contains(&PathBuf::from("removed.txt")));
-}
-
-#[test]
-fn explorer_reads_worktree_contents_and_rejects_removed_paths() {
-    let repo = test_repository();
-    let source = super::GitRepositorySource::new(repo.path());
-    fs::write(repo.path().join("tracked.txt"), "changed\n").expect("modify file");
-
-    let changed = source
-        .explorer_file(Path::new("tracked.txt"))
-        .expect("changed file");
-    assert_eq!(
-        changed.content,
-        ExplorerFileContent::Text("changed\n".to_owned())
-    );
-    assert!(changed.patch.contains("+changed"));
-
-    fs::remove_file(repo.path().join("tracked.txt")).expect("delete file");
-    let error = source
-        .explorer_file(Path::new("tracked.txt"))
-        .expect_err("removed file must not be readable in Explorer");
-    assert!(error.to_string().contains("failed to inspect file"));
-}
-
-#[test]
-fn explorer_marks_binary_contents_without_decoding_them() {
-    let repo = test_repository();
-    fs::write(repo.path().join("binary.dat"), [0, 159, 146, 150]).expect("write binary file");
-    let source = super::GitRepositorySource::new(repo.path());
-
-    let file = source
-        .explorer_file(Path::new("binary.dat"))
-        .expect("binary file");
-
-    assert_eq!(file.content, ExplorerFileContent::Binary);
 }
 
 #[test]

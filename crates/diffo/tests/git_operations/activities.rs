@@ -1,5 +1,18 @@
 use super::support::*;
 
+#[derive(Deserialize)]
+struct ExplorerFrame {
+    requested_explorer_file: Option<String>,
+    displayed_explorer_file: Option<String>,
+    text_surface: Option<ExplorerSurface>,
+}
+
+#[derive(Deserialize)]
+struct ExplorerSurface {
+    surface: String,
+    render_mode: String,
+}
+
 #[test]
 fn command_palette_blocks_activity_switching_and_does_not_restore_hidden_state() -> Result<()> {
     let repository = changed_repository()?;
@@ -142,6 +155,88 @@ fn explorer_removes_a_deleted_file_without_showing_head_content() -> Result<()> 
         .wait_for_text("base")?;
 
     assert!(!screen.contents().contains("REMOVED_CONTENT"));
+    Ok(())
+}
+
+#[test]
+fn ignored_file_rename_commits_explorer_path_and_content_atomically() -> Result<()> {
+    let repository = TestRepository::new()?;
+    fs::write(repository.worktree.join(".gitignore"), "*.ignored\n")?;
+    git(&repository.worktree, &["add", ".gitignore"])?;
+    git(
+        &repository.worktree,
+        &["commit", "-m", "Ignore Explorer fixture"],
+    )?;
+    fs::write(
+        repository.worktree.join("old.ignored"),
+        "IGNORED_CONTENT_BEFORE\n",
+    )?;
+    let trace_path = repository.root.path().join("ignored-explorer-frames.ronl");
+    let mut screen = DiffoScreen::launch_with_env(
+        diffo_binary()?,
+        &repository.worktree,
+        &[("DIFFO_TRACE_FRAMES", trace_path.as_os_str())],
+    )?;
+
+    screen
+        .press(Key::Tab)?
+        .wait_for_text("old.ignored")?
+        .click(&Selector::text("old.ignored"))?
+        .wait_for_text("IGNORED_CONTENT_BEFORE")?;
+
+    fs::rename(
+        repository.worktree.join("old.ignored"),
+        repository.worktree.join("new.ignored"),
+    )?;
+    fs::write(
+        repository.worktree.join("new.ignored"),
+        "IGNORED_CONTENT_AFTER\n",
+    )?;
+
+    screen
+        .wait_for_text("new.ignored")?
+        .wait_for_text("IGNORED_CONTENT_AFTER")?
+        .wait_for_text_gone("IGNORED_CONTENT_BEFORE")?
+        .press(Key::Char('q'))?
+        .wait_for_exit()?;
+
+    let trace = fs::read_to_string(&trace_path).context("read ignored Explorer frame trace")?;
+    let frames = trace
+        .lines()
+        .map(ron::from_str::<ExplorerFrame>)
+        .collect::<std::result::Result<Vec<_>, _>>()
+        .context("parse ignored Explorer frame trace")?;
+    assert!(
+        frames.iter().any(|frame| {
+            frame.requested_explorer_file.as_deref() == Some("new.ignored")
+                && frame.displayed_explorer_file.as_deref() == Some("old.ignored")
+                && frame.text_surface.as_ref().is_some_and(|surface| {
+                    surface.surface == "Explorer" && surface.render_mode == "TextSkeleton"
+                })
+        }),
+        "trace has no atomic ignored-file transition:\n{trace}"
+    );
+    assert!(
+        frames.iter().all(|frame| {
+            frame.requested_explorer_file == frame.displayed_explorer_file
+                || frame
+                    .text_surface
+                    .as_ref()
+                    .is_none_or(|surface| surface.render_mode != "Full")
+        }),
+        "trace rendered mismatched Explorer identities:\n{trace}"
+    );
+    assert!(
+        frames.iter().any(|frame| {
+            frame.requested_explorer_file.as_deref() == Some("new.ignored")
+                && frame.displayed_explorer_file.as_deref() == Some("new.ignored")
+                && frame
+                    .text_surface
+                    .as_ref()
+                    .is_some_and(|surface| surface.render_mode == "Full")
+        }),
+        "trace has no committed ignored file:\n{trace}"
+    );
     Ok(())
 }
 

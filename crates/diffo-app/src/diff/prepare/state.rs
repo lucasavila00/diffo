@@ -57,6 +57,8 @@ pub struct FramePreparation {
     pub viewport_transition: Option<ViewportTransition>,
     pub requested_file: Option<FileKey>,
     pub displayed_file: Option<FileKey>,
+    pub requested_explorer_file: Option<std::path::PathBuf>,
+    pub displayed_explorer_file: Option<std::path::PathBuf>,
     pub text_surface: Option<TextSurfacePreparation>,
 }
 

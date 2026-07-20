@@ -8,6 +8,7 @@ expression: commands
     "CommandId(\"git.checkout_to\"): Git: Checkout to...",
     "CommandId(\"git.create_branch\"): Git: Create Branch...",
     "CommandId(\"git.create_branch_from\"): Git: Create Branch From...",
+    "CommandId(\"git.delete_branch\"): Git: Delete Branch...",
     "CommandId(\"application.update\"): Application: Update Diffo",
     "CommandId(\"explorer.collapse_all\"): Explorer: Collapse All Folders",
     "CommandId(\"explorer.expand_all\"): Explorer: Expand All Folders",

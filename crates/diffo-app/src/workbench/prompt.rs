@@ -178,11 +178,11 @@ impl Workbench {
 
 pub(super) struct PromptLayout {
     pub(super) modal: Rect,
-    message: Rect,
+    pub(super) message: Rect,
     input: Rect,
-    cancel: Rect,
+    pub(super) cancel: Rect,
     pub(super) continue_button: Rect,
-    footer: Rect,
+    pub(super) footer: Rect,
 }
 
 pub(super) fn prompt_layout(area: Rect, confirmation: bool) -> PromptLayout {
@@ -334,7 +334,7 @@ fn is_confirmation(prompt: &GitPrompt) -> bool {
     )
 }
 
-fn prompt_button_style(selected: bool, enabled: bool) -> Style {
+pub(super) fn prompt_button_style(selected: bool, enabled: bool) -> Style {
     let mut style = if enabled {
         mouse_target_style()
     } else {

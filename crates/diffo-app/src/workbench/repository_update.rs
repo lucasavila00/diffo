@@ -91,6 +91,9 @@ impl Workbench {
     }
 
     pub fn action_failed(&mut self, id: ApplicationCommandId, failure: OperationFailure) {
+        if self.handle_delete_branch_failure(id, &failure) {
+            return;
+        }
         if self
             .commands
             .acknowledge(id, CommandResult::Failed)

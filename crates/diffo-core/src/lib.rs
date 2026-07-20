@@ -115,6 +115,14 @@ pub struct CreateBranchTarget {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DeleteBranchTarget {
+    pub name: String,
+    pub full_ref: String,
+    pub object_id: String,
+    pub force: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum CreateBranchStartPoint {
     Head(HeadState),
     Branch(CheckoutTarget),
@@ -140,6 +148,7 @@ pub enum RepositoryAction {
     Commit(String),
     Checkout(Box<CheckoutTarget>),
     CreateBranch(Box<CreateBranchTarget>),
+    DeleteBranch(Box<DeleteBranchTarget>),
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -151,6 +160,7 @@ pub enum OperationResult {
     Commit { hash: String },
     Checkout { branch: String },
     CreateBranch { branch: String },
+    DeleteBranch { branch: String },
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -236,6 +246,7 @@ pub enum FailureKind {
     MergeCommits,
     RefChanged,
     BranchConflict,
+    BranchNotFullyMerged,
     HookRejected,
     NoRemote,
     Unknown,

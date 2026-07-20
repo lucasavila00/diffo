@@ -32,6 +32,7 @@ mod bindings;
 mod checkout_picker;
 mod command_queue;
 mod create_branch;
+mod delete_branch;
 mod full_screen;
 mod help;
 mod modal;
@@ -42,9 +43,7 @@ mod repository_update;
 use bindings::GlobalAction;
 use modal::Modal;
 use pending_scroll::PendingScroll;
-#[cfg(test)]
-use prompt::{ConfirmChoice, prompt_layout};
-use prompt::{PromptModal, render_prompt};
+use prompt::{ConfirmChoice, PromptModal, prompt_button_style, prompt_layout, render_prompt};
 
 pub use command_queue::{
     ApplicationAction, ApplicationCommand, CommandQueue, CommandResult, CommandState,
@@ -177,7 +176,7 @@ const SYNC_COMMAND: CommandId = CommandId::new("git.sync");
 const CHECKOUT_COMMAND: CommandId = CommandId::new("git.checkout_to");
 const UPDATE_COMMAND: CommandId = CommandId::new("application.update");
 
-const SHARED_COMMANDS: [Command; 6] = [
+const SHARED_COMMANDS: [Command; 7] = [
     Command {
         id: FETCH_COMMAND,
         label: "Git: Fetch",
@@ -192,6 +191,7 @@ const SHARED_COMMANDS: [Command; 6] = [
     },
     create_branch::CREATE_BRANCH_PALETTE_COMMAND,
     create_branch::CREATE_BRANCH_FROM_PALETTE_COMMAND,
+    delete_branch::DELETE_BRANCH_PALETTE_COMMAND,
     Command {
         id: UPDATE_COMMAND,
         label: "Application: Update Diffo",
@@ -653,10 +653,9 @@ impl Workbench {
             Some(RepositoryAction::Fetch)
         } else if command == SYNC_COMMAND {
             return self.update_diff(Message::ExecuteSync);
-        } else if command == CHECKOUT_COMMAND {
-            self.open_checkout_picker();
-            return None;
-        } else if self.execute_create_branch_command(command) {
+        } else if self.execute_branch_picker_command(command)
+            || self.execute_create_branch_command(command)
+        {
             return None;
         } else if command == UPDATE_COMMAND {
             self.commands.enqueue_update();

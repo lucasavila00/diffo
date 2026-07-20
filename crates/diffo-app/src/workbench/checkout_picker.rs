@@ -1,9 +1,11 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crossterm::event::Event;
+use crossterm::event::{Event, MouseButton, MouseEventKind};
 use diffo_core::{
-    BranchKind, BranchRef, CheckoutTarget, HeadState, RepositoryQueryId, RepositorySnapshot,
+    BranchKind, BranchRef, CheckoutTarget, DeleteBranchTarget, HeadState, RepositoryQueryId,
+    RepositorySnapshot,
 };
+use diffo_ui::command_palette::CommandId;
 use diffo_ui::search_picker::{SearchItem, SearchPicker, SearchPickerEvent};
 use ratatui::{Frame, layout::Rect};
 
@@ -14,6 +16,7 @@ pub(super) enum CheckoutPickerEvent {
     Close,
     Checkout(CheckoutTarget),
     CreateBranch(CheckoutTarget),
+    DeleteBranch(DeleteBranchTarget),
     Quit,
 }
 
@@ -21,6 +24,7 @@ pub(super) enum CheckoutPickerEvent {
 enum CheckoutPickerPurpose {
     Checkout,
     CreateBranch,
+    DeleteBranch,
 }
 
 pub(super) struct CheckoutPicker {
@@ -46,10 +50,15 @@ impl CheckoutPicker {
         Self::loading_for(query_id, CheckoutPickerPurpose::CreateBranch)
     }
 
+    pub(super) fn loading_delete_branch(query_id: RepositoryQueryId) -> Self {
+        Self::loading_for(query_id, CheckoutPickerPurpose::DeleteBranch)
+    }
+
     fn loading_for(query_id: RepositoryQueryId, purpose: CheckoutPickerPurpose) -> Self {
         let title = match purpose {
             CheckoutPickerPurpose::Checkout => "Checkout to",
             CheckoutPickerPurpose::CreateBranch => "Create branch from",
+            CheckoutPickerPurpose::DeleteBranch => "Delete branch",
         };
         Self {
             query_id,
@@ -88,9 +97,16 @@ impl CheckoutPicker {
         let items = self
             .branches
             .iter()
-            .map(|branch| {
+            .filter_map(|branch| {
+                if self.purpose == CheckoutPickerPurpose::DeleteBranch
+                    && (branch.kind != BranchKind::Local || current == Some(branch.name.as_str()))
+                {
+                    return None;
+                }
                 let enabled = match self.purpose {
-                    CheckoutPickerPurpose::CreateBranch => true,
+                    CheckoutPickerPurpose::CreateBranch | CheckoutPickerPurpose::DeleteBranch => {
+                        true
+                    }
                     CheckoutPickerPurpose::Checkout => match branch.kind {
                         BranchKind::Local => current != Some(branch.name.as_str()),
                         BranchKind::Remote => tracked_remote != Some(branch.name.as_str()),
@@ -104,7 +120,7 @@ impl CheckoutPicker {
                         .map(|(_, short)| vec![short.to_owned()])
                         .unwrap_or_default(),
                 };
-                SearchItem {
+                Some(SearchItem {
                     identity: CheckoutIdentity {
                         kind: branch.kind,
                         full_ref: branch.full_ref.clone(),
@@ -121,19 +137,37 @@ impl CheckoutPicker {
                     ),
                     aliases,
                     enabled,
-                }
+                })
             })
             .collect();
         self.picker.reconcile_items(items);
     }
 
     pub(super) fn handle_event(&mut self, event: &Event, area: Rect) -> CheckoutPickerEvent {
+        if self.purpose == CheckoutPickerPurpose::DeleteBranch
+            && let Event::Mouse(mouse) = event
+            && mouse.kind == MouseEventKind::Down(MouseButton::Left)
+            && !self.picker.contains(area, mouse.column, mouse.row)
+        {
+            return CheckoutPickerEvent::Close;
+        }
         match self.picker.handle_event(event, area) {
             SearchPickerEvent::Consumed => CheckoutPickerEvent::Consumed,
             SearchPickerEvent::Cancel => CheckoutPickerEvent::Close,
             SearchPickerEvent::Activate(target) => match self.purpose {
                 CheckoutPickerPurpose::Checkout => CheckoutPickerEvent::Checkout(target),
                 CheckoutPickerPurpose::CreateBranch => CheckoutPickerEvent::CreateBranch(target),
+                CheckoutPickerPurpose::DeleteBranch => {
+                    let Some(name) = target.full_ref.strip_prefix("refs/heads/") else {
+                        return CheckoutPickerEvent::Consumed;
+                    };
+                    CheckoutPickerEvent::DeleteBranch(DeleteBranchTarget {
+                        name: name.to_owned(),
+                        full_ref: target.full_ref,
+                        object_id: target.object_id,
+                        force: false,
+                    })
+                }
             },
             SearchPickerEvent::Quit => CheckoutPickerEvent::Quit,
         }
@@ -184,6 +218,17 @@ fn relative_commit_age(
 }
 
 impl Workbench {
+    pub(super) fn execute_branch_picker_command(&mut self, command: CommandId) -> bool {
+        if command == super::CHECKOUT_COMMAND {
+            self.open_checkout_picker();
+        } else if command == super::delete_branch::DELETE_BRANCH_COMMAND {
+            self.open_delete_branch();
+        } else {
+            return false;
+        }
+        true
+    }
+
     pub fn take_branch_query(&mut self) -> Option<RepositoryQueryId> {
         self.pending_branch_query.take()
     }
@@ -243,6 +288,15 @@ impl Workbench {
         ));
         self.pending_branch_query = Some(query_id);
     }
+
+    pub(super) fn open_delete_branch(&mut self) {
+        let query_id = RepositoryQueryId(self.next_query_id);
+        self.next_query_id = self.next_query_id.saturating_add(1);
+        self.set_modal(Modal::CheckoutPicker(
+            CheckoutPicker::loading_delete_branch(query_id),
+        ));
+        self.pending_branch_query = Some(query_id);
+    }
 }
 
 #[cfg(test)]
@@ -250,11 +304,9 @@ mod tests {
     use super::*;
     use crate::workbench::{
         Activity, ApplicationAction, CHECKOUT_COMMAND, create_branch::CREATE_BRANCH_FROM_COMMAND,
-        workbench_areas,
+        delete_branch::DELETE_BRANCH_COMMAND, workbench_areas,
     };
-    use crossterm::event::{
-        KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
-    };
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseEvent};
     use diffo_core::{CreateBranchStartPoint, RepositoryAction, UpstreamState};
     use diffo_ui::tool_areas;
     use ratatui::{Terminal, backend::TestBackend};
@@ -439,6 +491,113 @@ mod tests {
                         CheckoutTarget { full_ref, object_id, .. }
                     ) if full_ref == "refs/heads/main" && object_id == "aaa")
         ));
+    }
+
+    #[test]
+    fn delete_branch_picker_omits_current_and_remote_branches_and_queues_safe_target() {
+        let snapshot = RepositorySnapshot {
+            head: HeadState::Named {
+                name: "main".to_owned(),
+                commit: "aaa".to_owned(),
+            },
+            ..RepositorySnapshot::default()
+        };
+        let mut workbench = Workbench::new(snapshot);
+        let area = Rect::new(0, 0, 100, 30);
+
+        let _ = workbench.execute_palette_command(DELETE_BRANCH_COMMAND);
+        let query_id = workbench.take_branch_query().expect("branch query queued");
+        workbench.branches_loaded(
+            query_id,
+            vec![
+                branch(BranchKind::Local, "main", "aaa"),
+                branch(BranchKind::Remote, "origin/topic", "bbb"),
+                branch(BranchKind::Local, "topic", "bbb"),
+            ],
+        );
+        let Some(Modal::CheckoutPicker(picker)) = workbench.modal.as_ref() else {
+            panic!("delete branch picker should be open");
+        };
+        assert_eq!(
+            picker.picker.selected_identity(),
+            Some(&CheckoutIdentity {
+                kind: BranchKind::Local,
+                full_ref: "refs/heads/topic".to_owned(),
+            })
+        );
+
+        let _ = workbench.handle_event(&key(KeyCode::Enter), area);
+        let command = workbench
+            .take_application_command(std::time::Instant::now())
+            .expect("delete branch queued");
+        assert!(matches!(
+            command.action,
+            ApplicationAction::Repository(RepositoryAction::DeleteBranch(target))
+                if target.name == "topic"
+                    && target.full_ref == "refs/heads/topic"
+                    && target.object_id == "bbb"
+                    && !target.force
+        ));
+    }
+
+    #[test]
+    fn delete_branch_picker_allows_local_branches_from_detached_head() {
+        let snapshot = RepositorySnapshot {
+            head: HeadState::Detached {
+                commit: "aaa".to_owned(),
+            },
+            ..RepositorySnapshot::default()
+        };
+        let mut picker = CheckoutPicker::loading_delete_branch(RepositoryQueryId(1));
+
+        picker.install(
+            vec![
+                branch(BranchKind::Local, "main", "aaa"),
+                branch(BranchKind::Remote, "origin/main", "aaa"),
+            ],
+            &snapshot,
+        );
+
+        assert_eq!(
+            picker.picker.selected_identity(),
+            Some(&CheckoutIdentity {
+                kind: BranchKind::Local,
+                full_ref: "refs/heads/main".to_owned(),
+            })
+        );
+    }
+
+    #[test]
+    fn delete_branch_picker_closes_on_outside_click() {
+        let mut workbench = Workbench::new(RepositorySnapshot::default());
+        let area = Rect::new(0, 0, 100, 30);
+        let _ = workbench.execute_palette_command(DELETE_BRANCH_COMMAND);
+
+        let _ = workbench.handle_event(
+            &Event::Mouse(MouseEvent {
+                kind: MouseEventKind::Down(MouseButton::Left),
+                column: 0,
+                row: 0,
+                modifiers: KeyModifiers::NONE,
+            }),
+            area,
+        );
+
+        assert!(workbench.modal.is_none());
+        assert!(workbench.take_branch_query().is_none());
+    }
+
+    #[test]
+    fn delete_branch_command_is_shared_by_every_activity() {
+        for activity in [Activity::Diff, Activity::Explorer, Activity::Search] {
+            let mut workbench = Workbench::new(RepositorySnapshot::default());
+            workbench.active = activity;
+
+            let _ = workbench.execute_palette_command(DELETE_BRANCH_COMMAND);
+
+            assert_eq!(workbench.take_branch_query(), Some(RepositoryQueryId(1)));
+            assert!(matches!(workbench.modal, Some(Modal::CheckoutPicker(_))));
+        }
     }
 
     #[test]

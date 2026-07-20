@@ -121,6 +121,11 @@ where
             .map(|(_, item)| &item.identity)
     }
 
+    #[must_use]
+    pub fn contains(&self, area: Rect, column: u16, row: u16) -> bool {
+        search_picker_layout(area).0.contains((column, row).into())
+    }
+
     pub fn handle_event(&mut self, event: &Event, area: Rect) -> SearchPickerEvent<P> {
         let (_, results) = search_picker_layout(area);
         if let Event::Mouse(mouse) = event {

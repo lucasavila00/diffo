@@ -20,6 +20,7 @@ use super::{
     GitRepositorySource,
     askpass::{ASKPASS_MARKER, ASKPASS_SOCKET, AskpassBridge},
     create_branch::{configure_create_branch, operation_result as create_branch_result},
+    delete_branch::{configure_delete_branch, operation_result as delete_branch_result},
     failure::{classify_failure, command_output, finish_sync_command, operation_failure},
     refs::{checkout_local_name, ref_exists},
 };
@@ -79,6 +80,9 @@ impl GitRepositorySource {
             }
             RepositoryAction::CreateBranch(target) => {
                 configure_create_branch(self, &mut command, action, target)?;
+            }
+            RepositoryAction::DeleteBranch(target) => {
+                configure_delete_branch(self, &mut command, action, target)?;
             }
         }
 
@@ -599,6 +603,7 @@ fn collect_operation_result(
             branch: checkout_local_name(action, target)?,
         }),
         RepositoryAction::CreateBranch(target) => Ok(create_branch_result(target)),
+        RepositoryAction::DeleteBranch(target) => Ok(delete_branch_result(target)),
     }
 }
 

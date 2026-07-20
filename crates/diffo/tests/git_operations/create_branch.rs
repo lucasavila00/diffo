@@ -224,12 +224,14 @@ fn create_branch_from_can_cancel_the_picker_and_name_steps() -> Result<()> {
         .press(Key::Enter)?
         .wait_for_text("Create branch from")?
         .wait_for_text_gone("Loading branches...")?
+        .wait_for_text("origin/master")?
         .press(Key::Escape)?
         .wait_for_text_gone("Create branch from")?
         .press(Key::Char('1'))?
         .type_text("create branch from")?
         .press(Key::Enter)?
         .wait_for_text_gone("Loading branches...")?
+        .wait_for_text("origin/master")?
         .press(Key::Enter)?
         .wait_for_text_gone("Create branch from")?
         .wait_for_text("Create branch")?
@@ -269,6 +271,7 @@ fn create_branch_from_rejects_a_base_that_moves_before_mutation() -> Result<()> 
         .type_text("create branch from")?
         .press(Key::Enter)?
         .wait_for_text_gone("Loading branches...")?
+        .wait_for_text("origin/master")?
         .type_text("base")?
         .press(Key::Enter)?
         .wait_for_text_gone("Create branch from")?

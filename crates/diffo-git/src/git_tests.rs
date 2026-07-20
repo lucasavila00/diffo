@@ -19,8 +19,8 @@ use diffo_core::{
 
 mod checkout;
 mod create_branch;
-mod explorer;
 mod delete_branch;
+mod explorer;
 mod sync_tests;
 
 #[test]

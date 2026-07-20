@@ -257,13 +257,10 @@ fn next_change_target(
     let first_below = first_row.saturating_add(viewport_rows);
     changes
         .iter()
-        .find(|change| change.last >= first_below)
-        .map(|change| {
-            let edge_row = change.first.max(first_below);
-            ChangeTarget {
-                scroll: edge_row,
-                edge_row,
-            }
+        .find(|change| change.first >= first_below)
+        .map(|change| ChangeTarget {
+            scroll: change.first,
+            edge_row: change.first,
         })
 }
 
@@ -278,17 +275,10 @@ fn previous_change_target(
     changes
         .iter()
         .rev()
-        .find(|change| change.first < first_row)
-        .map(|change| {
-            let scroll = if change.last >= first_row {
-                change.first.max(first_row.saturating_sub(viewport_rows))
-            } else {
-                change.first
-            };
-            ChangeTarget {
-                scroll,
-                edge_row: change.last.min(first_row.saturating_sub(1)),
-            }
+        .find(|change| change.last < first_row)
+        .map(|change| ChangeTarget {
+            scroll: change.first,
+            edge_row: change.last,
         })
 }
 
@@ -321,15 +311,15 @@ mod tests {
     }
 
     #[test]
-    fn regions_crossing_viewport_edges_remain_targets() {
-        assert_eq!(next_change_target(CHANGES, 4, 3), Some(target(7, 7)));
-        assert_eq!(previous_change_target(CHANGES, 7, 3), Some(target(6, 6)));
+    fn skips_regions_crossing_viewport_edges() {
+        assert_eq!(next_change_target(CHANGES, 4, 3), Some(target(10, 10)));
+        assert_eq!(previous_change_target(CHANGES, 7, 3), Some(target(2, 3)));
     }
 
     #[test]
-    fn region_taller_than_the_viewport_moves_one_viewport_at_a_time() {
-        assert_eq!(next_change_target(CHANGES, 12, 5), Some(target(17, 17)));
-        assert_eq!(previous_change_target(CHANGES, 20, 5), Some(target(15, 19)));
+    fn skips_a_region_taller_than_the_viewport() {
+        assert_eq!(next_change_target(CHANGES, 12, 5), Some(target(34, 34)));
+        assert_eq!(previous_change_target(CHANGES, 20, 5), Some(target(6, 7)));
     }
 
     #[test]

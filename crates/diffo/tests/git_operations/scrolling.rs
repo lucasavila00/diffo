@@ -254,7 +254,7 @@ fn fully_visible_changes_are_skipped_in_both_directions_without_wrapping() -> Re
 }
 
 #[test]
-fn one_change_taller_than_the_viewport_advances_and_retreats_by_one_page() -> Result<()> {
+fn viewport_spanning_change_is_one_atomic_navigation_stop() -> Result<()> {
     let repository = TestRepository::new()?;
     let path = repository.worktree.join("tall-change.rs");
     install_navigation_fixture(
@@ -263,24 +263,72 @@ fn one_change_taller_than_the_viewport_advances_and_retreats_by_one_page() -> Re
         tall_change_file(false)?,
         tall_change_file(true)?,
     )?;
+    let trace_path = repository
+        .root
+        .path()
+        .join("whole-block-navigation-frames.ronl");
+    let mut screen = DiffoScreen::launch_with_env(
+        diffo_binary()?,
+        &repository.worktree,
+        &[("DIFFO_TRACE_FRAMES", trace_path.as_os_str())],
+    )?;
 
-    let mut screen = repository.screen()?;
     screen
-        .wait_for_text("OLD_TALL_CHANGE_000")?
+        .wait_for_text("EARLY_BLOCK_CHANGE")?
         .click(&Selector::text(" Next change (n)"))?
-        .wait_for_text("OLD_TALL_CHANGE_030")?
-        .wait_for_text_gone("OLD_TALL_CHANGE_000")?
-        .click(&Selector::text(" Previous change (p)"))?
-        .wait_for_text("OLD_TALL_CHANGE_000")?
+        .wait_for_text("OLD_TALL_CHANGE_050")?
         .press(Key::Char('n'))?
-        .wait_for_text("OLD_TALL_CHANGE_030")?;
-    assert!(screen.contents().contains(" Next change (n)"));
-    assert!(screen.contents().contains(" Previous change (p)"));
+        .wait_for_text("LATE_BLOCK_CHANGE")?
+        .wait_for_text_gone(" Next change (n)")?
+        .click(&Selector::text(" Previous change (p)"))?
+        .wait_for_text("OLD_TALL_CHANGE_050")?
+        .press(Key::Char('p'))?
+        .wait_for_text("EARLY_BLOCK_CHANGE")?
+        .press(Key::Char('q'))?
+        .wait_for_exit()?;
+    drop(screen);
+
+    let trace =
+        fs::read_to_string(&trace_path).context("read whole-block navigation frame trace")?;
+    let frames = trace
+        .lines()
+        .map(ron::from_str::<BufferFrame>)
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+    let input_index = frames
+        .iter()
+        .position(|frame| {
+            frame
+                .input_events
+                .iter()
+                .any(|event| event.contains("Char('n')"))
+        })
+        .with_context(|| format!("trace has no next-change input frame:\n{trace}"))?;
+    let old_scroll = frames[input_index].scroll_before.0;
+    let commit_offset = frames[input_index..]
+        .iter()
+        .position(|frame| frame.viewport_transition.is_some())
+        .with_context(|| format!("trace has no whole-block navigation commit:\n{trace}"))?;
+    let commit_index = input_index + commit_offset;
+    assert!(frames[input_index..commit_index].iter().all(|frame| {
+        frame.viewport_transition.is_none() && frame.first_rendered_row == old_scroll
+    }));
+    let committed = &frames[commit_index];
+    let target = committed
+        .viewport_transition
+        .context("whole-block navigation target")?
+        .0;
+    assert!(
+        target >= old_scroll.saturating_add(160),
+        "navigation stopped inside the viewport-spanning block: {old_scroll} -> {target}"
+    );
+    assert!(committed.syntax_ready);
+    assert_eq!(committed.first_rendered_row, target);
+    assert_eq!(committed.scroll_after.0, target);
     Ok(())
 }
 
 #[test]
-fn inline_and_side_by_side_modes_use_their_own_change_bounds() -> Result<()> {
+fn inline_and_side_by_side_each_treat_a_replacement_as_one_block() -> Result<()> {
     let repository = TestRepository::new()?;
     let path = repository.worktree.join("projection-navigation.rs");
     install_navigation_fixture(
@@ -293,15 +341,13 @@ fn inline_and_side_by_side_modes_use_their_own_change_bounds() -> Result<()> {
     let mut screen = repository.screen()?;
     screen
         .wait_for_text("OLD_PROJECTION_CHANGE_00")?
-        .wait_for_text(" Next change (n)")?
+        .wait_for_text_gone(" Next change (n)")?
+        .wait_for_text_gone(" Previous change (p)")?
         .press(Key::Char('r'))?
         .wait_for_text("Side by side")?
         .wait_for_text("NEW_PROJECTION_CHANGE_00")?
         .wait_for_text_gone(" Next change (n)")?
-        .wait_for_text_gone(" Previous change (p)")?
-        .press(Key::Char('n'))?;
-    thread::sleep(Duration::from_millis(100));
-    screen.wait_for_text("NEW_PROJECTION_CHANGE_00")?;
+        .wait_for_text_gone(" Previous change (p)")?;
     Ok(())
 }
 
@@ -525,9 +571,14 @@ fn clustered_navigation_file(changed: bool) -> Result<String> {
 
 fn tall_change_file(changed: bool) -> Result<String> {
     let mut contents = String::new();
-    for line in 0..100 {
-        let prefix = if changed && line < 80 { "NEW" } else { "OLD" };
-        writeln!(contents, "{prefix}_TALL_CHANGE_{line:03}").context("build tall change file")?;
+    for line in 0..220 {
+        let value = match (changed, line) {
+            (true, 5) => "EARLY_BLOCK_CHANGE".to_owned(),
+            (true, 50..=129) => format!("NEW_TALL_CHANGE_{line:03}"),
+            (true, 150) => "LATE_BLOCK_CHANGE".to_owned(),
+            _ => format!("OLD_TALL_CHANGE_{line:03}"),
+        };
+        writeln!(contents, "{value}").context("build tall change file")?;
     }
     Ok(contents)
 }

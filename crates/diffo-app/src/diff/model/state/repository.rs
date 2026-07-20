@@ -68,6 +68,7 @@ impl Model {
                 | OperationResult::Commit { .. }
                 | OperationResult::Checkout { .. }
                 | OperationResult::CreateBranch { .. }
+                | OperationResult::DeleteBranch { .. }
         );
         let finishes_pending = self.pending_operation.as_ref() == Some(action);
         if is_async_result && !finishes_pending {
@@ -166,6 +167,10 @@ pub(super) fn same_repository_operation(left: &RepositoryAction, right: &Reposit
             | (
                 RepositoryAction::CreateBranch(_),
                 RepositoryAction::CreateBranch(_)
+            )
+            | (
+                RepositoryAction::DeleteBranch(_),
+                RepositoryAction::DeleteBranch(_)
             )
     )
 }

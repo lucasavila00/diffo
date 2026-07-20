@@ -7,6 +7,7 @@ use super::{
     PromptModal, Workbench, WorkbenchCommand,
     checkout_picker::{CheckoutPicker, CheckoutPickerEvent},
     create_branch::{CreateBranchEvent, CreateBranchModal},
+    delete_branch::DeleteBranchConfirmation,
     help, render_prompt,
 };
 
@@ -15,6 +16,7 @@ pub(super) enum Modal {
     CommandPalette(CommandPalette),
     CheckoutPicker(CheckoutPicker),
     CreateBranch(CreateBranchModal),
+    DeleteBranchConfirmation(DeleteBranchConfirmation),
     CommitEditor,
     GitPrompt(PromptModal),
 }
@@ -57,6 +59,7 @@ impl Workbench {
             Some(Modal::CommandPalette(palette)) => palette.render(frame, content),
             Some(Modal::CheckoutPicker(picker)) => picker.render(frame, area),
             Some(Modal::CreateBranch(modal)) => modal.render(frame, area),
+            Some(Modal::DeleteBranchConfirmation(modal)) => modal.render(frame, area),
             Some(Modal::CommitEditor) => {
                 crate::diff::render_commit_editor(frame, &self.diff.model, content);
             }
@@ -75,6 +78,10 @@ impl Workbench {
             Modal::CommandPalette(_) => self.handle_palette_event(event, area),
             Modal::CheckoutPicker(_) => self.handle_checkout_picker_event(event, area),
             Modal::CreateBranch(_) => self.handle_create_branch_event(event, area),
+            Modal::DeleteBranchConfirmation(_) => {
+                self.handle_delete_branch_confirmation_event(event, area);
+                None
+            }
             Modal::CommitEditor => self.handle_commit_editor_event(event, area),
             Modal::GitPrompt(_) => self
                 .handle_prompt_event(event, area)
@@ -129,6 +136,11 @@ impl Workbench {
                     branches,
                     CreateBranchStartPoint::Branch(target),
                 )));
+            }
+            CheckoutPickerEvent::DeleteBranch(target) => {
+                self.close_modal();
+                self.commands
+                    .enqueue(diffo_core::RepositoryAction::DeleteBranch(Box::new(target)));
             }
             CheckoutPickerEvent::Quit => self.should_quit = true,
             CheckoutPickerEvent::Consumed => {}
@@ -267,6 +279,14 @@ mod tests {
             Modal::command_palette(Vec::new()),
             Modal::CheckoutPicker(CheckoutPicker::loading(RepositoryQueryId(1))),
             Modal::CreateBranch(CreateBranchModal::loading(RepositoryQueryId(1))),
+            Modal::DeleteBranchConfirmation(DeleteBranchConfirmation::new(
+                diffo_core::DeleteBranchTarget {
+                    name: "topic".to_owned(),
+                    full_ref: "refs/heads/topic".to_owned(),
+                    object_id: "abc".to_owned(),
+                    force: false,
+                },
+            )),
             Modal::CommitEditor,
         ] {
             let help = matches!(modal, Modal::Help);

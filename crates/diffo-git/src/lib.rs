@@ -15,6 +15,7 @@ mod askpass;
 mod branches;
 mod command;
 mod create_branch;
+mod delete_branch;
 mod explorer;
 mod failure;
 mod operation;

@@ -61,6 +61,7 @@ pub(crate) fn operation_result_toast(result: &OperationResult) -> Option<(ToastK
         OperationResult::CreateBranch { branch } => {
             format!("Created and checked out {branch}")
         }
+        OperationResult::DeleteBranch { branch } => format!("Deleted branch {branch}"),
     };
     Some((ToastKind::Success, title))
 }
@@ -74,6 +75,7 @@ pub(crate) fn operation_failure_title(failure: &OperationFailure) -> String {
         RepositoryAction::Commit(_) => "Commit",
         RepositoryAction::Checkout(_) => "Checkout",
         RepositoryAction::CreateBranch(_) => "Create branch",
+        RepositoryAction::DeleteBranch(_) => "Delete branch",
     };
     match failure.kind {
         FailureKind::PushRejected | FailureKind::HookRejected => {

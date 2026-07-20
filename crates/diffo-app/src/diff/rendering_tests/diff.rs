@@ -596,7 +596,7 @@ fn large_hunk_buttons_are_fixed_and_do_not_wrap() {
 }
 
 #[test]
-fn inline_and_side_by_side_navigation_use_their_own_region_bounds() {
+fn whole_block_navigation_uses_projection_specific_region_bounds() {
     let mut patch = String::from("@@ -1,20 +1,20 @@\n context\n");
     for line in 0..10 {
         writeln!(patch, "-old {line}").unwrap();
@@ -627,7 +627,7 @@ fn inline_and_side_by_side_navigation_use_their_own_region_bounds() {
     let side = side_renderer.diff_viewport_metrics_at(DiffViewMode::SideBySide, area, 0);
 
     assert_eq!(inline.viewport_rows, side.viewport_rows);
-    assert!(inline.next_change.is_some());
+    assert_eq!(inline.next_change, None);
     assert_eq!(side.next_change, None);
     assert_eq!(
         inline_renderer.highlighted.as_ref().unwrap().inline_changes[0],

@@ -59,6 +59,13 @@ pub(super) fn classify_failure(action: &RepositoryAction, output: &str) -> Opera
             FailureKind::BranchConflict,
             "a local branch with that name already exists",
         )
+    } else if matches!(action, RepositoryAction::DeleteBranch(target) if !target.force)
+        && text.contains("not fully merged")
+    {
+        (
+            FailureKind::BranchNotFullyMerged,
+            "branch is not fully merged",
+        )
     } else {
         (FailureKind::Unknown, "Git operation failed")
     };

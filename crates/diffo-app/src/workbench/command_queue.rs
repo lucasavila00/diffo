@@ -141,6 +141,9 @@ fn command_label(action: &ApplicationAction) -> String {
         ApplicationAction::Repository(RepositoryAction::CreateBranch(target)) => {
             format!("Creating branch {}", target.name)
         }
+        ApplicationAction::Repository(RepositoryAction::DeleteBranch(target)) => {
+            format!("Deleting branch {}", target.name)
+        }
         ApplicationAction::Update => "Updating Diffo".to_owned(),
     }
 }

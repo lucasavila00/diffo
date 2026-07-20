@@ -1,3 +1,0 @@
-- create branch from
-- checkout branch
-- merge branch

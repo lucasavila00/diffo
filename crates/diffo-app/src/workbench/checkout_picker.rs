@@ -1,3 +1,5 @@
+use std::time::{SystemTime, UNIX_EPOCH};
+
 use crossterm::event::Event;
 use diffo_core::{
     BranchKind, BranchRef, CheckoutTarget, HeadState, RepositoryQueryId, RepositorySnapshot,
@@ -17,6 +19,7 @@ pub(super) enum CheckoutPickerEvent {
 pub(super) struct CheckoutPicker {
     pub(super) query_id: RepositoryQueryId,
     branches: Vec<BranchRef>,
+    loaded_at_unix_seconds: i64,
     picker: SearchPicker<CheckoutIdentity, CheckoutTarget>,
 }
 
@@ -31,12 +34,23 @@ impl CheckoutPicker {
         Self {
             query_id,
             branches: Vec::new(),
+            loaded_at_unix_seconds: 0,
             picker: SearchPicker::new("Checkout to", "Loading branches..."),
         }
     }
 
     pub(super) fn install(&mut self, branches: Vec<BranchRef>, snapshot: &RepositorySnapshot) {
+        self.install_at(branches, snapshot, current_unix_seconds());
+    }
+
+    fn install_at(
+        &mut self,
+        branches: Vec<BranchRef>,
+        snapshot: &RepositorySnapshot,
+        now_unix_seconds: i64,
+    ) {
         self.branches = branches;
+        self.loaded_at_unix_seconds = now_unix_seconds;
         self.picker.set_empty_message("No matching branches");
         self.refresh(snapshot);
     }
@@ -77,6 +91,10 @@ impl CheckoutPicker {
                         object_id: branch.object_id.clone(),
                     },
                     label: branch.name.clone(),
+                    trailing: relative_commit_age(
+                        branch.tip_commit_unix_seconds,
+                        self.loaded_at_unix_seconds,
+                    ),
                     aliases,
                     enabled,
                 }
@@ -97,6 +115,41 @@ impl CheckoutPicker {
     pub(super) fn render(&self, frame: &mut Frame, area: Rect) {
         self.picker.render(frame, area);
     }
+}
+
+fn current_unix_seconds() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |duration| {
+            i64::try_from(duration.as_secs()).unwrap_or(i64::MAX)
+        })
+}
+
+fn relative_commit_age(
+    tip_commit_unix_seconds: Option<i64>,
+    now_unix_seconds: i64,
+) -> Option<String> {
+    const MINUTE: i64 = 60;
+    const HOUR: i64 = 60 * MINUTE;
+    const DAY: i64 = 24 * HOUR;
+    const MONTH: i64 = 30 * DAY;
+    const YEAR: i64 = 365 * DAY;
+
+    let elapsed = now_unix_seconds.saturating_sub(tip_commit_unix_seconds?);
+    let (value, suffix) = if elapsed < MINUTE {
+        return Some("now".to_owned());
+    } else if elapsed < HOUR {
+        (elapsed / MINUTE, "m")
+    } else if elapsed < DAY {
+        (elapsed / HOUR, "h")
+    } else if elapsed < MONTH {
+        (elapsed / DAY, "d")
+    } else if elapsed < YEAR {
+        (elapsed / MONTH, "mo")
+    } else {
+        (elapsed / YEAR, "y")
+    };
+    Some(format!("{value}{suffix} ago"))
 }
 
 impl Workbench {
@@ -149,6 +202,7 @@ mod tests {
     };
     use diffo_core::{RepositoryAction, UpstreamState};
     use diffo_ui::tool_areas;
+    use ratatui::{Terminal, backend::TestBackend};
 
     fn key(code: KeyCode) -> Event {
         Event::Key(KeyEvent::new(code, KeyModifiers::NONE))
@@ -164,7 +218,79 @@ mod tests {
             name: name.to_owned(),
             full_ref: format!("{prefix}{name}"),
             object_id: object_id.to_owned(),
+            tip_commit_unix_seconds: None,
         }
+    }
+
+    #[test]
+    fn formats_fixed_relative_commit_age_boundaries() {
+        const DAY: i64 = 24 * 60 * 60;
+        let now = 2 * 365 * DAY;
+
+        assert_eq!(relative_commit_age(None, now), None);
+        for (tip, expected) in [
+            (now + 1, "now"),
+            (now - 59, "now"),
+            (now - 60, "1m ago"),
+            (now - 3_599, "59m ago"),
+            (now - 3_600, "1h ago"),
+            (now - DAY, "1d ago"),
+            (now - 30 * DAY, "1mo ago"),
+            (now - 365 * DAY, "1y ago"),
+        ] {
+            assert_eq!(
+                relative_commit_age(Some(tip), now).as_deref(),
+                Some(expected)
+            );
+        }
+    }
+
+    #[test]
+    fn installs_relative_ages_and_selects_the_first_enabled_branch() {
+        let now = 10_000;
+        let snapshot = RepositorySnapshot {
+            head: HeadState::Named {
+                name: "main".to_owned(),
+                commit: "aaa".to_owned(),
+            },
+            upstream: Some(UpstreamState {
+                name: "origin/main".to_owned(),
+                ahead: 0,
+                behind: 0,
+            }),
+            ..RepositorySnapshot::default()
+        };
+        let mut main = branch(BranchKind::Local, "main", "aaa");
+        main.tip_commit_unix_seconds = Some(now);
+        let mut tracked = branch(BranchKind::Remote, "origin/main", "aaa");
+        tracked.tip_commit_unix_seconds = Some(now);
+        let mut topic = branch(BranchKind::Local, "topic", "bbb");
+        topic.tip_commit_unix_seconds = Some(now - 12 * 60);
+        let mut picker = CheckoutPicker::loading(RepositoryQueryId(1));
+
+        picker.install_at(vec![main, tracked, topic], &snapshot, now);
+
+        assert_eq!(
+            picker.picker.selected_identity(),
+            Some(&CheckoutIdentity {
+                kind: BranchKind::Local,
+                full_ref: "refs/heads/topic".to_owned(),
+            })
+        );
+        let backend = TestBackend::new(100, 30);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal
+            .draw(|frame| picker.render(frame, frame.area()))
+            .unwrap();
+        let contents = terminal
+            .backend()
+            .buffer()
+            .content
+            .iter()
+            .map(ratatui::buffer::Cell::symbol)
+            .collect::<String>();
+        assert!(contents.contains("now"));
+        assert!(contents.contains("12m ago"));
     }
 
     #[test]

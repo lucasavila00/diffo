@@ -98,6 +98,7 @@ pub struct BranchRef {
     pub name: String,
     pub full_ref: String,
     pub object_id: String,
+    pub tip_commit_unix_seconds: Option<i64>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

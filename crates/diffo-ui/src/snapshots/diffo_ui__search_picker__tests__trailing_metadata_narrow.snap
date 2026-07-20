@@ -1,0 +1,16 @@
+---
+source: crates/diffo-ui/src/search_picker.rs
+expression: "modal_lines(&narrow, narrow_area)"
+---
+[
+    "┌ Branches ────┐",
+    "│ > █          │",
+    "│ ──────────── │",
+    "│ \u{f460} feature/a- │",
+    "│   main   now │",
+    "│   undated    │",
+    "│              │",
+    "│              │",
+    "│ ↑/↓ select · │",
+    "└──────────────┘",
+]

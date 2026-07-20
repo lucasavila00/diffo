@@ -5,7 +5,7 @@ use ratatui::{
     Frame,
     layout::{Constraint, Layout, Rect},
     style::Style,
-    text::Line,
+    text::{Line, Span},
     widgets::{Clear, List, ListItem, ListState, Paragraph, ScrollbarOrientation},
 };
 
@@ -19,6 +19,7 @@ pub struct SearchItem<I, P> {
     pub identity: I,
     pub payload: P,
     pub label: String,
+    pub trailing: Option<String>,
     pub aliases: Vec<String>,
     pub enabled: bool,
 }
@@ -213,6 +214,15 @@ where
             sections[1],
         );
         let viewport = usize::from(results.height);
+        let selected = self.selected.and_then(|selected| {
+            selected
+                .checked_sub(self.offset)
+                .filter(|selected| *selected < viewport)
+        });
+        let maximum = maximum_scroll(matches.len(), viewport);
+        let item_width = usize::from(results.width)
+            .saturating_sub(selected.map_or(0, |_| Line::raw(icons::SELECTION).width()))
+            .saturating_sub(usize::from(maximum > 0));
         let items = if matches.is_empty() {
             vec![ListItem::new(self.empty_message).style(disabled_control_style())]
         } else {
@@ -221,7 +231,7 @@ where
                 .skip(self.offset)
                 .take(viewport)
                 .map(|(_, item)| {
-                    ListItem::new(terminal_safe_text(&item.label)).style(if item.enabled {
+                    ListItem::new(search_item_line(item, item_width)).style(if item.enabled {
                         mouse_target_style()
                     } else {
                         disabled_control_style()
@@ -229,17 +239,12 @@ where
                 })
                 .collect()
         };
-        let selected = self.selected.and_then(|selected| {
-            selected
-                .checked_sub(self.offset)
-                .filter(|selected| *selected < viewport)
-        });
         let list = List::new(items)
+            .style(Style::default().fg(theme::TEXT))
             .highlight_symbol(icons::SELECTION)
-            .highlight_style(mouse_target_style().bg(theme::SELECTION_BACKGROUND));
+            .highlight_style(Style::default().bg(theme::SELECTION_BACKGROUND));
         let mut state = ListState::default().with_selected(selected);
         frame.render_stateful_widget(list, results, &mut state);
-        let maximum = maximum_scroll(matches.len(), viewport);
         if maximum > 0 && results.width > 0 {
             let scrollbar = Rect::new(
                 results.right().saturating_sub(1),
@@ -332,6 +337,55 @@ where
     }
 }
 
+fn search_item_line<I, P>(item: &SearchItem<I, P>, width: usize) -> Line<'static> {
+    const MIN_LABEL_WIDTH: usize = 4;
+
+    let label = terminal_safe_text(&item.label);
+    let Some(trailing) = item.trailing.as_deref().map(terminal_safe_text) else {
+        return Line::raw(label);
+    };
+    let trailing_width = Span::raw(&trailing).width();
+    let gap = usize::from(design::INLINE_GAP);
+    if width
+        < MIN_LABEL_WIDTH
+            .saturating_add(gap)
+            .saturating_add(trailing_width)
+    {
+        return Line::raw(label);
+    }
+
+    let label_width = width.saturating_sub(gap).saturating_sub(trailing_width);
+    let label = truncate_width(&label, label_width);
+    let spacing = width.saturating_sub(Span::raw(&label).width().saturating_add(trailing_width));
+    Line::from(vec![
+        Span::raw(label),
+        Span::raw(" ".repeat(spacing)),
+        Span::styled(trailing, Style::default().fg(theme::CHROME)),
+    ])
+}
+
+fn truncate_width(value: &str, width: usize) -> String {
+    if Span::raw(value).width() <= width {
+        return value.to_owned();
+    }
+    if width == 0 {
+        return String::new();
+    }
+    let content_width = width - 1;
+    let mut result = String::new();
+    let mut used = 0_usize;
+    for character in value.chars() {
+        let character_width = Span::raw(character.to_string()).width();
+        if used.saturating_add(character_width) > content_width {
+            break;
+        }
+        result.push(character);
+        used = used.saturating_add(character_width);
+    }
+    result.push('…');
+    result
+}
+
 #[must_use]
 pub fn search_picker_layout(area: Rect) -> (Rect, Rect) {
     let width = design::SEARCH_PICKER_WIDTH.resolve(area.width);
@@ -365,6 +419,7 @@ fn search_picker_sections(area: Rect) -> std::rc::Rc<[Rect]> {
 mod tests {
     use super::*;
     use crossterm::event::{KeyEvent, MouseEvent};
+    use ratatui::{Terminal, backend::TestBackend};
 
     fn key(code: KeyCode) -> Event {
         Event::Key(KeyEvent::new(code, KeyModifiers::NONE))
@@ -378,6 +433,7 @@ mod tests {
                 identity: 1,
                 payload: "main-a",
                 label: "main".to_owned(),
+                trailing: None,
                 aliases: Vec::new(),
                 enabled: false,
             },
@@ -385,6 +441,7 @@ mod tests {
                 identity: 2,
                 payload: "topic-a",
                 label: "topic".to_owned(),
+                trailing: None,
                 aliases: Vec::new(),
                 enabled: true,
             },
@@ -392,6 +449,7 @@ mod tests {
                 identity: 3,
                 payload: "remote-topic-a",
                 label: "origin/topic".to_owned(),
+                trailing: None,
                 aliases: vec!["topic".to_owned()],
                 enabled: true,
             },
@@ -414,6 +472,7 @@ mod tests {
             identity: 1,
             payload: "main-a",
             label: "main".to_owned(),
+            trailing: None,
             aliases: Vec::new(),
             enabled: true,
         }]);
@@ -442,6 +501,7 @@ mod tests {
             identity,
             payload,
             label: label.to_owned(),
+            trailing: None,
             aliases: Vec::new(),
             enabled,
         };
@@ -476,6 +536,7 @@ mod tests {
             identity,
             payload: identity,
             label: label.to_owned(),
+            trailing: None,
             aliases: Vec::new(),
             enabled,
         };
@@ -502,6 +563,7 @@ mod tests {
             identity,
             payload: identity,
             label: format!("branch-{identity:02}"),
+            trailing: None,
             aliases: Vec::new(),
             enabled: true,
         };
@@ -522,5 +584,73 @@ mod tests {
                 .collect(),
         );
         assert_eq!(picker.offset, 12);
+    }
+
+    #[test]
+    fn renders_trailing_metadata_in_wide_rows_and_omits_it_in_narrow_rows() {
+        let picker = || {
+            let mut picker = SearchPicker::new("Branches", "None");
+            picker.set_items(vec![
+                SearchItem {
+                    identity: 1,
+                    payload: 1,
+                    label: "feature/a-very-long-recent-branch".to_owned(),
+                    trailing: Some("12m ago".to_owned()),
+                    aliases: Vec::new(),
+                    enabled: true,
+                },
+                SearchItem {
+                    identity: 2,
+                    payload: 2,
+                    label: "main".to_owned(),
+                    trailing: Some("now".to_owned()),
+                    aliases: Vec::new(),
+                    enabled: false,
+                },
+                SearchItem {
+                    identity: 3,
+                    payload: 3,
+                    label: "undated".to_owned(),
+                    trailing: None,
+                    aliases: Vec::new(),
+                    enabled: true,
+                },
+            ]);
+            picker
+        };
+
+        let wide_area = Rect::new(0, 0, 50, 12);
+        let wide = render_picker(&picker(), wide_area);
+        let (_, wide_results) = search_picker_layout(wide_area);
+        let age_cell = &wide[(wide_results.right() - 7, wide_results.y)];
+        assert_eq!(age_cell.style().fg, Some(theme::CHROME));
+        insta::assert_debug_snapshot!("trailing_metadata_wide", modal_lines(&wide, wide_area));
+
+        let narrow_area = Rect::new(0, 0, 16, 12);
+        let narrow = render_picker(&picker(), narrow_area);
+        insta::assert_debug_snapshot!(
+            "trailing_metadata_narrow",
+            modal_lines(&narrow, narrow_area)
+        );
+    }
+
+    fn render_picker(picker: &SearchPicker<i32, i32>, area: Rect) -> ratatui::buffer::Buffer {
+        let backend = TestBackend::new(area.width, area.height);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|frame| picker.render(frame, area)).unwrap();
+        terminal.backend().buffer().clone()
+    }
+
+    fn modal_lines(buffer: &ratatui::buffer::Buffer, area: Rect) -> Vec<String> {
+        let (modal, _) = search_picker_layout(area);
+        (modal.y..modal.bottom())
+            .map(|row| {
+                (modal.x..modal.right())
+                    .map(|column| buffer[(column, row)].symbol())
+                    .collect::<String>()
+                    .trim_end()
+                    .to_owned()
+            })
+            .collect()
     }
 }

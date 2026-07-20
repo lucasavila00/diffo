@@ -70,6 +70,7 @@ fn discovers_and_checks_out_a_local_branch_by_typed_ref() {
         .iter()
         .find(|branch| branch.kind == BranchKind::Local && branch.name == "topic")
         .expect("topic branch");
+    assert!(topic.tip_commit_unix_seconds.is_some());
 
     let result = source
         .apply(&RepositoryAction::Checkout(Box::new(CheckoutTarget {

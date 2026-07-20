@@ -134,8 +134,14 @@ pub(in crate::diff) struct DiffViewportMetrics {
     pub(in crate::diff) rows: usize,
     pub(in crate::diff) columns: usize,
     pub(in crate::diff) maximum_vertical_scroll: usize,
-    pub(in crate::diff) previous_change: Option<usize>,
-    pub(in crate::diff) next_change: Option<usize>,
+    pub(in crate::diff) previous_change: Option<ChangeTarget>,
+    pub(in crate::diff) next_change: Option<ChangeTarget>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(in crate::diff) struct ChangeTarget {
+    pub(in crate::diff) scroll: usize,
+    pub(in crate::diff) edge_row: usize,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

@@ -12,11 +12,16 @@ pub(in crate::diff) mod geometry;
 pub(in crate::diff) mod overlays;
 pub(in crate::diff) mod style;
 
-pub(in crate::diff) fn render_hunk_button(frame: &mut Frame, area: Rect, label: &str) {
+pub(in crate::diff) fn render_hunk_button(
+    frame: &mut Frame,
+    area: Rect,
+    label: &str,
+    background: Style,
+) {
     frame.render_widget(
         Paragraph::new(label)
             .alignment(Alignment::Center)
-            .style(mouse_target_style()),
+            .style(mouse_target_style().patch(background)),
         area,
     );
 }
@@ -288,19 +293,45 @@ impl Renderer {
             previous: previous_area,
             next: next_area,
         };
-        if let Some(button) = self.hunk_buttons.previous {
+        if let (Some(button), Some(target)) = (self.hunk_buttons.previous, viewport.previous_change)
+        {
             render_hunk_button(
                 frame,
                 button,
                 &format!("{} Previous change (p)", icons::CHANGE_PREVIOUS),
+                self.change_navigation_background(target.edge_row, false),
             );
         }
-        if let Some(button) = self.hunk_buttons.next {
+        if let (Some(button), Some(target)) = (self.hunk_buttons.next, viewport.next_change) {
             render_hunk_button(
                 frame,
                 button,
                 &format!("{} Next change (n)", icons::CHANGE_NEXT),
+                self.change_navigation_background(target.edge_row, true),
             );
+        }
+    }
+
+    pub(in crate::diff) fn change_navigation_background(&self, row: usize, next: bool) -> Style {
+        let kind = self
+            .highlighted
+            .as_ref()
+            .and_then(|cache| match cache.key.mode {
+                DiffViewMode::Inline => cache.inline.get(row).map(|row| row.kind),
+                DiffViewMode::SideBySide => cache.side_by_side.get(row).and_then(|row| {
+                    let (primary, fallback) = if next {
+                        (row.new.as_ref(), row.old.as_ref())
+                    } else {
+                        (row.old.as_ref(), row.new.as_ref())
+                    };
+                    primary.or(fallback).map(|line| line.kind)
+                }),
+            });
+        match kind {
+            Some(kind @ (RowKind::Added | RowKind::Removed | RowKind::Conflict)) => {
+                style::diff_background(kind)
+            }
+            _ => Style::default(),
         }
     }
 

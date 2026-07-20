@@ -1,6 +1,77 @@
 use super::*;
 
 #[test]
+fn change_navigation_backgrounds_follow_target_content() {
+    let inline_model = model();
+    let area = Rect::new(0, 0, 100, 30);
+    let mut inline_renderer = Renderer::new();
+    inline_renderer.prepare_frame(&inline_model, area);
+    let inline = &inline_renderer.highlighted.as_ref().unwrap().inline;
+    let removed = inline
+        .iter()
+        .position(|row| row.kind == RowKind::Removed)
+        .unwrap();
+    let added = inline
+        .iter()
+        .position(|row| row.kind == RowKind::Added)
+        .unwrap();
+
+    assert_eq!(
+        inline_renderer.change_navigation_background(removed, true),
+        diff_background(RowKind::Removed)
+    );
+    assert_eq!(
+        inline_renderer.change_navigation_background(added, false),
+        diff_background(RowKind::Added)
+    );
+
+    let mut side_model = model();
+    side_model.diff_view_mode = DiffViewMode::SideBySide;
+    let mut side_renderer = Renderer::new();
+    side_renderer.prepare_frame(&side_model, area);
+    let replacement = side_renderer
+        .highlighted
+        .as_ref()
+        .unwrap()
+        .side_by_side
+        .iter()
+        .position(|row| row.kind == RowKind::Changed)
+        .unwrap();
+
+    assert_eq!(
+        side_renderer.change_navigation_background(replacement, false),
+        diff_background(RowKind::Removed)
+    );
+    assert_eq!(
+        side_renderer.change_navigation_background(replacement, true),
+        diff_background(RowKind::Added)
+    );
+
+    let mut conflict_model = model();
+    conflict_model.snapshot.files[0].kind = ChangeKind::Conflicted;
+    conflict_model.snapshot.files[0]
+        .unstaged
+        .as_mut()
+        .unwrap()
+        .text = "@@ -1 +1,3 @@\n-old\n+<<<<<<< HEAD\n+ours\n+>>>>>>> branch\n".to_owned();
+    let mut conflict_renderer = Renderer::new();
+    conflict_renderer.prepare_frame(&conflict_model, area);
+    let conflict = conflict_renderer
+        .highlighted
+        .as_ref()
+        .unwrap()
+        .inline
+        .iter()
+        .position(|row| row.kind == RowKind::Conflict)
+        .unwrap();
+
+    assert_eq!(
+        conflict_renderer.change_navigation_background(conflict, true),
+        diff_background(RowKind::Conflict)
+    );
+}
+
+#[test]
 fn command_progress_animates_and_exposes_only_the_cancel_marker() {
     let backend = TestBackend::new(80, 24);
     let mut terminal = Terminal::new(backend).unwrap();

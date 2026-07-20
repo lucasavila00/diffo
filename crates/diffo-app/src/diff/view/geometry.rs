@@ -1,6 +1,6 @@
 use crate::diff::{
-    Constraint, DiffViewMode, DiffViewportMetrics, Direction, Layout, Model, Rect, Renderer,
-    ScrollbarAxis, design,
+    ChangeTarget, Constraint, DiffViewMode, DiffViewportMetrics, Direction, Layout, Model, Rect,
+    Renderer, ScrollbarAxis, design,
 };
 #[cfg(test)]
 pub(in crate::diff) use diffo_ui::scrollbar_position_count;
@@ -56,9 +56,9 @@ impl Renderer {
         let diff_area = horizontal_panes(main_area(area), model.file_pane_percent)[1];
         let viewport = self.diff_viewport_metrics(mode, diff_area, model.diff_scroll);
         if next {
-            viewport.next_change
+            viewport.next_change.map(|target| target.scroll)
         } else {
-            viewport.previous_change
+            viewport.previous_change.map(|target| target.scroll)
         }
     }
 
@@ -250,7 +250,7 @@ fn next_change_target(
     changes: &[crate::diff::ChangeRegion],
     first_row: usize,
     viewport_rows: usize,
-) -> Option<usize> {
+) -> Option<ChangeTarget> {
     if viewport_rows == 0 {
         return None;
     }
@@ -258,14 +258,20 @@ fn next_change_target(
     changes
         .iter()
         .find(|change| change.last >= first_below)
-        .map(|change| change.first.max(first_below))
+        .map(|change| {
+            let edge_row = change.first.max(first_below);
+            ChangeTarget {
+                scroll: edge_row,
+                edge_row,
+            }
+        })
 }
 
 fn previous_change_target(
     changes: &[crate::diff::ChangeRegion],
     first_row: usize,
     viewport_rows: usize,
-) -> Option<usize> {
+) -> Option<ChangeTarget> {
     if viewport_rows == 0 {
         return None;
     }
@@ -274,10 +280,14 @@ fn previous_change_target(
         .rev()
         .find(|change| change.first < first_row)
         .map(|change| {
-            if change.last >= first_row {
+            let scroll = if change.last >= first_row {
                 change.first.max(first_row.saturating_sub(viewport_rows))
             } else {
                 change.first
+            };
+            ChangeTarget {
+                scroll,
+                edge_row: change.last.min(first_row.saturating_sub(1)),
             }
         })
 }
@@ -285,7 +295,7 @@ fn previous_change_target(
 #[cfg(test)]
 mod tests {
     use super::{next_change_target, previous_change_target};
-    use crate::diff::ChangeRegion;
+    use crate::diff::{ChangeRegion, ChangeTarget};
 
     const CHANGES: &[ChangeRegion] = &[
         ChangeRegion { first: 2, last: 3 },
@@ -300,22 +310,26 @@ mod tests {
         },
     ];
 
+    const fn target(scroll: usize, edge_row: usize) -> ChangeTarget {
+        ChangeTarget { scroll, edge_row }
+    }
+
     #[test]
     fn skips_fully_visible_changes_in_both_directions() {
-        assert_eq!(next_change_target(CHANGES, 1, 8), Some(10));
-        assert_eq!(previous_change_target(CHANGES, 4, 8), Some(2));
+        assert_eq!(next_change_target(CHANGES, 1, 8), Some(target(10, 10)));
+        assert_eq!(previous_change_target(CHANGES, 4, 8), Some(target(2, 3)));
     }
 
     #[test]
     fn regions_crossing_viewport_edges_remain_targets() {
-        assert_eq!(next_change_target(CHANGES, 4, 3), Some(7));
-        assert_eq!(previous_change_target(CHANGES, 7, 3), Some(6));
+        assert_eq!(next_change_target(CHANGES, 4, 3), Some(target(7, 7)));
+        assert_eq!(previous_change_target(CHANGES, 7, 3), Some(target(6, 6)));
     }
 
     #[test]
     fn region_taller_than_the_viewport_moves_one_viewport_at_a_time() {
-        assert_eq!(next_change_target(CHANGES, 12, 5), Some(17));
-        assert_eq!(previous_change_target(CHANGES, 20, 5), Some(15));
+        assert_eq!(next_change_target(CHANGES, 12, 5), Some(target(17, 17)));
+        assert_eq!(previous_change_target(CHANGES, 20, 5), Some(target(15, 19)));
     }
 
     #[test]

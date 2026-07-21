@@ -10,6 +10,28 @@ use ratatui::{
 
 use super::{CommandState, Modal, PromptResponse, Workbench, WorkbenchEffect};
 
+impl std::fmt::Debug for PromptResponse {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Text(_) => formatter.write_str("Text([redacted])"),
+            Self::Confirm => formatter.write_str("Confirm"),
+            Self::Cancel => formatter.write_str("Cancel"),
+        }
+    }
+}
+
+impl PartialEq for PromptResponse {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Text(left), Self::Text(right)) => left == right,
+            (Self::Confirm, Self::Confirm) | (Self::Cancel, Self::Cancel) => true,
+            _ => false,
+        }
+    }
+}
+
+impl Eq for PromptResponse {}
+
 pub(super) struct PromptModal {
     pub(super) command_id: ApplicationCommandId,
     pub(super) id: PromptId,

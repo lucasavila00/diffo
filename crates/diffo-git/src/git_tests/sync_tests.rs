@@ -36,16 +36,221 @@ fn sync_fetches_even_when_the_known_tips_are_the_same() {
 }
 
 #[test]
-fn sync_stops_before_fetch_without_an_upstream() {
+fn sync_without_an_upstream_stops_when_no_remote_exists() {
     let repository = test_repository();
     let head = git_stdout(repository.path(), &["rev-parse", "HEAD"]);
 
     let failure = super::super::GitRepositorySource::new(repository.path())
         .apply(&RepositoryAction::Sync)
-        .expect_err("sync without upstream must stop");
+        .expect_err("sync without a remote must stop");
 
-    assert_eq!(failure.kind, FailureKind::NoUpstream);
+    assert_eq!(failure.kind, FailureKind::NoRemote);
     assert_eq!(git_stdout(repository.path(), &["rev-parse", "HEAD"]), head);
+}
+
+#[test]
+fn sync_repairs_a_missing_upstream_when_the_remote_tip_is_equal() {
+    let repository = sync_repository();
+    git(&repository.work, &["branch", "--unset-upstream"]);
+
+    let result = super::super::GitRepositorySource::new(&repository.work)
+        .apply(&RepositoryAction::Sync)
+        .expect("sync missing upstream");
+
+    assert!(matches!(
+        result,
+        OperationResult::Sync { plan }
+            if plan.local_only == 0
+                && plan.upstream_only == 0
+                && plan.establish_upstream
+    ));
+    assert_eq!(
+        git_stdout(
+            &repository.work,
+            &["rev-parse", "--abbrev-ref", "@{upstream}"]
+        ),
+        "origin/master"
+    );
+}
+
+#[test]
+fn sync_publishes_a_new_same_named_branch_and_sets_its_upstream() {
+    let repository = sync_repository();
+    git(&repository.work, &["switch", "-c", "topic"]);
+    fs::write(repository.work.join("topic.txt"), "topic\n").unwrap();
+    git(&repository.work, &["add", "."]);
+    git(&repository.work, &["commit", "-m", "Topic commit"]);
+
+    let result = super::super::GitRepositorySource::new(&repository.work)
+        .apply(&RepositoryAction::Sync)
+        .expect("publish with sync");
+
+    assert!(matches!(
+        result,
+        OperationResult::Sync { plan }
+            if plan.branch == "topic" && plan.upstream == "origin/topic"
+                && plan.establish_upstream
+    ));
+    assert_eq!(
+        git_stdout(
+            &repository.work,
+            &["rev-parse", "--abbrev-ref", "@{upstream}"]
+        ),
+        "origin/topic"
+    );
+    assert_eq!(
+        git_stdout(&repository.work, &["rev-parse", "HEAD"]),
+        git_stdout(
+            &repository.work,
+            &["ls-remote", "--refs", "origin", "refs/heads/topic"]
+        )
+        .split_whitespace()
+        .next()
+        .unwrap()
+    );
+}
+
+#[test]
+fn sync_fast_forwards_an_existing_destination_before_setting_upstream() {
+    let repository = sync_repository();
+    git(&repository.work, &["branch", "--unset-upstream"]);
+    fs::write(repository.seed.join("remote.txt"), "remote\n").unwrap();
+    git(&repository.seed, &["add", "."]);
+    git(&repository.seed, &["commit", "-m", "Remote commit"]);
+    git(&repository.seed, &["push", "origin", "HEAD"]);
+    let remote = git_stdout(&repository.seed, &["rev-parse", "HEAD"]);
+
+    let result = super::super::GitRepositorySource::new(&repository.work)
+        .apply(&RepositoryAction::Sync)
+        .expect("sync existing destination");
+
+    assert!(matches!(
+        result,
+        OperationResult::Sync { plan }
+            if plan.upstream_only == 1 && plan.establish_upstream
+    ));
+    assert_eq!(git_stdout(&repository.work, &["rev-parse", "HEAD"]), remote);
+    assert_eq!(
+        git_stdout(
+            &repository.work,
+            &["rev-parse", "--abbrev-ref", "@{upstream}"]
+        ),
+        "origin/master"
+    );
+}
+
+#[test]
+fn sync_uses_the_only_non_origin_remote_for_a_missing_upstream() {
+    let repository = sync_repository();
+    git(
+        &repository.work,
+        &["remote", "rename", "origin", "upstream"],
+    );
+    git(&repository.work, &["branch", "--unset-upstream"]);
+
+    super::super::GitRepositorySource::new(&repository.work)
+        .apply(&RepositoryAction::Sync)
+        .expect("sync sole remote");
+
+    assert_eq!(
+        git_stdout(
+            &repository.work,
+            &["rev-parse", "--abbrev-ref", "@{upstream}"]
+        ),
+        "upstream/master"
+    );
+}
+
+#[test]
+fn sync_prefers_origin_when_a_missing_upstream_has_several_remotes() {
+    let repository = sync_repository();
+    let remote_path = repository.root.path().join("remote.git");
+    git(&repository.work, &["branch", "--unset-upstream"]);
+    git(
+        &repository.work,
+        &["remote", "add", "backup", remote_path.to_str().unwrap()],
+    );
+
+    super::super::GitRepositorySource::new(&repository.work)
+        .apply(&RepositoryAction::Sync)
+        .expect("prefer origin");
+
+    assert_eq!(
+        git_stdout(
+            &repository.work,
+            &["rev-parse", "--abbrev-ref", "@{upstream}"]
+        ),
+        "origin/master"
+    );
+}
+
+#[test]
+fn sync_requires_a_remote_choice_only_when_origin_is_absent_and_several_exist() {
+    let repository = sync_repository();
+    let remote_path = repository.root.path().join("remote.git");
+    git(&repository.work, &["branch", "--unset-upstream"]);
+    git(&repository.work, &["remote", "rename", "origin", "alpha"]);
+    git(
+        &repository.work,
+        &["remote", "add", "beta", remote_path.to_str().unwrap()],
+    );
+
+    let failure = super::super::GitRepositorySource::new(&repository.work)
+        .apply(&RepositoryAction::Sync)
+        .expect_err("ambiguous remote must stop");
+    assert_eq!(failure.kind, FailureKind::NoRemote);
+
+    super::super::GitRepositorySource::new(&repository.work)
+        .apply(&RepositoryAction::SyncToRemote("beta".to_owned()))
+        .expect("selected remote");
+    assert_eq!(
+        git_stdout(
+            &repository.work,
+            &["rev-parse", "--abbrev-ref", "@{upstream}"]
+        ),
+        "beta/master"
+    );
+}
+
+#[test]
+fn sync_rejects_an_existing_same_named_branch_with_unrelated_history() {
+    let root = tempfile::tempdir().unwrap();
+    git(root.path(), &["init", "--bare", "remote.git"]);
+    git(root.path(), &["clone", "remote.git", "seed"]);
+    let seed = root.path().join("seed");
+    git(&seed, &["config", "user.name", "Diffo Test"]);
+    git(&seed, &["config", "user.email", "diffo@example.invalid"]);
+    fs::write(seed.join("remote.txt"), "remote\n").unwrap();
+    git(&seed, &["add", "."]);
+    git(&seed, &["commit", "-m", "Remote root"]);
+    git(&seed, &["push", "origin", "HEAD:refs/heads/main"]);
+    let repository = test_repository();
+    git(
+        repository.path(),
+        &[
+            "remote",
+            "add",
+            "origin",
+            root.path().join("remote.git").to_str().unwrap(),
+        ],
+    );
+    let local = git_stdout(repository.path(), &["rev-parse", "HEAD"]);
+
+    let failure = super::super::GitRepositorySource::new(repository.path())
+        .apply(&RepositoryAction::Sync)
+        .expect_err("unrelated destination must stop");
+
+    assert_eq!(failure.kind, FailureKind::BranchConflict);
+    assert_eq!(git_stdout(repository.path(), &["rev-parse", "HEAD"]), local);
+    assert!(
+        !Command::new("git")
+            .args(["rev-parse", "--verify", "@{upstream}"])
+            .current_dir(repository.path())
+            .output()
+            .unwrap()
+            .status
+            .success()
+    );
 }
 
 #[test]
@@ -167,28 +372,161 @@ fn sync_rebases_non_overlapping_hunks_in_one_file() {
 }
 
 #[test]
-fn sync_stops_before_fetch_when_the_worktree_is_dirty() {
+fn sync_fast_forwards_with_unrelated_staged_unstaged_and_untracked_work() {
     let repository = sync_repository();
     fs::write(repository.seed.join("remote.txt"), "remote\n").unwrap();
     git(&repository.seed, &["add", "."]);
     git(&repository.seed, &["commit", "-m", "Remote commit"]);
     git(&repository.seed, &["push", "origin", "HEAD"]);
-    let before_fetch = git_stdout(&repository.work, &["rev-parse", "origin/HEAD"]);
     fs::write(repository.work.join("base.txt"), "dirty\n").unwrap();
+    fs::write(repository.work.join("staged.txt"), "staged\n").unwrap();
+    git(&repository.work, &["add", "staged.txt"]);
+    fs::write(repository.work.join("untracked.txt"), "untracked\n").unwrap();
+    let status = git_stdout(&repository.work, &["status", "--porcelain=v1"]);
+
+    super::super::GitRepositorySource::new(&repository.work)
+        .apply(&RepositoryAction::Sync)
+        .expect("dirty fast-forward");
+
+    assert_eq!(
+        git_stdout(&repository.work, &["status", "--porcelain=v1"]),
+        status
+    );
+    assert_eq!(
+        fs::read_to_string(repository.work.join("remote.txt")).unwrap(),
+        "remote\n"
+    );
+}
+
+#[test]
+fn sync_pushes_commits_without_touching_uncommitted_work() {
+    let repository = sync_repository();
+    fs::write(repository.work.join("local.txt"), "committed\n").unwrap();
+    git(&repository.work, &["add", "."]);
+    git(&repository.work, &["commit", "-m", "Local commit"]);
+    fs::write(repository.work.join("base.txt"), "unstaged\n").unwrap();
+    fs::write(repository.work.join("staged.txt"), "staged\n").unwrap();
+    git(&repository.work, &["add", "staged.txt"]);
+    fs::write(repository.work.join("untracked.txt"), "untracked\n").unwrap();
+    let status = git_stdout(&repository.work, &["status", "--porcelain=v1"]);
+
+    confirmed_sync(&repository.work).expect("dirty push");
+
+    assert_eq!(
+        git_stdout(&repository.work, &["status", "--porcelain=v1"]),
+        status
+    );
+    assert_eq!(
+        git_stdout(&repository.work, &["rev-parse", "HEAD"]),
+        remote_head(&repository.seed)
+    );
+}
+
+#[test]
+fn sync_preserves_overlapping_tracked_work_when_fast_forward_is_refused() {
+    let repository = sync_repository();
+    let local_head = git_stdout(&repository.work, &["rev-parse", "HEAD"]);
+    fs::write(repository.work.join("base.txt"), "local\n").unwrap();
+    fs::write(repository.seed.join("base.txt"), "remote\n").unwrap();
+    git(&repository.seed, &["commit", "-am", "Remote conflict"]);
+    git(&repository.seed, &["push", "origin", "HEAD"]);
+    let remote = git_stdout(&repository.seed, &["rev-parse", "HEAD"]);
 
     let failure = super::super::GitRepositorySource::new(&repository.work)
         .apply(&RepositoryAction::Sync)
-        .expect_err("dirty sync must stop");
+        .expect_err("overlapping fast-forward must stop");
 
     assert_eq!(failure.kind, FailureKind::DirtyWorktree);
     assert_eq!(
-        git_stdout(&repository.work, &["rev-parse", "origin/HEAD"]),
-        before_fetch
+        git_stdout(&repository.work, &["rev-parse", "HEAD"]),
+        local_head
+    );
+    assert_eq!(
+        git_stdout(&repository.work, &["rev-parse", "origin/master"]),
+        remote
+    );
+    assert_eq!(
+        fs::read_to_string(repository.work.join("base.txt")).unwrap(),
+        "local\n"
+    );
+}
+
+#[test]
+fn sync_preserves_an_untracked_file_that_blocks_fast_forward() {
+    let repository = sync_repository();
+    let local_head = git_stdout(&repository.work, &["rev-parse", "HEAD"]);
+    fs::write(repository.work.join("collision.txt"), "local\n").unwrap();
+    fs::write(repository.seed.join("collision.txt"), "remote\n").unwrap();
+    git(&repository.seed, &["add", "."]);
+    git(&repository.seed, &["commit", "-m", "Remote file"]);
+    git(&repository.seed, &["push", "origin", "HEAD"]);
+
+    let failure = super::super::GitRepositorySource::new(&repository.work)
+        .apply(&RepositoryAction::Sync)
+        .expect_err("untracked collision must stop");
+
+    assert_eq!(failure.kind, FailureKind::DirtyWorktree);
+    assert_eq!(
+        git_stdout(&repository.work, &["rev-parse", "HEAD"]),
+        local_head
+    );
+    assert_eq!(
+        fs::read_to_string(repository.work.join("collision.txt")).unwrap(),
+        "local\n"
+    );
+}
+
+#[test]
+fn sync_rebases_with_an_unrelated_untracked_file() {
+    let repository = sync_repository();
+    fs::write(repository.work.join("local.txt"), "local\n").unwrap();
+    git(&repository.work, &["add", "."]);
+    git(&repository.work, &["commit", "-m", "Local commit"]);
+    fs::write(repository.work.join("unfinished.txt"), "unfinished\n").unwrap();
+    fs::write(repository.seed.join("remote.txt"), "remote\n").unwrap();
+    git(&repository.seed, &["add", "."]);
+    git(&repository.seed, &["commit", "-m", "Remote commit"]);
+    git(&repository.seed, &["push", "origin", "HEAD"]);
+
+    confirmed_sync(&repository.work).expect("rebase with untracked work");
+
+    assert_eq!(
+        fs::read_to_string(repository.work.join("unfinished.txt")).unwrap(),
+        "unfinished\n"
+    );
+    assert_eq!(
+        git_stdout(&repository.work, &["rev-parse", "HEAD"]),
+        remote_head(&repository.seed)
+    );
+}
+
+#[test]
+fn sync_fetches_then_stops_when_dirty_tracked_work_blocks_a_rebase() {
+    let repository = sync_repository();
+    fs::write(repository.work.join("local.txt"), "local\n").unwrap();
+    git(&repository.work, &["add", "."]);
+    git(&repository.work, &["commit", "-m", "Local commit"]);
+    fs::write(repository.work.join("base.txt"), "dirty\n").unwrap();
+    let local = git_stdout(&repository.work, &["rev-parse", "HEAD"]);
+    fs::write(repository.seed.join("remote.txt"), "remote\n").unwrap();
+    git(&repository.seed, &["add", "."]);
+    git(&repository.seed, &["commit", "-m", "Remote commit"]);
+    git(&repository.seed, &["push", "origin", "HEAD"]);
+    let remote = git_stdout(&repository.seed, &["rev-parse", "HEAD"]);
+
+    let failure = confirmed_sync(&repository.work).expect_err("dirty rebase must stop");
+
+    assert_eq!(failure.kind, FailureKind::DirtyWorktree);
+    assert_eq!(git_stdout(&repository.work, &["rev-parse", "HEAD"]), local);
+    assert_eq!(
+        git_stdout(&repository.work, &["rev-parse", "origin/master"]),
+        remote
     );
     assert_eq!(
         fs::read_to_string(repository.work.join("base.txt")).unwrap(),
         "dirty\n"
     );
+    assert_eq!(remote_head(&repository.seed), remote);
 }
 
 #[derive(Default)]

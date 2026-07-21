@@ -3,8 +3,7 @@ use std::collections::HashSet;
 use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind};
 use diffo_core::{
     AmendTarget, BranchKind, BranchRef, Commit, DiscardAllTarget, DiscardTarget, HeadState,
-    PublishBranchTarget, RenameBranchTarget, RepositoryAction, RepositoryQueryId, StashEntry,
-    UndoCommitTarget,
+    RenameBranchTarget, RepositoryAction, RepositoryQueryId, StashEntry, UndoCommitTarget,
 };
 use diffo_ui::{
     command_palette::{Command, CommandId},
@@ -34,9 +33,8 @@ pub(super) const AMEND_COMMAND: CommandId = CommandId::new("git.amend");
 pub(super) const UNDO_COMMIT_COMMAND: CommandId = CommandId::new("git.undo_last_commit");
 pub(super) const REVERT_COMMAND: CommandId = CommandId::new("git.revert");
 pub(super) const RENAME_BRANCH_COMMAND: CommandId = CommandId::new("git.rename_branch");
-pub(super) const PUBLISH_BRANCH_COMMAND: CommandId = CommandId::new("git.publish_branch");
 
-pub(super) const COMMANDS: [Command; 9] = [
+pub(super) const COMMANDS: [Command; 8] = [
     Command {
         id: DISCARD_ALL_COMMAND,
         label: "Git: Discard All Changes...",
@@ -68,10 +66,6 @@ pub(super) const COMMANDS: [Command; 9] = [
     Command {
         id: RENAME_BRANCH_COMMAND,
         label: "Git: Rename Branch...",
-    },
-    Command {
-        id: PUBLISH_BRANCH_COMMAND,
-        label: "Git: Publish Branch...",
     },
 ];
 
@@ -119,16 +113,6 @@ impl EverydayModal {
         }
     }
 
-    pub(super) fn remote_query_id(&self) -> Option<RepositoryQueryId> {
-        match self {
-            Self::Picker(EverydayPicker {
-                query_id: Some(query_id),
-                purpose: PickerPurpose::Publish,
-                ..
-            }) => Some(*query_id),
-            _ => None,
-        }
-    }
 }
 
 pub(super) enum EverydayEvent {
@@ -380,7 +364,6 @@ impl InputModal {
 enum PickerPayload {
     Stash(StashEntry),
     Commit(Commit),
-    Remote(String),
 }
 
 #[derive(Clone, Copy, Eq, PartialEq)]
@@ -388,14 +371,12 @@ enum PickerPurpose {
     ApplyStash,
     DropStash,
     Revert,
-    Publish,
 }
 
 struct EverydayPicker {
     query_id: Option<RepositoryQueryId>,
     purpose: PickerPurpose,
     picker: SearchPicker<String, PickerPayload>,
-    publish_target: Option<PublishBranchTarget>,
 }
 
 impl EverydayPicker {
@@ -409,7 +390,6 @@ impl EverydayPicker {
             query_id: Some(query_id),
             purpose,
             picker: SearchPicker::new(title, "Loading stashes..."),
-            publish_target: None,
         }
     }
 
@@ -432,16 +412,6 @@ impl EverydayPicker {
             query_id: None,
             purpose: PickerPurpose::Revert,
             picker,
-            publish_target: None,
-        }
-    }
-
-    fn loading_remotes(query_id: RepositoryQueryId, target: PublishBranchTarget) -> Self {
-        Self {
-            query_id: Some(query_id),
-            purpose: PickerPurpose::Publish,
-            picker: SearchPicker::new("Publish branch", "Loading remotes..."),
-            publish_target: Some(target),
         }
     }
 
@@ -455,24 +425,6 @@ impl EverydayPicker {
                     identity: stash.object_id.clone(),
                     label: format!("{} {}", stash.name, stash.summary),
                     payload: PickerPayload::Stash(stash),
-                    trailing: None,
-                    aliases: Vec::new(),
-                    enabled: true,
-                })
-                .collect(),
-        );
-    }
-
-    fn install_remotes(&mut self, remotes: Vec<String>) {
-        self.query_id = None;
-        self.picker.set_empty_message("No remotes");
-        self.picker.set_items(
-            remotes
-                .into_iter()
-                .map(|remote| SearchItem {
-                    identity: remote.clone(),
-                    payload: PickerPayload::Remote(remote.clone()),
-                    label: remote,
                     trailing: None,
                     aliases: Vec::new(),
                     enabled: true,
@@ -499,13 +451,6 @@ impl EverydayPicker {
             },
             SearchPickerEvent::Activate(PickerPayload::Commit(commit)) => {
                 EverydayEvent::Run(RepositoryAction::Revert(Box::new(commit)))
-            }
-            SearchPickerEvent::Activate(PickerPayload::Remote(remote)) => {
-                let Some(mut target) = self.publish_target.clone() else {
-                    return EverydayEvent::Consumed;
-                };
-                target.remote = remote;
-                EverydayEvent::Confirm(publish_confirmation(target))
             }
         }
     }
@@ -642,15 +587,4 @@ fn byte_index(text: &str, character: usize) -> usize {
     text.char_indices()
         .nth(character)
         .map_or(text.len(), |(index, _)| index)
-}
-
-fn publish_confirmation(target: PublishBranchTarget) -> ConfirmationModal {
-    ConfirmationModal::new(
-        format!(
-            "Publish {} to {}/{} and set its upstream?",
-            target.branch, target.remote, target.branch
-        ),
-        "Publish branch",
-        RepositoryAction::PublishBranch(Box::new(target)),
-    )
 }

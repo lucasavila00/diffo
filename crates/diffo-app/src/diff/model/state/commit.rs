@@ -82,10 +82,17 @@ impl Model {
     }
 
     pub fn execute_sync(&mut self) -> Option<RepositoryAction> {
+        self.start_sync(RepositoryAction::Sync)
+    }
+
+    pub fn execute_sync_to_remote(&mut self, remote: String) -> Option<RepositoryAction> {
+        self.start_sync(RepositoryAction::SyncToRemote(remote))
+    }
+
+    fn start_sync(&mut self, action: RepositoryAction) -> Option<RepositoryAction> {
         if !self.sync_enabled() {
             return None;
         }
-        let action = RepositoryAction::Sync;
         self.error = None;
         self.pending_operation = Some(action.clone());
         Some(action)
@@ -95,7 +102,9 @@ impl Model {
     pub fn network_operation(&self) -> Option<NetworkOperation> {
         match self.pending_operation.as_ref() {
             Some(RepositoryAction::Fetch) => Some(NetworkOperation::Fetch),
-            Some(RepositoryAction::Sync) => Some(NetworkOperation::Sync),
+            Some(RepositoryAction::Sync | RepositoryAction::SyncToRemote(_)) => {
+                Some(NetworkOperation::Sync)
+            }
             _ => None,
         }
     }

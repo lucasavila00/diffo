@@ -322,6 +322,7 @@ impl Repository for MutableFixtureRepository {
                 }
                 RepositoryAction::Fetch
                 | RepositoryAction::Sync
+                | RepositoryAction::SyncToRemote(_)
                 | RepositoryAction::Checkout(_)
                 | RepositoryAction::CreateBranch(_)
                 | RepositoryAction::DeleteBranch(_)
@@ -333,8 +334,7 @@ impl Repository for MutableFixtureRepository {
                 | RepositoryAction::Amend(_)
                 | RepositoryAction::UndoLastCommit(_)
                 | RepositoryAction::Revert(_)
-                | RepositoryAction::RenameBranch(_)
-                | RepositoryAction::PublishBranch(_) => {
+                | RepositoryAction::RenameBranch(_) => {
                     bail!("mock repository cannot execute {action:?}: no remote configured")
                 }
             }
@@ -345,7 +345,7 @@ impl Repository for MutableFixtureRepository {
                 action,
                 RepositoryAction::Fetch
                     | RepositoryAction::Sync
-                    | RepositoryAction::PublishBranch(_)
+                    | RepositoryAction::SyncToRemote(_)
             ) {
                 FailureKind::NoRemote
             } else {

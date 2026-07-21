@@ -73,9 +73,6 @@ pub(crate) fn operation_result_toast(result: &OperationResult) -> Option<(ToastK
         }
         OperationResult::Revert { hash } => format!("Reverted as {}", short_hash(hash)),
         OperationResult::RenameBranch { branch } => format!("Renamed branch to {branch}"),
-        OperationResult::PublishBranch { branch, remote } => {
-            format!("Published {branch} to {remote}")
-        }
     };
     Some((ToastKind::Success, title))
 }
@@ -85,7 +82,7 @@ pub(crate) fn operation_failure_title(failure: &OperationFailure) -> String {
         RepositoryAction::Stage(_) | RepositoryAction::StageAll => "Stage",
         RepositoryAction::Unstage(_) | RepositoryAction::UnstageAll => "Unstage",
         RepositoryAction::Fetch => "Fetch",
-        RepositoryAction::Sync => "Sync",
+        RepositoryAction::Sync | RepositoryAction::SyncToRemote(_) => "Sync",
         RepositoryAction::Commit(_) => "Commit",
         RepositoryAction::Checkout(_) => "Checkout",
         RepositoryAction::CreateBranch(_) => "Create branch",
@@ -98,7 +95,6 @@ pub(crate) fn operation_failure_title(failure: &OperationFailure) -> String {
         RepositoryAction::UndoLastCommit(_) => "Undo last commit",
         RepositoryAction::Revert(_) => "Revert commit",
         RepositoryAction::RenameBranch(_) => "Rename branch",
-        RepositoryAction::PublishBranch(_) => "Publish branch",
     };
     match failure.kind {
         FailureKind::PushRejected | FailureKind::HookRejected => {
@@ -126,12 +122,26 @@ pub(crate) fn sync_progress_label(progress: &SyncProgress) -> String {
 }
 
 fn sync_plan_step(plan: &SyncPlan) -> String {
+    let tracking = if plan.establish_upstream {
+        format!(" and set {} as upstream", plan.upstream)
+    } else {
+        String::new()
+    };
     match (plan.local_only, plan.upstream_only) {
+        (0, 0) if plan.establish_upstream => {
+            format!(
+                "Plan: set {} as the upstream; the branches have the same tip.",
+                plan.upstream
+            )
+        }
         (0, 0) => "Plan: finish after fetch; the branches have the same tip.".to_owned(),
-        (0, _) => format!("Plan: fast-forward {} to {}.", plan.branch, plan.upstream),
-        (_, 0) => format!("Plan: push {}.", plan.branch),
+        (0, _) => format!(
+            "Plan: fast-forward {} to {}{tracking}.",
+            plan.branch, plan.upstream
+        ),
+        (_, 0) => format!("Plan: push {}{tracking}.", plan.branch),
         (local, _) => format!(
-            "Plan: rebase {local} {} onto {}, then push.",
+            "Plan: rebase {local} {} onto {}, then push{tracking}.",
             if local == 1 { "commit" } else { "commits" },
             plan.upstream
         ),
@@ -147,16 +157,21 @@ fn commit_count_sentence(name: &str, count: usize, kind: &str) -> String {
 }
 
 fn sync_result_title(plan: &SyncPlan) -> String {
+    let tracking = if plan.establish_upstream {
+        format!(" Set upstream to {}.", plan.upstream)
+    } else {
+        String::new()
+    };
     match (plan.local_only, plan.upstream_only) {
-        (0, 0) => "Fetched; already up to date.".to_owned(),
+        (0, 0) => format!("Fetched; already up to date.{tracking}"),
         (0, commits) => format!(
-            "Fast-forwarded {} by {commits} {}.",
+            "Fast-forwarded {} by {commits} {}.{tracking}",
             plan.branch,
             if commits == 1 { "commit" } else { "commits" }
         ),
-        (_, 0) => format!("Pushed {}.", plan.branch),
+        (_, 0) => format!("Pushed {}.{tracking}", plan.branch),
         (commits, _) => format!(
-            "Rebased {commits} {} and pushed {}.",
+            "Rebased {commits} {} and pushed {}.{tracking}",
             if commits == 1 { "commit" } else { "commits" },
             plan.branch
         ),

@@ -1,38 +1,41 @@
 use diffo_core::{
-    CancellationHandle, FailureKind, GitPrompt, OperationFailure, PromptAnswer, RepositoryAction,
-    RepositoryOperationContext, SyncPlan,
+    FailureKind, GitPrompt, OperationFailure, PromptAnswer, RepositoryAction, SyncPlan,
 };
 
-use crate::{GitRepositorySource, askpass::AskpassBridge, failure::operation_failure};
+use crate::{GitRepositorySource, failure::operation_failure};
+
+use super::{SyncExecution, sync_target::SyncTarget};
 
 impl GitRepositorySource {
     pub(super) fn confirm_protected_push(
         &self,
+        execution: &SyncExecution<'_>,
         plan: &SyncPlan,
-        remote: &str,
-        upstream_branch: &str,
-        context: Option<&RepositoryOperationContext>,
-        cancellation: &CancellationHandle,
-        bridge: Option<&AskpassBridge>,
+        target: &SyncTarget,
+        upstream_exists: bool,
     ) -> Result<bool, OperationFailure> {
+        let action = execution.action;
         let Some(destination) =
-            protected_push_destination(remote, upstream_branch, plan.local_only)
+            protected_push_destination(&target.remote, &target.upstream_branch, plan.local_only)
         else {
             return Ok(false);
         };
-        let (Some(context), Some(bridge)) = (context, bridge) else {
+        let (Some(context), Some(bridge)) = (execution.context, execution.bridge) else {
             return Err(operation_failure(
-                &RepositoryAction::Sync,
+                action,
                 FailureKind::Unknown,
                 "protected branch push confirmation is unavailable",
             ));
         };
-        let action = &RepositoryAction::Sync;
         let local_tip = self
             .git_text(&["rev-parse", "HEAD"])
             .map_err(|error| operation_failure(action, FailureKind::Unknown, &error.to_string()))?;
-        let upstream_tip = self
-            .git_text(&["rev-parse", &plan.upstream])
+        let upstream_tip = upstream_exists
+            .then(|| self.git_text(&["rev-parse", &plan.upstream]))
+            .transpose()
+            .map_err(|error| operation_failure(action, FailureKind::Unknown, &error.to_string()))?;
+        let worktree_status = self
+            .git_text(&["status", "--porcelain=v1", "-z"])
             .map_err(|error| operation_failure(action, FailureKind::Unknown, &error.to_string()))?;
         let answer = context.prompts.prompt(
             bridge.next_prompt_id(),
@@ -40,19 +43,21 @@ impl GitRepositorySource {
                 destination,
                 commits: plan.local_only,
             },
-            cancellation,
+            execution.cancellation,
         );
-        if !matches!(answer, PromptAnswer::Confirm) || cancellation.is_cancelled() {
+        if !matches!(answer, PromptAnswer::Confirm) || execution.cancellation.is_cancelled() {
             return Ok(true);
         }
         if !self.sync_plan_is_current(
             action,
             &plan.branch,
             &plan.upstream,
-            remote,
-            upstream_branch,
+            &target.remote,
+            &target.upstream_branch,
+            plan.establish_upstream,
             &local_tip,
-            &upstream_tip,
+            upstream_tip.as_deref(),
+            &worktree_status,
         ) {
             return Err(operation_failure(
                 action,
@@ -71,28 +76,44 @@ impl GitRepositorySource {
         upstream: &str,
         remote: &str,
         upstream_branch: &str,
+        establish_upstream: bool,
         local_tip: &str,
-        upstream_tip: &str,
+        upstream_tip: Option<&str>,
+        worktree_status: &str,
     ) -> bool {
         self.check_sync_starting_state(action).is_ok()
             && self
                 .sync_branch(action)
                 .is_ok_and(|current| current == branch)
-            && self
-                .sync_upstream(action)
-                .is_ok_and(|current| current == upstream)
-            && self
-                .git_text(&["config", "--get", &format!("branch.{branch}.remote")])
-                .is_ok_and(|current| current == remote)
-            && self
-                .git_text(&["config", "--get", &format!("branch.{branch}.merge")])
-                .is_ok_and(|current| current == upstream_branch)
+            && if establish_upstream {
+                self.sync_upstream(action).is_err()
+                    && self
+                        .remote_names()
+                        .is_ok_and(|remotes| remotes.iter().any(|candidate| candidate == remote))
+            } else {
+                self.sync_upstream(action)
+                    .is_ok_and(|current| current == upstream)
+                    && self
+                        .git_text(&["config", "--get", &format!("branch.{branch}.remote")])
+                        .is_ok_and(|current| current == remote)
+                    && self
+                        .git_text(&["config", "--get", &format!("branch.{branch}.merge")])
+                        .is_ok_and(|current| current == upstream_branch)
+            }
             && self
                 .git_text(&["rev-parse", "HEAD"])
                 .is_ok_and(|current| current == local_tip)
+            && match upstream_tip {
+                Some(expected) => self
+                    .git_text(&["rev-parse", upstream])
+                    .is_ok_and(|current| current == expected),
+                None => self
+                    .git(&["rev-parse", "--verify", "--quiet", upstream])
+                    .is_err(),
+            }
             && self
-                .git_text(&["rev-parse", upstream])
-                .is_ok_and(|current| current == upstream_tip)
+                .git_text(&["status", "--porcelain=v1", "-z"])
+                .is_ok_and(|current| current == worktree_status)
     }
 }
 

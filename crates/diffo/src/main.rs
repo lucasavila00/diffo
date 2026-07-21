@@ -411,6 +411,11 @@ fn dispatch_events(
             workbench.branches_load_failed(query_id, "repository service is unavailable");
         }
     }
+    while let Some(query_id) = workbench.take_sync_remote_query() {
+        if !repository_service.load_remotes(query_id) {
+            workbench.sync_remotes_load_failed(query_id, "repository service is unavailable");
+        }
+    }
     let command_start = Instant::now();
     while let Some(command) = workbench.take_application_command(command_start) {
         let id = command.id;
@@ -485,10 +490,13 @@ fn drain_repository_events(repository_service: &RepositoryService, workbench: &m
             RepositoryEvent::BranchesLoadFailed { query_id, message } => {
                 workbench.branches_load_failed(query_id, &message);
             }
-            RepositoryEvent::StashesLoaded { .. }
-            | RepositoryEvent::StashesLoadFailed { .. }
-            | RepositoryEvent::RemotesLoaded { .. }
-            | RepositoryEvent::RemotesLoadFailed { .. } => {}
+            RepositoryEvent::RemotesLoaded { query_id, remotes } => {
+                workbench.sync_remotes_loaded(query_id, remotes);
+            }
+            RepositoryEvent::RemotesLoadFailed { query_id, message } => {
+                workbench.sync_remotes_load_failed(query_id, &message);
+            }
+            RepositoryEvent::StashesLoaded { .. } | RepositoryEvent::StashesLoadFailed { .. } => {}
             RepositoryEvent::Prompt {
                 command_id,
                 prompt_id,

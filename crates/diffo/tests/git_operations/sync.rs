@@ -9,6 +9,13 @@ struct ProtectedPushFrame {
     head: String,
 }
 
+#[derive(Deserialize)]
+struct DirtySyncFrame {
+    input_events: Vec<String>,
+    head: String,
+    repository_files: Vec<String>,
+}
+
 #[test]
 fn equal_tips_still_fetch_and_show_the_finish_plan() -> Result<()> {
     let repository = TestRepository::new()?;
@@ -221,20 +228,49 @@ fn conflicting_divergence_aborts_rebase_and_never_pushes() -> Result<()> {
 }
 
 #[test]
-fn no_upstream_stops_before_fetch() -> Result<()> {
+fn missing_upstream_is_repaired_by_one_frame_traced_sync() -> Result<()> {
     let repository = TestRepository::new()?;
     let fetch_marker = install_fetch_marker(&repository.worktree, repository.root.path())?;
     git(&repository.worktree, &["branch", "--unset-upstream"])?;
     let local_before = local_head(&repository)?;
-    let mut screen = repository.screen()?;
+    let trace_path = repository.root.path().join("missing-upstream-frames.ronl");
+    let mut screen = DiffoScreen::launch_with_env(
+        diffo_binary()?,
+        &repository.worktree,
+        &[("DIFFO_TRACE_FRAMES", trace_path.as_os_str())],
+    )?;
 
     start_sync(&mut screen)?;
     screen
-        .wait_for_text("sync requires a configured")?
-        .wait_for_text("upstream")?;
+        .wait_for_text("Fetched; already up to date.")?
+        .press(Key::Char('q'))?
+        .wait_for_exit()?;
 
-    assert!(!fetch_marker.exists());
+    assert!(fetch_marker.exists());
     assert_eq!(local_head(&repository)?, local_before);
+    assert_eq!(
+        git_output(
+            &repository.worktree,
+            &["rev-parse", "--abbrev-ref", "@{upstream}"]
+        )?,
+        "origin/master"
+    );
+    let trace = fs::read_to_string(&trace_path).context("read missing-upstream frame trace")?;
+    let frames = trace
+        .lines()
+        .map(ron::from_str::<DirtySyncFrame>)
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+    assert!(frames.iter().any(|frame| {
+        frame
+            .input_events
+            .iter()
+            .any(|event| event.contains("Char('1')"))
+    }));
+    assert!(
+        frames
+            .iter()
+            .all(|frame| frame.head.ends_with(&local_before))
+    );
     Ok(())
 }
 
@@ -282,28 +318,56 @@ fn unborn_branch_stops_before_fetch() -> Result<()> {
 }
 
 #[test]
-fn dirty_worktree_stops_before_fetch_without_changing_it() -> Result<()> {
+fn dirty_worktree_fast_forwards_unrelated_files_atomically() -> Result<()> {
     let repository = TestRepository::new()?;
-    let upstream_before = git_output(&repository.worktree, &["rev-parse", "origin/master"])?;
-    repository.commit_remote("remote.txt", "remote\n", "Remote commit")?;
+    let remote = repository.commit_remote("remote.txt", "remote\n", "Remote commit")?;
     let fetch_marker = install_fetch_marker(&repository.worktree, repository.root.path())?;
     fs::write(repository.worktree.join("tracked.txt"), "dirty\n")?;
-    let mut screen = repository.screen()?;
+    let trace_path = repository
+        .root
+        .path()
+        .join("dirty-fast-forward-frames.ronl");
+    let mut screen = DiffoScreen::launch_with_env(
+        diffo_binary()?,
+        &repository.worktree,
+        &[("DIFFO_TRACE_FRAMES", trace_path.as_os_str())],
+    )?;
 
     start_sync(&mut screen)?;
     screen
-        .wait_for_text("sync currently requires a")?
-        .wait_for_text("clean worktree and index")?;
+        .wait_for_text("Fast-forwarded master by 1 commit.")?
+        .press(Key::Char('q'))?
+        .wait_for_exit()?;
 
-    assert!(!fetch_marker.exists());
+    assert!(fetch_marker.exists());
     assert_eq!(
         git_output(&repository.worktree, &["rev-parse", "origin/master"])?,
-        upstream_before
+        remote
     );
+    assert_eq!(local_head(&repository)?, remote);
     assert_eq!(
         fs::read_to_string(repository.worktree.join("tracked.txt"))?,
         "dirty\n"
     );
+    assert_eq!(
+        fs::read_to_string(repository.worktree.join("remote.txt"))?,
+        "remote\n"
+    );
+    let trace = fs::read_to_string(&trace_path).context("read dirty sync frame trace")?;
+    let frames = trace
+        .lines()
+        .map(ron::from_str::<DirtySyncFrame>)
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+    let committed = frames
+        .iter()
+        .position(|frame| frame.head.ends_with(&remote))
+        .with_context(|| format!("trace has no committed fast-forward frame:\n{trace}"))?;
+    assert!(frames[committed..].iter().all(|frame| {
+        frame
+            .repository_files
+            .iter()
+            .any(|file| file == "tracked.txt:staged=false:unstaged=true")
+    }));
     Ok(())
 }
 
@@ -374,7 +438,6 @@ fn local_merge_history_stops_after_fetch_before_rebase_or_push() -> Result<()> {
     let mut screen = repository.screen()?;
 
     start_sync(&mut screen)?;
-    confirm_protected_push(&mut screen, 3, "origin/master")?;
     screen
         .wait_for_text("sync cannot rebase local-only")?
         .wait_for_text("history containing merge commits")?;

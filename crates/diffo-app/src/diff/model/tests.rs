@@ -97,6 +97,7 @@ fn commit_and_sync_are_independent_actions() {
                     upstream: "origin/main".to_owned(),
                     local_only: 1,
                     upstream_only: 0,
+                    establish_upstream: false,
                 }),
             },
             refreshed,

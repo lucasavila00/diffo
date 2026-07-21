@@ -39,6 +39,7 @@ mod modal;
 mod pending_scroll;
 mod prompt;
 mod repository_update;
+mod sync_remote;
 
 use bindings::GlobalAction;
 use modal::Modal;
@@ -86,28 +87,6 @@ pub enum PromptResponse {
     Cancel,
 }
 
-impl std::fmt::Debug for PromptResponse {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Text(_) => formatter.write_str("Text([redacted])"),
-            Self::Confirm => formatter.write_str("Confirm"),
-            Self::Cancel => formatter.write_str("Cancel"),
-        }
-    }
-}
-
-impl PartialEq for PromptResponse {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (Self::Text(left), Self::Text(right)) => left == right,
-            (Self::Confirm, Self::Confirm) | (Self::Cancel, Self::Cancel) => true,
-            _ => false,
-        }
-    }
-}
-
-impl Eq for PromptResponse {}
-
 pub enum WorkbenchTask {
     Explorer(ExplorerRequest),
 }
@@ -135,6 +114,7 @@ pub struct Workbench {
     modal: Option<Modal>,
     last_prompt_id: Option<PromptId>,
     pending_branch_query: Option<RepositoryQueryId>,
+    pending_sync_remote_query: Option<RepositoryQueryId>,
     next_query_id: u64,
 }
 
@@ -247,6 +227,7 @@ impl Workbench {
             modal: None,
             last_prompt_id: None,
             pending_branch_query: None,
+            pending_sync_remote_query: None,
             next_query_id: 1,
         }
     }
@@ -652,7 +633,8 @@ impl Workbench {
         let action = if command == FETCH_COMMAND {
             Some(RepositoryAction::Fetch)
         } else if command == SYNC_COMMAND {
-            return self.update_diff(Message::ExecuteSync);
+            let _ = self.execute_sync();
+            return None;
         } else if self.execute_branch_picker_command(command)
             || self.execute_create_branch_command(command)
         {

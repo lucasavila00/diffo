@@ -2,14 +2,12 @@ use std::process::{Command, Stdio};
 
 use diffo_core::{
     AmendTarget, CancellationHandle, ChangeKind, Commit, DiscardAllTarget, DiscardTarget,
-    FailureKind, GitPrompt, OperationFailure, OperationOutcome, OperationResult, PromptAnswer,
-    PublishBranchTarget, RenameBranchTarget, RepositoryAction, RepositoryOperationContext,
-    RepositorySource, StashEntry, UndoCommitTarget,
+    FailureKind, OperationFailure, OperationOutcome, OperationResult, RenameBranchTarget,
+    RepositoryAction, RepositorySource, StashEntry, UndoCommitTarget,
 };
 
 use super::{
     GitRepositorySource,
-    askpass::{ASKPASS_MARKER, ASKPASS_SOCKET, AskpassBridge},
     failure::{classify_failure, command_output, operation_failure},
     operation::{CommandOutcome, run_cancellable},
     refs::ref_exists,
@@ -19,7 +17,6 @@ impl GitRepositorySource {
     pub(super) fn apply_everyday(
         &self,
         action: &RepositoryAction,
-        context: Option<&RepositoryOperationContext>,
         cancellation: &CancellationHandle,
     ) -> Option<Result<OperationOutcome, OperationFailure>> {
         let result = match action {
@@ -35,9 +32,6 @@ impl GitRepositorySource {
             RepositoryAction::Revert(target) => self.revert(action, target, cancellation),
             RepositoryAction::RenameBranch(target) => {
                 self.rename_branch(action, target, cancellation)
-            }
-            RepositoryAction::PublishBranch(target) => {
-                self.publish_branch(action, target, context, cancellation)
             }
             _ => return None,
         };
@@ -387,94 +381,6 @@ impl GitRepositorySource {
         }))
     }
 
-    fn publish_branch(
-        &self,
-        action: &RepositoryAction,
-        target: &PublishBranchTarget,
-        context: Option<&RepositoryOperationContext>,
-        cancellation: &CancellationHandle,
-    ) -> Result<OperationOutcome, OperationFailure> {
-        self.verify_current_branch(action, &target.branch, &target.full_ref, &target.object_id)?;
-        if self
-            .git_text(&["rev-parse", "--verify", "@{upstream}"])
-            .is_ok()
-        {
-            return Err(operation_failure(
-                action,
-                FailureKind::RefChanged,
-                "branch already has an upstream; use Sync",
-            ));
-        }
-        if !self
-            .remote_names()
-            .map_err(|error| operation_failure(action, FailureKind::Unknown, &error.to_string()))?
-            .contains(&target.remote)
-        {
-            return Err(operation_failure(
-                action,
-                FailureKind::NoRemote,
-                "selected remote no longer exists",
-            ));
-        }
-        let bridge = context
-            .map(AskpassBridge::start)
-            .transpose()
-            .map_err(|error| operation_failure(action, FailureKind::Unknown, &error.to_string()))?;
-        if matches!(target.branch.as_str(), "main" | "master") {
-            let (Some(context), Some(bridge)) = (context, bridge.as_ref()) else {
-                return Err(operation_failure(
-                    action,
-                    FailureKind::Unknown,
-                    "protected branch push confirmation is unavailable",
-                ));
-            };
-            let commits = self
-                .git_text(&["rev-list", "--count", "HEAD"])
-                .ok()
-                .and_then(|count| count.parse().ok())
-                .unwrap_or(1);
-            let answer = context.prompts.prompt(
-                bridge.next_prompt_id(),
-                GitPrompt::ConfirmProtectedBranchPush {
-                    destination: format!("{}/{}", target.remote, target.branch),
-                    commits,
-                },
-                cancellation,
-            );
-            if !matches!(answer, PromptAnswer::Confirm) || cancellation.is_cancelled() {
-                return Ok(OperationOutcome::Cancelled);
-            }
-            self.verify_current_branch(
-                action,
-                &target.branch,
-                &target.full_ref,
-                &target.object_id,
-            )?;
-        }
-        let mut command = self.command();
-        let refspec = format!("HEAD:refs/heads/{}", target.branch);
-        command.args([
-            "push",
-            "--porcelain",
-            "--set-upstream",
-            &target.remote,
-            &refspec,
-        ]);
-        self.configure_askpass(action, &mut command, bridge.as_ref())?;
-        match Self::run(action, &mut command, cancellation)? {
-            CommandOutcome::Cancelled => Ok(OperationOutcome::Cancelled),
-            CommandOutcome::Output(output) if !output.status.success() => {
-                Err(classify_failure(action, &command_output(&output)))
-            }
-            CommandOutcome::Output(_) => Ok(OperationOutcome::Completed(
-                OperationResult::PublishBranch {
-                    branch: target.branch.clone(),
-                    remote: target.remote.clone(),
-                },
-            )),
-        }
-    }
-
     fn verify_stash(
         &self,
         action: &RepositoryAction,
@@ -634,31 +540,6 @@ impl GitRepositorySource {
             .env("GIT_EDITOR", "true")
             .stdin(Stdio::null());
         command
-    }
-
-    fn configure_askpass(
-        &self,
-        action: &RepositoryAction,
-        command: &mut Command,
-        bridge: Option<&AskpassBridge>,
-    ) -> Result<(), OperationFailure> {
-        let Some(bridge) = bridge else {
-            return Ok(());
-        };
-        let executable = self.askpass_executable().ok_or_else(|| {
-            operation_failure(
-                action,
-                FailureKind::Unknown,
-                "askpass executable is unavailable",
-            )
-        })?;
-        command
-            .env("GIT_ASKPASS", executable)
-            .env("SSH_ASKPASS", executable)
-            .env("SSH_ASKPASS_REQUIRE", "force")
-            .env(ASKPASS_MARKER, "1")
-            .env(ASKPASS_SOCKET, bridge.socket());
-        Ok(())
     }
 
     fn run(

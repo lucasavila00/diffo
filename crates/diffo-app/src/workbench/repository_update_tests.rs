@@ -18,6 +18,7 @@ fn sync_progress_shows_the_selected_plan_and_concrete_git_step() {
         upstream: "origin/main".to_owned(),
         local_only: 2,
         upstream_only: 3,
+        establish_upstream: false,
     };
 
     workbench.accept_sync_progress(id, SyncProgress::Plan(plan));
@@ -33,6 +34,49 @@ fn sync_progress_shows_the_selected_plan_and_concrete_git_step() {
             .active()
             .map(|command| command.label.as_str()),
         Some("Rebasing 2 commits")
+    );
+}
+
+#[test]
+fn first_sync_progress_and_completion_use_the_selected_remote_action() {
+    let mut workbench = Workbench::new(RepositorySnapshot::default());
+    let action = RepositoryAction::SyncToRemote("origin".to_owned());
+    assert_eq!(
+        workbench.diff.model.start_repository_action(action.clone()),
+        Some(action.clone())
+    );
+    let id = workbench.commands.enqueue(action.clone());
+    let _ = workbench.take_application_command(Instant::now());
+    let plan = SyncPlan {
+        branch: "topic".to_owned(),
+        upstream: "origin/topic".to_owned(),
+        local_only: 1,
+        upstream_only: 0,
+        establish_upstream: true,
+    };
+
+    workbench.accept_sync_progress(id, SyncProgress::Plan(plan.clone()));
+    assert!(
+        workbench
+            .commands
+            .active()
+            .unwrap()
+            .label
+            .contains("set origin/topic as upstream")
+    );
+
+    workbench.operation_completed(
+        id,
+        action,
+        OperationResult::Sync {
+            plan: Box::new(plan),
+        },
+        RepositorySnapshot::default(),
+    );
+    assert_eq!(workbench.diff.model.network_operation(), None);
+    assert_eq!(
+        workbench.toasts.as_slice()[0].title,
+        "Pushed topic. Set upstream to origin/topic."
     );
 }
 
@@ -214,6 +258,7 @@ fn watcher_snapshot_after_completion_keeps_the_result_toast() {
                     upstream: "origin/main".to_owned(),
                     local_only: 0,
                     upstream_only: 1,
+                    establish_upstream: false,
                 }),
             },
             snapshot: RepositorySnapshot::default(),

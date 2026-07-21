@@ -22,6 +22,7 @@ mod create_branch;
 mod delete_branch;
 mod everyday;
 mod explorer;
+mod sync_publication_tests;
 mod sync_tests;
 
 #[test]
@@ -430,6 +431,7 @@ fn sync_fast_forwards_to_the_refreshed_upstream() {
                 upstream: "origin/master".to_owned(),
                 local_only: 0,
                 upstream_only: 1,
+                establish_upstream: false,
             }),
         }
     );

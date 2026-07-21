@@ -9,6 +9,7 @@ use super::{
     create_branch::{CreateBranchEvent, CreateBranchModal},
     delete_branch::DeleteBranchConfirmation,
     help, render_prompt,
+    sync_remote::{SyncRemoteEvent, SyncRemotePicker},
 };
 
 pub(super) enum Modal {
@@ -17,6 +18,7 @@ pub(super) enum Modal {
     CheckoutPicker(CheckoutPicker),
     CreateBranch(CreateBranchModal),
     DeleteBranchConfirmation(DeleteBranchConfirmation),
+    SyncRemotePicker(SyncRemotePicker),
     CommitEditor,
     GitPrompt(PromptModal),
 }
@@ -40,6 +42,9 @@ impl Workbench {
         ) {
             self.pending_branch_query = None;
         }
+        if matches!(self.modal, Some(Modal::SyncRemotePicker(_))) {
+            self.pending_sync_remote_query = None;
+        }
         self.modal = Some(modal);
     }
 
@@ -49,6 +54,9 @@ impl Workbench {
             Some(Modal::CheckoutPicker(_) | Modal::CreateBranch(_))
         ) {
             self.pending_branch_query = None;
+        }
+        if matches!(self.modal, Some(Modal::SyncRemotePicker(_))) {
+            self.pending_sync_remote_query = None;
         }
         self.modal = None;
     }
@@ -60,6 +68,7 @@ impl Workbench {
             Some(Modal::CheckoutPicker(picker)) => picker.render(frame, area),
             Some(Modal::CreateBranch(modal)) => modal.render(frame, area),
             Some(Modal::DeleteBranchConfirmation(modal)) => modal.render(frame, area),
+            Some(Modal::SyncRemotePicker(picker)) => picker.render(frame, area),
             Some(Modal::CommitEditor) => {
                 crate::diff::render_commit_editor(frame, &self.diff.model, content);
             }
@@ -82,11 +91,29 @@ impl Workbench {
                 self.handle_delete_branch_confirmation_event(event, area);
                 None
             }
+            Modal::SyncRemotePicker(_) => self.handle_sync_remote_event(event, area),
             Modal::CommitEditor => self.handle_commit_editor_event(event, area),
             Modal::GitPrompt(_) => self
                 .handle_prompt_event(event, area)
                 .map(WorkbenchCommand::Effect),
         }
+    }
+
+    fn handle_sync_remote_event(&mut self, event: &Event, area: Rect) -> Option<WorkbenchCommand> {
+        let picker_event = match self.modal.as_mut() {
+            Some(Modal::SyncRemotePicker(picker)) => picker.handle_event(event, area),
+            _ => return None,
+        };
+        match picker_event {
+            SyncRemoteEvent::Close => self.close_modal(),
+            SyncRemoteEvent::Quit => self.should_quit = true,
+            SyncRemoteEvent::Select(remote) => {
+                self.close_modal();
+                self.update_diff(crate::diff::Message::ExecuteSyncToRemote(remote));
+            }
+            SyncRemoteEvent::Consumed => {}
+        }
+        None
     }
 
     fn handle_create_branch_event(

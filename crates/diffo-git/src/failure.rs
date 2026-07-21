@@ -80,13 +80,15 @@ pub(super) fn command_output(output: &Output) -> String {
     )
 }
 
-pub(super) fn finish_sync_command(outcome: CommandOutcome) -> Result<bool, OperationFailure> {
+pub(super) fn finish_sync_command(
+    action: &RepositoryAction,
+    outcome: CommandOutcome,
+) -> Result<bool, OperationFailure> {
     match outcome {
         CommandOutcome::Cancelled => Ok(true),
-        CommandOutcome::Output(output) if !output.status.success() => Err(classify_failure(
-            &RepositoryAction::Sync,
-            &command_output(&output),
-        )),
+        CommandOutcome::Output(output) if !output.status.success() => {
+            Err(classify_failure(action, &command_output(&output)))
+        }
         CommandOutcome::Output(_) => Ok(false),
     }
 }

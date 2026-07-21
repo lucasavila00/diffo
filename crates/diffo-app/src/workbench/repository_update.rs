@@ -17,7 +17,12 @@ impl Workbench {
     ) {
         let Some(command) = self.commands.active_mut().filter(|command| {
             command.id == command_id
-                && command.action == ApplicationAction::Repository(RepositoryAction::Sync)
+                && matches!(
+                    &command.action,
+                    ApplicationAction::Repository(
+                        RepositoryAction::Sync | RepositoryAction::SyncToRemote(_)
+                    )
+                )
         }) else {
             return;
         };

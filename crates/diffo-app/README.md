@@ -7,9 +7,10 @@ The Diff activity owns its pure model, terminal input mapping, background buffer
 preparation, and rendering. Explorer owns its tree, file viewer, and file-loading
 worker. The workbench owns activity selection, global command lifecycle (including
 serialized application updates), the shared repository footer, persistent update
-results, and the single active modal slot. Searchable checkout, protected-branch push
-confirmation, and activity modals use that slot without activities coordinating with
-one another. Passive update discovery uses a persistent toast and never takes focus.
+results, and the single active modal slot. Searchable checkout, missing-upstream remote
+selection, protected-branch push confirmation, and activity modals use that slot
+without activities coordinating with one another. Passive update discovery uses a
+persistent toast and never takes focus.
 
 State, input, preparation, rendering, and external work remain separate modules.
 State transitions stay independent of terminal rendering and repository I/O so they

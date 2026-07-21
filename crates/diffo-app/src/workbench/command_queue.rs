@@ -126,9 +126,9 @@ fn command_label(action: &ApplicationAction) -> String {
         ApplicationAction::Repository(
             RepositoryAction::Unstage(_) | RepositoryAction::UnstageAll,
         ) => "Unstaging".to_owned(),
-        ApplicationAction::Repository(RepositoryAction::Fetch | RepositoryAction::Sync) => {
-            "Fetching".to_owned()
-        }
+        ApplicationAction::Repository(
+            RepositoryAction::Fetch | RepositoryAction::Sync | RepositoryAction::SyncToRemote(_),
+        ) => "Fetching".to_owned(),
         ApplicationAction::Repository(RepositoryAction::Commit(_)) => "Committing".to_owned(),
         ApplicationAction::Repository(RepositoryAction::Checkout(target)) => format!(
             "Checking out {}",
@@ -168,9 +168,6 @@ fn command_label(action: &ApplicationAction) -> String {
         }
         ApplicationAction::Repository(RepositoryAction::RenameBranch(target)) => {
             format!("Renaming branch to {}", target.new_name)
-        }
-        ApplicationAction::Repository(RepositoryAction::PublishBranch(target)) => {
-            format!("Publishing {}", target.branch)
         }
         ApplicationAction::Update => "Updating Diffo".to_owned(),
     }

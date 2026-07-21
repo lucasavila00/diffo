@@ -1,6 +1,7 @@
 use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers};
 
-use super::{Activity, Message, Tool, Workbench, WorkbenchCommand};
+use super::{Activity, Message, Modal, Tool, Workbench, WorkbenchCommand};
+use crate::workbench::sync_remote::SyncRemotePicker;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum GlobalAction {
@@ -58,6 +59,21 @@ pub(super) fn help_rows() -> impl Iterator<Item = (String, &'static str)> {
 
 impl Workbench {
     pub(super) fn execute_sync(&mut self) -> Option<WorkbenchCommand> {
+        if !self.diff_model().sync_enabled() {
+            return None;
+        }
+        if self.diff_model().snapshot.upstream.is_none()
+            && matches!(
+                &self.diff_model().snapshot.head,
+                diffo_core::HeadState::Named { .. }
+            )
+        {
+            let query_id = diffo_core::RepositoryQueryId(self.next_query_id);
+            self.next_query_id = self.next_query_id.saturating_add(1);
+            self.set_modal(Modal::SyncRemotePicker(SyncRemotePicker::loading(query_id)));
+            self.pending_sync_remote_query = Some(query_id);
+            return None;
+        }
         self.update_diff(Message::ExecuteSync)
             .map(WorkbenchCommand::Effect)
     }

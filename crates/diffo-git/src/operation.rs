@@ -27,9 +27,31 @@ use super::{
 
 mod checkout;
 mod protected_push;
+mod sync_target;
 pub(super) use checkout::verify_checkout_target;
 #[cfg(test)]
 pub(super) use protected_push::protected_push_destination;
+
+struct SyncExecution<'a> {
+    action: &'a RepositoryAction,
+    context: Option<&'a RepositoryOperationContext>,
+    cancellation: &'a CancellationHandle,
+    bridge: Option<&'a AskpassBridge>,
+}
+
+enum SyncRequest<'a> {
+    Automatic,
+    ToRemote(&'a str),
+}
+
+impl SyncRequest<'_> {
+    fn selected_remote(&self) -> Option<&str> {
+        match self {
+            Self::Automatic => None,
+            Self::ToRemote(remote) => Some(remote),
+        }
+    }
+}
 
 impl GitRepositorySource {
     pub(super) fn apply_operation(
@@ -43,12 +65,12 @@ impl GitRepositorySource {
             return Ok(OperationOutcome::Cancelled);
         }
 
-        if let Some(result) = self.apply_everyday(action, context, cancellation) {
+        if let Some(result) = self.apply_everyday(action, cancellation) {
             return result;
         }
 
-        if matches!(action, RepositoryAction::Sync) {
-            return self.apply_sync(context, cancellation);
+        if let Some(request) = sync_request(action) {
+            return self.apply_sync(action, request.selected_remote(), context, cancellation);
         }
 
         let before_fetch = matches!(action, RepositoryAction::Fetch)
@@ -77,7 +99,9 @@ impl GitRepositorySource {
             RepositoryAction::Fetch => {
                 command.arg("fetch");
             }
-            RepositoryAction::Sync => unreachable!("sync is handled before single commands"),
+            RepositoryAction::Sync | RepositoryAction::SyncToRemote(_) => {
+                unreachable!("sync is handled before single commands")
+            }
             RepositoryAction::Commit(message) => {
                 command.args(["commit", "-m", message]);
             }
@@ -98,8 +122,7 @@ impl GitRepositorySource {
             | RepositoryAction::Amend(_)
             | RepositoryAction::UndoLastCommit(_)
             | RepositoryAction::Revert(_)
-            | RepositoryAction::RenameBranch(_)
-            | RepositoryAction::PublishBranch(_) => {
+            | RepositoryAction::RenameBranch(_) => {
                 unreachable!("everyday actions are handled before single commands")
             }
         }
@@ -122,48 +145,34 @@ impl GitRepositorySource {
 
     fn apply_sync(
         &self,
+        action: &RepositoryAction,
+        selected_remote: Option<&str>,
         context: Option<&RepositoryOperationContext>,
         cancellation: &CancellationHandle,
     ) -> std::result::Result<OperationOutcome, OperationFailure> {
-        let action = &RepositoryAction::Sync;
         self.check_sync_starting_state(action)?;
         let branch = self.sync_branch(action)?;
-        let upstream = self.sync_upstream(action)?;
-        let remote = self
-            .git_text(&["config", "--get", &format!("branch.{branch}.remote")])
-            .map_err(|_| {
-                operation_failure(
-                    action,
-                    FailureKind::NoUpstream,
-                    "sync requires a configured upstream",
-                )
-            })?;
-        let upstream_branch = self
-            .git_text(&["config", "--get", &format!("branch.{branch}.merge")])
-            .map_err(|_| {
-                operation_failure(
-                    action,
-                    FailureKind::NoUpstream,
-                    "sync requires a configured upstream",
-                )
-            })?;
-        if !upstream_branch.starts_with("refs/heads/") {
-            return Err(operation_failure(
-                action,
-                FailureKind::NoUpstream,
-                "sync requires an upstream branch",
-            ));
-        }
-        let push_refspec = format!("HEAD:{upstream_branch}");
+        let target = self.sync_target(action, &branch, selected_remote)?;
 
         let bridge = context
             .map(AskpassBridge::start)
             .transpose()
             .map_err(|error| operation_failure(action, FailureKind::Unknown, &error.to_string()))?;
+        let execution = SyncExecution {
+            action,
+            context,
+            cancellation,
+            bridge: bridge.as_ref(),
+        };
         if let Some(context) = context {
             context.progress.progress(SyncProgress::Fetching);
         }
-        match self.run_sync_git(&["fetch", &remote], cancellation, bridge.as_ref())? {
+        match self.run_sync_git(
+            action,
+            &["fetch", &target.remote],
+            cancellation,
+            bridge.as_ref(),
+        )? {
             CommandOutcome::Cancelled => return Ok(OperationOutcome::Cancelled),
             CommandOutcome::Output(output) if !output.status.success() => {
                 return Err(classify_failure(action, &command_output(&output)));
@@ -171,117 +180,151 @@ impl GitRepositorySource {
             CommandOutcome::Output(_) => {}
         }
 
-        let (local_only, upstream_only) = self.sync_counts(action)?;
-        let plan = SyncPlan {
-            branch: branch.clone(),
-            upstream: upstream.clone(),
-            local_only,
-            upstream_only,
-        };
-        if let Some(context) = context {
+        self.apply_sync_after_fetch(&execution, &branch, &target)
+    }
+
+    fn apply_sync_after_fetch(
+        &self,
+        execution: &SyncExecution<'_>,
+        branch: &str,
+        target: &sync_target::SyncTarget,
+    ) -> std::result::Result<OperationOutcome, OperationFailure> {
+        let action = execution.action;
+        let (plan, upstream_exists) = self.prepare_sync_plan(action, branch, target)?;
+        if let Some(context) = execution.context {
             context.progress.progress(SyncProgress::Plan(plan.clone()));
         }
-
-        if self.confirm_protected_push(
-            &plan,
-            &remote,
-            &upstream_branch,
-            context,
-            cancellation,
-            bridge.as_ref(),
-        )? {
+        if plan.local_only > 0 && plan.upstream_only > 0 {
+            self.check_rebase_preconditions(action, &plan)?;
+        }
+        if self.confirm_protected_push(execution, &plan, target, upstream_exists)? {
             return Ok(OperationOutcome::Cancelled);
         }
 
-        let cancelled = match (local_only, upstream_only) {
-            (0, 0) => false,
-            (0, _) => self.fast_forward_sync(&branch, &upstream, context, cancellation)?,
-            (_, 0) => self.push_sync(
-                &remote,
-                &push_refspec,
-                context,
-                cancellation,
-                bridge.as_ref(),
-            )?,
-            (_, _) => self.rebase_sync(
-                &plan,
-                &remote,
-                &push_refspec,
-                context,
-                cancellation,
-                bridge.as_ref(),
-            )?,
+        let push_refspec = format!("HEAD:{}", target.upstream_branch);
+        let cancelled = if upstream_exists {
+            match (plan.local_only, plan.upstream_only) {
+                (0, 0) => false,
+                (0, _) => self.fast_forward_sync(execution, branch, &target.upstream)?,
+                (_, 0) => self.push_sync(
+                    execution,
+                    &target.remote,
+                    &push_refspec,
+                    target.establish_upstream,
+                )?,
+                (_, _) => self.rebase_sync(execution, &plan, target, &push_refspec)?,
+            }
+        } else {
+            self.push_sync(execution, &target.remote, &push_refspec, true)?
         };
         if cancelled {
             return Ok(OperationOutcome::Cancelled);
+        }
+        if target.establish_upstream && upstream_exists && plan.local_only == 0 {
+            self.set_sync_upstream(action, branch, &target.upstream)?;
         }
         Ok(OperationOutcome::Completed(OperationResult::Sync {
             plan: Box::new(plan),
         }))
     }
 
+    fn prepare_sync_plan(
+        &self,
+        action: &RepositoryAction,
+        branch: &str,
+        target: &sync_target::SyncTarget,
+    ) -> Result<(SyncPlan, bool), OperationFailure> {
+        let upstream_exists = self
+            .git(&["rev-parse", "--verify", "--quiet", &target.upstream])
+            .is_ok();
+        if !upstream_exists && !target.establish_upstream {
+            return Err(operation_failure(
+                action,
+                FailureKind::NoUpstream,
+                "the configured upstream branch does not exist after fetch",
+            ));
+        }
+        if upstream_exists && target.establish_upstream {
+            self.require_related_histories(action, &target.upstream)?;
+        }
+        let (local_only, upstream_only) = if upstream_exists {
+            self.sync_counts_against(action, &target.upstream)?
+        } else {
+            (self.commit_count(action, "HEAD")?, 0)
+        };
+        let plan = SyncPlan {
+            branch: branch.to_owned(),
+            upstream: target.upstream.clone(),
+            local_only,
+            upstream_only,
+            establish_upstream: target.establish_upstream,
+        };
+        Ok((plan, upstream_exists))
+    }
+
     fn fast_forward_sync(
         &self,
+        execution: &SyncExecution<'_>,
         branch: &str,
         upstream: &str,
-        context: Option<&RepositoryOperationContext>,
-        cancellation: &CancellationHandle,
     ) -> Result<bool, OperationFailure> {
-        if let Some(context) = context {
+        if let Some(context) = execution.context {
             context.progress.progress(SyncProgress::FastForwarding {
                 branch: branch.to_owned(),
             });
         }
         let outcome = self.run_sync_git(
+            execution.action,
             &["merge", "--ff-only", "--no-edit", upstream],
-            cancellation,
+            execution.cancellation,
             None,
         )?;
-        finish_sync_command(outcome)
+        finish_sync_command(execution.action, outcome)
     }
 
     fn push_sync(
         &self,
+        execution: &SyncExecution<'_>,
         remote: &str,
         refspec: &str,
-        context: Option<&RepositoryOperationContext>,
-        cancellation: &CancellationHandle,
-        bridge: Option<&AskpassBridge>,
+        set_upstream: bool,
     ) -> Result<bool, OperationFailure> {
-        if let Some(context) = context {
+        if let Some(context) = execution.context {
             context.progress.progress(SyncProgress::Pushing);
         }
+        let mut args = vec!["push", "--porcelain"];
+        if set_upstream {
+            args.push("--set-upstream");
+        }
+        args.extend([remote, refspec]);
         let outcome = self.run_sync_git(
-            &["push", "--porcelain", remote, refspec],
-            cancellation,
-            bridge,
+            execution.action,
+            &args,
+            execution.cancellation,
+            execution.bridge,
         )?;
-        finish_sync_command(outcome)
+        finish_sync_command(execution.action, outcome)
     }
 
     fn rebase_sync(
         &self,
+        execution: &SyncExecution<'_>,
         plan: &SyncPlan,
-        remote: &str,
+        target: &sync_target::SyncTarget,
         refspec: &str,
-        context: Option<&RepositoryOperationContext>,
-        cancellation: &CancellationHandle,
-        bridge: Option<&AskpassBridge>,
     ) -> Result<bool, OperationFailure> {
-        let action = &RepositoryAction::Sync;
-        if self.local_only_has_merge_commits(action, &plan.upstream)? {
-            return Err(operation_failure(
-                action,
-                FailureKind::MergeCommits,
-                "sync cannot rebase local-only history containing merge commits",
-            ));
-        }
-        if let Some(context) = context {
+        let action = execution.action;
+        if let Some(context) = execution.context {
             context.progress.progress(SyncProgress::Rebasing {
                 commits: plan.local_only,
             });
         }
-        match self.run_sync_git(&["rebase", &plan.upstream], cancellation, None)? {
+        match self.run_sync_git(
+            action,
+            &["rebase", &plan.upstream],
+            execution.cancellation,
+            None,
+        )? {
             CommandOutcome::Cancelled => {
                 self.abort_rebase();
                 return Ok(true);
@@ -307,7 +350,12 @@ impl GitRepositorySource {
             }
             CommandOutcome::Output(_) => {}
         }
-        self.push_sync(remote, refspec, context, cancellation, bridge)
+        self.push_sync(
+            execution,
+            &target.remote,
+            refspec,
+            target.establish_upstream,
+        )
     }
 
     fn sync_branch(&self, action: &RepositoryAction) -> Result<String, OperationFailure> {
@@ -329,66 +377,6 @@ impl GitRepositorySource {
                 )
             })?;
         Ok(branch)
-    }
-
-    fn sync_upstream(&self, action: &RepositoryAction) -> Result<String, OperationFailure> {
-        self.git_text(&[
-            "rev-parse",
-            "--abbrev-ref",
-            "--symbolic-full-name",
-            "@{upstream}",
-        ])
-        .map_err(|_| {
-            operation_failure(
-                action,
-                FailureKind::NoUpstream,
-                "sync requires a configured upstream",
-            )
-        })
-    }
-
-    fn check_sync_starting_state(&self, action: &RepositoryAction) -> Result<(), OperationFailure> {
-        if ["MERGE_HEAD", "CHERRY_PICK_HEAD"].iter().any(|reference| {
-            self.git(&["rev-parse", "--verify", "--quiet", reference])
-                .is_ok()
-        }) || ["rebase-merge", "rebase-apply"]
-            .iter()
-            .any(|name| self.git_path(name).is_some_and(|path| path.exists()))
-        {
-            return Err(operation_failure(
-                action,
-                FailureKind::OperationInProgress,
-                "finish or abort the merge, rebase, or cherry-pick before syncing",
-            ));
-        }
-        let status = self
-            .git_text(&["status", "--porcelain"])
-            .map_err(|error| operation_failure(action, FailureKind::Unknown, &error.to_string()))?;
-        if !status.is_empty() {
-            return Err(operation_failure(
-                action,
-                FailureKind::DirtyWorktree,
-                "sync currently requires a clean worktree and index",
-            ));
-        }
-        Ok(())
-    }
-
-    fn sync_counts(&self, action: &RepositoryAction) -> Result<(usize, usize), OperationFailure> {
-        let counts = self
-            .git_text(&["rev-list", "--left-right", "--count", "HEAD...@{upstream}"])
-            .map_err(|error| operation_failure(action, FailureKind::Unknown, &error.to_string()))?;
-        let mut counts = counts.split_whitespace();
-        let local_only = counts.next().and_then(|value| value.parse().ok());
-        let upstream_only = counts.next().and_then(|value| value.parse().ok());
-        match (local_only, upstream_only, counts.next()) {
-            (Some(local_only), Some(upstream_only), None) => Ok((local_only, upstream_only)),
-            _ => Err(operation_failure(
-                action,
-                FailureKind::Unknown,
-                "git returned invalid sync commit counts",
-            )),
-        }
     }
 
     fn local_only_has_merge_commits(
@@ -437,6 +425,7 @@ impl GitRepositorySource {
 
     fn run_sync_git(
         &self,
+        action: &RepositoryAction,
         args: &[&str],
         cancellation: &CancellationHandle,
         bridge: Option<&AskpassBridge>,
@@ -451,7 +440,7 @@ impl GitRepositorySource {
         if let Some(bridge) = bridge {
             let executable = self.askpass_executable().ok_or_else(|| {
                 operation_failure(
-                    &RepositoryAction::Sync,
+                    action,
                     FailureKind::Unknown,
                     "askpass executable is unavailable",
                 )
@@ -463,13 +452,16 @@ impl GitRepositorySource {
                 .env(ASKPASS_MARKER, "1")
                 .env(ASKPASS_SOCKET, bridge.socket());
         }
-        run_cancellable(&mut command, cancellation).map_err(|error| {
-            operation_failure(
-                &RepositoryAction::Sync,
-                FailureKind::Unknown,
-                &error.to_string(),
-            )
-        })
+        run_cancellable(&mut command, cancellation)
+            .map_err(|error| operation_failure(action, FailureKind::Unknown, &error.to_string()))
+    }
+}
+
+fn sync_request(action: &RepositoryAction) -> Option<SyncRequest<'_>> {
+    match action {
+        RepositoryAction::Sync => Some(SyncRequest::Automatic),
+        RepositoryAction::SyncToRemote(remote) => Some(SyncRequest::ToRemote(remote)),
+        _ => None,
     }
 }
 
@@ -607,7 +599,9 @@ fn collect_operation_result(
             let updated_refs = usize::from(before_fetch != after.as_ref());
             Ok(OperationResult::Fetch { updated_refs })
         }
-        RepositoryAction::Sync => unreachable!("sync collects its result directly"),
+        RepositoryAction::Sync | RepositoryAction::SyncToRemote(_) => {
+            unreachable!("sync collects its result directly")
+        }
         RepositoryAction::Commit(_) => {
             let hash = source
                 .git(&["rev-parse", "HEAD"])
@@ -630,8 +624,7 @@ fn collect_operation_result(
         | RepositoryAction::Amend(_)
         | RepositoryAction::UndoLastCommit(_)
         | RepositoryAction::Revert(_)
-        | RepositoryAction::RenameBranch(_)
-        | RepositoryAction::PublishBranch(_) => {
+        | RepositoryAction::RenameBranch(_) => {
             unreachable!("everyday actions collect their own results")
         }
     }

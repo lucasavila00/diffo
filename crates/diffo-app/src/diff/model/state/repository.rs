@@ -77,7 +77,6 @@ impl Model {
                 | OperationResult::UndoLastCommit { .. }
                 | OperationResult::Revert { .. }
                 | OperationResult::RenameBranch { .. }
-                | OperationResult::PublishBranch { .. }
         );
         let finishes_pending = self.pending_operation.as_ref() == Some(action);
         if is_async_result && !finishes_pending {
@@ -166,7 +165,10 @@ pub(super) fn same_repository_operation(left: &RepositoryAction, right: &Reposit
     matches!(
         (left, right),
         (RepositoryAction::Fetch, RepositoryAction::Fetch)
-            | (RepositoryAction::Sync, RepositoryAction::Sync)
+            | (
+                RepositoryAction::Sync | RepositoryAction::SyncToRemote(_),
+                RepositoryAction::Sync | RepositoryAction::SyncToRemote(_)
+            )
             | (RepositoryAction::Commit(_), RepositoryAction::Commit(_))
             | (RepositoryAction::Stage(_), RepositoryAction::Stage(_))
             | (RepositoryAction::Unstage(_), RepositoryAction::Unstage(_))
@@ -207,10 +209,6 @@ pub(super) fn same_repository_operation(left: &RepositoryAction, right: &Reposit
             | (
                 RepositoryAction::RenameBranch(_),
                 RepositoryAction::RenameBranch(_)
-            )
-            | (
-                RepositoryAction::PublishBranch(_),
-                RepositoryAction::PublishBranch(_)
             )
     )
 }

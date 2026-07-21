@@ -2,8 +2,7 @@ use std::{fs, path::Path};
 
 use diffo_core::{
     AmendTarget, Commit, DiscardAllTarget, DiscardTarget, FailureKind, OperationResult,
-    PublishBranchTarget, RenameBranchTarget, Repository, RepositoryAction, RepositorySource,
-    UndoCommitTarget,
+    RenameBranchTarget, Repository, RepositoryAction, RepositorySource, UndoCommitTarget,
 };
 
 use super::{git, git_stdout, test_repository};
@@ -163,7 +162,7 @@ fn revert_creates_a_new_commit_and_aborts_conflicts() {
 }
 
 #[test]
-fn rename_clears_upstream_and_publish_sets_a_same_named_upstream() {
+fn rename_clears_the_existing_upstream() {
     let root = tempfile::tempdir().unwrap();
     git(root.path(), &["init", "--bare", "remote.git"]);
     let repo = test_repository();
@@ -192,25 +191,4 @@ fn rename_clears_upstream_and_publish_sets_a_same_named_upstream() {
         )))
         .unwrap();
     assert!(source.snapshot().unwrap().upstream.is_none());
-
-    assert_eq!(
-        source
-            .apply(&RepositoryAction::PublishBranch(Box::new(
-                PublishBranchTarget {
-                    branch: "topic".to_owned(),
-                    full_ref: "refs/heads/topic".to_owned(),
-                    object_id: head,
-                    remote: "origin".to_owned(),
-                },
-            )))
-            .unwrap(),
-        OperationResult::PublishBranch {
-            branch: "topic".to_owned(),
-            remote: "origin".to_owned(),
-        }
-    );
-    assert_eq!(
-        source.snapshot().unwrap().upstream.unwrap().name,
-        "origin/topic"
-    );
 }

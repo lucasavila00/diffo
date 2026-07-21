@@ -45,6 +45,7 @@ pub enum Message {
     CommitMessageCursorRight,
     ExecuteCommit,
     ExecuteSync,
+    ExecuteSyncToRemote(String),
     SnapshotLoaded(RepositorySnapshot),
     OperationFailed(String),
     OperationCompleted(RepositoryAction, OperationResult, RepositorySnapshot),
@@ -96,6 +97,9 @@ pub fn update(model: &mut Model, message: Message) -> Option<Effect> {
         Message::CommitMessageCursorRight => model.commit_message_cursor_right(),
         Message::ExecuteCommit => return model.execute_commit().map(Effect::Repository),
         Message::ExecuteSync => return model.execute_sync().map(Effect::Repository),
+        Message::ExecuteSyncToRemote(remote) => {
+            return model.execute_sync_to_remote(remote).map(Effect::Repository);
+        }
         Message::SnapshotLoaded(snapshot) => model.repository_changed(snapshot),
         Message::OperationFailed(error) => model.show_error(error),
         Message::OperationCompleted(action, result, snapshot) => {

@@ -166,14 +166,6 @@ pub struct RenameBranchTarget {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct PublishBranchTarget {
-    pub branch: String,
-    pub full_ref: String,
-    pub object_id: String,
-    pub remote: String,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum CreateBranchStartPoint {
     Head(HeadState),
     Branch(CheckoutTarget),
@@ -196,6 +188,7 @@ pub enum RepositoryAction {
     UnstageAll,
     Fetch,
     Sync,
+    SyncToRemote(String),
     Commit(String),
     Checkout(Box<CheckoutTarget>),
     CreateBranch(Box<CreateBranchTarget>),
@@ -209,7 +202,6 @@ pub enum RepositoryAction {
     UndoLastCommit(Box<UndoCommitTarget>),
     Revert(Box<Commit>),
     RenameBranch(Box<RenameBranchTarget>),
-    PublishBranch(Box<PublishBranchTarget>),
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -230,7 +222,6 @@ pub enum OperationResult {
     UndoLastCommit { hash: String },
     Revert { hash: String },
     RenameBranch { branch: String },
-    PublishBranch { branch: String, remote: String },
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -239,6 +230,7 @@ pub struct SyncPlan {
     pub upstream: String,
     pub local_only: usize,
     pub upstream_only: usize,
+    pub establish_upstream: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

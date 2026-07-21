@@ -626,6 +626,9 @@ fn picker_event(outcome: PickerOutcome<FileKey>, area: ChangeArea) -> RendererEv
             path: id.path,
             absolute,
         },
+        PickerOutcome::DestructiveAction(file) => {
+            RendererEvent::Message(crate::diff::Message::RequestDiscardFile(file.path))
+        }
     }
 }
 

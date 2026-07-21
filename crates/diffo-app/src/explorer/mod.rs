@@ -360,6 +360,7 @@ impl ExplorerActivity {
                 | PickerOutcome::Selected(_)
                 | PickerOutcome::Activated(_)
                 | PickerOutcome::RowAction(_)
+                | PickerOutcome::DestructiveAction(_)
                 | PickerOutcome::PanelAction => Some(ExplorerEvent::Consumed),
             };
         }

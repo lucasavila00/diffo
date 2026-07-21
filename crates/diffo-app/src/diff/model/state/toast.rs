@@ -62,6 +62,20 @@ pub(crate) fn operation_result_toast(result: &OperationResult) -> Option<(ToastK
             format!("Created and checked out {branch}")
         }
         OperationResult::DeleteBranch { branch } => format!("Deleted branch {branch}"),
+        OperationResult::Discard { paths: 1 } => "Discarded changes in 1 path".to_owned(),
+        OperationResult::Discard { paths } => format!("Discarded changes in {paths} paths"),
+        OperationResult::Stash { name } => format!("Created {name}"),
+        OperationResult::ApplyStash { name } => format!("Applied {name}; stash kept"),
+        OperationResult::DropStash { name } => format!("Dropped {name}"),
+        OperationResult::Amend { hash } => format!("Amended as {}", short_hash(hash)),
+        OperationResult::UndoLastCommit { hash } => {
+            format!("Undid commit; HEAD is {}", short_hash(hash))
+        }
+        OperationResult::Revert { hash } => format!("Reverted as {}", short_hash(hash)),
+        OperationResult::RenameBranch { branch } => format!("Renamed branch to {branch}"),
+        OperationResult::PublishBranch { branch, remote } => {
+            format!("Published {branch} to {remote}")
+        }
     };
     Some((ToastKind::Success, title))
 }
@@ -76,12 +90,21 @@ pub(crate) fn operation_failure_title(failure: &OperationFailure) -> String {
         RepositoryAction::Checkout(_) => "Checkout",
         RepositoryAction::CreateBranch(_) => "Create branch",
         RepositoryAction::DeleteBranch(_) => "Delete branch",
+        RepositoryAction::Discard(_) | RepositoryAction::DiscardAll(_) => "Discard changes",
+        RepositoryAction::Stash { .. } => "Stash changes",
+        RepositoryAction::ApplyStash(_) => "Apply stash",
+        RepositoryAction::DropStash(_) => "Drop stash",
+        RepositoryAction::Amend(_) => "Amend commit",
+        RepositoryAction::UndoLastCommit(_) => "Undo last commit",
+        RepositoryAction::Revert(_) => "Revert commit",
+        RepositoryAction::RenameBranch(_) => "Rename branch",
+        RepositoryAction::PublishBranch(_) => "Publish branch",
     };
     match failure.kind {
         FailureKind::PushRejected | FailureKind::HookRejected => {
             format!("Push rejected: {}", failure.detail)
         }
-        FailureKind::RebaseConflict => failure.detail.clone(),
+        FailureKind::RebaseConflict | FailureKind::StashConflict => failure.detail.clone(),
         _ => format!("{action} failed: {}", failure.detail),
     }
 }

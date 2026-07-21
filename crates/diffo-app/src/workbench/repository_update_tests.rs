@@ -139,6 +139,7 @@ fn generations_reject_stale_updates_and_only_matching_command_ids_finish_command
             kind: FailureKind::Network,
             detail: "offline".to_owned(),
         },
+        snapshot: None,
     };
 
     assert!(workbench.accept_repository_update(RepositoryUpdate {

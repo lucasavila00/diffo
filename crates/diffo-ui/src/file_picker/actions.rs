@@ -1,6 +1,6 @@
 use std::hash::Hash;
 
-use crate::{design, icons, mouse_target_style, theme};
+use crate::{design, icons, mouse_target_style, terminal_safe_text, theme};
 use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind};
 use ratatui::{
     Frame,
@@ -94,6 +94,13 @@ where
                             id: menu.id,
                             absolute: false,
                         }),
+                        design::PATH_MENU_THIRD_ACTION_ROW
+                            if self
+                                .row(&menu.id)
+                                .is_some_and(|row| row.destructive_action.is_some()) =>
+                        {
+                            Some(Outcome::DestructiveAction(menu.id))
+                        }
                         _ => Some(Outcome::Consumed),
                     }
                 } else {
@@ -128,13 +135,24 @@ where
             return;
         };
         frame.render_widget(Clear, area);
+        let mut items = vec![
+            ListItem::new("[a] Copy absolute path").style(mouse_target_style()),
+            ListItem::new(""),
+            ListItem::new("[r] Copy relative path").style(mouse_target_style()),
+        ];
+        if let Some(action) = self
+            .context_menu
+            .as_ref()
+            .and_then(|menu| self.row(&menu.id))
+            .and_then(|row| row.destructive_action.as_deref())
+        {
+            items.push(ListItem::new(""));
+            items.push(
+                ListItem::new(terminal_safe_text(action)).style(Style::default().fg(theme::DANGER)),
+            );
+        }
         frame.render_widget(
-            List::new([
-                ListItem::new("[a] Copy absolute path").style(mouse_target_style()),
-                ListItem::new(""),
-                ListItem::new("[r] Copy relative path").style(mouse_target_style()),
-            ])
-            .block(
+            List::new(items).block(
                 Block::default()
                     .title(Line::from(vec![
                         Span::raw(" Path "),
@@ -155,7 +173,15 @@ where
     fn context_menu_area(&self, area: Rect) -> Option<Rect> {
         let menu = self.context_menu.as_ref()?;
         let width = design::PATH_MENU_WIDTH.min(area.width);
-        let height = design::PATH_MENU_HEIGHT.min(area.height);
+        let height = if self
+            .row(&menu.id)
+            .is_some_and(|row| row.destructive_action.is_some())
+        {
+            design::PATH_MENU_DESTRUCTIVE_HEIGHT
+        } else {
+            design::PATH_MENU_HEIGHT
+        }
+        .min(area.height);
         Some(Rect::new(
             menu.column.min(area.right().saturating_sub(width)),
             menu.row.min(area.bottom().saturating_sub(height)),

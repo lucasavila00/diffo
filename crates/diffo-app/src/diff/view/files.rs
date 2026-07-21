@@ -110,7 +110,12 @@ pub(in crate::diff) fn picker_document<'a>(
                 ChangeArea::Staged => icons::REMOVE,
                 ChangeArea::Unstaged => icons::ADD,
             };
-            PickerRow::flat(key, file_label(file)).with_action(action)
+            let row = PickerRow::flat(key, file_label(file)).with_action(action);
+            if change_area == ChangeArea::Unstaged {
+                row.with_destructive_action("Discard changes")
+            } else {
+                row
+            }
         })
         .collect();
     let mut document = Document::flat(title, rows);

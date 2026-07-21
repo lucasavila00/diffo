@@ -271,7 +271,11 @@ fn run_watch_dump(
                 | RepositoryEvent::WorktreeChanged
                 | RepositoryEvent::Progress { .. }
                 | RepositoryEvent::BranchesLoaded { .. }
-                | RepositoryEvent::BranchesLoadFailed { .. } => {}
+                | RepositoryEvent::BranchesLoadFailed { .. }
+                | RepositoryEvent::StashesLoaded { .. }
+                | RepositoryEvent::StashesLoadFailed { .. }
+                | RepositoryEvent::RemotesLoaded { .. }
+                | RepositoryEvent::RemotesLoadFailed { .. } => {}
             }
         }
         std::thread::sleep(Duration::from_millis(10));
@@ -481,6 +485,10 @@ fn drain_repository_events(repository_service: &RepositoryService, workbench: &m
             RepositoryEvent::BranchesLoadFailed { query_id, message } => {
                 workbench.branches_load_failed(query_id, &message);
             }
+            RepositoryEvent::StashesLoaded { .. }
+            | RepositoryEvent::StashesLoadFailed { .. }
+            | RepositoryEvent::RemotesLoaded { .. }
+            | RepositoryEvent::RemotesLoadFailed { .. } => {}
             RepositoryEvent::Prompt {
                 command_id,
                 prompt_id,

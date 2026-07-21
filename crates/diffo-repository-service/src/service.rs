@@ -12,7 +12,7 @@ use anyhow::{Context, Result};
 use diffo_core::{
     ApplicationCommandId, BranchRef, CancellationHandle, GitPrompt, PromptAnswer, PromptHandler,
     PromptId, Repository, RepositoryAction, RepositoryQueryId, RepositoryUpdate,
-    RepositoryWatchPaths, SyncProgress,
+    RepositoryWatchPaths, StashEntry, SyncProgress,
 };
 #[cfg(test)]
 use diffo_core::{OperationFailure, OperationResult, RepositorySnapshot, RepositoryUpdateKind};
@@ -30,6 +30,22 @@ pub enum RepositoryEvent {
         branches: Vec<BranchRef>,
     },
     BranchesLoadFailed {
+        query_id: RepositoryQueryId,
+        message: String,
+    },
+    StashesLoaded {
+        query_id: RepositoryQueryId,
+        stashes: Vec<StashEntry>,
+    },
+    StashesLoadFailed {
+        query_id: RepositoryQueryId,
+        message: String,
+    },
+    RemotesLoaded {
+        query_id: RepositoryQueryId,
+        remotes: Vec<String>,
+    },
+    RemotesLoadFailed {
         query_id: RepositoryQueryId,
         message: String,
     },
@@ -313,6 +329,20 @@ impl RepositoryService {
     pub fn load_branches(&self, query_id: RepositoryQueryId) -> bool {
         self.requests
             .send(WorkerRequest::LoadBranches { query_id })
+            .is_ok()
+    }
+
+    #[must_use]
+    pub fn load_stashes(&self, query_id: RepositoryQueryId) -> bool {
+        self.requests
+            .send(WorkerRequest::LoadStashes { query_id })
+            .is_ok()
+    }
+
+    #[must_use]
+    pub fn load_remotes(&self, query_id: RepositoryQueryId) -> bool {
+        self.requests
+            .send(WorkerRequest::LoadRemotes { query_id })
             .is_ok()
     }
 

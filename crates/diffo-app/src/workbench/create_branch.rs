@@ -298,7 +298,7 @@ fn byte_index_at_char(text: &str, character: usize) -> usize {
         .map_or(text.len(), |(index, _)| index)
 }
 
-fn sanitize_branch_name(input: &str) -> String {
+pub(super) fn sanitize_branch_name(input: &str) -> String {
     let trimmed = input.trim().trim_start_matches('-');
     let mut sanitized = String::with_capacity(trimmed.len());
     for character in trimmed.chars() {
@@ -341,7 +341,7 @@ fn sanitize_branch_name(input: &str) -> String {
         .join("/")
 }
 
-fn valid_branch_name(name: &str) -> bool {
+pub(super) fn valid_branch_name(name: &str) -> bool {
     !name.is_empty()
         && !name.starts_with('-')
         && !name.contains("..")

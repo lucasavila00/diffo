@@ -13,6 +13,7 @@ pub struct Row<K> {
     pub label: Line<'static>,
     pub action: Option<String>,
     pub context_menu: bool,
+    pub destructive_action: Option<String>,
 }
 
 impl<K> Row<K> {
@@ -22,12 +23,19 @@ impl<K> Row<K> {
             label,
             action: None,
             context_menu: true,
+            destructive_action: None,
         }
     }
 
     #[must_use]
     pub fn with_action(mut self, label: impl Into<String>) -> Self {
         self.action = Some(label.into());
+        self
+    }
+
+    #[must_use]
+    pub fn with_destructive_action(mut self, label: impl Into<String>) -> Self {
+        self.destructive_action = Some(label.into());
         self
     }
 }
@@ -68,6 +76,7 @@ pub(crate) struct DocumentRow<K> {
     pub(crate) branch: bool,
     pub(crate) action: Option<String>,
     pub(crate) context_menu: bool,
+    pub(crate) destructive_action: Option<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -94,6 +103,7 @@ impl<K> Document<K> {
                     branch: false,
                     action: row.action,
                     context_menu: row.context_menu,
+                    destructive_action: row.destructive_action,
                 })
                 .collect(),
             panel_action: None,
@@ -132,6 +142,7 @@ fn append_tree_rows<K>(rows: &mut Vec<DocumentRow<K>>, node: TreeNode<K>, depth:
         branch,
         action: None,
         context_menu: !branch,
+        destructive_action: None,
     });
     for child in children {
         append_tree_rows(rows, child, depth.saturating_add(1));

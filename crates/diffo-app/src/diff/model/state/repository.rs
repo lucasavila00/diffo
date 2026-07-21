@@ -69,6 +69,15 @@ impl Model {
                 | OperationResult::Checkout { .. }
                 | OperationResult::CreateBranch { .. }
                 | OperationResult::DeleteBranch { .. }
+                | OperationResult::Discard { .. }
+                | OperationResult::Stash { .. }
+                | OperationResult::ApplyStash { .. }
+                | OperationResult::DropStash { .. }
+                | OperationResult::Amend { .. }
+                | OperationResult::UndoLastCommit { .. }
+                | OperationResult::Revert { .. }
+                | OperationResult::RenameBranch { .. }
+                | OperationResult::PublishBranch { .. }
         );
         let finishes_pending = self.pending_operation.as_ref() == Some(action);
         if is_async_result && !finishes_pending {
@@ -171,6 +180,37 @@ pub(super) fn same_repository_operation(left: &RepositoryAction, right: &Reposit
             | (
                 RepositoryAction::DeleteBranch(_),
                 RepositoryAction::DeleteBranch(_)
+            )
+            | (RepositoryAction::Discard(_), RepositoryAction::Discard(_))
+            | (
+                RepositoryAction::DiscardAll(_),
+                RepositoryAction::DiscardAll(_)
+            )
+            | (
+                RepositoryAction::Stash { .. },
+                RepositoryAction::Stash { .. }
+            )
+            | (
+                RepositoryAction::ApplyStash(_),
+                RepositoryAction::ApplyStash(_)
+            )
+            | (
+                RepositoryAction::DropStash(_),
+                RepositoryAction::DropStash(_)
+            )
+            | (RepositoryAction::Amend(_), RepositoryAction::Amend(_))
+            | (
+                RepositoryAction::UndoLastCommit(_),
+                RepositoryAction::UndoLastCommit(_)
+            )
+            | (RepositoryAction::Revert(_), RepositoryAction::Revert(_))
+            | (
+                RepositoryAction::RenameBranch(_),
+                RepositoryAction::RenameBranch(_)
+            )
+            | (
+                RepositoryAction::PublishBranch(_),
+                RepositoryAction::PublishBranch(_)
             )
     )
 }

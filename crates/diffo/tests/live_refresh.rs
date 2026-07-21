@@ -140,6 +140,10 @@ fn wait_for_snapshot(
             Ok(Some(
                 RepositoryEvent::BranchesLoaded { .. }
                 | RepositoryEvent::BranchesLoadFailed { .. }
+                | RepositoryEvent::StashesLoaded { .. }
+                | RepositoryEvent::StashesLoadFailed { .. }
+                | RepositoryEvent::RemotesLoaded { .. }
+                | RepositoryEvent::RemotesLoadFailed { .. }
                 | RepositoryEvent::Prompt { .. }
                 | RepositoryEvent::Progress { .. }
                 | RepositoryEvent::WorktreeChanged,

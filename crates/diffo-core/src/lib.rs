@@ -129,6 +129,51 @@ pub struct DeleteBranchTarget {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DiscardTarget {
+    pub file: FileState,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DiscardAllTarget {
+    pub files: Vec<FileState>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct StashEntry {
+    pub name: String,
+    pub object_id: String,
+    pub summary: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AmendTarget {
+    pub expected_head: String,
+    pub message: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct UndoCommitTarget {
+    pub expected_head: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RenameBranchTarget {
+    pub old_name: String,
+    pub old_full_ref: String,
+    pub object_id: String,
+    pub new_name: String,
+    pub had_upstream: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PublishBranchTarget {
+    pub branch: String,
+    pub full_ref: String,
+    pub object_id: String,
+    pub remote: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum CreateBranchStartPoint {
     Head(HeadState),
     Branch(CheckoutTarget),
@@ -155,6 +200,16 @@ pub enum RepositoryAction {
     Checkout(Box<CheckoutTarget>),
     CreateBranch(Box<CreateBranchTarget>),
     DeleteBranch(Box<DeleteBranchTarget>),
+    Discard(Box<DiscardTarget>),
+    DiscardAll(Box<DiscardAllTarget>),
+    Stash { message: String },
+    ApplyStash(Box<StashEntry>),
+    DropStash(Box<StashEntry>),
+    Amend(Box<AmendTarget>),
+    UndoLastCommit(Box<UndoCommitTarget>),
+    Revert(Box<Commit>),
+    RenameBranch(Box<RenameBranchTarget>),
+    PublishBranch(Box<PublishBranchTarget>),
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -167,6 +222,15 @@ pub enum OperationResult {
     Checkout { branch: String },
     CreateBranch { branch: String },
     DeleteBranch { branch: String },
+    Discard { paths: usize },
+    Stash { name: String },
+    ApplyStash { name: String },
+    DropStash { name: String },
+    Amend { hash: String },
+    UndoLastCommit { hash: String },
+    Revert { hash: String },
+    RenameBranch { branch: String },
+    PublishBranch { branch: String, remote: String },
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -205,6 +269,7 @@ pub enum RepositoryUpdateKind {
     CommandFailed {
         command_id: ApplicationCommandId,
         failure: OperationFailure,
+        snapshot: Option<RepositorySnapshot>,
     },
     CommandCancelled {
         command_id: ApplicationCommandId,
@@ -253,6 +318,9 @@ pub enum FailureKind {
     RefChanged,
     BranchConflict,
     BranchNotFullyMerged,
+    NothingToDo,
+    PublishedCommit,
+    StashConflict,
     HookRejected,
     NoRemote,
     Unknown,
@@ -353,6 +421,24 @@ pub trait Repository: RepositorySource {
     /// Returns an error when branch references cannot be read or parsed.
     fn branches(&self) -> Result<Vec<BranchRef>> {
         anyhow::bail!("branch discovery is unavailable for this repository source")
+    }
+
+    /// List saved stash entries in newest-first order.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when stash references cannot be read or parsed.
+    fn stashes(&self) -> Result<Vec<StashEntry>> {
+        Ok(Vec::new())
+    }
+
+    /// List configured remote names.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when remote configuration cannot be read.
+    fn remotes(&self) -> Result<Vec<String>> {
+        Ok(Vec::new())
     }
 
     /// List files present in the repository worktree for Explorer.

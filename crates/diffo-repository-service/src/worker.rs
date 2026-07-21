@@ -43,6 +43,12 @@ pub(super) enum WorkerRequest {
     LoadBranches {
         query_id: RepositoryQueryId,
     },
+    LoadStashes {
+        query_id: RepositoryQueryId,
+    },
+    LoadRemotes {
+        query_id: RepositoryQueryId,
+    },
     Execute {
         id: ApplicationCommandId,
         action: RepositoryAction,
@@ -55,6 +61,12 @@ pub(super) enum WorkerRequest {
 enum DebouncedRequest {
     Refresh,
     LoadBranches {
+        query_id: RepositoryQueryId,
+    },
+    LoadStashes {
+        query_id: RepositoryQueryId,
+    },
+    LoadRemotes {
         query_id: RepositoryQueryId,
     },
     Execute {
@@ -94,6 +106,18 @@ pub(super) fn worker_loop(
                         }
                         Some(collect_refresh(repository, &mut generation))
                     }
+                    DebouncedRequest::LoadStashes { query_id } => {
+                        if events.send(collect_stashes(repository, query_id)).is_err() {
+                            break;
+                        }
+                        Some(collect_refresh(repository, &mut generation))
+                    }
+                    DebouncedRequest::LoadRemotes { query_id } => {
+                        if events.send(collect_remotes(repository, query_id)).is_err() {
+                            break;
+                        }
+                        Some(collect_refresh(repository, &mut generation))
+                    }
                     DebouncedRequest::Execute {
                         id,
                         action,
@@ -126,6 +150,8 @@ pub(super) fn worker_loop(
             WorkerRequest::LoadBranches { query_id } => {
                 Some(collect_branches(repository, query_id))
             }
+            WorkerRequest::LoadStashes { query_id } => Some(collect_stashes(repository, query_id)),
+            WorkerRequest::LoadRemotes { query_id } => Some(collect_remotes(repository, query_id)),
             WorkerRequest::WatchFailed(message) => {
                 generation = generation.saturating_add(1);
                 Some(RepositoryEvent::Update(RepositoryUpdate {
@@ -167,6 +193,12 @@ fn debounce(requests: &Receiver<WorkerRequest>, refresh_pending: &AtomicBool) ->
             Ok(WorkerRequest::LoadBranches { query_id }) => {
                 return DebouncedRequest::LoadBranches { query_id };
             }
+            Ok(WorkerRequest::LoadStashes { query_id }) => {
+                return DebouncedRequest::LoadStashes { query_id };
+            }
+            Ok(WorkerRequest::LoadRemotes { query_id }) => {
+                return DebouncedRequest::LoadRemotes { query_id };
+            }
             Ok(WorkerRequest::WatchFailed(_)) => {}
             Ok(WorkerRequest::Shutdown) | Err(mpsc::RecvTimeoutError::Disconnected) => {
                 return DebouncedRequest::Shutdown;
@@ -180,6 +212,26 @@ fn collect_branches(repository: &dyn Repository, query_id: RepositoryQueryId) ->
     match repository.branches() {
         Ok(branches) => RepositoryEvent::BranchesLoaded { query_id, branches },
         Err(error) => RepositoryEvent::BranchesLoadFailed {
+            query_id,
+            message: error.to_string(),
+        },
+    }
+}
+
+fn collect_stashes(repository: &dyn Repository, query_id: RepositoryQueryId) -> RepositoryEvent {
+    match repository.stashes() {
+        Ok(stashes) => RepositoryEvent::StashesLoaded { query_id, stashes },
+        Err(error) => RepositoryEvent::StashesLoadFailed {
+            query_id,
+            message: error.to_string(),
+        },
+    }
+}
+
+fn collect_remotes(repository: &dyn Repository, query_id: RepositoryQueryId) -> RepositoryEvent {
+    match repository.remotes() {
+        Ok(remotes) => RepositoryEvent::RemotesLoaded { query_id, remotes },
+        Err(error) => RepositoryEvent::RemotesLoadFailed {
             query_id,
             message: error.to_string(),
         },
@@ -238,6 +290,7 @@ fn execute_command(
                         kind: diffo_core::FailureKind::Unknown,
                         detail: error.to_string(),
                     },
+                    snapshot: None,
                 },
             }),
         },
@@ -259,6 +312,7 @@ fn execute_command(
                         kind: diffo_core::FailureKind::Unknown,
                         detail: error.to_string(),
                     },
+                    snapshot: None,
                 },
             }),
         },
@@ -267,6 +321,7 @@ fn execute_command(
             kind: RepositoryUpdateKind::CommandFailed {
                 command_id,
                 failure,
+                snapshot: repository.snapshot().ok(),
             },
         }),
     };

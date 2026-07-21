@@ -25,7 +25,9 @@ use super::{
     refs::{checkout_local_name, ref_exists},
 };
 
+mod checkout;
 mod protected_push;
+pub(super) use checkout::verify_checkout_target;
 #[cfg(test)]
 pub(super) use protected_push::protected_push_destination;
 
@@ -39,6 +41,10 @@ impl GitRepositorySource {
         let cancellation = context.map_or(&default_cancellation, |context| &context.cancellation);
         if cancellation.is_cancelled() {
             return Ok(OperationOutcome::Cancelled);
+        }
+
+        if let Some(result) = self.apply_everyday(action, context, cancellation) {
+            return result;
         }
 
         if matches!(action, RepositoryAction::Sync) {
@@ -83,6 +89,18 @@ impl GitRepositorySource {
             }
             RepositoryAction::DeleteBranch(target) => {
                 configure_delete_branch(self, &mut command, action, target)?;
+            }
+            RepositoryAction::Discard(_)
+            | RepositoryAction::DiscardAll(_)
+            | RepositoryAction::Stash { .. }
+            | RepositoryAction::ApplyStash(_)
+            | RepositoryAction::DropStash(_)
+            | RepositoryAction::Amend(_)
+            | RepositoryAction::UndoLastCommit(_)
+            | RepositoryAction::Revert(_)
+            | RepositoryAction::RenameBranch(_)
+            | RepositoryAction::PublishBranch(_) => {
+                unreachable!("everyday actions are handled before single commands")
             }
         }
 
@@ -399,7 +417,7 @@ impl GitRepositorySource {
             .output();
     }
 
-    fn git_text(&self, args: &[&str]) -> anyhow::Result<String> {
+    pub(super) fn git_text(&self, args: &[&str]) -> anyhow::Result<String> {
         self.git(args)
             .map(|output| String::from_utf8_lossy(&output).trim().to_owned())
     }
@@ -604,6 +622,18 @@ fn collect_operation_result(
         }),
         RepositoryAction::CreateBranch(target) => Ok(create_branch_result(target)),
         RepositoryAction::DeleteBranch(target) => Ok(delete_branch_result(target)),
+        RepositoryAction::Discard(_)
+        | RepositoryAction::DiscardAll(_)
+        | RepositoryAction::Stash { .. }
+        | RepositoryAction::ApplyStash(_)
+        | RepositoryAction::DropStash(_)
+        | RepositoryAction::Amend(_)
+        | RepositoryAction::UndoLastCommit(_)
+        | RepositoryAction::Revert(_)
+        | RepositoryAction::RenameBranch(_)
+        | RepositoryAction::PublishBranch(_) => {
+            unreachable!("everyday actions collect their own results")
+        }
     }
 }
 
@@ -663,37 +693,6 @@ fn configure_checkout(
                 ]);
             }
         }
-    }
-    Ok(())
-}
-
-pub(super) fn verify_checkout_target(
-    source: &GitRepositorySource,
-    action: &RepositoryAction,
-    target: &CheckoutTarget,
-) -> std::result::Result<(), OperationFailure> {
-    let expected_prefix = match target.kind {
-        BranchKind::Local => "refs/heads/",
-        BranchKind::Remote => "refs/remotes/",
-    };
-    if !target.full_ref.starts_with(expected_prefix) {
-        return Err(operation_failure(
-            action,
-            FailureKind::RefChanged,
-            "selected branch is no longer available; reopen the branch picker",
-        ));
-    }
-    let object_id = source
-        .git(&["show-ref", "--verify", "--hash", &target.full_ref])
-        .ok()
-        .and_then(|output| String::from_utf8(output).ok())
-        .map(|output| output.trim().to_owned());
-    if object_id.as_deref() != Some(target.object_id.as_str()) {
-        return Err(operation_failure(
-            action,
-            FailureKind::RefChanged,
-            "selected branch changed; reopen the branch picker",
-        ));
     }
     Ok(())
 }

@@ -148,6 +148,14 @@ impl Repository for GitRepositorySource {
         self.branch_refs()
     }
 
+    fn stashes(&self) -> Result<Vec<diffo_core::StashEntry>> {
+        self.stash_entries()
+    }
+
+    fn remotes(&self) -> Result<Vec<String>> {
+        self.remote_names()
+    }
+
     fn explorer_paths(&self) -> Result<Vec<std::path::PathBuf>> {
         let watch_paths = self.watch_paths()?;
         let mut excluded = watch_paths

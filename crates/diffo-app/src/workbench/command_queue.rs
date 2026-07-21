@@ -144,6 +144,34 @@ fn command_label(action: &ApplicationAction) -> String {
         ApplicationAction::Repository(RepositoryAction::DeleteBranch(target)) => {
             format!("Deleting branch {}", target.name)
         }
+        ApplicationAction::Repository(RepositoryAction::Discard(_)) => {
+            "Discarding changes".to_owned()
+        }
+        ApplicationAction::Repository(RepositoryAction::DiscardAll(_)) => {
+            "Discarding all changes".to_owned()
+        }
+        ApplicationAction::Repository(RepositoryAction::Stash { .. }) => {
+            "Stashing changes".to_owned()
+        }
+        ApplicationAction::Repository(RepositoryAction::ApplyStash(target)) => {
+            format!("Applying {}", target.name)
+        }
+        ApplicationAction::Repository(RepositoryAction::DropStash(target)) => {
+            format!("Dropping {}", target.name)
+        }
+        ApplicationAction::Repository(RepositoryAction::Amend(_)) => "Amending commit".to_owned(),
+        ApplicationAction::Repository(RepositoryAction::UndoLastCommit(_)) => {
+            "Undoing last commit".to_owned()
+        }
+        ApplicationAction::Repository(RepositoryAction::Revert(target)) => {
+            format!("Reverting {}", &target.id[..target.id.len().min(7)])
+        }
+        ApplicationAction::Repository(RepositoryAction::RenameBranch(target)) => {
+            format!("Renaming branch to {}", target.new_name)
+        }
+        ApplicationAction::Repository(RepositoryAction::PublishBranch(target)) => {
+            format!("Publishing {}", target.branch)
+        }
         ApplicationAction::Update => "Updating Diffo".to_owned(),
     }
 }

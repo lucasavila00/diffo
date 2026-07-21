@@ -142,6 +142,7 @@ pub mod design {
     pub const TOAST_MAX_HEIGHT: u16 = 6;
     pub const PATH_MENU_WIDTH: u16 = 24;
     pub const PATH_MENU_HEIGHT: u16 = 5;
+    pub const PATH_MENU_DESTRUCTIVE_HEIGHT: u16 = 7;
     pub const TREE_HEADER_MIN_WIDTH: u16 = 12;
     pub const TREE_HEADER_ACTION_WIDTH: u16 = 3;
     pub const TREE_HEADER_ACTION_GAP: u16 = 1;
@@ -149,6 +150,7 @@ pub mod design {
         TREE_HEADER_ACTION_WIDTH * 2 + TREE_HEADER_ACTION_GAP + BORDER_WIDTH;
     pub const PATH_MENU_FIRST_ACTION_ROW: u16 = 1;
     pub const PATH_MENU_SECOND_ACTION_ROW: u16 = 3;
+    pub const PATH_MENU_THIRD_ACTION_ROW: u16 = 5;
     pub const SIDE_BY_SIDE_DIVIDER_WIDTH: u16 = 3;
     pub const SIDE_BY_SIDE_COLUMN_COUNT: u16 = 2;
     pub const DIFF_RIGHT_RAIL_WIDTH: u16 = BORDER_WIDTH * 2;

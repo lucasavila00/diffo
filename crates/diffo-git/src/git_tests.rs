@@ -20,6 +20,7 @@ use diffo_core::{
 mod checkout;
 mod create_branch;
 mod delete_branch;
+mod everyday;
 mod explorer;
 mod sync_tests;
 

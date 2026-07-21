@@ -43,6 +43,7 @@ pub enum Outcome<K> {
     RowAction(K),
     PanelAction,
     CopyPath { id: K, absolute: bool },
+    DestructiveAction(K),
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]

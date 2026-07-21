@@ -55,7 +55,8 @@ impl Workbench {
             RepositoryUpdateKind::CommandFailed {
                 command_id,
                 failure,
-            } => self.action_failed(command_id, failure),
+                snapshot,
+            } => self.action_failed_with_snapshot(command_id, failure, snapshot),
             RepositoryUpdateKind::CommandCancelled {
                 command_id,
                 action,
@@ -91,6 +92,15 @@ impl Workbench {
     }
 
     pub fn action_failed(&mut self, id: ApplicationCommandId, failure: OperationFailure) {
+        self.action_failed_with_snapshot(id, failure, None);
+    }
+
+    fn action_failed_with_snapshot(
+        &mut self,
+        id: ApplicationCommandId,
+        failure: OperationFailure,
+        snapshot: Option<RepositorySnapshot>,
+    ) {
         if self.handle_delete_branch_failure(id, &failure) {
             return;
         }
@@ -104,6 +114,9 @@ impl Workbench {
         self.close_prompt(id);
         self.finish_command_progress(id);
         let _ = self.update_diff(Message::ActionFailed(failure));
+        if let Some(snapshot) = snapshot {
+            self.repository_changed(snapshot);
+        }
     }
 
     pub fn operation_cancelled(

@@ -36,6 +36,7 @@ pub enum Message {
     UnstageAll,
     StageFile(std::path::PathBuf),
     UnstageFile(std::path::PathBuf),
+    RequestDiscardFile(std::path::PathBuf),
     FocusCommitInput,
     BlurCommitInput,
     CommitMessageInput(char),
@@ -75,7 +76,8 @@ pub fn update(model: &mut Model, message: Message) -> Option<Effect> {
         | Message::JumpToPreviousChange
         | Message::JumpToNextChange
         | Message::FocusCommitInput
-        | Message::BlurCommitInput => {}
+        | Message::BlurCommitInput
+        | Message::RequestDiscardFile(_) => {}
         Message::ToggleDiffView => model.toggle_diff_view(),
         Message::BeginFilePaneResize => model.begin_file_pane_resize(),
         Message::ResizeFilePane(percent) => model.resize_file_pane(percent),

@@ -315,6 +315,14 @@ impl Repository for MutableFixtureRepository {
                     );
                     if let Some(upstream) = snapshot.upstream.as_mut() {
                         upstream.ahead = upstream.ahead.saturating_add(1);
+                        upstream.recent_local_commits.insert(
+                            0,
+                            crate::Commit {
+                                id: "mock-commit".to_owned(),
+                                summary: message.clone(),
+                            },
+                        );
+                        upstream.recent_local_commits.truncate(3);
                     }
                     Ok(OperationResult::Commit {
                         hash: "mock-commit".to_owned(),

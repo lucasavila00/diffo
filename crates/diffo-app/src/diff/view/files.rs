@@ -83,14 +83,72 @@ pub(crate) fn commit_action_at_position(
 
 pub(in crate::diff) fn file_group_areas(
     area: ratatui::layout::Rect,
+    model: &Model,
 ) -> std::rc::Rc<[ratatui::layout::Rect]> {
+    let file_groups_height = design::MIN_FILE_GROUP_HEIGHT.saturating_mul(2);
+    let available_unpushed_height = area.height.saturating_sub(file_groups_height);
+    let unpushed_rows = model.snapshot.upstream.as_ref().map_or(1, |upstream| {
+        let commit_rows = upstream.recent_local_commits.len();
+        if commit_rows == 0 {
+            1
+        } else {
+            commit_rows + usize::from(upstream.ahead > 3)
+        }
+    });
+    let desired_unpushed_height = u16::try_from(unpushed_rows)
+        .unwrap_or(u16::MAX)
+        .saturating_add(design::PANEL_BORDER_OVERHEAD);
+    let unpushed_height = desired_unpushed_height.min(available_unpushed_height);
+
     Layout::default()
         .direction(Direction::Vertical)
         .constraints([
+            Constraint::Length(unpushed_height),
             Constraint::Percentage(design::EQUAL_SPLIT_PERCENT),
             Constraint::Percentage(design::EQUAL_SPLIT_PERCENT),
         ])
         .split(area)
+}
+
+pub(in crate::diff) fn render_unpushed_commits(frame: &mut Frame, area: Rect, model: &Model) {
+    if area.is_empty() {
+        return;
+    }
+    let inner_width = usize::from(area.width.saturating_sub(design::PANEL_BORDER_OVERHEAD));
+    let rows = if let Some(upstream) = &model.snapshot.upstream {
+        if upstream.recent_local_commits.is_empty() {
+            vec![Line::raw(truncate_width("No unpushed commits", inner_width))]
+        } else {
+            let mut rows = upstream
+                .recent_local_commits
+                .iter()
+                .take(3)
+                .map(|commit| {
+                    let id = commit.id.chars().take(7).collect::<String>();
+                    let label = terminal_safe_text(&format!("{id} {}", commit.summary));
+                    Line::raw(truncate_width(&label, inner_width))
+                })
+                .collect::<Vec<_>>();
+            if upstream.ahead > 3 {
+                rows.push(Line::raw(truncate_width(
+                    &format!("... and {} more", upstream.ahead - 3),
+                    inner_width,
+                )));
+            }
+            rows
+        }
+    } else {
+        vec![Line::raw(truncate_width("No upstream", inner_width))]
+    };
+    frame.render_widget(
+        Paragraph::new(rows).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(resize_border_style(model))
+                .title("Unpushed"),
+        ),
+        area,
+    );
 }
 
 pub(in crate::diff) fn picker_document<'a>(

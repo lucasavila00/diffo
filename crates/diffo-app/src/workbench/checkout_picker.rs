@@ -364,6 +364,7 @@ mod tests {
                 name: "origin/main".to_owned(),
                 ahead: 0,
                 behind: 0,
+                recent_local_commits: Vec::new(),
             }),
             ..RepositorySnapshot::default()
         };
@@ -411,6 +412,7 @@ mod tests {
                 name: "origin/main".to_owned(),
                 ahead: 0,
                 behind: 0,
+                recent_local_commits: Vec::new(),
             }),
             ..RepositorySnapshot::default()
         };

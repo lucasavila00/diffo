@@ -83,6 +83,7 @@ pub(super) fn parse_status(output: &[u8]) -> Result<ParsedStatus> {
         name,
         ahead,
         behind,
+        recent_local_commits: Vec::new(),
     });
     Ok(ParsedStatus {
         head,

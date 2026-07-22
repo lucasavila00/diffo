@@ -47,7 +47,8 @@ use prepare::{diff_file_lines, should_syntax_highlight};
 use view::files::status_line;
 use view::files::{
     commit_action_at_position, file_group_areas, file_label, file_panel_areas, picker_document,
-    render_commit_composer, resize_border_style, staged_files, unstaged_files,
+    render_commit_composer, render_unpushed_commits, resize_border_style, staged_files,
+    unstaged_files,
 };
 #[cfg(test)]
 use view::geometry::scrollbar_position_count;
@@ -111,6 +112,8 @@ impl Renderer {
 
         let file_panels = file_panel_areas(panes[0]);
         render_commit_composer(frame, file_panels[0], model);
+        let file_groups = file_group_areas(file_panels[1], model);
+        render_unpushed_commits(frame, file_groups[0], model);
         self.staged_picker.render(
             frame,
             model
@@ -347,11 +350,11 @@ impl Renderer {
 
     fn prepare_file_pickers(&mut self, model: &Model, area: Rect) {
         let file_panels = file_panel_areas(area);
-        let file_groups = file_group_areas(file_panels[1]);
+        let file_groups = file_group_areas(file_panels[1], model);
         let border_style = resize_border_style(model);
         let selected = model.selected.as_ref();
         self.staged_picker.prepare(
-            file_groups[0],
+            file_groups[1],
             picker_document(
                 "Staged",
                 " Unstage All",
@@ -362,7 +365,7 @@ impl Renderer {
             selected.filter(|selected| selected.area == ChangeArea::Staged),
         );
         self.unstaged_picker.prepare(
-            file_groups[1],
+            file_groups[2],
             picker_document(
                 "Changes",
                 " Stage All",

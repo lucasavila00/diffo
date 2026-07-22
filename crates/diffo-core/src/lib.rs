@@ -90,6 +90,8 @@ pub struct UpstreamState {
     pub name: String,
     pub ahead: usize,
     pub behind: usize,
+    #[serde(default)]
+    pub recent_local_commits: Vec<Commit>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

@@ -75,6 +75,7 @@ fn commit_and_sync_are_independent_actions() {
         name: "origin/main".to_owned(),
         ahead: 1,
         behind: 0,
+        recent_local_commits: Vec::new(),
     });
     assert!(!model.commit_enabled());
     assert!(model.sync_enabled());
@@ -131,6 +132,7 @@ fn passive_and_unrelated_results_cannot_finish_a_sync() {
         name: "origin/main".to_owned(),
         ahead: 1,
         behind: 0,
+        recent_local_commits: Vec::new(),
     });
     assert_eq!(
         update(&mut model, Message::ExecuteSync),

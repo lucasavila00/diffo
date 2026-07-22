@@ -279,6 +279,7 @@ fn status_line_shows_named_head_state_and_divergence() {
             name: "origin/main".to_owned(),
             ahead: 2,
             behind: 1,
+            recent_local_commits: Vec::new(),
         }),
         ..RepositorySnapshot::default()
     });
@@ -366,6 +367,7 @@ fn status_line_preserves_head_and_respects_unicode_width() {
             name: "origin/feature".to_owned(),
             ahead: 3,
             behind: 4,
+            recent_local_commits: Vec::new(),
         }),
         ..RepositorySnapshot::default()
     });

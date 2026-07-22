@@ -108,5 +108,9 @@
         name: "origin/feature/syntax-highlighting",
         ahead: 2,
         behind: 0,
+        recent_local_commits: [
+            (id: "7bd31d2", summary: "Add repository overview"),
+            (id: "240f4a1", summary: "Add diff parser"),
+        ],
     )),
 )

@@ -154,6 +154,31 @@ impl GitRepositorySource {
             .collect())
     }
 
+    fn recent_local_commits(&self, upstream: &str) -> Result<Vec<Commit>> {
+        let output = String::from_utf8(self.git(&[
+            "log",
+            "-n",
+            "3",
+            "--format=%H%x00%s%x00",
+            "HEAD",
+            "--not",
+            upstream,
+        ])?)
+        .context("git returned a non-UTF-8 local commit log")?;
+        let fields = output.split('\0').collect::<Vec<_>>();
+
+        Ok(fields
+            .chunks(2)
+            .filter_map(|fields| match fields {
+                [id, summary] if !id.trim().is_empty() => Some(Commit {
+                    id: id.trim().to_owned(),
+                    summary: (*summary).to_owned(),
+                }),
+                _ => None,
+            })
+            .collect())
+    }
+
     fn file_state(&self, file: ParsedFile) -> Result<FileState> {
         let path = file.state.path.to_string_lossy();
         let old_path = file
@@ -241,8 +266,11 @@ impl RepositorySource for GitRepositorySource {
             "--untracked-files=all",
             "-z",
         ])?;
-        let parsed = parse_status(&status)?;
+        let mut parsed = parse_status(&status)?;
         let files = self.file_states(parsed.files)?;
+        if let Some(upstream) = &mut parsed.upstream {
+            upstream.recent_local_commits = self.recent_local_commits(&upstream.name)?;
+        }
 
         Ok(RepositorySnapshot {
             head: parsed.head,

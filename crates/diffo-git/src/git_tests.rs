@@ -448,6 +448,38 @@ fn sync_fast_forwards_to_the_refreshed_upstream() {
 }
 
 #[test]
+fn snapshot_collects_only_the_three_newest_local_only_commits() {
+    let repository = sync_repository();
+    for number in 1..=4 {
+        fs::write(
+            repository.work.join("local.txt"),
+            format!("local {number}\n"),
+        )
+        .unwrap();
+        git(&repository.work, &["add", "."]);
+        git(
+            &repository.work,
+            &["commit", "-m", &format!("Local commit {number}")],
+        );
+    }
+
+    let snapshot = super::GitRepositorySource::new(&repository.work)
+        .snapshot()
+        .expect("snapshot local commits");
+    let upstream = snapshot.upstream.expect("configured upstream");
+
+    assert_eq!(upstream.ahead, 4);
+    assert_eq!(
+        upstream
+            .recent_local_commits
+            .iter()
+            .map(|commit| commit.summary.as_str())
+            .collect::<Vec<_>>(),
+        ["Local commit 4", "Local commit 3", "Local commit 2"]
+    );
+}
+
+#[test]
 fn sync_cannot_push_a_protected_branch_without_confirmation_context() {
     let repository = sync_repository();
     fs::write(repository.work.join("local.txt"), "local\n").unwrap();

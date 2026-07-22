@@ -115,7 +115,9 @@ pub(in crate::diff) fn render_unpushed_commits(frame: &mut Frame, area: Rect, mo
         return;
     }
     let inner_width = usize::from(area.width.saturating_sub(design::PANEL_BORDER_OVERHEAD));
-    let rows = if let Some(upstream) = &model.snapshot.upstream {
+    let rows = if let (HeadState::Named { .. }, Some(upstream)) =
+        (&model.snapshot.head, &model.snapshot.upstream)
+    {
         if upstream.recent_local_commits.is_empty() {
             vec![Line::raw(truncate_width("No unpushed commits", inner_width))]
         } else {

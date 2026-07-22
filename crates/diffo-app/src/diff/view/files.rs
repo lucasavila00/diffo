@@ -119,7 +119,10 @@ pub(in crate::diff) fn render_unpushed_commits(frame: &mut Frame, area: Rect, mo
         (&model.snapshot.head, &model.snapshot.upstream)
     {
         if upstream.recent_local_commits.is_empty() {
-            vec![Line::raw(truncate_width("No unpushed commits", inner_width))]
+            vec![Line::raw(truncate_width(
+                "No unpushed commits",
+                inner_width,
+            ))]
         } else {
             let mut rows = upstream
                 .recent_local_commits

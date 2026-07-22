@@ -31,6 +31,7 @@ fn clean_repository() -> Result<()> {
         name: "origin/main",
         ahead: 0,
         behind: 0,
+        recent_local_commits: [],
       )),
     )
     "#);
@@ -130,6 +131,12 @@ fn local_branch_is_ahead_and_behind_upstream() -> Result<()> {
         name: "origin/main",
         ahead: 1,
         behind: 1,
+        recent_local_commits: [
+          Commit(
+            id: "43d9e3e5b952193a00febda8eabb8fda9b45306f",
+            summary: "Local commit",
+          ),
+        ],
       )),
     )
     "#);
@@ -162,6 +169,12 @@ fn local_branch_is_ahead_of_upstream() -> Result<()> {
         name: "origin/main",
         ahead: 1,
         behind: 0,
+        recent_local_commits: [
+          Commit(
+            id: "43d9e3e5b952193a00febda8eabb8fda9b45306f",
+            summary: "Local commit",
+          ),
+        ],
       )),
     )
     "#);
@@ -191,6 +204,7 @@ fn local_branch_is_behind_upstream() -> Result<()> {
         name: "origin/main",
         ahead: 0,
         behind: 1,
+        recent_local_commits: [],
       )),
     )
     "#);
@@ -274,6 +288,12 @@ fn ignored_file_is_not_reported() -> Result<()> {
         name: "origin/main",
         ahead: 1,
         behind: 0,
+        recent_local_commits: [
+          Commit(
+            id: "2f2f621b6b19ec8f7a241b03b37eeb2c1c3cb2bd",
+            summary: "Add ignore rule",
+          ),
+        ],
       )),
     )
     "#);

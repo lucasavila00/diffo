@@ -30,5 +30,6 @@ RepositorySnapshot(
     name: "origin/main",
     ahead: 0,
     behind: 0,
+    recent_local_commits: [],
   )),
 )

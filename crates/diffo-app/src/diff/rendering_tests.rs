@@ -22,6 +22,7 @@ use ratatui::{
     style::{Color, Modifier, Style},
 };
 
+use super::file_group_areas;
 use super::{
     Renderer, RendererEvent, contrast_ratio, contrasting_foreground, diff_background,
     diff_background_rgb, diff_file_lines, file_label, footer_control_at_position,
@@ -29,7 +30,6 @@ use super::{
     render_status, render_unpushed_commits, row_style, scrollbar_position_count,
     should_syntax_highlight, status_line,
 };
-use super::file_group_areas;
 
 #[test]
 fn file_picker_renders_every_git_change_kind_with_its_status_color() {
@@ -290,13 +290,13 @@ fn unpushed_panel_handles_unavailable_empty_and_unsafe_subjects() {
 
 #[test]
 fn unpushed_panel_yields_height_to_both_file_groups() {
-    let model = model_with_unpushed(
-        7,
-        &[("1", "one"), ("2", "two"), ("3", "three")],
-    );
+    let model = model_with_unpushed(7, &[("1", "one"), ("2", "two"), ("3", "three")]);
 
     let roomy = file_group_areas(Rect::new(0, 0, 20, 10), &model);
-    assert_eq!(roomy.iter().map(|area| area.height).collect::<Vec<_>>(), [6, 2, 2]);
+    assert_eq!(
+        roomy.iter().map(|area| area.height).collect::<Vec<_>>(),
+        [6, 2, 2]
+    );
 
     let constrained = file_group_areas(Rect::new(0, 0, 20, 6), &model);
     assert_eq!(

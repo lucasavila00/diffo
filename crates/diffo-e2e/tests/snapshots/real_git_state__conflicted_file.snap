@@ -32,5 +32,11 @@ RepositorySnapshot(
     name: "origin/main",
     ahead: 1,
     behind: 1,
+    recent_local_commits: [
+      Commit(
+        id: "cd7cdc6bb20e7734bb385385ac9c9b66b2355091",
+        summary: "Local edit",
+      ),
+    ],
   )),
 )

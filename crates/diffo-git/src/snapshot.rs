@@ -9,7 +9,7 @@ use std::{
 
 use anyhow::{Context, Result, anyhow};
 use diffo_core::{
-    ChangeKind, Commit, FileDiff, FileState, RepositorySnapshot, RepositorySource,
+    ChangeKind, Commit, FileDiff, FileState, HeadState, RepositorySnapshot, RepositorySource,
     RepositoryWatchPaths,
 };
 
@@ -268,7 +268,9 @@ impl RepositorySource for GitRepositorySource {
         ])?;
         let mut parsed = parse_status(&status)?;
         let files = self.file_states(parsed.files)?;
-        if let Some(upstream) = &mut parsed.upstream {
+        if matches!(parsed.head, HeadState::Named { .. })
+            && let Some(upstream) = &mut parsed.upstream
+        {
             upstream.recent_local_commits = self.recent_local_commits(&upstream.name)?;
         }
 

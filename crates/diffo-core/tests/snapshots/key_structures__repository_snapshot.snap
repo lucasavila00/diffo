@@ -151,5 +151,15 @@ RepositorySnapshot(
     name: "origin/feature/syntax-highlighting",
     ahead: 2,
     behind: 0,
+    recent_local_commits: [
+      Commit(
+        id: "7bd31d2",
+        summary: "Add repository overview",
+      ),
+      Commit(
+        id: "240f4a1",
+        summary: "Add diff parser",
+      ),
+    ],
   )),
 )

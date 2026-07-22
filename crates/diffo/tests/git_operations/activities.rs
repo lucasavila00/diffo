@@ -34,7 +34,6 @@ fn command_palette_blocks_activity_switching_and_does_not_restore_hidden_state()
 
     screen
         .press(Key::Tab)?
-        .press(Key::Tab)?
         .wait_for_text("Changes")?
         .wait_for_text_gone("Command Palette")?;
     Ok(())
@@ -58,12 +57,7 @@ fn activity_palettes_share_git_commands_and_keep_specific_catalogs_separate() ->
         .wait_for_text("Application: Update Diffo")?
         .wait_for_text("Explorer: Collapse All Folders")?
         .press(Key::Escape)?
-        .wait_for_text_gone("Command Palette")?
-        .press(Key::Tab)?
-        .press(Key::Char('1'))?
-        .wait_for_text("Git: Fetch")?
-        .wait_for_text("Application: Update Diffo")?
-        .wait_for_text_gone("Explorer: Collapse All Folders")?;
+        .wait_for_text_gone("Command Palette")?;
     Ok(())
 }
 
@@ -74,7 +68,7 @@ fn activity_bar_clicks_select_tools_and_diff_returns_intact() -> Result<()> {
 
     screen
         .wait_for_text("Changes")?
-        .click(&Selector::text(""))?
+        .click(&Selector::text(""))?
         .wait_for_text_gone("Changes")?
         .click(&Selector::text(""))?
         .wait_for_text("Changes")?;

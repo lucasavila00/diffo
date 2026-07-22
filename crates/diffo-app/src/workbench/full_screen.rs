@@ -107,7 +107,6 @@ impl Workbench {
         match self.active {
             Activity::Diff => self.diff.renderer.full_screen_title(),
             Activity::Explorer => self.explorer.full_screen_title(),
-            Activity::Search => None,
         }
     }
 
@@ -168,7 +167,6 @@ impl Workbench {
                 let (requested, displayed) = self.explorer.document_paths();
                 explorer_preparation(text_surface, requested, displayed)
             }
-            Activity::Search => FramePreparation::default(),
         };
         if self.full_screen_pending && !preparation.preparing && preparation.syntax_ready {
             self.full_screen = true;
@@ -194,7 +192,6 @@ impl Workbench {
                     .render_full_screen(frame, buffer, &self.diff.model);
             }
             Activity::Explorer => self.explorer.render_full_screen(frame, buffer),
-            Activity::Search => {}
         }
         true
     }
@@ -226,7 +223,6 @@ impl Workbench {
                 let _ = self.explorer.handle_full_screen_event(event, buffer);
                 None
             }
-            Activity::Search => None,
         }
     }
 }

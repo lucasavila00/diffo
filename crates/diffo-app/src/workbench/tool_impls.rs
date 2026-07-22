@@ -1,8 +1,7 @@
 use super::{
-    Clear, Command, CommandId, DiffActivity, Event, ExplorerActivity, ExplorerEvent, Frame,
-    FramePreparation, PaneSplit, Rect, RendererEvent, SearchActivity, TextRenderMode,
-    TextSurfacePreparation, Tool, Workbench, WorkbenchCommand, WorkbenchEffect, WorkbenchTask,
-    tool_areas,
+    Command, CommandId, DiffActivity, Event, ExplorerActivity, ExplorerEvent, Frame,
+    FramePreparation, PaneSplit, Rect, RendererEvent, TextRenderMode, TextSurfacePreparation, Tool,
+    Workbench, WorkbenchCommand, WorkbenchEffect, WorkbenchTask,
 };
 
 impl Workbench {
@@ -15,7 +14,6 @@ impl Workbench {
         match self.active {
             super::Activity::Diff => self.diff.is_preparing(),
             super::Activity::Explorer => self.explorer.is_preparing(),
-            super::Activity::Search => self.search.is_preparing(),
         }
     }
 
@@ -154,45 +152,4 @@ pub(super) fn explorer_frame_preparation(
     let text_surface = explorer.prepare_frame(area, split);
     let (requested, displayed) = explorer.document_paths();
     explorer_preparation(text_surface, requested, displayed)
-}
-
-impl Tool for SearchActivity {
-    fn handle_event(
-        &mut self,
-        _event: &Event,
-        _area: Rect,
-        _split: PaneSplit,
-    ) -> Option<WorkbenchCommand> {
-        None
-    }
-
-    fn prepare_frame(&mut self, _area: Rect, _split: PaneSplit) -> FramePreparation {
-        FramePreparation::default()
-    }
-
-    fn render(&mut self, frame: &mut Frame, area: Rect, split: PaneSplit) {
-        frame.render_widget(Clear, area);
-        let content = tool_areas(area).content;
-        let panes = split.areas(content);
-        frame.render_widget(
-            ratatui::widgets::Block::default()
-                .borders(ratatui::widgets::Borders::ALL)
-                .border_style(split.border_style()),
-            panes.leading,
-        );
-        frame.render_widget(
-            ratatui::widgets::Block::default()
-                .borders(ratatui::widgets::Borders::ALL)
-                .border_style(split.border_style()),
-            panes.trailing,
-        );
-    }
-
-    fn is_preparing(&self) -> bool {
-        false
-    }
-
-    fn help_rows(&self) -> Vec<(String, &'static str)> {
-        vec![("q / Esc / Ctrl+c".to_owned(), "Quit")]
-    }
 }

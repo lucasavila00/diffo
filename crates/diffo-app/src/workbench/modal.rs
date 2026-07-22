@@ -267,7 +267,7 @@ mod tests {
     #[test]
     fn help_toggles_with_2_and_f2_in_every_activity() {
         let area = Rect::new(0, 0, 100, 30);
-        for activity in [Activity::Diff, Activity::Explorer, Activity::Search] {
+        for activity in [Activity::Diff, Activity::Explorer] {
             for shortcut in [KeyCode::Char('2'), KeyCode::F(2)] {
                 let mut workbench = Workbench::new(RepositorySnapshot::default());
                 workbench.active = activity;

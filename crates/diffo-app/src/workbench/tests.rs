@@ -45,8 +45,6 @@ fn tab_cycles_activities_without_changing_diff_state() {
     let _ = workbench.handle_event(&tab, area);
     assert_eq!(workbench.active, Activity::Explorer);
     let _ = workbench.handle_event(&tab, area);
-    assert_eq!(workbench.active, Activity::Search);
-    let _ = workbench.handle_event(&tab, area);
     assert_eq!(workbench.active, Activity::Diff);
     assert_eq!(workbench.diff.model.diff_scroll, 17);
 }
@@ -64,7 +62,7 @@ fn every_activity_renders_the_same_repository_footer() {
     let status = tool_areas(workbench_areas(area).content).status;
     let mut footers = Vec::new();
 
-    for activity in [Activity::Diff, Activity::Explorer, Activity::Search] {
+    for activity in [Activity::Diff, Activity::Explorer] {
         let mut workbench = Workbench::new(snapshot.clone());
         workbench.active = activity;
         let backend = TestBackend::new(area.width, area.height);
@@ -74,7 +72,6 @@ fn every_activity_renders_the_same_repository_footer() {
     }
 
     assert_eq!(footers[0], footers[1]);
-    assert_eq!(footers[1], footers[2]);
     let text = footers[0]
         .content
         .iter()
@@ -128,7 +125,7 @@ fn activity_bar_click_selects_and_consumes_the_activity() {
     });
 
     let _ = workbench.handle_event(&click, Rect::new(0, 0, 100, 30));
-    assert_eq!(workbench.active, Activity::Search);
+    assert_eq!(workbench.active, Activity::Diff);
 }
 
 #[test]
@@ -246,7 +243,7 @@ fn pane_drag_is_shared_across_activities() {
     assert_eq!(workbench.active, Activity::Explorer);
     assert_eq!(workbench.pane_split.areas(pane_area).trailing.x, 62);
     let _ = workbench.handle_event(&key(KeyCode::Tab), area);
-    assert_eq!(workbench.active, Activity::Search);
+    assert_eq!(workbench.active, Activity::Diff);
     assert_eq!(workbench.pane_split.areas(pane_area).trailing.x, 62);
 }
 
@@ -312,28 +309,9 @@ fn empty_activities_keep_quit_available() {
 }
 
 #[test]
-fn empty_search_draws_the_shared_page_panes() {
-    let mut workbench = Workbench::new(RepositorySnapshot::default());
-    workbench.active = Activity::Search;
-    let backend = TestBackend::new(20, 12);
-    let mut terminal = Terminal::new(backend).unwrap();
-
-    terminal.draw(|frame| workbench.render(frame)).unwrap();
-
-    let pane_area = tool_areas(workbench_areas(Rect::new(0, 0, 20, 12)).content).content;
-    let marker = workbench.pane_split.seam_marker_area(pane_area);
-    insta::assert_debug_snapshot!(terminal.backend().buffer());
-    assert!(
-        workbench
-            .pane_split
-            .contains_seam(pane_area, marker.x, marker.y)
-    );
-}
-
-#[test]
 fn shared_git_commands_execute_from_every_activity() {
     let area = Rect::new(0, 0, 100, 30);
-    for activity in [Activity::Diff, Activity::Explorer, Activity::Search] {
+    for activity in [Activity::Diff, Activity::Explorer] {
         let mut workbench = Workbench::new(RepositorySnapshot::default());
         workbench.active = activity;
 

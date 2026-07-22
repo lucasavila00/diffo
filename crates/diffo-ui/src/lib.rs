@@ -40,7 +40,6 @@ pub mod theme {
 /// Fixed Nerd Font icons used by Diffo's interface.
 pub mod icons {
     pub const ACTIVITY_EXPLORER: &str = "";
-    pub const ACTIVITY_SEARCH: &str = "";
     pub const ACTIVITY_DIFF: &str = "";
     pub const TREE_COLLAPSED: &str = " ";
     pub const TREE_EXPANDED: &str = " ";
@@ -433,7 +432,6 @@ mod tests {
     fn interface_icons_are_one_cell_nerd_font_glyphs() {
         let icons = [
             icons::ACTIVITY_EXPLORER,
-            icons::ACTIVITY_SEARCH,
             icons::ACTIVITY_DIFF,
             icons::TREE_COLLAPSED,
             icons::TREE_EXPANDED,

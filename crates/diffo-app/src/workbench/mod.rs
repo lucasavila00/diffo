@@ -21,7 +21,7 @@ use diffo_ui::{PaneSplit, command_progress_style, icons, mouse_target_style, too
 use ratatui::{
     Frame,
     layout::Rect,
-    widgets::{Block, Borders, Clear, Paragraph},
+    widgets::{Block, Borders, Paragraph},
 };
 
 use crate::explorer::{ExplorerActivity, ExplorerEvent, ExplorerOutcome, ExplorerRequest};
@@ -60,7 +60,6 @@ pub enum Activity {
     #[default]
     Diff,
     Explorer,
-    Search,
 }
 
 enum WorkbenchCommand {
@@ -99,7 +98,6 @@ pub struct Workbench {
     active: Activity,
     diff: DiffActivity,
     explorer: ExplorerActivity,
-    search: SearchActivity,
     pane_split: PaneSplit,
     toasts: ToastQueue,
     toast_deadlines: HashMap<u64, Instant>,
@@ -122,8 +120,6 @@ struct DiffActivity {
     model: Model,
     renderer: Renderer,
 }
-
-struct SearchActivity;
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 enum CommandProgressState {
@@ -212,7 +208,6 @@ impl Workbench {
                 renderer: Renderer::new(),
             },
             explorer,
-            search: SearchActivity,
             pane_split: PaneSplit::default(),
             toasts: ToastQueue::new(),
             toast_deadlines: HashMap::new(),
@@ -306,7 +301,6 @@ impl Workbench {
             Activity::Explorer => {
                 explorer_frame_preparation(&mut self.explorer, content, self.pane_split)
             }
-            Activity::Search => self.search.prepare_frame(content, self.pane_split),
         }
     }
 
@@ -319,7 +313,6 @@ impl Workbench {
         match self.active {
             Activity::Diff => self.diff.render(frame, content, self.pane_split),
             Activity::Explorer => self.explorer.render(frame, content, self.pane_split),
-            Activity::Search => self.search.render(frame, content, self.pane_split),
         }
         render_status(frame, tool_areas(content).status, &self.diff.model);
         self.render_full_screen_entry(frame);
@@ -388,7 +381,6 @@ impl Workbench {
         let tool_captures_global_input = match self.active {
             Activity::Diff => self.diff.captures_global_input(),
             Activity::Explorer => self.explorer.captures_global_input(),
-            Activity::Search => self.search.captures_global_input(),
         };
         if self.full_screen
             && !tool_captures_global_input
@@ -471,7 +463,6 @@ impl Workbench {
             Activity::Explorer => {
                 Tool::handle_event(&mut self.explorer, event, content, self.pane_split)
             }
-            Activity::Search => self.search.handle_event(event, content, self.pane_split),
         }
     }
 
@@ -545,7 +536,6 @@ impl Workbench {
         match self.active {
             Activity::Diff => self.diff.dismiss_popover(),
             Activity::Explorer => self.explorer.dismiss_popover(),
-            Activity::Search => self.search.dismiss_popover(),
         }
     }
 
@@ -616,7 +606,6 @@ impl Workbench {
         match self.active {
             Activity::Diff => self.diff.commands(),
             Activity::Explorer => self.explorer.commands(),
-            Activity::Search => self.search.commands(),
         }
     }
 
@@ -652,7 +641,6 @@ impl Workbench {
         match self.active {
             Activity::Diff => self.diff.execute_command(command),
             Activity::Explorer => self.explorer.execute_command(command),
-            Activity::Search => self.search.execute_command(command),
         };
         None
     }

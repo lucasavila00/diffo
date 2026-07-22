@@ -5,8 +5,7 @@ impl Activity {
     pub const fn next(self) -> Self {
         match self {
             Self::Diff => Self::Explorer,
-            Self::Explorer => Self::Search,
-            Self::Search => Self::Diff,
+            Self::Explorer => Self::Diff,
         }
     }
 }
@@ -48,8 +47,7 @@ pub fn activity_at_position(area: Rect, column: u16, row: u16) -> Option<Activit
     }
     match row.saturating_sub(bar.y) / design::ACTIVITY_CONTROL_HEIGHT {
         0 => Some(Activity::Explorer),
-        1 => Some(Activity::Search),
-        2 => Some(Activity::Diff),
+        1 => Some(Activity::Diff),
         _ => None,
     }
 }
@@ -64,7 +62,6 @@ pub fn render_activity_bar(frame: &mut Frame, area: Rect, active: Activity) {
     );
     for (index, (activity, icon)) in [
         (Activity::Explorer, icons::ACTIVITY_EXPLORER),
-        (Activity::Search, icons::ACTIVITY_SEARCH),
         (Activity::Diff, icons::ACTIVITY_DIFF),
     ]
     .into_iter()
@@ -127,8 +124,7 @@ mod tests {
         assert_eq!(areas.activity_bar, Rect::new(2, 4, 5, 30));
         assert_eq!(areas.content, Rect::new(7, 4, 95, 30));
         assert_eq!(activity_at_position(area, 3, 5), Some(Activity::Explorer));
-        assert_eq!(activity_at_position(area, 3, 8), Some(Activity::Search));
-        assert_eq!(activity_at_position(area, 3, 11), Some(Activity::Diff));
+        assert_eq!(activity_at_position(area, 3, 8), Some(Activity::Diff));
         assert_eq!(activity_at_position(area, 6, 5), None);
         assert_eq!(activity_at_position(area, 3, 14), None);
     }
@@ -145,7 +141,7 @@ mod tests {
         let backend = TestBackend::new(20, 12);
         let mut terminal = Terminal::new(backend).unwrap();
         terminal
-            .draw(|frame| render_activity_bar(frame, frame.area(), Activity::Search))
+            .draw(|frame| render_activity_bar(frame, frame.area(), Activity::Explorer))
             .unwrap();
         insta::assert_debug_snapshot!(terminal.backend().buffer());
     }

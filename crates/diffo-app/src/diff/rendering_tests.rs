@@ -8,9 +8,7 @@ use crate::diff::{ChangeArea, DiffViewMode, Message, Model, Toast, ToastKind, To
 use crossterm::event::{
     Event, KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
 };
-use diffo_core::{
-    ChangeKind, Commit, FileDiff, FileState, HeadState, RepositorySnapshot, UpstreamState,
-};
+use diffo_core::{ChangeKind, FileDiff, FileState, HeadState, RepositorySnapshot, UpstreamState};
 use diffo_diff::RowKind;
 use diffo_highlight::Rgb;
 use diffo_ui::tool_areas;
@@ -22,13 +20,11 @@ use ratatui::{
     style::{Color, Modifier, Style},
 };
 
-use super::file_group_areas;
 use super::{
     Renderer, RendererEvent, contrast_ratio, contrasting_foreground, diff_background,
     diff_background_rgb, diff_file_lines, file_label, footer_control_at_position,
     highlight_prefetch_viewports, horizontal_panes, main_area, overview_position, picker_document,
-    render_status, render_unpushed_commits, row_style, scrollbar_position_count,
-    should_syntax_highlight, status_line,
+    render_status, row_style, scrollbar_position_count, should_syntax_highlight, status_line,
 };
 
 #[test]
@@ -214,98 +210,6 @@ fn file_list_model(file_count: usize) -> Model {
             .collect(),
         ..RepositorySnapshot::default()
     })
-}
-
-fn model_with_unpushed(ahead: usize, commits: &[(&str, &str)]) -> Model {
-    Model::new(RepositorySnapshot {
-        head: HeadState::Named {
-            name: "main".to_owned(),
-            commit: "123456789abcdef".to_owned(),
-        },
-        upstream: Some(UpstreamState {
-            name: "origin/main".to_owned(),
-            ahead,
-            behind: 0,
-            recent_local_commits: commits
-                .iter()
-                .map(|(id, summary)| Commit {
-                    id: (*id).to_owned(),
-                    summary: (*summary).to_owned(),
-                })
-                .collect(),
-        }),
-        ..RepositorySnapshot::default()
-    })
-}
-
-#[test]
-fn unpushed_panel_lists_three_commits_and_the_exact_remainder() {
-    let model = model_with_unpushed(
-        7,
-        &[
-            ("111111111", "Newest commit"),
-            ("222222222", "Second commit"),
-            ("333333333", "Third commit"),
-        ],
-    );
-    let backend = TestBackend::new(28, 6);
-    let mut terminal = Terminal::new(backend).unwrap();
-
-    terminal
-        .draw(|frame| render_unpushed_commits(frame, frame.area(), &model))
-        .unwrap();
-
-    let text = buffer_text(terminal.backend().buffer());
-    assert!(text.contains("1111111 Newest commit"));
-    assert!(text.contains("2222222 Second commit"));
-    assert!(text.contains("3333333 Third commit"));
-    assert!(text.contains("... and 4 more"));
-}
-
-#[test]
-fn unpushed_panel_handles_unavailable_empty_and_unsafe_subjects() {
-    let backend = TestBackend::new(22, 3);
-    let mut terminal = Terminal::new(backend).unwrap();
-    let unavailable = Model::new(RepositorySnapshot::default());
-    terminal
-        .draw(|frame| render_unpushed_commits(frame, frame.area(), &unavailable))
-        .unwrap();
-    assert!(buffer_text(terminal.backend().buffer()).contains("No upstream"));
-
-    let empty = model_with_unpushed(0, &[]);
-    terminal
-        .draw(|frame| render_unpushed_commits(frame, frame.area(), &empty))
-        .unwrap();
-    assert!(buffer_text(terminal.backend().buffer()).contains("No unpushed commits"));
-
-    let unsafe_subject = model_with_unpushed(1, &[("abcdef012", "line one\nline two and long")]);
-    terminal
-        .draw(|frame| render_unpushed_commits(frame, frame.area(), &unsafe_subject))
-        .unwrap();
-    let text = buffer_text(terminal.backend().buffer());
-    assert!(text.contains("abcdef0 line one␊"));
-    assert!(text.contains('…'));
-    assert!(!text.contains("line two"));
-}
-
-#[test]
-fn unpushed_panel_yields_height_to_both_file_groups() {
-    let model = model_with_unpushed(7, &[("1", "one"), ("2", "two"), ("3", "three")]);
-
-    let roomy = file_group_areas(Rect::new(0, 0, 20, 10), &model);
-    assert_eq!(
-        roomy.iter().map(|area| area.height).collect::<Vec<_>>(),
-        [6, 2, 2]
-    );
-
-    let constrained = file_group_areas(Rect::new(0, 0, 20, 6), &model);
-    assert_eq!(
-        constrained
-            .iter()
-            .map(|area| area.height)
-            .collect::<Vec<_>>(),
-        [2, 2, 2]
-    );
 }
 
 fn mouse_at(kind: MouseEventKind, area: Rect) -> Event {
@@ -757,3 +661,4 @@ fn change_navigation_stops_at_the_first_and_last_changes() {
 
 mod chrome;
 mod diff;
+mod unpushed;

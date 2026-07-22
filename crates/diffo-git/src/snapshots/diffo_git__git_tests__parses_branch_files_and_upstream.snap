@@ -12,6 +12,7 @@ expression: "(&parsed.head, &parsed.upstream, files)"
             name: "origin/feature",
             ahead: 2,
             behind: 1,
+            recent_local_commits: [],
         },
     ),
     [

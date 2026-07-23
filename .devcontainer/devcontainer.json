@@ -4,7 +4,8 @@
 	"name": "Rust",
 	"build": {
 		"dockerfile": "Dockerfile"
-	}
+	},
+	"postCreateCommand": "git config --global --add safe.directory /workspaces/workspace"
 
 	// Use 'mounts' to make the cargo cache persistent in a Docker Volume.
 	// "mounts": [
@@ -20,9 +21,6 @@
 
 	// Use 'forwardPorts' to make a list of ports inside the container available locally.
 	// "forwardPorts": [],
-
-	// Use 'postCreateCommand' to run commands after the container is created.
-	// "postCreateCommand": "rustc --version",
 
 	// Configure tool-specific properties.
 	// "customizations": {},

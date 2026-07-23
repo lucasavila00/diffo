@@ -1,8 +1,15 @@
-FROM mcr.microsoft.com/devcontainers/rust:2-1-trixie
+FROM rust:trixie
 
-RUN sudo apt-get update \
-    && sudo env DEBIAN_FRONTEND=noninteractive apt-get install --yes --no-install-recommends openssh-server \
-    && sudo rm -rf /var/lib/apt/lists/*
+RUN apt-get update \
+    && env DEBIAN_FRONTEND=noninteractive apt-get install --yes --no-install-recommends \
+        git \
+        openssh-server \
+        sudo \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN useradd --create-home --shell /bin/bash --user-group vscode \
+    && echo "vscode ALL=(root) NOPASSWD:ALL" > /etc/sudoers.d/vscode \
+    && chmod 0440 /etc/sudoers.d/vscode
 
 RUN rustup update stable \
     && rustup default stable \

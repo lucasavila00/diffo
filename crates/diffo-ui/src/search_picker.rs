@@ -1,5 +1,8 @@
 //! Reusable searchable modal list state, input handling, and rendering.
 
+#[cfg(test)]
+mod ranking_tests;
+
 use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind};
 use ratatui::{
     Frame,
@@ -457,107 +460,6 @@ mod tests {
 
     fn key(code: KeyCode) -> Event {
         Event::Key(KeyEvent::new(code, KeyModifiers::NONE))
-    }
-
-    #[test]
-    fn aliases_rank_stably_and_disabled_rows_cannot_activate() {
-        let mut picker = SearchPicker::new("Branches", "None");
-        picker.set_items(vec![
-            SearchItem {
-                identity: 1,
-                payload: "main-a",
-                label: "main".to_owned(),
-                preferred_match: None,
-                trailing: None,
-                aliases: Vec::new(),
-                enabled: false,
-            },
-            SearchItem {
-                identity: 2,
-                payload: "topic-a",
-                label: "topic".to_owned(),
-                preferred_match: None,
-                trailing: None,
-                aliases: Vec::new(),
-                enabled: true,
-            },
-            SearchItem {
-                identity: 3,
-                payload: "remote-topic-a",
-                label: "origin/topic".to_owned(),
-                preferred_match: None,
-                trailing: None,
-                aliases: vec!["topic".to_owned()],
-                enabled: true,
-            },
-        ]);
-
-        assert_eq!(picker.selected_identity(), Some(&2));
-        let _ = picker.handle_event(&key(KeyCode::Char('T')), Rect::new(0, 0, 80, 24));
-        assert_eq!(picker.query(), "T");
-        assert_eq!(picker.selected_identity(), Some(&2));
-        assert_eq!(
-            picker.handle_event(&key(KeyCode::Enter), Rect::new(0, 0, 80, 24)),
-            SearchPickerEvent::Activate("topic-a")
-        );
-    }
-
-    #[test]
-    fn shared_fuzzy_ranking_prefers_the_intended_contiguous_file_match() {
-        let mut picker = SearchPicker::new("Files", "None");
-        let item = |identity, label: &str| SearchItem {
-            identity,
-            payload: identity,
-            label: label.to_owned(),
-            preferred_match: None,
-            trailing: None,
-            aliases: Vec::new(),
-            enabled: true,
-        };
-        picker.set_items(vec![
-            item(1, "target/doc/diffo_ui/file_picker/fn.help_rows.html"),
-            item(
-                2,
-                "target/doc/diffo_ui/search_picker/fn.search_picker_layout.html",
-            ),
-            item(3, ".devcontainer/Dockerfile"),
-        ]);
-        for character in "Dockerf".chars() {
-            let _ = picker.handle_event(&key(KeyCode::Char(character)), Rect::new(0, 0, 100, 30));
-        }
-
-        assert_eq!(picker.selected_identity(), Some(&3));
-        assert_eq!(
-            picker
-                .matches()
-                .into_iter()
-                .map(|item| item.identity)
-                .collect::<Vec<_>>(),
-            vec![3, 1, 2]
-        );
-    }
-
-    #[test]
-    fn preferred_match_tier_ranks_a_file_name_above_a_folder_match() {
-        let item = |identity, label: &str, file_name: &str| SearchItem {
-            identity,
-            payload: identity,
-            label: label.to_owned(),
-            preferred_match: Some(file_name.to_owned()),
-            trailing: None,
-            aliases: Vec::new(),
-            enabled: true,
-        };
-        let mut picker = SearchPicker::new("Files", "None");
-        picker.set_items(vec![
-            item(1, "query/unrelated.rs", "unrelated.rs"),
-            item(2, "src/query.rs", "query.rs"),
-        ]);
-        for character in "query".chars() {
-            let _ = picker.handle_event(&key(KeyCode::Char(character)), Rect::new(0, 0, 100, 30));
-        }
-
-        assert_eq!(picker.selected_identity(), Some(&2));
     }
 
     #[test]

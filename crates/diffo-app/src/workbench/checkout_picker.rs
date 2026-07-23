@@ -131,6 +131,7 @@ impl CheckoutPicker {
                         object_id: branch.object_id.clone(),
                     },
                     label: branch.name.clone(),
+                    preferred_match: None,
                     trailing: relative_commit_age(
                         branch.tip_commit_unix_seconds,
                         self.loaded_at_unix_seconds,

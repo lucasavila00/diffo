@@ -122,6 +122,58 @@ fn rapid_explorer_open_commits_only_the_latest_syntax_ready_file() -> Result<()>
 }
 
 #[test]
+fn quick_open_from_diff_commits_explorer_selection_and_content_atomically() -> Result<()> {
+    let repository = TestRepository::new()?;
+    fs::write(repository.worktree.join("a.txt"), "ALPHA_CONTENT\n")?;
+    fs::create_dir(repository.worktree.join("nested"))?;
+    fs::write(
+        repository.worktree.join("nested/bravo.txt"),
+        "BRAVO_CONTENT\n",
+    )?;
+    git(&repository.worktree, &["add", "."])?;
+    git(&repository.worktree, &["commit", "-m", "Add files"])?;
+    fs::write(repository.worktree.join("a.txt"), "ALPHA_CHANGED\n")?;
+    let trace_path = repository.root.path().join("quick-open-frames.ronl");
+    let mut screen = DiffoScreen::launch_with_env(
+        diffo_binary()?,
+        &repository.worktree,
+        &[("DIFFO_TRACE_FRAMES", trace_path.as_os_str())],
+    )?;
+
+    screen
+        .wait_for_text("ALPHA_CHANGED")?
+        .press(Key::Char('o'))?
+        .wait_for_text("Quick Open")?
+        .type_text("bravo")?
+        .click(&Selector::text("nested/bravo.txt"))?
+        .wait_for_text("BRAVO_CONTENT")?
+        .press(Key::Char('q'))?
+        .wait_for_exit()?;
+    drop(screen);
+
+    let trace = fs::read_to_string(&trace_path).context("read Quick Open frame trace")?;
+    let frames = trace
+        .lines()
+        .map(ron::from_str::<ExplorerFrame>)
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+    assert!(frames.iter().all(|frame| {
+        frame.requested_explorer_file == frame.displayed_explorer_file
+            || frame
+                .text_surface
+                .as_ref()
+                .is_none_or(|surface| surface.render_mode != "Full")
+    }));
+    assert!(frames.iter().any(|frame| {
+        frame.requested_explorer_file.as_deref() == Some("nested/bravo.txt")
+            && frame.displayed_explorer_file.as_deref() == Some("nested/bravo.txt")
+            && frame.text_surface.as_ref().is_some_and(|surface| {
+                surface.surface == "Explorer" && surface.render_mode == "Full"
+            })
+    }));
+    Ok(())
+}
+
+#[test]
 fn explorer_removes_a_deleted_file_without_showing_head_content() -> Result<()> {
     let repository = TestRepository::new()?;
     fs::write(repository.worktree.join("keep.txt"), "KEEP_CONTENT\n")?;

@@ -8,12 +8,15 @@ use super::{
     checkout_picker::{CheckoutPicker, CheckoutPickerEvent},
     create_branch::{CreateBranchEvent, CreateBranchModal},
     delete_branch::DeleteBranchConfirmation,
-    help, render_prompt,
+    help,
+    quick_open::QuickOpenEvent,
+    render_prompt,
     sync_remote::{SyncRemoteEvent, SyncRemotePicker},
 };
 
 pub(super) enum Modal {
     Help,
+    QuickOpen(super::quick_open::QuickOpen),
     CommandPalette(CommandPalette),
     CheckoutPicker(CheckoutPicker),
     CreateBranch(CreateBranchModal),
@@ -64,6 +67,7 @@ impl Workbench {
     pub(super) fn render_modal(&self, frame: &mut Frame, content: Rect, area: Rect) {
         match self.modal.as_ref() {
             Some(Modal::Help) => help::render(frame, content, self.active_help_rows()),
+            Some(Modal::QuickOpen(modal)) => modal.render(frame, area),
             Some(Modal::CommandPalette(palette)) => palette.render(frame, content),
             Some(Modal::CheckoutPicker(picker)) => picker.render(frame, area),
             Some(Modal::CreateBranch(modal)) => modal.render(frame, area),
@@ -84,6 +88,7 @@ impl Workbench {
     ) -> Option<WorkbenchCommand> {
         match self.modal.as_ref()? {
             Modal::Help => self.handle_help_event(event),
+            Modal::QuickOpen(_) => self.handle_quick_open_event(event, area),
             Modal::CommandPalette(_) => self.handle_palette_event(event, area),
             Modal::CheckoutPicker(_) => self.handle_checkout_picker_event(event, area),
             Modal::CreateBranch(_) => self.handle_create_branch_event(event, area),
@@ -97,6 +102,24 @@ impl Workbench {
                 .handle_prompt_event(event, area)
                 .map(WorkbenchCommand::Effect),
         }
+    }
+
+    fn handle_quick_open_event(&mut self, event: &Event, area: Rect) -> Option<WorkbenchCommand> {
+        let modal_event = match self.modal.as_mut() {
+            Some(Modal::QuickOpen(modal)) => modal.handle_event(event, area),
+            _ => return None,
+        };
+        match modal_event {
+            QuickOpenEvent::Close => self.close_modal(),
+            QuickOpenEvent::Open(path) => {
+                self.close_modal();
+                self.active = super::Activity::Explorer;
+                self.explorer.quick_open(path);
+            }
+            QuickOpenEvent::Quit => self.should_quit = true,
+            QuickOpenEvent::Consumed => {}
+        }
+        None
     }
 
     fn handle_sync_remote_event(&mut self, event: &Event, area: Rect) -> Option<WorkbenchCommand> {
@@ -413,6 +436,52 @@ mod tests {
         assert_eq!(workbench.diff.model.commit_message, "129");
         assert_eq!(workbench.commands.queued_len(), 0);
         assert!(matches!(workbench.modal, Some(Modal::CommitEditor)));
+    }
+
+    #[test]
+    fn quick_open_is_global_and_captures_its_own_o_input() {
+        let area = Rect::new(0, 0, 100, 30);
+        for activity in [Activity::Diff, Activity::Explorer] {
+            let mut workbench = Workbench::new(RepositorySnapshot::default());
+            workbench.active = activity;
+
+            let _ = workbench.handle_event(&key(KeyCode::Char('o')), area);
+            assert!(matches!(workbench.modal, Some(Modal::QuickOpen(_))));
+            let _ = workbench.handle_event(&key(KeyCode::Char('o')), area);
+            assert!(matches!(
+                workbench.modal,
+                Some(Modal::QuickOpen(ref modal)) if modal.query() == "o"
+            ));
+        }
+
+        let mut workbench = Workbench::new(RepositorySnapshot::default());
+        let shifted = Event::Key(KeyEvent::new(KeyCode::Char('O'), KeyModifiers::SHIFT));
+        let _ = workbench.handle_event(&shifted, area);
+        assert!(workbench.modal.is_none());
+    }
+
+    #[test]
+    fn quick_open_retains_query_when_paths_arrive() {
+        let area = Rect::new(0, 0, 100, 30);
+        let mut workbench = Workbench::new(RepositorySnapshot::default());
+        let _ = workbench.handle_event(&key(KeyCode::Char('o')), area);
+        let _ = workbench.handle_event(&key(KeyCode::Char('r')), area);
+
+        workbench.accept_task_result(super::super::WorkbenchTaskResult::Explorer(
+            ExplorerOutcome::Paths {
+                id: 1,
+                result: Ok(vec!["src/main.rs".into(), ".hidden".into()]),
+            },
+        ));
+
+        assert!(matches!(
+            workbench.modal,
+            Some(Modal::QuickOpen(ref modal)) if modal.query() == "r"
+        ));
+
+        let _ = workbench.handle_event(&key(KeyCode::Enter), area);
+        assert!(workbench.modal.is_none());
+        assert_eq!(workbench.active, Activity::Explorer);
     }
 
     #[test]

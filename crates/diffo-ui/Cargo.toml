@@ -4,7 +4,6 @@ description = "Shared terminal UI primitives for Diffo tools"
 edition.workspace = true
 license.workspace = true
 readme = "README.md"
-rust-version.workspace = true
 version.workspace = true
 
 [dependencies]
@@ -12,6 +11,7 @@ crossterm.workspace = true
 diffo-core.workspace = true
 diffo-highlight.workspace = true
 ratatui.workspace = true
+nucleo-matcher.workspace = true
 
 [dev-dependencies]
 insta.workspace = true

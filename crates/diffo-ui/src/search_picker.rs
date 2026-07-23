@@ -10,7 +10,7 @@ use ratatui::{
 };
 
 use crate::{
-    design, disabled_control_style, fuzzy_score, icons, maximum_scroll, modal_block,
+    FuzzyQuery, design, disabled_control_style, icons, maximum_scroll, modal_block,
     mouse_target_style, render_scrollbar, terminal_safe_text, theme, wheel_scroll_delta,
 };
 
@@ -19,6 +19,7 @@ pub struct SearchItem<I, P> {
     pub identity: I,
     pub payload: P,
     pub label: String,
+    pub preferred_match: Option<String>,
     pub trailing: Option<String>,
     pub aliases: Vec<String>,
     pub enabled: bool,
@@ -37,6 +38,7 @@ pub struct SearchPicker<I, P> {
     empty_message: &'static str,
     query: String,
     items: Vec<SearchItem<I, P>>,
+    matches: Vec<usize>,
     selected: Option<usize>,
     offset: usize,
 }
@@ -53,6 +55,7 @@ where
             empty_message,
             query: String::new(),
             items: Vec::new(),
+            matches: Vec::new(),
             selected: None,
             offset: 0,
         }
@@ -64,41 +67,46 @@ where
 
     pub fn set_items(&mut self, items: Vec<SearchItem<I, P>>) {
         self.items = items;
+        self.rank_matches();
         self.offset = 0;
         self.select_first_enabled();
     }
 
     pub fn reconcile_items(&mut self, items: Vec<SearchItem<I, P>>) {
-        let matches = self.matches();
         let selected_identity = self
             .selected
-            .and_then(|selected| matches.get(selected))
-            .map(|(_, item)| item.identity.clone());
-        let top_identity = matches
+            .and_then(|selected| self.matches.get(selected))
+            .map(|index| self.items[*index].identity.clone());
+        let top_identity = self
+            .matches
             .get(self.offset)
-            .map(|(_, item)| item.identity.clone());
+            .map(|index| self.items[*index].identity.clone());
         let old_offset = self.offset;
 
         self.items = items;
+        self.rank_matches();
         let (selected, offset) = {
-            let matches = self.matches();
             let preserved_selection = selected_identity.as_ref().and_then(|identity| {
-                matches
-                    .iter()
-                    .position(|(_, item)| item.enabled && item.identity == *identity)
+                self.matches.iter().position(|index| {
+                    let item = &self.items[*index];
+                    item.enabled && item.identity == *identity
+                })
             });
-            let selected =
-                preserved_selection.or_else(|| matches.iter().position(|(_, item)| item.enabled));
+            let selected = preserved_selection.or_else(|| {
+                self.matches
+                    .iter()
+                    .position(|index| self.items[*index].enabled)
+            });
             let offset = if preserved_selection.is_some() {
                 top_identity
                     .as_ref()
                     .and_then(|identity| {
-                        matches
+                        self.matches
                             .iter()
-                            .position(|(_, item)| item.identity == *identity)
+                            .position(|index| self.items[*index].identity == *identity)
                     })
                     .unwrap_or(old_offset)
-                    .min(matches.len().saturating_sub(1))
+                    .min(self.matches.len().saturating_sub(1))
             } else {
                 0
             };
@@ -115,10 +123,9 @@ where
 
     #[must_use]
     pub fn selected_identity(&self) -> Option<&I> {
-        let matches = self.matches();
         self.selected
-            .and_then(|selected| matches.get(selected))
-            .map(|(_, item)| &item.identity)
+            .and_then(|selected| self.matches.get(selected))
+            .map(|index| &self.items[*index].identity)
     }
 
     #[must_use]
@@ -140,11 +147,12 @@ where
             {
                 let visible = usize::from(mouse.row.saturating_sub(results.y));
                 let index = self.offset.saturating_add(visible);
-                let matches = self.matches();
-                let activated = matches
+                let activated = self
+                    .matches
                     .get(index)
-                    .filter(|(_, item)| item.enabled)
-                    .map(|(_, item)| item.payload.clone());
+                    .map(|index| &self.items[*index])
+                    .filter(|item| item.enabled)
+                    .map(|item| item.payload.clone());
                 if let Some(payload) = activated {
                     self.selected = Some(index);
                     return SearchPickerEvent::Activate(payload);
@@ -165,6 +173,7 @@ where
             }
             KeyCode::Backspace => {
                 self.query.pop();
+                self.rank_matches();
                 self.offset = 0;
                 self.select_first_enabled();
                 SearchPickerEvent::Consumed
@@ -184,7 +193,7 @@ where
                 .and_then(|selected| {
                     self.matches()
                         .get(selected)
-                        .map(|(_, item)| item.payload.clone())
+                        .map(|item| item.payload.clone())
                 })
                 .map_or(SearchPickerEvent::Consumed, SearchPickerEvent::Activate),
             KeyCode::Char(character)
@@ -193,6 +202,7 @@ where
                     .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT) =>
             {
                 self.query.push(character);
+                self.rank_matches();
                 self.offset = 0;
                 self.select_first_enabled();
                 SearchPickerEvent::Consumed
@@ -235,7 +245,7 @@ where
                 .iter()
                 .skip(self.offset)
                 .take(viewport)
-                .map(|(_, item)| {
+                .map(|item| {
                     ListItem::new(search_item_line(item, item_width)).style(if item.enabled {
                         mouse_target_style()
                     } else {
@@ -276,28 +286,47 @@ where
         );
     }
 
-    fn matches(&self) -> Vec<(usize, &SearchItem<I, P>)> {
+    fn rank_matches(&mut self) {
+        let query = FuzzyQuery::new(&self.query);
         let mut matches = self
             .items
             .iter()
             .enumerate()
             .filter_map(|(index, item)| {
+                let preferred_score = item
+                    .preferred_match
+                    .as_deref()
+                    .and_then(|candidate| query.score(candidate));
                 let score = std::iter::once(item.label.as_str())
                     .chain(item.aliases.iter().map(String::as_str))
-                    .filter_map(|candidate| fuzzy_score(candidate, &self.query))
+                    .filter_map(|candidate| query.score(candidate))
                     .max()?;
-                Some((score, index, item))
+                Some((
+                    u8::from(preferred_score.is_some()),
+                    preferred_score.unwrap_or(score),
+                    index,
+                ))
             })
             .collect::<Vec<_>>();
-        matches.sort_by(|left, right| right.0.cmp(&left.0).then_with(|| left.1.cmp(&right.1)));
-        matches
-            .into_iter()
-            .map(|(_, index, item)| (index, item))
+        matches.sort_by(|left, right| {
+            right
+                .0
+                .cmp(&left.0)
+                .then_with(|| right.1.cmp(&left.1))
+                .then_with(|| left.2.cmp(&right.2))
+        });
+        self.matches = matches.into_iter().map(|(_, _, index)| index).collect();
+    }
+
+    fn matches(&self) -> Vec<&SearchItem<I, P>> {
+        self.matches
+            .iter()
+            .map(|index| &self.items[*index])
             .collect()
     }
 
     fn select_first_enabled(&mut self) {
-        self.selected = self.matches().iter().position(|(_, item)| item.enabled);
+        self.selected = self.matches().iter().position(|item| item.enabled);
     }
 
     fn move_selection(&mut self, amount: i64) {
@@ -305,7 +334,7 @@ where
             .matches()
             .iter()
             .enumerate()
-            .filter_map(|(index, (_, item))| item.enabled.then_some(index))
+            .filter_map(|(index, item)| item.enabled.then_some(index))
             .collect::<Vec<_>>();
         let Some(current) = self.selected else {
             self.selected = enabled.first().copied();
@@ -438,6 +467,7 @@ mod tests {
                 identity: 1,
                 payload: "main-a",
                 label: "main".to_owned(),
+                preferred_match: None,
                 trailing: None,
                 aliases: Vec::new(),
                 enabled: false,
@@ -446,6 +476,7 @@ mod tests {
                 identity: 2,
                 payload: "topic-a",
                 label: "topic".to_owned(),
+                preferred_match: None,
                 trailing: None,
                 aliases: Vec::new(),
                 enabled: true,
@@ -454,6 +485,7 @@ mod tests {
                 identity: 3,
                 payload: "remote-topic-a",
                 label: "origin/topic".to_owned(),
+                preferred_match: None,
                 trailing: None,
                 aliases: vec!["topic".to_owned()],
                 enabled: true,
@@ -471,12 +503,71 @@ mod tests {
     }
 
     #[test]
+    fn shared_fuzzy_ranking_prefers_the_intended_contiguous_file_match() {
+        let mut picker = SearchPicker::new("Files", "None");
+        let item = |identity, label: &str| SearchItem {
+            identity,
+            payload: identity,
+            label: label.to_owned(),
+            preferred_match: None,
+            trailing: None,
+            aliases: Vec::new(),
+            enabled: true,
+        };
+        picker.set_items(vec![
+            item(1, "target/doc/diffo_ui/file_picker/fn.help_rows.html"),
+            item(
+                2,
+                "target/doc/diffo_ui/search_picker/fn.search_picker_layout.html",
+            ),
+            item(3, ".devcontainer/Dockerfile"),
+        ]);
+        for character in "Dockerf".chars() {
+            let _ = picker.handle_event(&key(KeyCode::Char(character)), Rect::new(0, 0, 100, 30));
+        }
+
+        assert_eq!(picker.selected_identity(), Some(&3));
+        assert_eq!(
+            picker
+                .matches()
+                .into_iter()
+                .map(|item| item.identity)
+                .collect::<Vec<_>>(),
+            vec![3, 1, 2]
+        );
+    }
+
+    #[test]
+    fn preferred_match_tier_ranks_a_file_name_above_a_folder_match() {
+        let item = |identity, label: &str, file_name: &str| SearchItem {
+            identity,
+            payload: identity,
+            label: label.to_owned(),
+            preferred_match: Some(file_name.to_owned()),
+            trailing: None,
+            aliases: Vec::new(),
+            enabled: true,
+        };
+        let mut picker = SearchPicker::new("Files", "None");
+        picker.set_items(vec![
+            item(1, "query/unrelated.rs", "unrelated.rs"),
+            item(2, "src/query.rs", "query.rs"),
+        ]);
+        for character in "query".chars() {
+            let _ = picker.handle_event(&key(KeyCode::Char(character)), Rect::new(0, 0, 100, 30));
+        }
+
+        assert_eq!(picker.selected_identity(), Some(&2));
+    }
+
+    #[test]
     fn escape_closes_and_pointer_movement_changes_nothing() {
         let mut picker = SearchPicker::new("Branches", "None");
         picker.set_items(vec![SearchItem {
             identity: 1,
             payload: "main-a",
             label: "main".to_owned(),
+            preferred_match: None,
             trailing: None,
             aliases: Vec::new(),
             enabled: true,
@@ -506,6 +597,7 @@ mod tests {
             identity,
             payload,
             label: label.to_owned(),
+            preferred_match: None,
             trailing: None,
             aliases: Vec::new(),
             enabled,
@@ -541,6 +633,7 @@ mod tests {
             identity,
             payload: identity,
             label: label.to_owned(),
+            preferred_match: None,
             trailing: None,
             aliases: Vec::new(),
             enabled,
@@ -568,6 +661,7 @@ mod tests {
             identity,
             payload: identity,
             label: format!("branch-{identity:02}"),
+            preferred_match: None,
             trailing: None,
             aliases: Vec::new(),
             enabled: true,
@@ -579,7 +673,7 @@ mod tests {
         picker.reconcile_items((0..20).rev().map(item).collect());
 
         assert_eq!(picker.offset, 12);
-        assert_eq!(picker.matches()[picker.offset].1.identity, 7);
+        assert_eq!(picker.matches()[picker.offset].identity, 7);
 
         picker.reconcile_items(
             (0..20)
@@ -600,6 +694,7 @@ mod tests {
                     identity: 1,
                     payload: 1,
                     label: "feature/a-very-long-recent-branch".to_owned(),
+                    preferred_match: None,
                     trailing: Some("12m ago".to_owned()),
                     aliases: Vec::new(),
                     enabled: true,
@@ -608,6 +703,7 @@ mod tests {
                     identity: 2,
                     payload: 2,
                     label: "main".to_owned(),
+                    preferred_match: None,
                     trailing: Some("now".to_owned()),
                     aliases: Vec::new(),
                     enabled: false,
@@ -616,6 +712,7 @@ mod tests {
                     identity: 3,
                     payload: 3,
                     label: "undated".to_owned(),
+                    preferred_match: None,
                     trailing: None,
                     aliases: Vec::new(),
                     enabled: true,

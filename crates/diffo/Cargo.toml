@@ -4,7 +4,6 @@ description = "A terminal UI for browsing Git state"
 edition.workspace = true
 license.workspace = true
 readme = "README.md"
-rust-version.workspace = true
 version.workspace = true
 
 [dependencies]

@@ -12,6 +12,8 @@ pub use scrollbar::render_scrollbar;
 use crossterm::event::MouseEventKind;
 use diffo_core::ChangeKind;
 use diffo_highlight::HighlightedLine;
+use nucleo_matcher::pattern::{Atom, AtomKind, CaseMatching, Normalization};
+use nucleo_matcher::{Config, Matcher, Utf32Str};
 use ratatui::{
     layout::{Constraint, Layout, Rect},
     style::{Color, Modifier, Style},
@@ -170,32 +172,29 @@ pub fn modal_block(title: impl Into<String>) -> Block<'static> {
         .title(format!(" {title} "))
 }
 
-pub(crate) fn fuzzy_score(candidate: &str, query: &str) -> Option<i64> {
-    if query.is_empty() {
-        return Some(0);
+pub(crate) struct FuzzyQuery(Atom);
+
+impl FuzzyQuery {
+    pub(crate) fn new(query: &str) -> Self {
+        Self(Atom::new(
+            query,
+            CaseMatching::Ignore,
+            Normalization::Smart,
+            AtomKind::Fuzzy,
+            false,
+        ))
     }
-    let candidate = candidate.as_bytes();
-    let mut cursor = 0;
-    let mut previous_match = None;
-    let mut score = 0_i64;
-    for needle in query.bytes().map(|byte| byte.to_ascii_lowercase()) {
-        let offset = candidate[cursor..]
-            .iter()
-            .position(|byte| byte.to_ascii_lowercase() == needle)?;
-        let index = cursor + offset;
-        let boundary = index == 0 || !candidate[index - 1].is_ascii_alphanumeric();
-        score += if previous_match == Some(index.saturating_sub(1)) {
-            100
-        } else if boundary {
-            40
-        } else {
-            10
-        };
-        score -= i64::try_from(offset).unwrap_or(i64::MAX);
-        previous_match = Some(index);
-        cursor = index + 1;
+
+    pub(crate) fn score(&self, candidate: &str) -> Option<u16> {
+        thread_local! {
+            static MATCHER: std::cell::RefCell<(Matcher, Vec<char>)> =
+                std::cell::RefCell::new((Matcher::new(Config::DEFAULT), Vec::new()));
+        }
+        MATCHER.with_borrow_mut(|state| {
+            let (matcher, buffer) = state;
+            self.0.score(Utf32Str::new(candidate, buffer), matcher)
+        })
     }
-    Some(score - i64::try_from(candidate.len()).unwrap_or(i64::MAX) / 10)
 }
 
 const WHEEL_SCROLL_ROWS: i64 = 1;
@@ -555,5 +554,24 @@ mod tests {
         assert_eq!(safe, "first␊second␍␊third");
         assert_eq!(safe.lines().count(), 1);
         assert!(!safe.chars().any(char::is_control));
+    }
+
+    #[test]
+    fn fuzzy_search_prefers_contiguous_boundary_matches_and_normalizes_unicode() {
+        let docker = FuzzyQuery::new("Dockerf");
+        let expected = docker.score(".devcontainer/Dockerfile").unwrap();
+        for incidental in [
+            "target/doc/diffo_ui/file_picker/fn.help_rows.html",
+            "target/doc/diffo_ui/file_picker/fn.navigation.html",
+            "target/doc/diffo_ui/search_picker/fn.search_picker_layout.html",
+            "target/doc/diffo_ui/file_picker/struct.FilePicker.html",
+        ] {
+            assert!(expected > docker.score(incidental).unwrap());
+        }
+
+        let normalized = FuzzyQuery::new("angstrom");
+        assert!(normalized.score("Ångström.md").is_some());
+        assert!(FuzzyQuery::new("DOCKERF").score("Dockerfile").is_some());
+        assert!(docker.score("README.md").is_none());
     }
 }

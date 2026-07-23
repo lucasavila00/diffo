@@ -78,7 +78,7 @@ mod tests {
             let _ = workbench.take_application_command(Instant::now());
 
             workbench.update_finished(id, outcome);
-            workbench.tick(Instant::now() + Duration::from_secs(60));
+            workbench.tick(Instant::now() + Duration::from_mins(1));
 
             let toast = workbench.toasts.as_slice().first().unwrap();
             assert_eq!(toast.kind, kind);

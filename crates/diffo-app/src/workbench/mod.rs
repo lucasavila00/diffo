@@ -38,6 +38,7 @@ mod help;
 mod modal;
 mod pending_scroll;
 mod prompt;
+mod quick_open;
 mod repository_update;
 mod sync_remote;
 
@@ -444,6 +445,10 @@ impl Workbench {
                 GlobalAction::OpenCommandPalette => self.open_active_palette(),
                 GlobalAction::ToggleHelp => self.set_modal(Modal::Help),
                 GlobalAction::Sync => return self.execute_sync(),
+                GlobalAction::QuickOpen => {
+                    let (paths, loading) = self.explorer.quick_open_paths();
+                    self.set_modal(Modal::QuickOpen(quick_open::QuickOpen::new(paths, loading)));
+                }
             }
             return None;
         }
@@ -555,7 +560,13 @@ impl Workbench {
 
     pub fn accept_task_result(&mut self, result: WorkbenchTaskResult) {
         match result {
-            WorkbenchTaskResult::Explorer(outcome) => self.explorer.accept(outcome),
+            WorkbenchTaskResult::Explorer(outcome) => {
+                self.explorer.accept(outcome);
+                let (paths, loading) = self.explorer.quick_open_paths();
+                if let Some(Modal::QuickOpen(modal)) = self.modal.as_mut() {
+                    modal.install(paths, loading);
+                }
+            }
         }
     }
 

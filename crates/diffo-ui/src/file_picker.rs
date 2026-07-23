@@ -328,6 +328,16 @@ where
         self.ensure_selection_visible();
     }
 
+    pub fn select_and_reveal(&mut self, id: K, ancestors: impl IntoIterator<Item = K>) {
+        self.expanded.extend(ancestors);
+        self.rebuild_visible();
+        if self.visible_contains(&id) {
+            self.selected = Some(id);
+        }
+        self.recalculate_metrics();
+        self.ensure_selection_visible();
+    }
+
     #[must_use]
     pub fn selected(&self) -> Option<&K> {
         self.selected.as_ref()

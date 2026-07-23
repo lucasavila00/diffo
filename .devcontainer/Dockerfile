@@ -4,6 +4,10 @@ RUN sudo apt-get update \
     && sudo env DEBIAN_FRONTEND=noninteractive apt-get install --yes --no-install-recommends openssh-server \
     && sudo rm -rf /var/lib/apt/lists/*
 
+RUN rustup update stable \
+    && rustup default stable \
+    && rustup component add clippy rustfmt
+
 USER vscode
 
 RUN curl -LsSf https://insta.rs/install.sh \

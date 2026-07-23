@@ -4,7 +4,6 @@ description = "Serialized repository refresh and command service for Diffo"
 edition.workspace = true
 license.workspace = true
 readme = "README.md"
-rust-version.workspace = true
 version.workspace = true
 
 [dependencies]

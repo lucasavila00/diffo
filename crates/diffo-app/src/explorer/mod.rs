@@ -1,6 +1,7 @@
 //! Repository tree, file viewer, input routing, and file preparation.
 
 mod model;
+mod quick_open;
 mod view;
 mod worker;
 
@@ -54,6 +55,8 @@ pub struct ExplorerActivity {
     paths_pending: bool,
     queued: VecDeque<ExplorerRequest>,
     pending_path: Option<PathBuf>,
+    pending_quick_open: Option<PathBuf>,
+    has_committed_paths: bool,
     viewport_rows: usize,
     viewport_columns: usize,
     maximum_horizontal_scroll: usize,
@@ -73,6 +76,8 @@ impl ExplorerActivity {
             paths_pending: false,
             queued: VecDeque::new(),
             pending_path: None,
+            pending_quick_open: None,
+            has_committed_paths: false,
             viewport_rows: 1,
             viewport_columns: 1,
             maximum_horizontal_scroll: 0,
@@ -175,10 +180,11 @@ impl ExplorerActivity {
         let selected = self.selected_file().cloned();
         let displayed = self.model.viewer.as_ref().map(|viewer| viewer.path.clone());
         let text_missing = selected != displayed;
-        if text_missing && selected.as_ref() != self.pending_path.as_ref() {
-            if let Some(path) = selected.as_ref() {
-                self.request_file(path.clone(), 0, false);
-            }
+        if text_missing
+            && selected.as_ref() != self.pending_path.as_ref()
+            && let Some(path) = selected.as_ref()
+        {
+            self.request_file(path.clone(), 0, false);
         }
         let syntax_ready = self.viewer_syntax_ready();
         let coverage = self
@@ -552,6 +558,7 @@ impl ExplorerActivity {
             ExplorerOutcome::Paths { id, result } if id == self.latest_paths => match result {
                 Ok(paths) => {
                     self.paths_pending = false;
+                    self.has_committed_paths = true;
                     self.model.error = None;
                     self.model.install_paths(paths);
                 }
@@ -568,6 +575,13 @@ impl ExplorerActivity {
                 self.pending_path = None;
                 match result {
                     Ok(mut viewer) => {
+                        if self.pending_quick_open.as_ref() == Some(&viewer.path)
+                            && self.model.file_entry(&viewer.path).is_none()
+                        {
+                            self.pending_quick_open = None;
+                            self.request_paths();
+                            return;
+                        }
                         let same_document = self
                             .model
                             .viewer
@@ -593,10 +607,19 @@ impl ExplorerActivity {
                             merge_coverage(&mut viewer);
                         }
                         self.model.viewer = Some(viewer);
+                        if let Some(path) = self.pending_quick_open.take() {
+                            self.commit_quick_open_selection(&path);
+                        }
                         self.content_revision = self.content_revision.saturating_add(1);
                         self.model.error = None;
                     }
-                    Err(error) => self.model.error = Some(error),
+                    Err(error) => {
+                        if self.pending_quick_open.take().is_some() {
+                            self.request_paths();
+                        } else {
+                            self.model.error = Some(error);
+                        }
+                    }
                 }
             }
             ExplorerOutcome::Paths { .. } | ExplorerOutcome::File { .. } => {}

@@ -8,6 +8,7 @@ pub(super) enum GlobalAction {
     OpenCommandPalette,
     ToggleHelp,
     Sync,
+    QuickOpen,
 }
 
 struct Binding {
@@ -18,6 +19,12 @@ struct Binding {
 }
 
 static BINDINGS: &[Binding] = &[
+    Binding {
+        keys: &[KeyCode::Char('o')],
+        action: GlobalAction::QuickOpen,
+        label: "o",
+        description: "Quick Open",
+    },
     Binding {
         keys: &[KeyCode::Char('1'), KeyCode::F(1)],
         action: GlobalAction::OpenCommandPalette,
@@ -117,6 +124,7 @@ mod tests {
         assert_eq!(
             help_rows().collect::<Vec<_>>(),
             vec![
+                ("o".to_owned(), "Quick Open"),
                 ("1 / F1".to_owned(), "Open command palette"),
                 ("2 / F2".to_owned(), "Toggle help"),
                 ("9 / F9".to_owned(), "Sync"),

@@ -1,6 +1,6 @@
 //! Command palette state, input handling, layout, and rendering.
 
-use crate::{design, fuzzy_score, icons, modal_block, mouse_target_style, theme};
+use crate::{FuzzyQuery, design, icons, modal_block, mouse_target_style, theme};
 use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind};
 use ratatui::{
     Frame,
@@ -37,6 +37,7 @@ pub enum PaletteEvent {
 pub struct CommandPalette {
     open: bool,
     commands: Vec<Command>,
+    matches: Vec<usize>,
     query: String,
     selected: usize,
     last_executed: Option<CommandId>,
@@ -47,12 +48,14 @@ impl CommandPalette {
         self.open = true;
         self.commands = commands.into_iter().collect();
         self.query.clear();
+        self.rank_matches();
         self.selected = 0;
     }
 
     pub fn close(&mut self) {
         self.open = false;
         self.commands.clear();
+        self.matches.clear();
         self.query.clear();
         self.selected = 0;
     }
@@ -74,26 +77,10 @@ impl CommandPalette {
 
     #[must_use]
     pub fn matches(&self) -> Vec<&Command> {
-        let mut matches = self
-            .commands
+        self.matches
             .iter()
-            .enumerate()
-            .filter_map(|(order, command)| {
-                fuzzy_score(command.label, &self.query).map(|score| (command, score, order))
-            })
-            .collect::<Vec<_>>();
-        matches.sort_by(|left, right| {
-            if self.query.is_empty() {
-                let left_is_last = Some(left.0.id) == self.last_executed;
-                let right_is_last = Some(right.0.id) == self.last_executed;
-                right_is_last
-                    .cmp(&left_is_last)
-                    .then_with(|| left.2.cmp(&right.2))
-            } else {
-                right.1.cmp(&left.1).then_with(|| left.2.cmp(&right.2))
-            }
-        });
-        matches.into_iter().map(|(command, _, _)| command).collect()
+            .map(|index| &self.commands[*index])
+            .collect()
     }
 
     pub fn handle_event(&mut self, event: &Event, area: Rect) -> Option<PaletteEvent> {
@@ -129,6 +116,7 @@ impl CommandPalette {
             }
             KeyCode::Backspace => {
                 self.query.pop();
+                self.rank_matches();
                 self.selected = 0;
                 PaletteEvent::Consumed
             }
@@ -150,6 +138,7 @@ impl CommandPalette {
                     .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT) =>
             {
                 self.query.push(character);
+                self.rank_matches();
                 self.selected = 0;
                 PaletteEvent::Consumed
             }
@@ -203,6 +192,28 @@ impl CommandPalette {
 
     fn select(&mut self, index: usize) {
         self.selected = index.min(self.matches().len().saturating_sub(1));
+    }
+
+    fn rank_matches(&mut self) {
+        let query = FuzzyQuery::new(&self.query);
+        let mut matches = self
+            .commands
+            .iter()
+            .enumerate()
+            .filter_map(|(order, command)| query.score(command.label).map(|score| (score, order)))
+            .collect::<Vec<_>>();
+        matches.sort_by(|left, right| {
+            if self.query.is_empty() {
+                let left_is_last = Some(self.commands[left.1].id) == self.last_executed;
+                let right_is_last = Some(self.commands[right.1].id) == self.last_executed;
+                right_is_last
+                    .cmp(&left_is_last)
+                    .then_with(|| left.1.cmp(&right.1))
+            } else {
+                right.0.cmp(&left.0).then_with(|| left.1.cmp(&right.1))
+            }
+        });
+        self.matches = matches.into_iter().map(|(_, order)| order).collect();
     }
 
     fn execute_selected(&mut self) -> PaletteEvent {

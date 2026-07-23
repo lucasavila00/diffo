@@ -83,6 +83,7 @@ impl SyncRemotePicker {
                     identity: remote.clone(),
                     payload: remote.clone(),
                     label: remote,
+                    preferred_match: None,
                     trailing: None,
                     aliases: Vec::new(),
                     enabled: true,

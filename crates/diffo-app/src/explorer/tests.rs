@@ -144,6 +144,46 @@ fn uppercase_shortcuts_are_rejected() {
 }
 
 #[test]
+fn quick_open_commits_tree_selection_with_the_viewer() {
+    let mut explorer = ExplorerActivity::new(&RepositorySnapshot::default());
+    explorer.accept(ExplorerOutcome::Paths {
+        id: 1,
+        result: Ok(vec![PathBuf::from("src/nested/main.rs")]),
+    });
+    explorer.prepare_frame(Rect::new(0, 0, 100, 30), PaneSplit::default());
+    explorer.queued.clear();
+    let prior = explorer.picker.selected().cloned();
+
+    explorer.quick_open(PathBuf::from("src/nested/main.rs"));
+    assert_eq!(explorer.picker.selected(), prior.as_ref());
+    let request = explorer.take_request().expect("file request");
+    let ExplorerRequest::File { id, .. } = request else {
+        panic!("expected file request");
+    };
+    explorer.accept(ExplorerOutcome::File {
+        id,
+        replace: false,
+        result: Ok(Viewer {
+            path: PathBuf::from("src/nested/main.rs"),
+            title: Box::new(Line::raw("main.rs")),
+            lines: vec!["ready".to_owned()],
+            markers: HashMap::new(),
+            highlighted: HashMap::new(),
+            coverage: Vec::new(),
+            syntax_eligible: false,
+            message: None,
+        }),
+    });
+
+    assert_eq!(
+        explorer.picker.selected(),
+        Some(&EntryId::File(PathBuf::from("src/nested/main.rs")))
+    );
+    assert_eq!(explorer.picker.visible_rows(), 3);
+    assert_eq!(explorer.document_paths().0, explorer.document_paths().1);
+}
+
+#[test]
 fn clicking_a_directory_toggles_expansion() {
     let mut explorer = ExplorerActivity::new(&RepositorySnapshot::default());
     explorer.accept(ExplorerOutcome::Paths {

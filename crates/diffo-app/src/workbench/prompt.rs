@@ -86,6 +86,9 @@ impl Workbench {
         {
             return false;
         }
+        if let Some(Modal::Error(error)) = self.modal.take() {
+            self.pending_errors.push_front(error);
+        }
         self.set_modal(Modal::GitPrompt(PromptModal::new(command_id, id, prompt)));
         true
     }
@@ -96,6 +99,7 @@ impl Workbench {
             Some(Modal::GitPrompt(ref prompt)) if prompt.command_id == command_id
         ) {
             self.close_modal();
+            self.show_next_error();
         }
         self.last_prompt_id = None;
     }
@@ -186,6 +190,7 @@ impl Workbench {
         let Modal::GitPrompt(prompt) = self.modal.take()? else {
             return None;
         };
+        self.show_next_error();
         self.last_prompt_id = Some(prompt.id);
         if matches!(response, PromptResponse::Cancel) {
             self.commands.cancel(prompt.command_id);

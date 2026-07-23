@@ -30,8 +30,8 @@ impl Workbench {
             })
             .cloned()
         else {
-            self.show_toast(
-                ToastKind::Error,
+            self.show_error(
+                "Discard failed",
                 "The selected file no longer has changes to discard",
             );
             return;
@@ -57,8 +57,8 @@ impl Workbench {
             .cloned()
             .collect::<Vec<_>>();
         if files.is_empty() {
-            self.show_toast(
-                ToastKind::Error,
+            self.show_error(
+                "Discard failed",
                 "There are no unstaged or untracked changes",
             );
             return;
@@ -92,8 +92,8 @@ impl Workbench {
             &self.diff_model().snapshot.head,
             self.diff_model().snapshot.recent_commits.first(),
         ) else {
-            self.show_toast(
-                ToastKind::Error,
+            self.show_error(
+                "Amend failed",
                 "Amend requires an existing local branch commit",
             );
             return;
@@ -106,8 +106,8 @@ impl Workbench {
 
     fn open_undo(&mut self) {
         let HeadState::Named { commit, .. } = &self.diff_model().snapshot.head else {
-            self.show_toast(
-                ToastKind::Error,
+            self.show_error(
+                "Undo failed",
                 "Undo requires an existing local branch commit",
             );
             return;
@@ -132,8 +132,8 @@ impl Workbench {
 
     fn open_rename(&mut self) {
         let HeadState::Named { name, commit } = &self.diff_model().snapshot.head else {
-            self.show_toast(
-                ToastKind::Error,
+            self.show_error(
+                "Rename failed",
                 "Rename requires an existing local branch",
             );
             return;
@@ -195,10 +195,7 @@ impl Workbench {
             |modal| matches!(modal, Modal::Everyday(everyday) if everyday.stash_query_id() == Some(query_id)),
         ) {
             self.close_modal();
-            self.show_toast(
-                ToastKind::Error,
-                format!("Could not load stashes: {message}"),
-            );
+            self.show_error("Could not load stashes", message);
         }
     }
 

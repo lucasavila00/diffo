@@ -62,7 +62,6 @@ pub(crate) struct ExplorerModel {
     pub(crate) viewer_scroll: usize,
     pub(crate) viewer_horizontal_scroll: usize,
     pub(crate) viewer: Option<Viewer>,
-    pub(crate) error: Option<String>,
 }
 
 impl ExplorerModel {
@@ -74,7 +73,6 @@ impl ExplorerModel {
             viewer_scroll: 0,
             viewer_horizontal_scroll: 0,
             viewer: None,
-            error: None,
         }
     }
 

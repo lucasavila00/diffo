@@ -315,9 +315,15 @@ fn handles_runtime_results_as_messages() {
 
     update(&mut model, Message::SnapshotLoaded(snapshot.clone()));
     assert_eq!(model.snapshot, snapshot);
-    update(
+    let effect = update(
         &mut model,
         Message::OperationFailed("action failed".to_owned()),
     );
-    assert_eq!(model.error.as_deref(), Some("action failed"));
+    assert_eq!(
+        effect,
+        Some(Effect::Error(
+            "Repository refresh failed".to_owned(),
+            "action failed".to_owned()
+        ))
+    );
 }

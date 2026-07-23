@@ -77,7 +77,7 @@ pub(crate) fn operation_result_toast(result: &OperationResult) -> Option<(ToastK
     Some((ToastKind::Success, title))
 }
 
-pub(crate) fn operation_failure_title(failure: &OperationFailure) -> String {
+pub(crate) fn operation_failure_error(failure: &OperationFailure) -> (String, String) {
     let action = match &failure.action {
         RepositoryAction::Stage(_) | RepositoryAction::StageAll => "Stage",
         RepositoryAction::Unstage(_) | RepositoryAction::UnstageAll => "Unstage",
@@ -96,13 +96,14 @@ pub(crate) fn operation_failure_title(failure: &OperationFailure) -> String {
         RepositoryAction::Revert(_) => "Revert commit",
         RepositoryAction::RenameBranch(_) => "Rename branch",
     };
-    match failure.kind {
-        FailureKind::PushRejected | FailureKind::HookRejected => {
-            format!("Push rejected: {}", failure.detail)
+    let title = match failure.kind {
+        FailureKind::HookRejected if matches!(failure.action, RepositoryAction::Commit(_)) => {
+            "Commit rejected".to_owned()
         }
-        FailureKind::RebaseConflict | FailureKind::StashConflict => failure.detail.clone(),
-        _ => format!("{action} failed: {}", failure.detail),
-    }
+        FailureKind::PushRejected | FailureKind::HookRejected => "Push rejected".to_owned(),
+        _ => format!("{action} failed"),
+    };
+    (title, failure.detail.clone())
 }
 
 pub(crate) fn sync_plan_title(plan: &SyncPlan) -> String {

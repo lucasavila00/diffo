@@ -4,10 +4,6 @@ use super::{
 };
 
 impl Model {
-    pub fn show_error(&mut self, error: impl Into<String>) {
-        self.error = Some(error.into());
-    }
-
     pub fn start_repository_action(
         &mut self,
         action: RepositoryAction,
@@ -15,7 +11,6 @@ impl Model {
         if self.pending_operation.is_some() {
             return None;
         }
-        self.error = None;
         self.pending_operation = Some(action.clone());
         Some(action)
     }
@@ -107,7 +102,6 @@ impl Model {
         {
             self.pending_file_action = None;
         }
-        self.error = None;
     }
 
     pub fn fail_operation(&mut self, failure: &OperationFailure) -> bool {
@@ -124,7 +118,6 @@ impl Model {
         if pending_file_action_failed {
             self.pending_file_action = None;
         }
-        self.error = None;
         true
     }
 }

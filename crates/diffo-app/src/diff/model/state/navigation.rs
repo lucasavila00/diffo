@@ -8,14 +8,12 @@ impl Model {
         }
         self.cursor = self.cursor.saturating_add(1).min(keys.len() - 1);
         self.selected = keys.get(self.cursor).cloned();
-        self.error = None;
     }
 
     pub fn select_previous(&mut self) {
         let keys = file_keys(&self.snapshot);
         self.cursor = self.cursor.saturating_sub(1);
         self.selected = keys.get(self.cursor).cloned();
-        self.error = None;
     }
 
     pub fn select_first(&mut self) {
@@ -34,7 +32,6 @@ impl Model {
         if let Some(cursor) = keys.iter().position(|key| key == file) {
             self.cursor = cursor;
             self.selected = keys.get(cursor).cloned();
-            self.error = None;
         }
     }
 

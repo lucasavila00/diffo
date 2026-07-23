@@ -75,7 +75,6 @@ pub fn render_toasts(frame: &mut Frame, toasts: &[Toast], content_area: Rect) {
         let text_color = match toast.kind {
             ToastKind::Success => theme::SUCCESS,
             ToastKind::Info => theme::INFORMATION,
-            ToastKind::Error => theme::DANGER,
         };
         frame.render_widget(Clear, area);
         let title = terminal_safe_text(&toast.title);

@@ -154,11 +154,9 @@ impl Workbench {
         self.toast_deadlines
             .retain(|id, _| self.toasts.as_slice().iter().any(|toast| toast.id == *id));
         for toast in self.toasts.as_slice() {
-            if toast.kind != ToastKind::Error && !self.persistent_toasts.contains(&toast.id) {
-                self.toast_deadlines
-                    .entry(toast.id)
-                    .or_insert_with(|| now + Duration::from_secs(3));
-            }
+            self.toast_deadlines
+                .entry(toast.id)
+                .or_insert_with(|| now + Duration::from_secs(3));
         }
         let expired = self
             .toast_deadlines
@@ -169,7 +167,5 @@ impl Workbench {
             self.toasts.dismiss(id);
             self.toast_deadlines.remove(&id);
         }
-        self.persistent_toasts
-            .retain(|id| self.toasts.as_slice().iter().any(|toast| toast.id == *id));
     }
 }

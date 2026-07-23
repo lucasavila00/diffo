@@ -8,6 +8,7 @@ use super::{
     checkout_picker::{CheckoutPicker, CheckoutPickerEvent},
     create_branch::{CreateBranchEvent, CreateBranchModal},
     delete_branch::DeleteBranchConfirmation,
+    error_dialog::{ErrorDialog, ErrorDialogEvent},
     help,
     quick_open::QuickOpenEvent,
     render_prompt,
@@ -24,6 +25,7 @@ pub(super) enum Modal {
     SyncRemotePicker(SyncRemotePicker),
     CommitEditor,
     GitPrompt(PromptModal),
+    Error(ErrorDialog),
 }
 
 impl Modal {
@@ -77,6 +79,7 @@ impl Workbench {
                 crate::diff::render_commit_editor(frame, &self.diff.model, content);
             }
             Some(Modal::GitPrompt(prompt)) => render_prompt(frame, prompt, area),
+            Some(Modal::Error(error)) => error.render(frame, area),
             None => {}
         }
     }
@@ -101,6 +104,10 @@ impl Workbench {
             Modal::GitPrompt(_) => self
                 .handle_prompt_event(event, area)
                 .map(WorkbenchCommand::Effect),
+            Modal::Error(_) => {
+                self.handle_error_event(event, area);
+                None
+            }
         }
     }
 
@@ -253,6 +260,31 @@ impl Workbench {
             }
             Some(message) => Some(WorkbenchCommand::Diff(message)),
             None => None,
+        }
+    }
+
+    fn handle_error_event(&mut self, event: &Event, area: Rect) {
+        let result = match self.modal.as_ref() {
+            Some(Modal::Error(_)) => ErrorDialog::handle_event(event, area),
+            _ => return,
+        };
+        match result {
+            ErrorDialogEvent::Consumed => {}
+            ErrorDialogEvent::Dismiss => self.dismiss_error(),
+            ErrorDialogEvent::Quit => self.should_quit = true,
+        }
+    }
+
+    pub(super) fn dismiss_error(&mut self) {
+        self.modal = None;
+        self.show_next_error();
+    }
+
+    pub(super) fn show_next_error(&mut self) {
+        if self.modal.is_none()
+            && let Some(error) = self.pending_errors.pop_front()
+        {
+            self.set_modal(Modal::Error(error));
         }
     }
 }
@@ -485,7 +517,27 @@ mod tests {
     }
 
     #[test]
-    fn commit_submission_closes_the_editor_and_failure_reopens_the_draft() {
+    fn explorer_failures_use_the_shared_error_dialog() {
+        let mut workbench = Workbench::new(RepositorySnapshot::default());
+
+        workbench.accept_task_result(super::super::WorkbenchTaskResult::Explorer(
+            ExplorerOutcome::Paths {
+                id: 1,
+                result: Err("permission denied".to_owned()),
+            },
+        ));
+
+        assert!(matches!(
+            workbench.modal,
+            Some(Modal::Error(ref error))
+                if error.title == "Explorer refresh failed"
+                    && error.detail == "permission denied"
+        ));
+        assert!(workbench.toasts.as_slice().is_empty());
+    }
+
+    #[test]
+    fn commit_failure_opens_error_and_preserves_the_closed_editor_draft() {
         let snapshot = RepositorySnapshot {
             files: vec![FileState {
                 path: "src/main.rs".into(),
@@ -520,8 +572,86 @@ mod tests {
             },
         );
 
+        assert!(matches!(
+            workbench.modal,
+            Some(Modal::Error(ref error))
+                if error.title == "Commit failed" && error.detail == "commit failed"
+        ));
+        assert_eq!(workbench.diff.model.commit_message, "x");
+
+        let _ = workbench.handle_event(&key(KeyCode::Esc), area);
+        assert!(workbench.modal.is_none());
+        let _ = workbench.handle_events(&[key(KeyCode::Char('m'))], area);
         assert!(matches!(workbench.modal, Some(Modal::CommitEditor)));
         assert_eq!(workbench.diff.model.commit_message, "x");
+    }
+
+    #[test]
+    fn errors_queue_fifo_and_coalesce_identical_pending_entries() {
+        let area = Rect::new(0, 0, 100, 30);
+        let mut workbench = Workbench::new(RepositorySnapshot::default());
+
+        workbench.show_error("First failed", "first detail");
+        workbench.show_error("Second failed", "second detail");
+        workbench.show_error("Second failed", "second detail");
+
+        assert!(matches!(
+            workbench.modal,
+            Some(Modal::Error(ref error)) if error.title == "First failed"
+        ));
+        assert_eq!(workbench.pending_errors.len(), 1);
+
+        let _ = workbench.handle_event(&key(KeyCode::Enter), area);
+        assert!(matches!(
+            workbench.modal,
+            Some(Modal::Error(ref error)) if error.title == "Second failed"
+        ));
+        let _ = workbench.handle_event(&key(KeyCode::Esc), area);
+        assert!(workbench.modal.is_none());
+    }
+
+    #[test]
+    fn git_prompt_defers_a_visible_error_until_the_prompt_closes() {
+        let mut workbench = Workbench::new(RepositorySnapshot::default());
+        let command_id = start_repository_command(&mut workbench, RepositoryAction::Fetch);
+        workbench.show_error("Existing error", "detail");
+
+        assert!(workbench.open_prompt(
+            command_id,
+            PromptId(1),
+            GitPrompt::Username {
+                host: "example.com".to_owned(),
+            }
+        ));
+        assert!(matches!(workbench.modal, Some(Modal::GitPrompt(_))));
+
+        workbench.close_prompt(command_id);
+        assert!(matches!(
+            workbench.modal,
+            Some(Modal::Error(ref error)) if error.title == "Existing error"
+        ));
+    }
+
+    #[test]
+    fn error_arriving_during_git_prompt_appears_after_the_prompt_answer() {
+        let area = Rect::new(0, 0, 100, 30);
+        let mut workbench = Workbench::new(RepositorySnapshot::default());
+        let command_id = start_repository_command(&mut workbench, RepositoryAction::Fetch);
+        assert!(workbench.open_prompt(
+            command_id,
+            PromptId(1),
+            GitPrompt::Username {
+                host: "example.com".to_owned(),
+            }
+        ));
+        workbench.show_error("Deferred error", "detail");
+        assert!(matches!(workbench.modal, Some(Modal::GitPrompt(_))));
+
+        let _ = workbench.handle_event(&key(KeyCode::Esc), area);
+        assert!(matches!(
+            workbench.modal,
+            Some(Modal::Error(ref error)) if error.title == "Deferred error"
+        ));
     }
 
     #[test]

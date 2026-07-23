@@ -24,6 +24,7 @@ pub struct FrameRecord {
     frame: u64,
     input_events: Vec<String>,
     protected_push_prompt: bool,
+    visible_modal: Option<&'static str>,
     refresh_generation: u64,
     head: String,
     repository_files: Vec<String>,
@@ -77,6 +78,7 @@ impl FrameRecord {
     pub fn new(
         input_events: Vec<String>,
         protected_push_prompt: bool,
+        visible_modal: Option<&'static str>,
         refresh_generation: u64,
         model: &Model,
         preparation: &FramePreparation,
@@ -90,6 +92,7 @@ impl FrameRecord {
             frame: 0,
             input_events,
             protected_push_prompt,
+            visible_modal,
             refresh_generation,
             head: match &model.snapshot.head {
                 diffo_core::HeadState::Named { name, commit } => {

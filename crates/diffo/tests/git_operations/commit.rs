@@ -102,6 +102,75 @@ fn commit_modal_closes_on_outside_click_and_restores_its_draft() -> Result<()> {
     })
 }
 
+#[derive(Deserialize)]
+struct CommitFailureFrame {
+    input_events: Vec<String>,
+    visible_modal: Option<String>,
+}
+
+#[test]
+fn rejected_commit_keeps_editor_closed_and_preserves_draft() -> Result<()> {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    let repository = TestRepository::new()?;
+    fs::write(repository.worktree.join("tracked.txt"), "staged change\n")?;
+    git(&repository.worktree, &["add", "tracked.txt"])?;
+    let hook = repository.worktree.join(".git/hooks/pre-commit");
+    fs::write(&hook, "#!/bin/sh\necho commit blocked >&2\nexit 1\n")?;
+    let mut permissions = fs::metadata(&hook)?.permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&hook, permissions)?;
+    let trace_path = repository.root.path().join("commit-failure-frames.ronl");
+    let mut screen = DiffoScreen::launch_with_env(
+        diffo_binary()?,
+        &repository.worktree,
+        &[("DIFFO_TRACE_FRAMES", trace_path.as_os_str())],
+    )?;
+
+    screen
+        .wait_for_text("Update 1 file")?
+        .press(Key::Char('m'))?
+        .type_text("Preserved draft")?
+        .press(Key::Enter)?
+        .wait_for_text("Commit failed")?
+        .wait_for_text("Git operation failed")?
+        .wait_for_text_gone("Cancel (Esc)")?
+        .press(Key::Escape)?
+        .wait_for_text_gone("Commit failed")?
+        .press(Key::Char('m'))?
+        .wait_for_text("Cancel (Esc)")?
+        .wait_for_text("Preserved draft")?;
+    drop(screen);
+
+    let trace = fs::read_to_string(&trace_path).context("read commit failure frame trace")?;
+    let frames = trace
+        .lines()
+        .map(ron::from_str::<CommitFailureFrame>)
+        .collect::<Result<Vec<_>, _>>()
+        .context("parse commit failure frame trace")?;
+    let submitted = frames
+        .iter()
+        .position(|frame| {
+            frame
+                .input_events
+                .iter()
+                .any(|event| event.contains("Enter"))
+        })
+        .with_context(|| format!("trace has no commit submission frame:\n{trace}"))?;
+    let error = frames[submitted..]
+        .iter()
+        .position(|frame| frame.visible_modal.as_deref() == Some("Error"))
+        .map(|offset| submitted + offset)
+        .with_context(|| format!("trace has no error dialog frame:\n{trace}"))?;
+    assert!(
+        frames[submitted..=error]
+            .iter()
+            .all(|frame| frame.visible_modal.as_deref() != Some("CommitEditor"))
+    );
+
+    Ok(())
+}
+
 #[test]
 fn disabled_commit_button_does_not_commit_without_staged_changes() -> Result<()> {
     let repository = TestRepository::new()?;

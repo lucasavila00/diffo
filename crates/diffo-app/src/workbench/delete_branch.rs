@@ -251,7 +251,7 @@ mod tests {
     }
 
     #[test]
-    fn other_delete_failures_use_the_persistent_error_path() {
+    fn other_delete_failures_use_the_error_dialog() {
         let mut workbench = Workbench::new(RepositorySnapshot::default());
         let action = RepositoryAction::DeleteBranch(Box::new(target(false)));
         let id = workbench.commands.enqueue(action.clone());
@@ -266,11 +266,12 @@ mod tests {
             },
         );
 
-        assert!(workbench.modal.is_none());
-        assert_eq!(workbench.toasts.as_slice().len(), 1);
-        assert_eq!(
-            workbench.toasts.as_slice()[0].kind,
-            super::super::ToastKind::Error
-        );
+        assert!(matches!(
+            workbench.modal,
+            Some(Modal::Error(ref error))
+                if error.title == "Delete branch failed"
+                    && error.detail == "selected branch changed"
+        ));
+        assert!(workbench.toasts.as_slice().is_empty());
     }
 }

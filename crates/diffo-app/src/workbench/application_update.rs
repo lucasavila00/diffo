@@ -19,12 +19,10 @@ impl Workbench {
             return;
         }
         self.finish_command_progress(id);
-        let (kind, message) = match outcome {
-            UpdateOutcome::Succeeded(message) => (ToastKind::Success, message),
-            UpdateOutcome::Failed(message) => (ToastKind::Error, message),
-        };
-        let id = self.toasts.show(kind, message);
-        self.persistent_toasts.insert(id);
+        match outcome {
+            UpdateOutcome::Succeeded(message) => self.show_toast(ToastKind::Success, message),
+            UpdateOutcome::Failed(message) => self.show_error("Update failed", message),
+        }
     }
 }
 
@@ -60,29 +58,32 @@ mod tests {
     }
 
     #[test]
-    fn update_results_remain_visible_until_dismissed() {
-        for (outcome, kind, text) in [
-            (
-                UpdateOutcome::Succeeded("Updated; quit and relaunch".to_owned()),
-                ToastKind::Success,
-                "quit and relaunch",
-            ),
-            (
-                UpdateOutcome::Failed("Update verification failed".to_owned()),
-                ToastKind::Error,
-                "verification",
-            ),
-        ] {
-            let mut workbench = Workbench::new(RepositorySnapshot::default());
-            let id = workbench.commands.enqueue_update();
-            let _ = workbench.take_application_command(Instant::now());
+    fn update_success_expires_and_failure_opens_the_error_dialog() {
+        let mut success = Workbench::new(RepositorySnapshot::default());
+        let id = success.commands.enqueue_update();
+        let now = Instant::now();
+        let _ = success.take_application_command(now);
+        success.update_finished(
+            id,
+            UpdateOutcome::Succeeded("Updated; quit and relaunch".to_owned()),
+        );
+        assert_eq!(success.toasts.as_slice()[0].kind, ToastKind::Success);
+        success.tick(now);
+        success.tick(now + Duration::from_mins(1));
+        assert!(success.toasts.as_slice().is_empty());
 
-            workbench.update_finished(id, outcome);
-            workbench.tick(Instant::now() + Duration::from_mins(1));
-
-            let toast = workbench.toasts.as_slice().first().unwrap();
-            assert_eq!(toast.kind, kind);
-            assert!(toast.title.contains(text));
-        }
+        let mut failure = Workbench::new(RepositorySnapshot::default());
+        let id = failure.commands.enqueue_update();
+        let _ = failure.take_application_command(now);
+        failure.update_finished(
+            id,
+            UpdateOutcome::Failed("Update verification failed".to_owned()),
+        );
+        assert!(matches!(
+            failure.modal,
+            Some(Modal::Error(ref error))
+                if error.title == "Update failed" && error.detail.contains("verification")
+        ));
+        assert!(failure.toasts.as_slice().is_empty());
     }
 }

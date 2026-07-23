@@ -1,7 +1,7 @@
 //! Activity composition, global input routing, and command lifecycle.
 
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{HashMap, VecDeque},
     time::{Duration, Instant},
 };
 
@@ -12,8 +12,8 @@ use crate::diff::{
 use crate::diff::{Effect, Message, Model, ToastKind, ToastQueue, update};
 use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind};
 use diffo_core::{
-    ApplicationCommandId, GitPrompt, OperationFailure, PromptId, RepositoryAction,
-    RepositoryQueryId, RepositorySnapshot,
+    ApplicationCommandId, GitPrompt, PromptId, RepositoryAction, RepositoryQueryId,
+    RepositorySnapshot,
 };
 use diffo_ui::command_palette::{Command, CommandId};
 use diffo_ui::text_view::{TextRenderMode, TextSurfacePreparation};
@@ -33,6 +33,7 @@ mod checkout_picker;
 mod command_queue;
 mod create_branch;
 mod delete_branch;
+mod error_dialog;
 mod full_screen;
 mod help;
 mod modal;
@@ -43,6 +44,7 @@ mod repository_update;
 mod sync_remote;
 
 use bindings::GlobalAction;
+use error_dialog::ErrorDialog;
 use modal::Modal;
 use pending_scroll::PendingScroll;
 use prompt::{ConfirmChoice, PromptModal, prompt_button_style, prompt_layout, render_prompt};
@@ -102,7 +104,7 @@ pub struct Workbench {
     pane_split: PaneSplit,
     toasts: ToastQueue,
     toast_deadlines: HashMap<u64, Instant>,
-    persistent_toasts: HashSet<u64>,
+    pending_errors: VecDeque<ErrorDialog>,
     commands: CommandQueue,
     repository_generation: u64,
     command_progress: CommandProgressState,
@@ -212,7 +214,7 @@ impl Workbench {
             pane_split: PaneSplit::default(),
             toasts: ToastQueue::new(),
             toast_deadlines: HashMap::new(),
-            persistent_toasts: HashSet::new(),
+            pending_errors: VecDeque::new(),
             commands: CommandQueue::new(),
             repository_generation: 0,
             command_progress: CommandProgressState::Hidden,
@@ -253,6 +255,15 @@ impl Workbench {
             self.modal,
             Some(Modal::GitPrompt(ref modal)) if matches!(modal.prompt, GitPrompt::Secret { .. })
         )
+    }
+
+    #[must_use]
+    pub fn modal_trace_label(&self) -> Option<&'static str> {
+        match self.modal {
+            Some(Modal::CommitEditor) => Some("CommitEditor"),
+            Some(Modal::Error(_)) => Some("Error"),
+            _ => None,
+        }
     }
 
     pub fn tick(&mut self, now: Instant) {
@@ -561,7 +572,9 @@ impl Workbench {
     pub fn accept_task_result(&mut self, result: WorkbenchTaskResult) {
         match result {
             WorkbenchTaskResult::Explorer(outcome) => {
-                self.explorer.accept(outcome);
+                if let Some((title, detail)) = self.explorer.accept(outcome) {
+                    self.show_error(title, detail);
+                }
                 let (paths, loading) = self.explorer.quick_open_paths();
                 if let Some(Modal::QuickOpen(modal)) = self.modal.as_mut() {
                     modal.install(paths, loading);
@@ -580,20 +593,13 @@ impl Workbench {
             return None;
         }
         let commit_submission = message == Message::ExecuteCommit;
-        let reopen_commit_editor = matches!(
-            &message,
-            Message::ActionFailed(OperationFailure {
-                action: RepositoryAction::Commit(_),
-                ..
-            })
-        );
         match &message {
             Message::SnapshotLoaded(snapshot) | Message::OperationCompleted(_, _, snapshot) => {
                 self.explorer.repository_changed(snapshot);
             }
             _ => {}
         }
-        let effect = match update(&mut self.diff.model, message) {
+        match update(&mut self.diff.model, message) {
             Some(Effect::Repository(action)) => {
                 if commit_submission {
                     self.close_modal();
@@ -605,12 +611,12 @@ impl Workbench {
                 self.show_toast(kind, title);
                 None
             }
+            Some(Effect::Error(title, detail)) => {
+                self.show_error(title, detail);
+                None
+            }
             None => None,
-        };
-        if reopen_commit_editor {
-            self.set_modal(Modal::CommitEditor);
         }
-        effect
     }
 
     fn active_commands(&self) -> &'static [Command] {
@@ -658,6 +664,19 @@ impl Workbench {
 
     pub fn show_toast(&mut self, kind: ToastKind, message: impl Into<String>) {
         self.toasts.show(kind, message);
+    }
+
+    pub fn show_error(&mut self, title: impl Into<String>, detail: impl Into<String>) {
+        let error = ErrorDialog::new(title, detail);
+        if matches!(self.modal, Some(Modal::GitPrompt(_) | Modal::Error(_))) {
+            if !self.pending_errors.contains(&error)
+                && !matches!(self.modal, Some(Modal::Error(ref visible)) if visible == &error)
+            {
+                self.pending_errors.push_back(error);
+            }
+            return;
+        }
+        self.set_modal(Modal::Error(error));
     }
 }
 

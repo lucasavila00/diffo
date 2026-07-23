@@ -208,8 +208,12 @@ fn generations_reject_stale_updates_and_only_matching_command_ids_finish_command
     }));
     assert!(workbench.commands.active().is_none());
     assert!(!workbench.command_progress.is_visible());
-    assert_eq!(workbench.toasts.as_slice().len(), 1);
-    assert_eq!(workbench.toasts.as_slice()[0].kind, ToastKind::Error);
+    assert!(matches!(
+        workbench.modal,
+        Some(super::Modal::Error(ref error))
+            if error.title == "Fetch failed" && error.detail == "offline"
+    ));
+    assert!(workbench.toasts.as_slice().is_empty());
 }
 
 #[test]

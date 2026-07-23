@@ -9,7 +9,7 @@ use diffo_ui::command_palette::CommandId;
 use diffo_ui::search_picker::{SearchItem, SearchPicker, SearchPickerEvent};
 use ratatui::{Frame, layout::Rect};
 
-use super::{Message, Modal, ToastKind, Workbench, create_branch::CreateBranchModal};
+use super::{Message, Modal, Workbench, create_branch::CreateBranchModal};
 
 pub(super) enum CheckoutPickerEvent {
     Consumed,
@@ -260,10 +260,7 @@ impl Workbench {
                 || matches!(modal, Modal::CreateBranch(create) if create.query_id == Some(query_id))
         }) {
             self.close_modal();
-            self.show_toast(
-                ToastKind::Error,
-                format!("Could not load branches: {message}"),
-            );
+            self.show_error("Could not load branches", message);
         }
     }
 
@@ -631,7 +628,7 @@ mod tests {
     }
 
     #[test]
-    fn current_load_failure_closes_and_toasts_but_stale_failure_does_nothing() {
+    fn current_load_failure_opens_error_but_stale_failure_does_nothing() {
         let mut workbench = Workbench::new(RepositorySnapshot::default());
         let _ = workbench.execute_palette_command(CHECKOUT_COMMAND);
         let _ = workbench.take_branch_query();
@@ -641,9 +638,12 @@ mod tests {
 
         workbench.branches_load_failed(RepositoryQueryId(1), "broken");
 
-        assert!(workbench.modal.is_none());
-        assert_eq!(workbench.toasts.as_slice().len(), 1);
-        assert_eq!(workbench.toasts.as_slice()[0].kind, ToastKind::Error);
+        assert!(matches!(
+            workbench.modal,
+            Some(Modal::Error(ref error))
+                if error.title == "Could not load branches" && error.detail == "broken"
+        ));
+        assert!(workbench.toasts.as_slice().is_empty());
     }
 
     #[test]

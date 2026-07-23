@@ -282,8 +282,11 @@ fn create_branch_from_rejects_a_base_that_moves_before_mutation() -> Result<()> 
     git(&repository.worktree, &["branch", "-f", "base", &original])?;
     gate.release()?;
     screen
-        .wait_for_text("Create branch failed: selected branch")?
+        .wait_for_text("Create branch failed")?
+        .wait_for_text("selected branch")?
         .wait_for_text("changed; reopen the branch picker")?
+        .press(Key::Escape)?
+        .wait_for_text_gone("Create branch failed")?
         .press(Key::Char('q'))?
         .wait_for_exit()?;
 

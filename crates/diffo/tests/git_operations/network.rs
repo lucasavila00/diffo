@@ -22,8 +22,8 @@ fn real_remote_error_shows_the_executed_action() -> Result<()> {
         .press(Key::Char('1'))?
         .type_text("fetch")?
         .press(Key::Enter)?
-        .wait_for_text("Fetch failed:")?
-        .wait_for_text("Fetch")?;
+        .wait_for_text("Fetch failed")?
+        .wait_for_text("no remote configured")?;
     Ok(())
 }
 
@@ -160,7 +160,7 @@ fn global_sync_button_shows_fast_forward_progress() -> Result<()> {
 }
 
 #[test]
-fn rejected_push_shows_a_persistent_failure_toast() -> Result<()> {
+fn rejected_push_shows_an_acknowledgement_modal() -> Result<()> {
     let repository = TestRepository::new()?;
     fs::write(repository.worktree.join("local.txt"), "local\n")?;
     git(&repository.worktree, &["add", "local.txt"])?;
@@ -181,7 +181,9 @@ fn rejected_push_shows_a_persistent_failure_toast() -> Result<()> {
 
     let remote = repository.commit_remote("remote.txt", "remote\n", "Remote commit")?;
     gate.release()?;
-    screen.wait_for_text("Push rejected: remote changed")?;
+    screen
+        .wait_for_text("Push rejected")?
+        .wait_for_text("remote changed; nothing was pushed")?;
     thread::sleep(Duration::from_millis(300));
     assert!(screen.contents().contains("Push rejected"));
     assert_eq!(
@@ -313,7 +315,8 @@ fn unsupported_real_ssh_password_prompt_fails_closed() -> Result<()> {
         .press(Key::Char('1'))?
         .type_text("fetch")?
         .press(Key::Enter)?
-        .wait_for_text("Fetch failed:")?
+        .wait_for_text("Fetch failed")?
+        .wait_for_text("authentication required")?
         .wait_for_text_gone("Fetching")?;
 
     assert_eq!(

@@ -187,31 +187,3 @@ fn renders_and_hit_tests_a_bottom_right_toast() {
         Some(id)
     );
 }
-
-#[test]
-fn error_toasts_render_embedded_newlines_as_inert_text() {
-    let toasts = [Toast {
-        id: 1,
-        kind: ToastKind::Error,
-        title: "Push failed\naccept remote output?".to_owned(),
-        detail: Some("detail\nnext line".to_owned()),
-    }];
-    let area = Rect::new(0, 0, 100, 30);
-    let backend = TestBackend::new(area.width, area.height);
-    let mut terminal = Terminal::new(backend).unwrap();
-
-    terminal
-        .draw(|frame| crate::diff::render_toasts(frame, &toasts, frame.area()))
-        .unwrap();
-
-    let screen = buffer_text(terminal.backend().buffer());
-    assert!(!screen.chars().any(char::is_control));
-    insta::assert_debug_snapshot!(buffer_region(
-        terminal.backend().buffer(),
-        Rect::new(55, 24, 44, 4),
-    ));
-    assert_eq!(
-        crate::diff::toast_at_position(&toasts, area, 70, 26),
-        Some(1)
-    );
-}

@@ -57,6 +57,7 @@ pub enum Message {
 pub enum Effect {
     Repository(RepositoryAction),
     Toast(ToastKind, String),
+    Error(String, String),
 }
 
 pub fn update(model: &mut Model, message: Message) -> Option<Effect> {
@@ -101,7 +102,9 @@ pub fn update(model: &mut Model, message: Message) -> Option<Effect> {
             return model.execute_sync_to_remote(remote).map(Effect::Repository);
         }
         Message::SnapshotLoaded(snapshot) => model.repository_changed(snapshot),
-        Message::OperationFailed(error) => model.show_error(error),
+        Message::OperationFailed(error) => {
+            return Some(Effect::Error("Repository refresh failed".to_owned(), error));
+        }
         Message::OperationCompleted(action, result, snapshot) => {
             if model.complete_operation(&action, &result, snapshot)
                 && let Some((kind, title)) = state::operation_result_toast(&result)
@@ -114,10 +117,8 @@ pub fn update(model: &mut Model, message: Message) -> Option<Effect> {
         }
         Message::ActionFailed(failure) => {
             if model.fail_operation(&failure) {
-                return Some(Effect::Toast(
-                    ToastKind::Error,
-                    state::operation_failure_title(&failure),
-                ));
+                let (title, detail) = state::operation_failure_error(&failure);
+                return Some(Effect::Error(title, detail));
             }
         }
     }

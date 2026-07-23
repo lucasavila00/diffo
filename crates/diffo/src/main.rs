@@ -302,6 +302,7 @@ fn run(
     tracer.record(FrameRecord::new(
         Vec::new(),
         workbench.protected_push_prompt_open(),
+        workbench.modal_trace_label(),
         workbench.repository_generation(),
         workbench.diff_model(),
         &preparation,
@@ -352,6 +353,7 @@ fn run(
         tracer.record(FrameRecord::new(
             input_events,
             workbench.protected_push_prompt_open(),
+            workbench.modal_trace_label(),
             workbench.repository_generation(),
             workbench.diff_model(),
             &preparation,
@@ -458,7 +460,7 @@ fn dispatch_effect(
                     );
                 }
                 Err(error) => {
-                    workbench.show_toast(ToastKind::Error, format!("Could not copy path: {error}"));
+                    workbench.show_error("Could not copy path", error.to_string());
                 }
             }
         }

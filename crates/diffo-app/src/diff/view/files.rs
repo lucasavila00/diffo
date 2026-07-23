@@ -350,12 +350,7 @@ pub(in crate::diff) fn status_line(
 }
 
 fn transient_status(model: &Model, _animation_tick: usize) -> Option<Span<'static>> {
-    if let Some(error) = model.error.as_deref() {
-        Some(Span::styled(
-            terminal_safe_text(error),
-            Style::default().fg(theme::DANGER),
-        ))
-    } else if model.resizing_file_pane {
+    if model.resizing_file_pane {
         Some(Span::styled(
             format!(
                 "Resizing file pane: {}% · release mouse to finish",

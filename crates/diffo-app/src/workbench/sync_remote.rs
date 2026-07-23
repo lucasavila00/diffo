@@ -3,7 +3,7 @@ use diffo_core::RepositoryQueryId;
 use diffo_ui::search_picker::{SearchItem, SearchPicker, SearchPickerEvent};
 use ratatui::{Frame, layout::Rect};
 
-use super::{Message, Modal, ToastKind, Workbench};
+use super::{Message, Modal, Workbench};
 
 pub(super) enum SyncRemoteEvent {
     Close,
@@ -37,8 +37,8 @@ impl Workbench {
             self.update_diff(Message::ExecuteSyncToRemote(remote));
         } else if remotes.is_empty() {
             self.close_modal();
-            self.show_toast(
-                ToastKind::Error,
+            self.show_error(
+                "Sync failed",
                 "No remotes are configured; Sync does not create remotes",
             );
         } else if let Some(Modal::SyncRemotePicker(picker)) = self.modal.as_mut() {
@@ -52,10 +52,7 @@ impl Workbench {
             Some(Modal::SyncRemotePicker(picker)) if picker.query_id == Some(query_id)
         ) {
             self.close_modal();
-            self.show_toast(
-                ToastKind::Error,
-                format!("Could not load remotes: {message}"),
-            );
+            self.show_error("Could not load remotes", message);
         }
     }
 }

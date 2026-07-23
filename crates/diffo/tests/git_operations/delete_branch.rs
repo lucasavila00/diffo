@@ -132,7 +132,8 @@ fn moved_branch_is_rejected_before_deletion() -> Result<()> {
     git(&repository.worktree, &["branch", "-f", "topic", "HEAD"])?;
     gate.release()?;
     screen
-        .wait_for_text("Delete branch failed: selected branch")?
+        .wait_for_text("Delete branch failed")?
+        .wait_for_text("selected branch")?
         .wait_for_text("changed; reopen the branch picker")?;
 
     assert_eq!(

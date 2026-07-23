@@ -4,14 +4,13 @@ use std::thread::sleep;
 use std::time::Duration;
 use std::time::Instant;
 
-use crate::diff::{ChangeArea, DiffViewMode, Message, Model, Toast, ToastKind, ToastQueue};
+use crate::diff::{ChangeArea, DiffViewMode, Message, Model, ToastKind, ToastQueue};
 use crossterm::event::{
     Event, KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
 };
 use diffo_core::{ChangeKind, FileDiff, FileState, HeadState, RepositorySnapshot, UpstreamState};
 use diffo_diff::RowKind;
 use diffo_highlight::Rgb;
-use diffo_ui::tool_areas;
 use ratatui::{
     Terminal,
     backend::TestBackend,
@@ -24,7 +23,7 @@ use super::{
     Renderer, RendererEvent, contrast_ratio, contrasting_foreground, diff_background,
     diff_background_rgb, diff_file_lines, file_label, footer_control_at_position,
     highlight_prefetch_viewports, horizontal_panes, main_area, overview_position, picker_document,
-    render_status, row_style, scrollbar_position_count, should_syntax_highlight, status_line,
+    row_style, scrollbar_position_count, should_syntax_highlight, status_line,
 };
 
 #[test]
@@ -261,13 +260,6 @@ fn buffer_region(buffer: &Buffer, area: Rect) -> Buffer {
     region
 }
 
-fn line_text(line: &ratatui::text::Line<'_>) -> String {
-    line.spans
-        .iter()
-        .map(|span| span.content.as_ref())
-        .collect()
-}
-
 #[test]
 fn status_line_shows_named_head_state_and_divergence() {
     let mut model = Model::new(RepositorySnapshot {
@@ -358,7 +350,7 @@ fn footer_bold_spans_match_mouse_targets() {
 
 #[test]
 fn status_line_preserves_head_and_respects_unicode_width() {
-    let mut model = Model::new(RepositorySnapshot {
+    let model = Model::new(RepositorySnapshot {
         head: HeadState::Named {
             name: "feature/日本語-very-long".to_owned(),
             commit: "123456789abcdef".to_owned(),
@@ -371,8 +363,6 @@ fn status_line_preserves_head_and_respects_unicode_width() {
         }),
         ..RepositorySnapshot::default()
     });
-    model.error = Some("Checkout failed: local changes".to_owned());
-
     let line = status_line(&model, 0, 24);
     assert_eq!(line.width(), 24);
     insta::assert_debug_snapshot!("unicode_truncation", line);
@@ -380,67 +370,6 @@ fn status_line_preserves_head_and_respects_unicode_width() {
     let minimum = status_line(&model, 0, 1);
     assert_eq!(minimum.width(), 1);
     insta::assert_debug_snapshot!("minimum_width", minimum);
-}
-
-#[test]
-fn status_line_keeps_the_head_visible_with_transient_errors() {
-    let mut model = Model::new(RepositorySnapshot {
-        head: HeadState::Named {
-            name: "main".to_owned(),
-            commit: "123456789abcdef".to_owned(),
-        },
-        ..RepositorySnapshot::default()
-    });
-    model.error = Some("Checkout failed: local changes".to_owned());
-
-    let line = status_line(&model, 0, 40);
-    assert_eq!(line.width(), 40);
-    insta::assert_debug_snapshot!(line);
-}
-
-#[test]
-fn status_line_makes_error_control_characters_inert() {
-    let mut model = Model::new(RepositorySnapshot {
-        head: HeadState::Named {
-            name: "main".to_owned(),
-            commit: "123456789abcdef".to_owned(),
-        },
-        ..RepositorySnapshot::default()
-    });
-    model.error = Some("Sync failed\ncontinue?\r\x1b[2J\t\x08".to_owned());
-
-    let line = status_line(&model, 0, 80);
-    let text = line_text(&line);
-
-    assert!(line.width() <= 80);
-    assert!(!text.chars().any(char::is_control));
-    insta::assert_debug_snapshot!(line);
-}
-
-#[test]
-fn rendered_footer_keeps_newline_errors_on_the_footer_row() {
-    let mut model = Model::new(RepositorySnapshot {
-        head: HeadState::Named {
-            name: "main".to_owned(),
-            commit: "123456789abcdef".to_owned(),
-        },
-        ..RepositorySnapshot::default()
-    });
-    model.error = Some("Fetch failed\nSSH host is unknown".to_owned());
-    let area = Rect::new(0, 0, 80, 12);
-    let mut renderer = Renderer::new();
-    renderer.prepare_frame(&model, area);
-    let backend = TestBackend::new(area.width, area.height);
-    let mut terminal = Terminal::new(backend).unwrap();
-
-    terminal
-        .draw(|frame| {
-            renderer.render(frame, &model);
-            render_status(frame, tool_areas(area).status, &model);
-        })
-        .unwrap();
-
-    insta::assert_debug_snapshot!(terminal.backend().buffer());
 }
 
 #[test]

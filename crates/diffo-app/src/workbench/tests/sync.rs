@@ -123,12 +123,14 @@ fn missing_upstream_sync_reports_no_remote_without_queuing_work() {
     let query_id = workbench.take_sync_remote_query().unwrap();
     workbench.sync_remotes_loaded(query_id, Vec::new());
 
-    assert!(workbench.modal.is_none());
+    assert!(matches!(
+        workbench.modal,
+        Some(Modal::Error(ref error))
+            if error.title == "Sync failed"
+                && error.detail == "No remotes are configured; Sync does not create remotes"
+    ));
     assert_eq!(workbench.commands.queued_len(), 0);
-    assert_eq!(
-        workbench.toasts.as_slice()[0].title,
-        "No remotes are configured; Sync does not create remotes"
-    );
+    assert!(workbench.toasts.as_slice().is_empty());
 }
 
 #[test]

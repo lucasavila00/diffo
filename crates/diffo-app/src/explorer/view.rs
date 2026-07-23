@@ -170,12 +170,7 @@ fn render_viewer(
         area,
     );
     let inner = area.inner(design::PANEL_INSET);
-    if let Some(error) = model.error.as_deref() {
-        frame.render_widget(
-            Paragraph::new(terminal_safe_text(error)).style(Style::default().fg(theme::DANGER)),
-            inner,
-        );
-    } else if let Some(viewer) = model.viewer.as_ref() {
+    if let Some(viewer) = model.viewer.as_ref() {
         if let Some(message) = viewer.message.as_deref() {
             frame.render_widget(Paragraph::new(terminal_safe_text(message)), inner);
         } else {

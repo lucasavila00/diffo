@@ -13,7 +13,7 @@ mod toast;
 use navigation::file_keys;
 pub use toast::ToastQueue;
 pub(crate) use toast::{
-    operation_failure_title, operation_result_toast, sync_plan_title, sync_progress_label,
+    operation_failure_error, operation_result_toast, sync_plan_title, sync_progress_label,
 };
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum ChangeArea {
@@ -62,7 +62,6 @@ pub enum NetworkOperation {
 pub enum ToastKind {
     Success,
     Info,
-    Error,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -96,7 +95,6 @@ pub struct Model {
     pub snapshot: RepositorySnapshot,
     pub selected: Option<FileKey>,
     pub should_quit: bool,
-    pub error: Option<String>,
     pub diff_scroll: usize,
     pub diff_horizontal_scroll: usize,
     pub diff_view_mode: DiffViewMode,
@@ -122,7 +120,6 @@ impl Model {
             snapshot,
             selected,
             should_quit: false,
-            error: None,
             diff_scroll: 0,
             diff_horizontal_scroll: 0,
             diff_view_mode: DiffViewMode::default(),

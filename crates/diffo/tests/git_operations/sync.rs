@@ -311,7 +311,8 @@ fn unborn_branch_stops_before_fetch() -> Result<()> {
     start_sync(&mut screen)?;
     screen
         .wait_for_text("sync requires an existing")?
-        .wait_for_text("current branch is unborn")?;
+        .wait_for_text("current branch is")?
+        .wait_for_text("unborn")?;
 
     assert!(!fetch_marker.exists());
     Ok(())
@@ -471,7 +472,9 @@ fn rejected_push_after_rebase_keeps_rebased_commits_and_does_not_retry() -> Resu
 
     start_sync(&mut screen)?;
     confirm_protected_push(&mut screen, 1, "origin/master")?;
-    screen.wait_for_text("Push rejected: rejected by remote hook")?;
+    screen
+        .wait_for_text("Push rejected")?
+        .wait_for_text("rejected by remote hook")?;
     thread::sleep(Duration::from_millis(300));
 
     let local_after = local_head(&repository)?;

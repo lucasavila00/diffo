@@ -76,7 +76,6 @@ impl Model {
             return None;
         }
         let action = RepositoryAction::Commit(self.effective_commit_message()?);
-        self.error = None;
         self.pending_operation = Some(action.clone());
         Some(action)
     }
@@ -93,7 +92,6 @@ impl Model {
         if !self.sync_enabled() {
             return None;
         }
-        self.error = None;
         self.pending_operation = Some(action.clone());
         Some(action)
     }

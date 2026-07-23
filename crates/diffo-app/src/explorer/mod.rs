@@ -553,18 +553,18 @@ impl ExplorerActivity {
         self.queued.pop_front()
     }
 
-    pub fn accept(&mut self, outcome: ExplorerOutcome) {
+    pub fn accept(&mut self, outcome: ExplorerOutcome) -> Option<(String, String)> {
         match outcome {
             ExplorerOutcome::Paths { id, result } if id == self.latest_paths => match result {
                 Ok(paths) => {
                     self.paths_pending = false;
                     self.has_committed_paths = true;
-                    self.model.error = None;
                     self.model.install_paths(paths);
+                    None
                 }
                 Err(error) => {
                     self.paths_pending = false;
-                    self.model.error = Some(error);
+                    Some(("Explorer refresh failed".to_owned(), error))
                 }
             },
             ExplorerOutcome::File {
@@ -572,7 +572,7 @@ impl ExplorerActivity {
                 replace,
                 result,
             } if id == self.latest_file => {
-                self.pending_path = None;
+                let requested_path = self.pending_path.take();
                 match result {
                     Ok(mut viewer) => {
                         if self.pending_quick_open.as_ref() == Some(&viewer.path)
@@ -580,7 +580,7 @@ impl ExplorerActivity {
                         {
                             self.pending_quick_open = None;
                             self.request_paths();
-                            return;
+                            return None;
                         }
                         let same_document = self
                             .model
@@ -611,18 +611,24 @@ impl ExplorerActivity {
                             self.commit_quick_open_selection(&path);
                         }
                         self.content_revision = self.content_revision.saturating_add(1);
-                        self.model.error = None;
+                        None
                     }
                     Err(error) => {
                         if self.pending_quick_open.take().is_some() {
                             self.request_paths();
+                            None
+                        } else if requested_path
+                            .as_ref()
+                            .is_some_and(|path| self.model.file_entry(path).is_none())
+                        {
+                            None
                         } else {
-                            self.model.error = Some(error);
+                            Some(("Could not open file".to_owned(), error))
                         }
                     }
                 }
             }
-            ExplorerOutcome::Paths { .. } | ExplorerOutcome::File { .. } => {}
+            ExplorerOutcome::Paths { .. } | ExplorerOutcome::File { .. } => None,
         }
     }
 

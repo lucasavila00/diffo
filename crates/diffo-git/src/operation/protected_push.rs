@@ -50,11 +50,8 @@ impl GitRepositorySource {
         }
         if !self.sync_plan_is_current(
             action,
-            &plan.branch,
-            &plan.upstream,
-            &target.remote,
-            &target.upstream_branch,
-            plan.establish_upstream,
+            plan,
+            target,
             &local_tip,
             upstream_tip.as_deref(),
             &worktree_status,
@@ -72,11 +69,8 @@ impl GitRepositorySource {
     fn sync_plan_is_current(
         &self,
         action: &RepositoryAction,
-        branch: &str,
-        upstream: &str,
-        remote: &str,
-        upstream_branch: &str,
-        establish_upstream: bool,
+        plan: &SyncPlan,
+        target: &SyncTarget,
         local_tip: &str,
         upstream_tip: Option<&str>,
         worktree_status: &str,
@@ -84,31 +78,43 @@ impl GitRepositorySource {
         self.check_sync_starting_state(action).is_ok()
             && self
                 .sync_branch(action)
-                .is_ok_and(|current| current == branch)
-            && if establish_upstream {
-                self.sync_upstream(action).is_err()
-                    && self
-                        .remote_names()
-                        .is_ok_and(|remotes| remotes.iter().any(|candidate| candidate == remote))
-            } else {
-                self.sync_upstream(action)
-                    .is_ok_and(|current| current == upstream)
-                    && self
-                        .git_text(&["config", "--get", &format!("branch.{branch}.remote")])
-                        .is_ok_and(|current| current == remote)
-                    && self
-                        .git_text(&["config", "--get", &format!("branch.{branch}.merge")])
-                        .is_ok_and(|current| current == upstream_branch)
+                .is_ok_and(|current| current == plan.branch)
+            && match (&target.original_upstream, &target.original_upstream_branch) {
+                (Some(upstream), Some(upstream_branch)) => {
+                    self.sync_upstream(action)
+                        .is_ok_and(|current| current == *upstream)
+                        && self
+                            .git_text(&[
+                                "config",
+                                "--get",
+                                &format!("branch.{}.remote", plan.branch),
+                            ])
+                            .is_ok_and(|current| current == target.remote)
+                        && self
+                            .git_text(&[
+                                "config",
+                                "--get",
+                                &format!("branch.{}.merge", plan.branch),
+                            ])
+                            .is_ok_and(|current| current == *upstream_branch)
+                }
+                (None, None) => {
+                    self.sync_upstream(action).is_err()
+                        && self.remote_names().is_ok_and(|remotes| {
+                            remotes.iter().any(|candidate| candidate == &target.remote)
+                        })
+                }
+                _ => false,
             }
             && self
                 .git_text(&["rev-parse", "HEAD"])
                 .is_ok_and(|current| current == local_tip)
             && match upstream_tip {
                 Some(expected) => self
-                    .git_text(&["rev-parse", upstream])
+                    .git_text(&["rev-parse", &plan.upstream])
                     .is_ok_and(|current| current == expected),
                 None => self
-                    .git(&["rev-parse", "--verify", "--quiet", upstream])
+                    .git(&["rev-parse", "--verify", "--quiet", &plan.upstream])
                     .is_err(),
             }
             && self

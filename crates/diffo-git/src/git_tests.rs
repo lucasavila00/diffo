@@ -23,6 +23,7 @@ mod delete_branch;
 mod everyday;
 mod explorer;
 mod sync_publication_tests;
+mod sync_target_tests;
 mod sync_tests;
 
 #[test]

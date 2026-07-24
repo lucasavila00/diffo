@@ -22,9 +22,10 @@ Dirty files do not stop Sync here.
 
 Configured upstream:
 
-| State | Target |
+| State | Remote and target |
 | --- | --- |
-| Upstream exists | Use its remote and branch. |
+| Upstream branch matches the local branch name | Use its remote and branch. |
+| Upstream branch has a different name | Use its remote with the local branch name. Repair the upstream after success. |
 | Upstream config is invalid | Stop. |
 
 No configured upstream:
@@ -36,9 +37,13 @@ No configured upstream:
 | Several exist, no `origin` | Ask the user. |
 | None exist | Stop. |
 
-The target branch name is the current local branch name.
+The target branch name is always the current local branch name. A differently named
+configured upstream selects only the remote; it is never the Sync or push target.
 
 Example: local `topic` plus remote `origin` means target `origin/topic`.
+
+Example: local `topic` configured with upstream `origin/master` still means target
+`origin/topic`. Sync never pushes `topic` to `origin/master`.
 
 ## 3. Fetch
 
@@ -46,7 +51,8 @@ Fetch the selected remote.
 
 Fetch failure: stop.
 
-No-upstream branch after fetch:
+Same-named target branch after fetch when its upstream must be established or
+repaired:
 
 | Remote branch | Result |
 | --- | --- |
@@ -65,7 +71,7 @@ Compare `HEAD` with the fetched target.
 | 0 | 1+ | Fast-forward |
 | 1+ | 1+ | Rebase, then push |
 
-Missing remote branch: push, then set upstream.
+Missing target branch: push, then set or repair the upstream.
 
 ## 5. Check dirty state for the plan
 
@@ -102,9 +108,10 @@ If a rebase conflicts: abort the rebase. Do not push.
 
 If a push is rejected: stop. Do not retry or force-push.
 
-## 8. Set missing upstream
+## 8. Set or repair upstream
 
-Set the upstream only after the plan succeeds.
+Set a missing upstream, or replace a differently named upstream, only after the plan
+succeeds.
 
 | Successful plan | Action |
 | --- | --- |
@@ -114,16 +121,18 @@ Set the upstream only after the plan succeeds.
 | Rebase, then push | Push with `--set-upstream`. |
 | First publication | Push with `--set-upstream`. |
 
-Failure or cancellation: leave a missing upstream unset.
+Failure or cancellation: leave a missing upstream unset and a mismatched upstream
+unchanged.
 
 ## Guarantees
 
 - Never stash automatically.
 - Never force-push.
 - Never create a remote.
-- Never choose a different remote branch name.
+- Never use a remote branch name that differs from the current local branch name.
 - Never rebase dirty tracked work.
 - Never push after a failed or conflicted rebase.
 - Fetch may update remote-tracking refs even when a later step stops.
 
-Decision record: [ADR 0081](docs/adr/0081-broaden-sync-preconditions.md).
+Decision records: [ADR 0081](docs/adr/0081-broaden-sync-preconditions.md) and
+[ADR 0085](docs/adr/0085-repair-mismatched-sync-upstreams.md).

@@ -9,6 +9,8 @@ pub(super) struct SyncTarget {
     pub(super) upstream: String,
     pub(super) upstream_branch: String,
     pub(super) establish_upstream: bool,
+    pub(super) original_upstream: Option<String>,
+    pub(super) original_upstream_branch: Option<String>,
 }
 
 impl GitRepositorySource {
@@ -70,11 +72,19 @@ impl GitRepositorySource {
                     "sync requires an upstream branch",
                 ));
             }
+            let same_named_branch = format!("refs/heads/{branch}");
+            let repair_upstream = upstream_branch != same_named_branch;
             return Ok(SyncTarget {
+                upstream: if repair_upstream {
+                    format!("{remote}/{branch}")
+                } else {
+                    upstream.clone()
+                },
+                upstream_branch: same_named_branch,
+                establish_upstream: repair_upstream,
+                original_upstream: Some(upstream),
+                original_upstream_branch: Some(upstream_branch),
                 remote,
-                upstream,
-                upstream_branch,
-                establish_upstream: false,
             });
         }
 
@@ -115,6 +125,8 @@ impl GitRepositorySource {
             upstream_branch: format!("refs/heads/{branch}"),
             remote,
             establish_upstream: true,
+            original_upstream: None,
+            original_upstream_branch: None,
         })
     }
 

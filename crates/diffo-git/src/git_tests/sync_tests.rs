@@ -575,65 +575,6 @@ fn sync_reports_the_plan_before_the_operations_it_runs() {
     ));
 }
 
-#[derive(Default)]
-struct RecordAndCancel(Mutex<Vec<GitPrompt>>);
-
-impl PromptHandler for RecordAndCancel {
-    fn prompt(
-        &self,
-        _id: PromptId,
-        prompt: GitPrompt,
-        _cancellation: &CancellationHandle,
-    ) -> PromptAnswer {
-        self.0.lock().unwrap().push(prompt);
-        PromptAnswer::Cancel
-    }
-}
-
-#[test]
-fn protected_push_confirmation_cancels_after_fetch_without_moving_either_branch() {
-    let repository = sync_repository();
-    git(&repository.work, &["branch", "-m", "work"]);
-    fs::write(repository.work.join("local.txt"), "local\n").unwrap();
-    git(&repository.work, &["add", "."]);
-    git(&repository.work, &["commit", "-m", "Local commit"]);
-    let local_before = git_stdout(&repository.work, &["rev-parse", "HEAD"]);
-    let tracking_before = git_stdout(&repository.work, &["rev-parse", "origin/master"]);
-    fs::write(repository.seed.join("remote.txt"), "remote\n").unwrap();
-    git(&repository.seed, &["add", "."]);
-    git(&repository.seed, &["commit", "-m", "Remote commit"]);
-    git(&repository.seed, &["push", "origin", "HEAD"]);
-    let remote_before = remote_head(&repository.seed);
-    let prompts = Arc::new(RecordAndCancel::default());
-    let context = RepositoryOperationContext::new(
-        Arc::clone(&prompts) as Arc<dyn PromptHandler>,
-        CancellationHandle::default(),
-    );
-
-    let result = super::super::GitRepositorySource::with_askpass(&repository.work)
-        .apply_with_context(&RepositoryAction::Sync, &context)
-        .expect("cancel protected push");
-
-    assert!(matches!(result, OperationOutcome::Cancelled));
-    assert_eq!(
-        prompts.0.lock().unwrap().as_slice(),
-        [GitPrompt::ConfirmProtectedBranchPush {
-            destination: "origin/master".to_owned(),
-            commits: 1,
-        }]
-    );
-    assert_eq!(
-        git_stdout(&repository.work, &["rev-parse", "HEAD"]),
-        local_before
-    );
-    assert_eq!(remote_head(&repository.seed), remote_before);
-    assert_ne!(tracking_before, remote_before);
-    assert_eq!(
-        git_stdout(&repository.work, &["rev-parse", "origin/master"]),
-        remote_before
-    );
-}
-
 struct MoveHeadThenConfirm(PathBuf);
 
 impl PromptHandler for MoveHeadThenConfirm {

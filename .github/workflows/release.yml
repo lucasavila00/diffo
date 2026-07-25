@@ -27,9 +27,11 @@ jobs:
         with:
           targets: x86_64-unknown-linux-gnu
 
-      - name: Derive release version
+      - name: Derive internal update version
         run: |
           set -euo pipefail
+          source_sha=$(git rev-parse HEAD)
+          test "${source_sha}" = "${GITHUB_SHA}"
           package_version=$(cargo metadata --no-deps --format-version 1 |
             jq -r '.packages[] | select(.name == "diffo") | .version')
           release_line=${package_version%.*}
@@ -37,6 +39,7 @@ jobs:
           version=${release_line}.${mainline_commit}
           echo "VERSION=${version}" >> "${GITHUB_ENV}"
           echo "DIFFO_RELEASE_VERSION=${version}" >> "${GITHUB_ENV}"
+          echo "DIFFO_BUILD_SHA=${source_sha}" >> "${GITHUB_ENV}"
 
       - name: Cache Cargo build
         uses: Swatinem/rust-cache@v2
@@ -53,11 +56,12 @@ jobs:
           digest=$(sha256sum "dist/${ASSET}" | cut -d ' ' -f1)
           jq -cn \
             --arg version "${VERSION}" \
+            --arg sha "${DIFFO_BUILD_SHA}" \
             --arg name "${ASSET}" \
             --arg target "${TARGET}" \
             --arg sha256 "${digest}" \
             --argjson length "${length}" \
-            '{schema:1,version:$version,assets:[{name:$name,length:$length,target:$target,sha256:$sha256}]}' \
+            '{schema:1,version:$version,sha:$sha,assets:[{name:$name,length:$length,target:$target,sha256:$sha256}]}' \
             > dist/update-v1.json
           (cd dist && sha256sum "${ASSET}" update-v1.json > SHA256SUMS)
 
@@ -75,7 +79,7 @@ jobs:
               git mktree
           )
           publication_commit=$(
-            printf 'Publish %s from %s\n' "${VERSION}" "${GITHUB_SHA}" |
+            printf 'Publish %s\n' "${DIFFO_BUILD_SHA}" |
               git commit-tree "${publication_tree}"
           )
           git push --force origin "${publication_commit}:refs/heads/release"

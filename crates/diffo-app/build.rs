@@ -1,22 +1,19 @@
 use std::{env, process::Command};
 
 fn main() {
-    println!("cargo::rerun-if-env-changed=DIFFO_RELEASE_VERSION");
+    println!("cargo::rerun-if-env-changed=DIFFO_BUILD_SHA");
     track_git_path("HEAD");
     track_git_path("packed-refs");
     if let Some(reference) = git_output(&["symbolic-ref", "HEAD"]) {
         track_git_path(&reference);
     }
 
-    let tag = env::var("DIFFO_RELEASE_VERSION")
+    let sha = env::var("DIFFO_BUILD_SHA")
         .ok()
-        .filter(|tag| !tag.is_empty())
-        .or_else(|| git_output(&["describe", "--tags", "--exact-match", "HEAD"]))
-        .unwrap_or_else(|| "dev".to_owned());
-    let sha =
-        git_output(&["rev-parse", "--short=7", "HEAD"]).unwrap_or_else(|| "unknown".to_owned());
+        .filter(|sha| !sha.is_empty())
+        .or_else(|| git_output(&["rev-parse", "HEAD"]))
+        .unwrap_or_else(|| "unknown".to_owned());
 
-    println!("cargo::rustc-env=DIFFO_BUILD_TAG={tag}");
     println!("cargo::rustc-env=DIFFO_BUILD_SHA={sha}");
 }
 

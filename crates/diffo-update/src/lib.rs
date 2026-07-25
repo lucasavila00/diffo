@@ -69,6 +69,7 @@ impl std::error::Error for UpdateError {}
 
 pub struct UpdateClient {
     base_url: String,
+    current_sha: String,
     http: Client,
 }
 
@@ -78,7 +79,7 @@ impl UpdateClient {
     /// # Errors
     ///
     /// Returns an error when the HTTP client cannot be constructed.
-    pub fn from_environment() -> Result<Self, UpdateError> {
+    pub fn from_environment(current_sha: &str) -> Result<Self, UpdateError> {
         let base_url = env::var("DIFFO_UPDATE_BASE_URL").unwrap_or_else(|_| {
             option_env!("DIFFO_UPDATE_BASE_URL")
                 .unwrap_or(DEFAULT_BASE_URL)
@@ -91,7 +92,7 @@ impl UpdateClient {
             ));
         }
         let http = Client::builder()
-            .user_agent(format!("diffo/{BUILD_VERSION}"))
+            .user_agent(format!("diffo/{current_sha}"))
             .redirect(Policy::custom(|attempt| {
                 if attempt.previous().len() >= 10 {
                     return attempt.stop();
@@ -107,6 +108,7 @@ impl UpdateClient {
             .map_err(|error| UpdateError::new(ErrorCategory::Network, error.to_string()))?;
         Ok(Self {
             base_url: base_url.trim_end_matches('/').to_owned(),
+            current_sha: current_sha.to_owned(),
             http,
         })
     }
@@ -118,7 +120,7 @@ impl UpdateClient {
     /// Returns network or verification errors without changing the executable.
     pub fn check(&self) -> Result<CheckOutcome, UpdateError> {
         let manifest = self.fetch_limited(MANIFEST_NAME, MAX_METADATA_BYTES)?;
-        protocol::parse_manifest(&manifest, BUILD_VERSION)
+        protocol::parse_manifest(&manifest, BUILD_VERSION, &self.current_sha)
     }
 
     /// Downloads and installs the latest strictly newer verified release.

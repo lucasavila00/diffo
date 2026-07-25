@@ -6,8 +6,7 @@ use ratatui::{
     widgets::{Block, Borders, Cell, Clear, Paragraph, Row, Table},
 };
 
-const BUILD_TAG: &str = env!("DIFFO_BUILD_TAG");
-const BUILD_SHA: &str = env!("DIFFO_BUILD_SHA");
+use crate::BUILD_SHA;
 
 pub(super) fn render(frame: &mut Frame, content_area: Rect, rows: Vec<(String, &'static str)>) {
     let area = layout(content_area);
@@ -39,7 +38,7 @@ pub(super) fn render(frame: &mut Frame, content_area: Rect, rows: Vec<(String, &
     .header(Row::new(["Shortcut", "Action"]).style(Style::default().fg(theme::TEXT)))
     .column_spacing(design::HELP_COLUMN_GAP);
     frame.render_widget(table, sections[0]);
-    let build = format!("tag {BUILD_TAG} · sha {BUILD_SHA}");
+    let build = format!("sha {BUILD_SHA}");
     let footer = Layout::horizontal([
         Constraint::Min(design::SINGLE_LINE_HEIGHT),
         Constraint::Length(u16::try_from(build.chars().count()).unwrap_or(u16::MAX)),
@@ -81,7 +80,7 @@ mod tests {
     }
 
     #[test]
-    fn help_footer_shows_the_build_tag_and_sha() {
+    fn help_footer_shows_only_the_build_sha() {
         let area = Rect::new(0, 0, 100, 30);
         let backend = TestBackend::new(area.width, area.height);
         let mut terminal = Terminal::new(backend).unwrap();
@@ -95,9 +94,7 @@ mod tests {
             .map(|x| terminal.backend().buffer()[(x, footer_y)].symbol())
             .collect::<String>();
         assert!(footer.contains("Esc: close"), "{footer}");
-        assert!(
-            footer.contains(&format!("tag {BUILD_TAG} · sha {BUILD_SHA}")),
-            "{footer}"
-        );
+        assert!(footer.contains(&format!("sha {BUILD_SHA}")), "{footer}");
+        assert!(!footer.contains("tag "), "{footer}");
     }
 }

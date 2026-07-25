@@ -110,9 +110,11 @@ fn update_entry_path_verifies_and_atomically_replaces_its_own_file() -> Result<(
     let launcher = directory.path().join("diffo-link");
     symlink(&installed, &launcher).context("create executable symlink")?;
     let asset = fs::read(&source).context("read replacement asset")?;
+    let release_sha = "9999999999999999999999999999999999999999";
     let manifest = serde_json::to_vec(&json!({
         "schema": 1,
         "version": "999.0.0",
+        "sha": release_sha,
         "assets": [{
             "name": "diffo-x86_64-unknown-linux-gnu",
             "length": asset.len(),
@@ -170,8 +172,12 @@ fn update_entry_path_verifies_and_atomically_replaces_its_own_file() -> Result<(
         String::from_utf8_lossy(&output.stderr)
     );
     ensure!(
-        String::from_utf8_lossy(&output.stdout).contains("Quit and relaunch"),
-        "{}",
+        String::from_utf8_lossy(&output.stdout)
+            == format!(
+                "Updated Diffo from commit {} to commit {release_sha}. Quit and relaunch Diffo to use the new version.\n",
+                diffo_app::BUILD_SHA
+            ),
+        "{:?}",
         String::from_utf8_lossy(&output.stdout)
     );
     ensure!(fs::read(&installed)? == fs::read(&source)?);

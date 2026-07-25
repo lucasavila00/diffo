@@ -28,7 +28,9 @@ release tags.
 For each checked-out main commit, derive the release version as
 `<workspace-major>.<workspace-minor>.<mainline-commit-count>`. Count first-parent
 commits from the complete repository history. Embed that version in the executable and
-write the same version to schema-1 update metadata.
+write the same version to schema-1 update metadata. Also embed the exact checked-out
+source commit SHA and publish it as additive schema-1 metadata. The version is only an
+update-ordering key; interfaces identify builds by source commit SHA.
 
 Publish exactly the GNU/Linux executable, schema-1 metadata, and `SHA256SUMS` as the
 root tree of a new parentless commit. Force-update the dedicated `release` branch to
@@ -72,6 +74,8 @@ must not be used for development or protected against the workflow's force updat
 - Verify a full-history checkout produces a stable SemVer version from the workspace
   release line and first-parent commit count.
 - Verify the same version is embedded in the executable and schema-1 metadata.
+- Verify the exact checked-out source commit SHA is embedded in the executable and
+  schema-1 metadata.
 - Verify the generated parentless commit contains only the three publication files and
   is force-pushed to `refs/heads/release`.
 - Verify the updater's fixed endpoint reads from the raw `release` branch.

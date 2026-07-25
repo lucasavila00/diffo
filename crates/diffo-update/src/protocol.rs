@@ -10,6 +10,7 @@ const ASSET_NAME: &str = "diffo-x86_64-unknown-linux-gnu";
 pub struct Manifest {
     pub schema: u64,
     pub version: String,
+    pub sha: String,
     pub assets: Vec<Asset>,
 }
 
@@ -23,18 +24,22 @@ pub struct Asset {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct UpdatePlan {
-    pub current: Version,
-    pub version: Version,
+    pub current: String,
+    pub latest: String,
     pub asset: Asset,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum CheckOutcome {
-    UpToDate { current: Version, latest: Version },
+    UpToDate { current: String, latest: String },
     Available(UpdatePlan),
 }
 
-pub(crate) fn parse_manifest(bytes: &[u8], current: &str) -> Result<CheckOutcome, UpdateError> {
+pub(crate) fn parse_manifest(
+    bytes: &[u8],
+    current_version: &str,
+    current_sha: &str,
+) -> Result<CheckOutcome, UpdateError> {
     let manifest: Manifest = serde_json::from_slice(bytes)
         .map_err(|error| verification(format!("manifest is invalid: {error}")))?;
     if manifest.schema != 1 {
@@ -43,8 +48,10 @@ pub(crate) fn parse_manifest(bytes: &[u8], current: &str) -> Result<CheckOutcome
             manifest.schema
         )));
     }
-    let current = stable_version(current, "running version")?;
+    let current = stable_version(current_version, "running version")?;
     let latest = stable_version(&manifest.version, "release version")?;
+    validate_git_sha(current_sha, "running commit SHA")?;
+    validate_git_sha(&manifest.sha, "release commit SHA")?;
     let asset = manifest
         .assets
         .into_iter()
@@ -52,11 +59,14 @@ pub(crate) fn parse_manifest(bytes: &[u8], current: &str) -> Result<CheckOutcome
         .ok_or_else(|| verification(format!("release has no asset for {TARGET}")))?;
     validate_asset(&asset)?;
     if latest <= current {
-        return Ok(CheckOutcome::UpToDate { current, latest });
+        return Ok(CheckOutcome::UpToDate {
+            current: current_sha.to_owned(),
+            latest: manifest.sha,
+        });
     }
     Ok(CheckOutcome::Available(UpdatePlan {
-        current,
-        version: latest,
+        current: current_sha.to_owned(),
+        latest: manifest.sha,
         asset,
     }))
 }
@@ -68,6 +78,19 @@ fn stable_version(value: &str, label: &str) -> Result<Version, UpdateError> {
         return Err(verification(format!("{label} is not stable")));
     }
     Ok(version)
+}
+
+fn validate_git_sha(value: &str, label: &str) -> Result<(), UpdateError> {
+    if value.len() != 40
+        || !value
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+    {
+        return Err(verification(format!(
+            "{label} must be 40 lowercase hexadecimal characters"
+        )));
+    }
+    Ok(())
 }
 
 fn validate_asset(asset: &Asset) -> Result<(), UpdateError> {
@@ -97,14 +120,18 @@ mod tests {
 
     use super::*;
 
+    const CURRENT_SHA: &str = "1111111111111111111111111111111111111111";
+    const RELEASE_SHA: &str = "2222222222222222222222222222222222222222";
+
     fn parse(value: &serde_json::Value, current: &str) -> Result<CheckOutcome, UpdateError> {
-        parse_manifest(&serde_json::to_vec(value).unwrap(), current)
+        parse_manifest(&serde_json::to_vec(value).unwrap(), current, CURRENT_SHA)
     }
 
     fn manifest(version: &str) -> serde_json::Value {
         json!({
             "schema": 1,
             "version": version,
+            "sha": RELEASE_SHA,
             "assets": [{
                 "name": ASSET_NAME,
                 "length": 3,
@@ -118,15 +145,22 @@ mod tests {
     #[test]
     fn selects_a_strictly_newer_stable_release_and_ignores_additive_fields() {
         let outcome = parse(&manifest("0.2.0"), "0.1.0").unwrap();
-        assert!(matches!(outcome, CheckOutcome::Available(_)));
+        let CheckOutcome::Available(plan) = outcome else {
+            panic!("newer release was not selected");
+        };
+        assert_eq!(plan.current, CURRENT_SHA);
+        assert_eq!(plan.latest, RELEASE_SHA);
     }
 
     #[test]
     fn equal_and_older_releases_are_up_to_date() {
-        assert!(matches!(
+        assert_eq!(
             parse(&manifest("0.1.0"), "0.1.0").unwrap(),
-            CheckOutcome::UpToDate { .. }
-        ));
+            CheckOutcome::UpToDate {
+                current: CURRENT_SHA.to_owned(),
+                latest: RELEASE_SHA.to_owned(),
+            }
+        );
         assert!(matches!(
             parse(&manifest("0.0.9"), "0.1.0").unwrap(),
             CheckOutcome::UpToDate { .. }
@@ -135,7 +169,7 @@ mod tests {
 
     #[test]
     fn rejects_invalid_json() {
-        let error = parse_manifest(b"not json", "0.1.0").unwrap_err();
+        let error = parse_manifest(b"not json", "0.1.0", CURRENT_SHA).unwrap_err();
         assert_eq!(error.category(), ErrorCategory::Verification);
         assert!(error.to_string().contains("manifest is invalid"));
     }
@@ -150,6 +184,10 @@ mod tests {
 
         cases.push(manifest("not-a-version"));
         cases.push(manifest("0.2.0-alpha.1"));
+
+        let mut sha = manifest("0.2.0");
+        sha["sha"] = json!("ABC");
+        cases.push(sha);
 
         let mut target = manifest("0.2.0");
         target["assets"][0]["target"] = json!("aarch64-unknown-linux-gnu");

@@ -5,7 +5,6 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use semver::Version;
 use sha2::{Digest as _, Sha256};
 use tempfile::NamedTempFile;
 
@@ -13,14 +12,8 @@ use crate::{ErrorCategory, UpdateError, UpdatePlan};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum InstallOutcome {
-    UpToDate {
-        current: Version,
-        latest: Version,
-    },
-    Installed {
-        previous: Version,
-        installed: Version,
-    },
+    UpToDate { current: String, latest: String },
+    Installed { previous: String, installed: String },
 }
 
 /// Resolves `/proc/self/exe` to the actual regular file being executed.
@@ -152,7 +145,7 @@ fn install_reader(
         .map_err(|error| UpdateError::io("could not flush the executable directory", &error))?;
     Ok(InstallOutcome::Installed {
         previous: plan.current.clone(),
-        installed: plan.version.clone(),
+        installed: plan.latest.clone(),
     })
 }
 
@@ -227,8 +220,8 @@ mod tests {
 
     fn plan(bytes: &[u8]) -> UpdatePlan {
         UpdatePlan {
-            current: Version::new(0, 1, 0),
-            version: Version::new(0, 2, 0),
+            current: "1111111111111111111111111111111111111111".to_owned(),
+            latest: "2222222222222222222222222222222222222222".to_owned(),
             asset: Asset {
                 name: "diffo-x86_64-unknown-linux-gnu".to_owned(),
                 length: bytes.len() as u64,

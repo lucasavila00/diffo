@@ -117,7 +117,7 @@ fn main() -> Result<()> {
 }
 
 fn run_updater() {
-    let client = match diffo_update::UpdateClient::from_environment() {
+    let client = match diffo_update::UpdateClient::from_environment(diffo_app::BUILD_SHA) {
         Ok(client) => client,
         Err(error) => {
             print_update_error(&error);
@@ -126,13 +126,13 @@ fn run_updater() {
     };
     match client.install_latest() {
         Ok(diffo_update::InstallOutcome::UpToDate { current, latest }) => {
-            println!("Diffo is up to date ({current}; latest release {latest}).");
+            println!("Diffo is up to date (commit {current}; latest commit {latest}).");
         }
         Ok(diffo_update::InstallOutcome::Installed {
             previous,
             installed,
         }) => println!(
-            "Updated Diffo from {previous} to {installed}. Quit and relaunch Diffo to use the new version."
+            "Updated Diffo from commit {previous} to commit {installed}. Quit and relaunch Diffo to use the new version."
         ),
         Err(error) => {
             print_update_error(&error);

@@ -203,7 +203,7 @@ impl Workbench {
     ) -> Option<WorkbenchCommand> {
         if is_toggle(event) || closes(event, area) {
             self.full_screen = false;
-            return None;
+            return Some(WorkbenchCommand::Redraw);
         }
         if is_quit(event) {
             self.should_quit = true;
@@ -217,12 +217,13 @@ impl Workbench {
                 .map_full_screen_event(event, &self.diff.model, buffer)
                 .and_then(|event| match event {
                     RendererEvent::Message(message) => Some(WorkbenchCommand::Diff(message)),
-                    RendererEvent::Consumed | RendererEvent::CopyPath { .. } => None,
+                    RendererEvent::Consumed => Some(WorkbenchCommand::Redraw),
+                    RendererEvent::CopyPath { .. } => None,
                 }),
-            Activity::Explorer => {
-                let _ = self.explorer.handle_full_screen_event(event, buffer);
-                None
-            }
+            Activity::Explorer => self
+                .explorer
+                .handle_full_screen_event(event, buffer)
+                .map(|_| WorkbenchCommand::Redraw),
         }
     }
 }

@@ -51,6 +51,7 @@ impl Workbench {
             self.pending_sync_remote_query = None;
         }
         self.modal = Some(modal);
+        self.request_redraw();
     }
 
     pub(super) fn close_modal(&mut self) {
@@ -64,6 +65,7 @@ impl Workbench {
             self.pending_sync_remote_query = None;
         }
         self.modal = None;
+        self.request_redraw();
     }
 
     pub(super) fn render_modal(&self, frame: &mut Frame, content: Rect, area: Rect) {
@@ -126,7 +128,7 @@ impl Workbench {
             QuickOpenEvent::Quit => self.should_quit = true,
             QuickOpenEvent::Consumed => {}
         }
-        None
+        Some(WorkbenchCommand::Redraw)
     }
 
     fn handle_sync_remote_event(&mut self, event: &Event, area: Rect) -> Option<WorkbenchCommand> {
@@ -143,7 +145,7 @@ impl Workbench {
             }
             SyncRemoteEvent::Consumed => {}
         }
-        None
+        Some(WorkbenchCommand::Redraw)
     }
 
     fn handle_create_branch_event(
@@ -165,7 +167,7 @@ impl Workbench {
             CreateBranchEvent::Quit => self.should_quit = true,
             CreateBranchEvent::Consumed => {}
         }
-        None
+        Some(WorkbenchCommand::Redraw)
     }
 
     fn handle_checkout_picker_event(
@@ -202,7 +204,7 @@ impl Workbench {
             CheckoutPickerEvent::Quit => self.should_quit = true,
             CheckoutPickerEvent::Consumed => {}
         }
-        None
+        Some(WorkbenchCommand::Redraw)
     }
 
     fn handle_help_event(&mut self, event: &Event) -> Option<WorkbenchCommand> {
@@ -213,6 +215,7 @@ impl Workbench {
                 && key.modifiers == KeyModifiers::NONE
             {
                 self.close_modal();
+                return Some(WorkbenchCommand::Redraw);
             } else if key.code == KeyCode::Char('c')
                 && key.modifiers.contains(KeyModifiers::CONTROL)
             {
@@ -243,7 +246,8 @@ impl Workbench {
                 self.should_quit = true;
                 None
             }
-            Some(PaletteEvent::Consumed) | None => None,
+            Some(PaletteEvent::Consumed) => Some(WorkbenchCommand::Redraw),
+            None => None,
         }
     }
 
@@ -256,7 +260,7 @@ impl Workbench {
         match crate::diff::map_commit_event(event, &self.diff.model, content) {
             Some(crate::diff::Message::BlurCommitInput) => {
                 self.close_modal();
-                None
+                Some(WorkbenchCommand::Redraw)
             }
             Some(message) => Some(WorkbenchCommand::Diff(message)),
             None => None,
@@ -277,6 +281,7 @@ impl Workbench {
 
     pub(super) fn dismiss_error(&mut self) {
         self.modal = None;
+        self.request_redraw();
         self.show_next_error();
     }
 

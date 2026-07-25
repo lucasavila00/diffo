@@ -246,9 +246,11 @@ impl Workbench {
         match self.modal.as_mut() {
             Some(Modal::CheckoutPicker(picker)) if picker.query_id == query_id => {
                 picker.install(branches, &snapshot);
+                self.request_redraw();
             }
             Some(Modal::CreateBranch(modal)) if modal.query_id == Some(query_id) => {
                 modal.install(branches, snapshot.head);
+                self.request_redraw();
             }
             _ => {}
         }

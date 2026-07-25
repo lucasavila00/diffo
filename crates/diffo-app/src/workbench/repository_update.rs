@@ -29,6 +29,8 @@ impl Workbench {
         command.label = crate::diff::model::sync_progress_label(&progress);
         if let SyncProgress::Plan(plan) = progress {
             self.show_toast(ToastKind::Info, crate::diff::model::sync_plan_title(&plan));
+        } else {
+            self.request_redraw();
         }
     }
 
@@ -43,7 +45,11 @@ impl Workbench {
         }
         self.repository_generation = update.generation;
         match update.kind {
-            RepositoryUpdateKind::Snapshot(snapshot) => self.repository_changed(snapshot),
+            RepositoryUpdateKind::Snapshot(snapshot) => {
+                if self.diff.model.snapshot != snapshot {
+                    self.repository_changed(snapshot);
+                }
+            }
             RepositoryUpdateKind::RefreshFailed(message) => self.operation_failed(message),
             RepositoryUpdateKind::CommandCompleted {
                 command_id,
@@ -150,7 +156,7 @@ impl Workbench {
         }
     }
 
-    pub(super) fn expire_toasts(&mut self, now: Instant) {
+    pub(super) fn expire_toasts(&mut self, now: Instant) -> bool {
         self.toast_deadlines
             .retain(|id, _| self.toasts.as_slice().iter().any(|toast| toast.id == *id));
         for toast in self.toasts.as_slice() {
@@ -163,9 +169,11 @@ impl Workbench {
             .iter()
             .filter_map(|(id, deadline)| (*deadline <= now).then_some(*id))
             .collect::<Vec<_>>();
+        let changed = !expired.is_empty();
         for id in expired {
             self.toasts.dismiss(id);
             self.toast_deadlines.remove(&id);
         }
+        changed
     }
 }

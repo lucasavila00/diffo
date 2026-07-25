@@ -54,10 +54,17 @@ struct Measurement {
 
 #[derive(Deserialize)]
 struct FrameRecord {
+    presentation: Presentation,
     input_events: Vec<String>,
     draw_start_us: u64,
     draw_end_us: u64,
     text_surface: Option<TextSurfaceRecord>,
+}
+
+#[derive(Deserialize, Eq, PartialEq)]
+enum Presentation {
+    Presented,
+    Suppressed,
 }
 
 #[derive(Deserialize)]
@@ -362,6 +369,8 @@ fn measure_once(
         child.try_wait().context("poll Diffo")?.is_none(),
         "Diffo exited during startup"
     );
+    writer.write_all(b"z").context("mark CPU sample start")?;
+    writer.flush().context("flush CPU sample marker")?;
     let cpu_before = process_cpu_ticks(pid)?;
     let bytes_before = output_bytes.load(Ordering::Relaxed);
     let started = Instant::now();
@@ -392,7 +401,7 @@ fn measure_once(
         .join()
         .map_err(|_| anyhow::anyhow!("PTY reader panicked"))?;
 
-    let (frames, input_events, draw_us) = trace_window(&trace, elapsed)?;
+    let (frames, input_events, draw_us) = trace_sample(&trace)?;
     match scenario {
         Scenario::Idle => ensure!(input_events == 0, "idle trace contained input events"),
         Scenario::Scroll => ensure!(
@@ -413,26 +422,37 @@ fn measure_once(
     })
 }
 
-fn trace_window(path: &Path, duration: Duration) -> Result<(usize, usize, u64)> {
+fn trace_sample(path: &Path) -> Result<(usize, usize, u64)> {
     let contents = fs::read_to_string(path).context("read frame trace")?;
-    let mut frames: Vec<FrameRecord> = contents
+    let frames: Vec<FrameRecord> = contents
         .lines()
         .map(ron::from_str)
         .collect::<std::result::Result<_, _>>()
         .context("parse frame trace")?;
-    frames.retain(|frame| {
-        !frame
-            .input_events
-            .iter()
-            .any(|event| event.contains("Char('q')"))
-    });
-    let end = frames.last().context("frame trace is empty")?.draw_end_us;
-    let start = end.saturating_sub(u64::try_from(duration.as_micros()).unwrap_or(u64::MAX));
-    let selected: Vec<_> = frames
+    let start = frames
         .iter()
-        .filter(|frame| frame.draw_end_us >= start && frame.draw_end_us <= end)
+        .position(|frame| {
+            frame
+                .input_events
+                .iter()
+                .any(|event| event.contains("Char('z')"))
+        })
+        .context("CPU sample marker is missing from frame trace")?;
+    let selected: Vec<_> = frames[start..]
+        .iter()
+        .filter(|frame| {
+            frame.presentation == Presentation::Presented
+                && !frame
+                    .input_events
+                    .iter()
+                    .any(|event| event.contains("Char('q')"))
+        })
         .collect();
-    let input_events = selected.iter().map(|frame| frame.input_events.len()).sum();
+    let input_events = selected
+        .iter()
+        .flat_map(|frame| frame.input_events.iter())
+        .filter(|event| !event.contains("Char('z')"))
+        .count();
     let draw_us = selected
         .iter()
         .map(|frame| frame.draw_end_us.saturating_sub(frame.draw_start_us))

@@ -360,24 +360,36 @@ fn horizontal_pan_clamps_to_the_visible_code_width_and_returns_to_zero() {
     ));
 
     for _ in 0..100 {
-        assert!(
-            explorer
-                .handle_event(&right, area, PaneSplit::default())
-                .is_some()
-        );
+        if explorer
+            .handle_event(&right, area, PaneSplit::default())
+            .is_none()
+        {
+            break;
+        }
     }
     assert_eq!(
         explorer.model.viewer_horizontal_scroll,
         100_usize.saturating_sub(explorer.viewport_columns)
     );
+    assert!(
+        explorer
+            .handle_event(&right, area, PaneSplit::default())
+            .is_none()
+    );
     for _ in 0..100 {
-        assert!(
-            explorer
-                .handle_event(&left, area, PaneSplit::default())
-                .is_some()
-        );
+        if explorer
+            .handle_event(&left, area, PaneSplit::default())
+            .is_none()
+        {
+            break;
+        }
     }
     assert_eq!(explorer.model.viewer_horizontal_scroll, 0);
+    assert!(
+        explorer
+            .handle_event(&left, area, PaneSplit::default())
+            .is_none()
+    );
 }
 
 #[test]

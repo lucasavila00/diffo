@@ -1,7 +1,10 @@
 use super::*;
 use crate::diff::NetworkOperation;
 use crossterm::event::{KeyEvent, KeyEventState, MouseEvent};
-use diffo_core::{ChangeKind, FileDiff, FileState, OperationResult, SyncPlan};
+use diffo_core::{
+    ChangeKind, FileDiff, FileState, OperationResult, RepositoryUpdate, RepositoryUpdateKind,
+    SyncPlan,
+};
 use ratatui::{Terminal, backend::TestBackend, buffer::Buffer, style::Color};
 
 mod prompt;
@@ -33,6 +36,39 @@ fn start_repository_command(
         Some(id)
     );
     id
+}
+
+#[test]
+fn redraw_requests_track_visible_transitions_instead_of_idle_iterations() {
+    let area = Rect::new(0, 0, 100, 30);
+    let mut workbench = Workbench::new(RepositorySnapshot::default());
+
+    assert!(workbench.take_redraw_request());
+    assert!(!workbench.take_redraw_request());
+
+    workbench.prepare_frame(area);
+    assert!(workbench.take_redraw_request());
+    workbench.prepare_frame(area);
+    workbench.tick(Instant::now());
+    assert!(!workbench.take_redraw_request());
+
+    assert!(workbench.accept_repository_update(RepositoryUpdate {
+        generation: 1,
+        kind: RepositoryUpdateKind::Snapshot(RepositorySnapshot::default()),
+    }));
+    assert!(!workbench.take_redraw_request());
+    workbench.accept_task_result(WorkbenchTaskResult::Explorer(ExplorerOutcome::Paths {
+        id: u64::MAX,
+        result: Ok(vec!["stale.txt".into()]),
+    }));
+    assert!(!workbench.take_redraw_request());
+
+    let uppercase = Event::Key(KeyEvent::new(KeyCode::Char('O'), KeyModifiers::SHIFT));
+    let _ = workbench.handle_events(&[uppercase], area);
+    assert!(!workbench.take_redraw_request());
+
+    let _ = workbench.handle_events(&[key(KeyCode::Tab)], area);
+    assert!(workbench.take_redraw_request());
 }
 
 #[test]

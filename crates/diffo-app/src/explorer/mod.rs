@@ -363,6 +363,7 @@ impl ExplorerActivity {
         split: PaneSplit,
     ) -> Option<ExplorerEvent> {
         let selected_before = self.picker.selected().cloned();
+        let menu_before = self.picker.has_open_menu();
         if let Some(outcome) = self.picker.handle_event(event, area) {
             if self.picker.selected() != selected_before.as_ref() {
                 self.selection_changed();
@@ -372,6 +373,12 @@ impl ExplorerActivity {
                     id: EntryId::File(path),
                     absolute,
                 } => Some(ExplorerEvent::CopyPath { path, absolute }),
+                PickerOutcome::Selected(id @ EntryId::File(_))
+                    if selected_before.as_ref() == Some(&id)
+                        && self.picker.has_open_menu() == menu_before =>
+                {
+                    None
+                }
                 PickerOutcome::CopyPath {
                     id: EntryId::Directory(_),
                     ..
@@ -396,6 +403,10 @@ impl ExplorerActivity {
         if key.kind != KeyEventKind::Press || key.modifiers != KeyModifiers::NONE {
             return None;
         }
+        let viewport_before = (
+            self.model.viewer_scroll,
+            self.model.viewer_horizontal_scroll,
+        );
         match key.code {
             KeyCode::Up => self.scroll_viewer(-LINE_SCROLL_ROWS),
             KeyCode::Down => self.scroll_viewer(LINE_SCROLL_ROWS),
@@ -409,10 +420,19 @@ impl ExplorerActivity {
             KeyCode::Right => self.scroll_viewer_horizontal(LINE_SCROLL_ROWS),
             _ => return None,
         }
-        Some(ExplorerEvent::Consumed)
+        (viewport_before
+            != (
+                self.model.viewer_scroll,
+                self.model.viewer_horizontal_scroll,
+            ))
+            .then_some(ExplorerEvent::Consumed)
     }
 
     pub fn handle_full_screen_event(&mut self, event: &Event, area: Rect) -> Option<ExplorerEvent> {
+        let viewport_before = (
+            self.model.viewer_scroll,
+            self.model.viewer_horizontal_scroll,
+        );
         let amount = match event {
             Event::Key(key)
                 if key.kind == KeyEventKind::Press && key.modifiers == KeyModifiers::NONE =>
@@ -424,11 +444,13 @@ impl ExplorerActivity {
                     KeyCode::PageDown => i64::try_from(self.viewport_rows).unwrap_or(i64::MAX),
                     KeyCode::Left => {
                         self.scroll_viewer_horizontal(-LINE_SCROLL_ROWS);
-                        return Some(ExplorerEvent::Consumed);
+                        return (viewport_before.1 != self.model.viewer_horizontal_scroll)
+                            .then_some(ExplorerEvent::Consumed);
                     }
                     KeyCode::Right => {
                         self.scroll_viewer_horizontal(LINE_SCROLL_ROWS);
-                        return Some(ExplorerEvent::Consumed);
+                        return (viewport_before.1 != self.model.viewer_horizontal_scroll)
+                            .then_some(ExplorerEvent::Consumed);
                     }
                     _ => return None,
                 }
@@ -439,7 +461,7 @@ impl ExplorerActivity {
             _ => return None,
         };
         self.scroll_viewer(amount);
-        Some(ExplorerEvent::Consumed)
+        (viewport_before.0 != self.model.viewer_scroll).then_some(ExplorerEvent::Consumed)
     }
 
     fn handle_viewer_mouse(&mut self, event: &Event, area: Rect, split: PaneSplit) -> bool {
@@ -514,18 +536,18 @@ impl ExplorerActivity {
         self.queued.pop_front()
     }
 
-    pub fn accept(&mut self, outcome: ExplorerOutcome) -> Option<(String, String)> {
+    pub fn accept(&mut self, outcome: ExplorerOutcome) -> (Option<(String, String)>, bool) {
         match outcome {
             ExplorerOutcome::Paths { id, result } if id == self.latest_paths => match result {
                 Ok(paths) => {
                     self.paths_pending = false;
                     self.has_committed_paths = true;
-                    self.model.install_paths(paths);
-                    None
+                    let changed = self.model.install_paths(paths);
+                    (None, changed)
                 }
                 Err(error) => {
                     self.paths_pending = false;
-                    Some(("Explorer refresh failed".to_owned(), error))
+                    (Some(("Explorer refresh failed".to_owned(), error)), true)
                 }
             },
             ExplorerOutcome::File {
@@ -541,7 +563,7 @@ impl ExplorerActivity {
                         {
                             self.pending_quick_open = None;
                             self.request_paths();
-                            return None;
+                            return (None, true);
                         }
                         let same_document = self
                             .model
@@ -568,30 +590,33 @@ impl ExplorerActivity {
                             viewer.coverage.extend(incoming);
                             merge_coverage(&mut viewer);
                         }
+                        let viewer_changed = self.model.viewer.as_ref() != Some(&viewer);
                         self.model.viewer = Some(viewer);
                         if let Some(path) = self.pending_quick_open.take() {
                             self.commit_quick_open_selection(&path);
                         }
-                        self.content_revision = self.content_revision.saturating_add(1);
-                        None
+                        if viewer_changed {
+                            self.content_revision = self.content_revision.saturating_add(1);
+                        }
+                        (None, viewer_changed)
                     }
                     Err(error) => {
                         self.vertical_scroll.clear();
                         if self.pending_quick_open.take().is_some() {
                             self.request_paths();
-                            None
+                            (None, true)
                         } else if requested_path
                             .as_ref()
                             .is_some_and(|path| self.model.file_entry(path).is_none())
                         {
-                            None
+                            (None, true)
                         } else {
-                            Some(("Could not open file".to_owned(), error))
+                            (Some(("Could not open file".to_owned(), error)), true)
                         }
                     }
                 }
             }
-            ExplorerOutcome::Paths { .. } | ExplorerOutcome::File { .. } => None,
+            ExplorerOutcome::Paths { .. } | ExplorerOutcome::File { .. } => (None, false),
         }
     }
 

@@ -91,6 +91,7 @@ impl DiffViewMode {
     }
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Model {
     pub snapshot: RepositorySnapshot,
     pub selected: Option<FileKey>,

@@ -5,11 +5,10 @@ use std::{
     time::{Duration, Instant},
 };
 
-use crate::diff::{
-    CommandProgress, FramePreparation, Renderer, RendererEvent, command_cancel_at_position,
-    render_command_progress, render_status, render_toasts, toast_at_position,
-};
 use crate::diff::{Effect, Message, Model, ToastKind, ToastQueue, update};
+use crate::diff::{
+    FramePreparation, Renderer, RendererEvent, command_cancel_at_position, toast_at_position,
+};
 use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind};
 use diffo_core::{
     ApplicationCommandId, GitPrompt, PromptId, RepositoryAction, RepositoryQueryId,
@@ -17,12 +16,8 @@ use diffo_core::{
 };
 use diffo_ui::command_palette::{Command, CommandId};
 use diffo_ui::text_view::{TextRenderMode, TextSurfacePreparation};
-use diffo_ui::{PaneSplit, command_progress_style, icons, mouse_target_style, tool_areas};
-use ratatui::{
-    Frame,
-    layout::Rect,
-    widgets::{Block, Borders, Paragraph},
-};
+use diffo_ui::{PaneSplit, tool_areas};
+use ratatui::{Frame, layout::Rect};
 
 use crate::explorer::{ExplorerActivity, ExplorerEvent, ExplorerOutcome, ExplorerRequest};
 
@@ -38,6 +33,7 @@ mod full_screen;
 mod help;
 mod modal;
 mod pending_scroll;
+mod presentation;
 mod prompt;
 mod quick_open;
 mod repository_update;
@@ -47,6 +43,7 @@ use bindings::GlobalAction;
 use error_dialog::ErrorDialog;
 use modal::Modal;
 use pending_scroll::PendingScroll;
+use presentation::PresentationState;
 use prompt::{ConfirmChoice, PromptModal, prompt_button_style, prompt_layout, render_prompt};
 
 pub use command_queue::{
@@ -68,6 +65,7 @@ pub enum Activity {
 enum WorkbenchCommand {
     Diff(Message),
     Effect(WorkbenchEffect),
+    Redraw,
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -117,6 +115,7 @@ pub struct Workbench {
     pending_branch_query: Option<RepositoryQueryId>,
     pending_sync_remote_query: Option<RepositoryQueryId>,
     next_query_id: u64,
+    presentation: PresentationState,
 }
 
 struct DiffActivity {
@@ -227,6 +226,7 @@ impl Workbench {
             pending_branch_query: None,
             pending_sync_remote_query: None,
             next_query_id: 1,
+            presentation: PresentationState::new(),
         }
     }
 
@@ -267,7 +267,10 @@ impl Workbench {
     }
 
     pub fn tick(&mut self, now: Instant) {
-        self.expire_toasts(now);
+        if self.expire_toasts(now) {
+            self.request_redraw();
+        }
+        let progress_before = self.command_progress;
         if let CommandProgressState::Waiting {
             command_id,
             reveal_at,
@@ -282,8 +285,12 @@ impl Workbench {
         }
         if self.command_progress.is_visible() {
             self.command_animation_tick = self.command_animation_tick.wrapping_add(1);
+            self.request_redraw();
         } else {
             self.command_animation_tick = 0;
+        }
+        if self.command_progress != progress_before {
+            self.request_redraw();
         }
     }
 
@@ -300,61 +307,6 @@ impl Workbench {
     #[must_use]
     pub const fn full_screen(&self) -> bool {
         self.full_screen
-    }
-
-    pub fn prepare_frame(&mut self, area: Rect) -> FramePreparation {
-        if let Some(preparation) = self.prepare_full_screen(area) {
-            return preparation;
-        }
-        let content = workbench_areas(area).content;
-        self.sync_diff_pane_state();
-        match self.active {
-            Activity::Diff => self.diff.prepare_frame(content, self.pane_split),
-            Activity::Explorer => {
-                explorer_frame_preparation(&mut self.explorer, content, self.pane_split)
-            }
-        }
-    }
-
-    pub fn render(&mut self, frame: &mut Frame) {
-        let area = frame.area();
-        if self.render_full_screen(frame) {
-            return;
-        }
-        let content = workbench_areas(area).content;
-        match self.active {
-            Activity::Diff => self.diff.render(frame, content, self.pane_split),
-            Activity::Explorer => self.explorer.render(frame, content, self.pane_split),
-        }
-        render_status(frame, tool_areas(content).status, &self.diff.model);
-        self.render_full_screen_entry(frame);
-        render_pane_drag_marker(frame, tool_areas(content).content, self.pane_split);
-        render_toasts(frame, self.toasts.as_slice(), content);
-        if let Some(command) = self
-            .commands
-            .active()
-            .filter(|_| self.command_progress.is_visible())
-        {
-            render_command_progress(
-                frame,
-                CommandProgress {
-                    label: &command.label,
-                    cancelling: command.state == CommandState::Cancelling,
-                    animation_tick: self.command_animation_tick,
-                },
-                content,
-            );
-        }
-        render_activity_bar(frame, area, self.active);
-        if self.command_progress.is_visible() {
-            frame.render_widget(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .border_style(command_progress_style(self.command_animation_tick)),
-                area,
-            );
-        }
-        self.render_modal(frame, content, area);
     }
 
     pub fn handle_events(&mut self, events: &[Event], area: Rect) -> Vec<WorkbenchEffect> {
@@ -376,6 +328,10 @@ impl Workbench {
                     scroll.flush(self);
                     effects.push(effect);
                 }
+                WorkbenchCommand::Redraw => {
+                    scroll.flush(self);
+                    self.request_redraw();
+                }
             }
         }
         scroll.flush(self);
@@ -387,7 +343,7 @@ impl Workbench {
             return self.handle_modal_event(event, area);
         }
         if !self.full_screen && self.select_activity(event, area) {
-            return None;
+            return Some(WorkbenchCommand::Redraw);
         }
         let content = workbench_areas(area).content;
         let tool_captures_global_input = match self.active {
@@ -404,10 +360,10 @@ impl Workbench {
             return self.handle_full_screen_event(event, area);
         }
         if !tool_captures_global_input && self.handle_overlay_click(event, content) {
-            return None;
+            return Some(WorkbenchCommand::Redraw);
         }
         if !tool_captures_global_input && self.request_full_screen(event, area) {
-            return None;
+            return Some(WorkbenchCommand::Redraw);
         }
         if !tool_captures_global_input
             && let Event::Mouse(mouse) = event
@@ -424,7 +380,7 @@ impl Workbench {
                 crate::diff::FooterControl::Help => self.set_modal(Modal::Help),
                 crate::diff::FooterControl::Sync => return self.execute_sync(),
             }
-            return None;
+            return Some(WorkbenchCommand::Redraw);
         }
         let pane_area = tool_areas(content).content;
         if !tool_captures_global_input && let Event::Mouse(mouse) = event {
@@ -436,17 +392,17 @@ impl Workbench {
                 {
                     self.pane_split.begin_drag();
                     self.sync_diff_pane_state();
-                    return None;
+                    return Some(WorkbenchCommand::Redraw);
                 }
                 MouseEventKind::Drag(MouseButton::Left) if self.pane_split.is_dragging() => {
                     self.pane_split.drag_to(pane_area, mouse.column);
                     self.sync_diff_pane_state();
-                    return None;
+                    return Some(WorkbenchCommand::Redraw);
                 }
                 MouseEventKind::Up(MouseButton::Left) if self.pane_split.is_dragging() => {
                     self.pane_split.end_drag();
                     self.sync_diff_pane_state();
-                    return None;
+                    return Some(WorkbenchCommand::Redraw);
                 }
                 _ => {}
             }
@@ -461,7 +417,7 @@ impl Workbench {
                     self.set_modal(Modal::QuickOpen(quick_open::QuickOpen::new(paths, loading)));
                 }
             }
-            return None;
+            return Some(WorkbenchCommand::Redraw);
         }
         if self.active != Activity::Diff
             && !tool_captures_global_input
@@ -496,6 +452,9 @@ impl Workbench {
             && mouse.kind == MouseEventKind::Down(MouseButton::Left)
             && let Some(activity) = activity_at_position(area, mouse.column, mouse.row)
         {
+            if activity == self.active {
+                return false;
+            }
             self.dismiss_active_popover();
             self.active = activity;
             return true;
@@ -566,18 +525,26 @@ impl Workbench {
         if let ApplicationAction::Repository(action) = &command.action {
             let _ = self.diff.model.start_repository_action(action.clone());
         }
+        self.request_redraw();
         Some(command)
     }
 
     pub fn accept_task_result(&mut self, result: WorkbenchTaskResult) {
         match result {
             WorkbenchTaskResult::Explorer(outcome) => {
-                if let Some((title, detail)) = self.explorer.accept(outcome) {
+                let (error, changed) = self.explorer.accept(outcome);
+                if let Some((title, detail)) = error {
                     self.show_error(title, detail);
                 }
-                let (paths, loading) = self.explorer.quick_open_paths();
-                if let Some(Modal::QuickOpen(modal)) = self.modal.as_mut() {
-                    modal.install(paths, loading);
+                if changed && self.active == Activity::Explorer {
+                    self.request_redraw();
+                }
+                if changed {
+                    let (paths, loading) = self.explorer.quick_open_paths();
+                    if let Some(Modal::QuickOpen(modal)) = self.modal.as_mut() {
+                        modal.install(paths, loading);
+                        self.request_redraw();
+                    }
                 }
             }
         }
@@ -592,6 +559,25 @@ impl Workbench {
             self.close_modal();
             return None;
         }
+        let preparation_owned = matches!(
+            &message,
+            Message::SelectFile(_)
+                | Message::ScrollDiffUp
+                | Message::ScrollDiffDown
+                | Message::ScrollDiffPageUp(_)
+                | Message::ScrollDiffPageDown(_)
+                | Message::ScrollDiffVerticalBy(_)
+                | Message::SetDiffScroll(_)
+                | Message::JumpDiffToPosition(_)
+                | Message::SetDiffHorizontalScroll(_)
+                | Message::ScrollDiffLeft
+                | Message::ScrollDiffRight
+                | Message::ScrollDiffHorizontalBy(_)
+                | Message::JumpToPreviousChange
+                | Message::JumpToNextChange
+                | Message::ToggleDiffView
+        );
+        let model_before = self.diff.model.clone();
         let commit_submission = message == Message::ExecuteCommit;
         match &message {
             Message::SnapshotLoaded(snapshot) | Message::OperationCompleted(_, _, snapshot) => {
@@ -599,7 +585,11 @@ impl Workbench {
             }
             _ => {}
         }
-        match update(&mut self.diff.model, message) {
+        let effect = update(&mut self.diff.model, message);
+        if !preparation_owned && self.diff.model != model_before {
+            self.request_redraw();
+        }
+        match effect {
             Some(Effect::Repository(action)) => {
                 if commit_submission {
                     self.close_modal();
@@ -664,6 +654,7 @@ impl Workbench {
 
     pub fn show_toast(&mut self, kind: ToastKind, message: impl Into<String>) {
         self.toasts.show(kind, message);
+        self.request_redraw();
     }
 
     pub fn show_error(&mut self, title: impl Into<String>, detail: impl Into<String>) {
@@ -677,16 +668,6 @@ impl Workbench {
             return;
         }
         self.set_modal(Modal::Error(error));
-    }
-}
-
-fn render_pane_drag_marker(frame: &mut Frame, area: Rect, split: PaneSplit) {
-    let marker = split.seam_marker_area(area);
-    if !marker.is_empty() {
-        frame.render_widget(
-            Paragraph::new(icons::PANE_DRAG).style(mouse_target_style()),
-            marker,
-        );
     }
 }
 

@@ -43,6 +43,7 @@ impl Workbench {
             );
         } else if let Some(Modal::SyncRemotePicker(picker)) = self.modal.as_mut() {
             picker.install(remotes);
+            self.request_redraw();
         }
     }
 

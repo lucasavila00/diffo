@@ -18,6 +18,8 @@ mod navigation;
 mod network;
 #[path = "git_operations/overlays.rs"]
 mod overlays;
+#[path = "git_operations/quiet.rs"]
+mod quiet;
 #[path = "git_operations/scrolling.rs"]
 mod scrolling;
 #[path = "git_operations/ssh.rs"]

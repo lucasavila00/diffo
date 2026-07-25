@@ -131,6 +131,18 @@ impl DiffoScreen {
     /// Returns an error when the selector is missing, ambiguous, or input fails.
     pub fn click(&mut self, selector: &Selector) -> Result<&mut Self> {
         let (column, row) = self.wait_for_position(selector)?;
+        self.click_at(column, row)
+    }
+
+    /// Sends one real terminal mouse click at a zero-based cell position.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the position is outside the test terminal or input fails.
+    pub fn click_at(&mut self, column: u16, row: u16) -> Result<&mut Self> {
+        if column >= COLUMNS || row >= ROWS {
+            bail!("click position ({column}, {row}) is outside the test terminal");
+        }
         let x = column.saturating_add(1);
         let y = row.saturating_add(1);
         self.write(format!("\x1b[<0;{x};{y}M\x1b[<0;{x};{y}m").as_bytes())?;
@@ -379,6 +391,58 @@ impl DiffoScreen {
     pub fn raw_output(&mut self) -> &[u8] {
         self.pump_available();
         &self.raw_output
+    }
+
+    /// Waits until Diffo has emitted no terminal bytes for the requested interval.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the process exits or output never becomes quiet.
+    pub fn wait_for_quiet(&mut self, interval: Duration) -> Result<&mut Self> {
+        let deadline = Instant::now() + TIMEOUT;
+        let mut quiet_until = Instant::now() + interval;
+        loop {
+            let now = Instant::now();
+            if now >= quiet_until {
+                return Ok(self);
+            }
+            if now >= deadline {
+                bail!("Diffo terminal output did not become quiet within five seconds");
+            }
+            let wait = quiet_until
+                .saturating_duration_since(now)
+                .min(deadline.saturating_duration_since(now));
+            match self.output.recv_timeout(wait) {
+                Ok(bytes) => {
+                    self.process_output(&bytes);
+                    quiet_until = Instant::now() + interval;
+                }
+                Err(RecvTimeoutError::Timeout) => return Ok(self),
+                Err(RecvTimeoutError::Disconnected) => {
+                    bail!("Diffo PTY output stopped before becoming quiet")
+                }
+            }
+        }
+    }
+
+    /// Proves that Diffo emits no terminal bytes for the requested interval.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when output is received or the process exits.
+    pub fn expect_quiet(&mut self, interval: Duration) -> Result<&mut Self> {
+        self.pump_available();
+        match self.output.recv_timeout(interval) {
+            Err(RecvTimeoutError::Timeout) => Ok(self),
+            Ok(bytes) => {
+                self.process_output(&bytes);
+                bail!(
+                    "Diffo emitted {} bytes during a quiet interval",
+                    bytes.len()
+                )
+            }
+            Err(RecvTimeoutError::Disconnected) => bail!("Diffo PTY output stopped"),
+        }
     }
 
     fn locate(&self, selector: &Selector) -> Result<Option<(u16, u16)>> {

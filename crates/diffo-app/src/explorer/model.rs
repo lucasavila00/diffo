@@ -18,7 +18,7 @@ pub(crate) enum GutterMarker {
     Conflict,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Viewer {
     pub(crate) path: PathBuf,
     pub(crate) title: Box<Line<'static>>,
@@ -86,11 +86,15 @@ impl ExplorerModel {
         true
     }
 
-    pub(crate) fn install_paths(&mut self, mut paths: Vec<PathBuf>) {
+    pub(crate) fn install_paths(&mut self, mut paths: Vec<PathBuf>) -> bool {
         paths.sort();
         paths.dedup();
+        if self.paths == paths {
+            return false;
+        }
         self.paths = paths;
         self.rebuild();
+        true
     }
 
     fn rebuild(&mut self) {

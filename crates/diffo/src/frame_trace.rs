@@ -12,6 +12,16 @@ use diffo_app::FramePreparation;
 use diffo_app::Model;
 use serde::Serialize;
 
+pub fn input_events(events: &[crossterm::event::Event], redact: bool) -> Vec<String> {
+    if redact {
+        return events
+            .iter()
+            .map(|_| "GitPrompt([redacted])".to_owned())
+            .collect();
+    }
+    events.iter().map(|event| format!("{event:?}")).collect()
+}
+
 pub struct FrameTracer {
     started: Instant,
     next_frame: u64,
@@ -22,6 +32,7 @@ pub struct FrameTracer {
 #[derive(Debug, Serialize)]
 pub struct FrameRecord {
     frame: u64,
+    presentation: Presentation,
     input_events: Vec<String>,
     protected_push_prompt: bool,
     visible_modal: Option<&'static str>,
@@ -45,6 +56,12 @@ pub struct FrameRecord {
     draw_start_us: u64,
     draw_end_us: u64,
     text_surface: Option<TextSurfaceRecord>,
+}
+
+#[derive(Clone, Copy, Debug, Serialize)]
+enum Presentation {
+    Presented,
+    Suppressed,
 }
 
 #[derive(Debug, Serialize)]
@@ -90,6 +107,7 @@ impl FrameRecord {
     ) -> Self {
         Self {
             frame: 0,
+            presentation: Presentation::Presented,
             input_events,
             protected_push_prompt,
             visible_modal,
@@ -179,6 +197,36 @@ impl FrameRecord {
                 }),
         }
     }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn suppressed(
+        input_events: Vec<String>,
+        protected_push_prompt: bool,
+        visible_modal: Option<&'static str>,
+        refresh_generation: u64,
+        model: &Model,
+        preparation: &FramePreparation,
+        scroll_before: (usize, usize),
+        update_start_us: u64,
+        event_read_us: Option<u64>,
+        timestamp_us: u64,
+    ) -> Self {
+        let mut record = Self::new(
+            input_events,
+            protected_push_prompt,
+            visible_modal,
+            refresh_generation,
+            model,
+            preparation,
+            scroll_before,
+            update_start_us,
+            event_read_us,
+            timestamp_us,
+            timestamp_us,
+        );
+        record.presentation = Presentation::Suppressed;
+        record
+    }
 }
 
 impl FrameTracer {
@@ -211,7 +259,9 @@ impl FrameTracer {
 
     pub fn record(&mut self, mut record: FrameRecord) {
         record.frame = self.next_frame;
-        self.next_frame = self.next_frame.saturating_add(1);
+        if matches!(record.presentation, Presentation::Presented) {
+            self.next_frame = self.next_frame.saturating_add(1);
+        }
         if let Some(sender) = self.sender.as_ref() {
             match sender.try_send(record) {
                 Ok(()) | Err(TrySendError::Full(_)) => {}

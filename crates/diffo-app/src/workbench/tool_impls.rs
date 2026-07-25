@@ -31,14 +31,11 @@ impl Tool for DiffActivity {
     ) -> Option<WorkbenchCommand> {
         self.renderer
             .map_event(event, &self.model, area)
-            .and_then(|event| match event {
-                RendererEvent::Consumed => None,
-                RendererEvent::Message(message) => Some(WorkbenchCommand::Diff(message)),
+            .map(|event| match event {
+                RendererEvent::Consumed => WorkbenchCommand::Redraw,
+                RendererEvent::Message(message) => WorkbenchCommand::Diff(message),
                 RendererEvent::CopyPath { path, absolute } => {
-                    Some(WorkbenchCommand::Effect(WorkbenchEffect::CopyPath {
-                        path,
-                        absolute,
-                    }))
+                    WorkbenchCommand::Effect(WorkbenchEffect::CopyPath { path, absolute })
                 }
             })
     }
@@ -84,13 +81,10 @@ impl Tool for ExplorerActivity {
         area: Rect,
         split: PaneSplit,
     ) -> Option<WorkbenchCommand> {
-        ExplorerActivity::handle_event(self, event, area, split).and_then(|event| match event {
-            ExplorerEvent::Consumed => None,
+        ExplorerActivity::handle_event(self, event, area, split).map(|event| match event {
+            ExplorerEvent::Consumed => WorkbenchCommand::Redraw,
             ExplorerEvent::CopyPath { path, absolute } => {
-                Some(WorkbenchCommand::Effect(WorkbenchEffect::CopyPath {
-                    path,
-                    absolute,
-                }))
+                WorkbenchCommand::Effect(WorkbenchEffect::CopyPath { path, absolute })
             }
         })
     }

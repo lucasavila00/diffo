@@ -36,7 +36,7 @@ mod tool_tasks;
 mod update_tasks;
 
 use diffo_app::workbench::{PromptResponse, Workbench, WorkbenchEffect};
-use frame_trace::{FrameRecord, FrameTracer};
+use frame_trace::{FrameRecord, FrameTracer, input_events as trace_input_events};
 use tool_tasks::ToolTasks;
 use update_tasks::UpdateTasks;
 
@@ -298,7 +298,9 @@ fn run(
         workbench.diff_model().diff_horizontal_scroll,
     );
     let update_start_us = tracer.elapsed_us();
-    let (preparation, draw_start_us, draw_end_us) = draw_frame(terminal, workbench, tracer)?;
+    let preparation = prepare_frame(terminal, workbench)?;
+    let (draw_start_us, draw_end_us) = draw_frame(terminal, workbench, tracer)?;
+    let _ = workbench.take_redraw_request();
     tracer.record(FrameRecord::new(
         Vec::new(),
         workbench.protected_push_prompt_open(),
@@ -312,6 +314,7 @@ fn run(
         draw_start_us,
         draw_end_us,
     ));
+    let mut pending_trace_events = Vec::new();
     while !workbench.should_quit() && !shutdown.load(Ordering::Relaxed) {
         workbench.tick(Instant::now());
         let poll_timeout = if workbench.is_preparing()
@@ -332,6 +335,7 @@ fn run(
             }
         }
         let input_events = trace_input_events(&events, workbench.secret_prompt_open());
+        pending_trace_events.extend(input_events);
         let input_time = Instant::now();
         events.retain(|event| wheel_friction.accepts(event, input_time));
         let scroll_before = (
@@ -349,9 +353,28 @@ fn run(
             repository_service,
             update_tasks,
         )?;
-        let (preparation, draw_start_us, draw_end_us) = draw_frame(terminal, workbench, tracer)?;
+        let preparation = prepare_frame(terminal, workbench)?;
+        let resized = events
+            .iter()
+            .any(|event| matches!(event, Event::Resize(_, _)));
+        let redraw_requested = workbench.take_redraw_request();
+        if !resized && !redraw_requested {
+            if !pending_trace_events.is_empty() {
+                record_suppressed_input(
+                    tracer,
+                    workbench,
+                    &preparation,
+                    &mut pending_trace_events,
+                    scroll_before,
+                    update_start_us,
+                    event_read_us,
+                );
+            }
+            continue;
+        }
+        let (draw_start_us, draw_end_us) = draw_frame(terminal, workbench, tracer)?;
         tracer.record(FrameRecord::new(
-            input_events,
+            std::mem::take(&mut pending_trace_events),
             workbench.protected_push_prompt_open(),
             workbench.modal_trace_label(),
             workbench.repository_generation(),
@@ -372,28 +395,49 @@ fn run(
     Ok(())
 }
 
-fn trace_input_events(events: &[Event], redact: bool) -> Vec<String> {
-    if redact {
-        return events
-            .iter()
-            .map(|_| "GitPrompt([redacted])".to_owned())
-            .collect();
-    }
-    events.iter().map(|event| format!("{event:?}")).collect()
+#[allow(clippy::too_many_arguments)]
+fn record_suppressed_input(
+    tracer: &mut FrameTracer,
+    workbench: &Workbench,
+    preparation: &diffo_app::FramePreparation,
+    input_events: &mut Vec<String>,
+    scroll_before: (usize, usize),
+    update_start_us: u64,
+    event_read_us: Option<u64>,
+) {
+    let timestamp_us = tracer.elapsed_us();
+    tracer.record(FrameRecord::suppressed(
+        std::mem::take(input_events),
+        workbench.protected_push_prompt_open(),
+        workbench.modal_trace_label(),
+        workbench.repository_generation(),
+        workbench.diff_model(),
+        preparation,
+        scroll_before,
+        update_start_us,
+        event_read_us,
+        timestamp_us,
+    ));
 }
 
 fn draw_frame(
     terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
     workbench: &mut Workbench,
     tracer: &FrameTracer,
-) -> Result<(diffo_app::FramePreparation, u64, u64)> {
-    let size = terminal.size()?;
-    let area = ratatui::layout::Rect::new(0, 0, size.width, size.height);
-    let preparation = workbench.prepare_frame(area);
+) -> Result<(u64, u64)> {
     let draw_start_us = tracer.elapsed_us();
     terminal.draw(|frame| workbench.render(frame))?;
     let draw_end_us = tracer.elapsed_us();
-    Ok((preparation, draw_start_us, draw_end_us))
+    Ok((draw_start_us, draw_end_us))
+}
+
+fn prepare_frame(
+    terminal: &Terminal<CrosstermBackend<io::Stdout>>,
+    workbench: &mut Workbench,
+) -> Result<diffo_app::FramePreparation> {
+    let size = terminal.size()?;
+    let area = ratatui::layout::Rect::new(0, 0, size.width, size.height);
+    Ok(workbench.prepare_frame(area))
 }
 
 fn dispatch_events(

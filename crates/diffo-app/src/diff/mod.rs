@@ -510,7 +510,14 @@ impl Renderer {
             }
             return self
                 .navigate_file_pickers(command, model)
-                .or(Some(RendererEvent::Consumed));
+                .filter(|event| match event {
+                    RendererEvent::Message(crate::diff::Message::SelectFile(file)) => {
+                        model.selected.as_ref() != Some(file)
+                    }
+                    RendererEvent::Consumed
+                    | RendererEvent::Message(_)
+                    | RendererEvent::CopyPath { .. } => true,
+                });
         }
         let Event::Mouse(_) = event else {
             return None;

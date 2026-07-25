@@ -23,6 +23,7 @@ version = "0.1.0"
 anyhow = "1.0"
 base64 = "0.22"
 crossterm = "0.29"
+criterion = "0.7"
 diffo-core = { path = "crates/diffo-core" }
 diffo-diff = { path = "crates/diffo-diff" }
 diffo-app = { path = "crates/diffo-app" }

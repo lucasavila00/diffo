@@ -11,7 +11,12 @@ diffo-diff.workspace = true
 two-face.workspace = true
 
 [dev-dependencies]
+criterion.workspace = true
 insta.workspace = true
+
+[[bench]]
+name = "highlight"
+harness = false
 
 [lints]
 workspace = true

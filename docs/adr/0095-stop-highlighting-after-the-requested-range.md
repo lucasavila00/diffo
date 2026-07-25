@@ -2,9 +2,6 @@
 
 Status: Accepted
 
-Evaluates
-[Stop scanning after the requested window](../highlight-performance/10-stop-after-window.md).
-
 ## Problem
 
 Diff lines are ordered by their old and new line numbers. The highlighting loop

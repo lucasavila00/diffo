@@ -2,9 +2,6 @@
 
 Status: Accepted
 
-Evaluates
-[Skip an unrequested diff side](../highlight-performance/11-skip-unrequested-side.md).
-
 ## Problem
 
 An added or deleted file can request highlighting for only one side. The highlighter

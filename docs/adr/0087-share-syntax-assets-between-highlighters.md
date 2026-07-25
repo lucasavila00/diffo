@@ -2,9 +2,6 @@
 
 Status: Accepted
 
-Evaluates
-[Lazy syntax initialization](../highlight-performance/01-lazy-syntax-initialization.md).
-
 ## Problem
 
 Constructing a `SyntaxHighlighter` loaded and decoded the same bundled language

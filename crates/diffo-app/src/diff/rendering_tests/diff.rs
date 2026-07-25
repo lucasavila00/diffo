@@ -1,7 +1,7 @@
 use super::*;
 use crate::diff::prepare::{
     prepare_diff,
-    state::{DiffKey, HIGHLIGHT_PREFETCH_VIEWPORTS, PrepareOutcome, PrepareRequest},
+    state::{DiffKey, PrepareOutcome, PrepareRequest},
 };
 
 const PREPARATION_TIMEOUT: Duration = Duration::from_secs(5);
@@ -293,7 +293,7 @@ fn maps_inset_scrollbar_clicks_to_absolute_positions() {
         row: vertical.bottom().saturating_sub(1),
         modifiers: KeyModifiers::NONE,
     });
-    let Some(RendererEvent::Message(crate::diff::Message::SetDiffScroll(vertical_target))) =
+    let Some(RendererEvent::Message(crate::diff::Message::JumpDiffToPosition(vertical_target))) =
         renderer.map_event(&vertical_click, &model, Rect::new(0, 0, 100, 30))
     else {
         panic!("vertical scrollbar did not return an absolute target");
@@ -319,13 +319,14 @@ fn maps_inset_scrollbar_clicks_to_absolute_positions() {
         ))
             if position == horizontal_maximum
     ));
-    model.diff_scroll = vertical_target;
-    let skeleton = renderer.prepare_frame(&model, Rect::new(0, 0, 100, 30));
-    assert!(skeleton.viewport_transition.is_none());
-    if !skeleton.syntax_ready {
-        wait_for_syntax_ready(&mut renderer, &model);
-    }
-    assert_eq!(model.diff_scroll, vertical_target);
+    let old_scroll = model.diff_scroll;
+    let pending = renderer.prepare_frame(&model, Rect::new(0, 0, 100, 30));
+    assert!(pending.syntax_ready);
+    let committed = pending
+        .viewport_transition
+        .unwrap_or_else(|| wait_for_viewport_transition(&mut renderer, &model));
+    assert_eq!(model.diff_scroll, old_scroll);
+    assert_eq!(committed.vertical, vertical_target);
 }
 
 #[test]
@@ -362,60 +363,60 @@ fn horizontal_scrollbar_tracks_only_the_visible_vertical_slice() {
 }
 
 #[test]
-fn uncached_scroll_uses_one_viewport_and_skeleton_until_syntax_is_ready() {
-    let mut model = model();
+fn uncached_scroll_keeps_the_committed_viewport_until_syntax_is_ready_in_both_directions() {
     let mut patch = String::from("@@ -1,700 +1,700 @@\n");
     for line in 1..=700 {
-        if matches!(line, 2 | 620) {
+        if line == 350 {
             writeln!(patch, "-let value_{line} = 0;").unwrap();
             writeln!(patch, "+let value_{line} = {line};").unwrap();
         } else {
             writeln!(patch, " let value_{line} = {line};").unwrap();
         }
     }
-    model.snapshot.files[0].unstaged.as_mut().unwrap().text = patch;
-    let mut renderer = Renderer::new();
     let area = Rect::new(0, 0, 100, 30);
-    diff_lines(&mut renderer, &model, 0);
+    for target in [100, 600] {
+        let mut model = model();
+        model.snapshot.files[0]
+            .unstaged
+            .as_mut()
+            .unwrap()
+            .text
+            .clone_from(&patch);
+        let mut renderer = Renderer::new();
+        let initial = renderer.prepare_frame(&model, area);
+        let initial = initial
+            .viewport_transition
+            .unwrap_or_else(|| wait_for_viewport_transition(&mut renderer, &model));
+        model.set_diff_viewport(initial.vertical, initial.horizontal);
+        if target == 100 {
+            assert!(initial.vertical > target);
+        } else {
+            assert!(initial.vertical < target);
+        }
 
-    model.diff_scroll = 600;
-    let first = renderer.prepare_frame(&model, area);
-    assert!(!first.syntax_ready);
-    assert!(first.viewport_transition.is_none());
-    let skeleton = renderer.diff_skeleton_lines(80, model.diff_scroll, 20);
-    assert!(!skeleton.is_empty());
-    insta::assert_debug_snapshot!("uncached_skeleton", skeleton);
-    let backend = TestBackend::new(100, 30);
-    let mut terminal = Terminal::new(backend).unwrap();
-    terminal
-        .draw(|frame| renderer.render(frame, &model))
-        .unwrap();
-    let changes = &renderer.highlighted.as_ref().unwrap().inline_changes;
-    let marker_row = renderer.scrollbars.vertical_area.y
-        + overview_position(
-            changes[1].first,
-            renderer.scrollbars.rows,
-            renderer.scrollbars.vertical_area.height,
+        assert_eq!(
+            renderer.vertical_message(crate::diff::Message::SetDiffScroll(target), &model),
+            crate::diff::Message::JumpDiffToPosition(target)
         );
-    let marker_column = renderer.scrollbars.vertical_area.x.saturating_add(1);
-    assert_eq!(
-        terminal.backend().buffer()[(marker_column, marker_row)].symbol(),
-        diffo_ui::icons::CHANGE_MARKER
-    );
-    assert!(renderer.hunk_buttons.previous.is_some());
+        let pending = renderer.prepare_frame(&model, area);
+        assert!(pending.viewport_transition.is_none());
+        assert!(
+            pending.syntax_ready,
+            "the committed viewport must remain fully rendered"
+        );
+        assert_eq!(model.diff_scroll, initial.vertical);
+        assert!(
+            renderer
+                .diff_lines(&model, 80, model.diff_scroll, 20)
+                .iter()
+                .any(|line| line.width() > 7),
+            "pending scroll rendered gutter-only skeleton rows"
+        );
 
-    model.diff_scroll = 650;
-    let newest = renderer.prepare_frame(&model, area);
-    assert!(!newest.syntax_ready);
-    wait_for_syntax_ready(&mut renderer, &model);
-    assert_eq!(model.diff_scroll, 650);
-    assert!(renderer.syntax_ready_for_viewport(DiffViewMode::Inline, 650));
-
-    let computations = renderer.highlight_computations;
-    model.diff_scroll = 2;
-    let revisited = renderer.prepare_frame(&model, area);
-    assert!(revisited.syntax_ready);
-    assert_eq!(renderer.highlight_computations, computations);
+        let committed = wait_for_viewport_transition(&mut renderer, &model);
+        assert_eq!(committed.vertical, target);
+        assert!(renderer.syntax_ready_for_viewport(DiffViewMode::Inline, target));
+    }
 }
 
 #[test]

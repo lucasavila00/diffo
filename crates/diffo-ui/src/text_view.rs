@@ -7,6 +7,7 @@ use ratatui::{
     text::Line,
     widgets::{Paragraph, ScrollbarOrientation},
 };
+use std::ops::Range;
 
 use crate::{design, maximum_scroll, render_scrollbar, scroll_offset, scrollbar_position, theme};
 
@@ -39,6 +40,11 @@ pub struct TextSurfacePreparation {
 }
 
 pub const LINE_SCROLL_ROWS: i64 = 4;
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct PreparedVerticalScroll {
+    requested: Option<usize>,
+}
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct Viewport {
@@ -204,6 +210,72 @@ impl Viewport {
     }
 }
 
+impl PreparedVerticalScroll {
+    pub fn request(
+        &mut self,
+        command: ScrollCommand,
+        committed: usize,
+        metrics: ViewportMetrics,
+    ) -> Option<usize> {
+        if matches!(
+            command,
+            ScrollCommand::Columns(_) | ScrollCommand::Horizontal(_)
+        ) {
+            return None;
+        }
+        let mut viewport = Viewport {
+            vertical: self.requested.unwrap_or(committed),
+            horizontal: 0,
+        };
+        viewport.apply(command, metrics);
+        self.requested = Some(viewport.vertical);
+        self.requested
+    }
+
+    #[must_use]
+    pub const fn requested(self) -> Option<usize> {
+        self.requested
+    }
+
+    pub fn take_ready(&mut self, ready: bool) -> Option<usize> {
+        if ready { self.requested.take() } else { None }
+    }
+
+    pub fn clear(&mut self) {
+        self.requested = None;
+    }
+}
+
+#[must_use]
+pub fn centered_window(
+    target: usize,
+    total_rows: usize,
+    viewport_rows: usize,
+    window_viewports: usize,
+) -> Range<usize> {
+    let viewport_rows = viewport_rows.max(1);
+    let window_viewports = window_viewports.max(1);
+    let window_rows = viewport_rows.saturating_mul(window_viewports);
+    let rows_before = viewport_rows.saturating_mul(window_viewports / 2);
+    let start = target
+        .saturating_sub(rows_before)
+        .min(total_rows.saturating_sub(window_rows));
+    start..start.saturating_add(window_rows).min(total_rows)
+}
+
+#[must_use]
+pub fn syntax_prefetch_viewports(
+    committed: usize,
+    requested: usize,
+    viewport_rows: usize,
+) -> usize {
+    match requested.abs_diff(committed) {
+        distance if distance >= viewport_rows.max(1) => 13,
+        1.. => 7,
+        0 => 3,
+    }
+}
+
 #[must_use]
 pub fn viewport_metrics(
     area: Rect,
@@ -288,6 +360,44 @@ mod tests {
         assert_eq!(viewport.vertical, 30);
         viewport.apply(ScrollCommand::Lines(-99), metrics);
         assert_eq!(viewport.vertical, 0);
+    }
+
+    #[test]
+    fn prepared_scroll_accumulates_reverses_and_waits_for_readiness() {
+        let metrics = ViewportMetrics {
+            viewport_rows: 10,
+            maximum_vertical: 100,
+            ..ViewportMetrics::default()
+        };
+        let mut scroll = PreparedVerticalScroll::default();
+
+        assert_eq!(
+            scroll.request(ScrollCommand::Page(-1), 50, metrics),
+            Some(40)
+        );
+        assert_eq!(
+            scroll.request(ScrollCommand::Page(-1), 50, metrics),
+            Some(30)
+        );
+        assert_eq!(
+            scroll.request(ScrollCommand::Lines(4), 50, metrics),
+            Some(34)
+        );
+        assert_eq!(scroll.take_ready(false), None);
+        assert_eq!(scroll.requested(), Some(34));
+        assert_eq!(scroll.take_ready(true), Some(34));
+        assert_eq!(scroll.requested(), None);
+    }
+
+    #[test]
+    fn centered_syntax_windows_and_prefetch_sizes_ignore_direction() {
+        assert_eq!(centered_window(50, 100, 10, 3), 40..70);
+        assert_eq!(centered_window(0, 100, 10, 3), 0..30);
+        assert_eq!(centered_window(95, 100, 10, 3), 70..100);
+        assert_eq!(syntax_prefetch_viewports(50, 46, 10), 7);
+        assert_eq!(syntax_prefetch_viewports(50, 54, 10), 7);
+        assert_eq!(syntax_prefetch_viewports(50, 40, 10), 13);
+        assert_eq!(syntax_prefetch_viewports(50, 60, 10), 13);
     }
 
     #[test]

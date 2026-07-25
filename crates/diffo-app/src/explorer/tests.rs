@@ -381,7 +381,7 @@ fn horizontal_pan_clamps_to_the_visible_code_width_and_returns_to_zero() {
 }
 
 #[test]
-fn uncached_scroll_uses_the_model_viewport_until_coverage_arrives() {
+fn uncached_scroll_keeps_the_committed_viewport_until_coverage_arrives() {
     let mut explorer = ExplorerActivity::new(&RepositorySnapshot::default());
     let path = PathBuf::from("large.rs");
     let lines = (1..=100)
@@ -400,8 +400,9 @@ fn uncached_scroll_uses_the_model_viewport_until_coverage_arrives() {
     explorer.viewport_rows = 10;
 
     explorer.scroll_viewer(40);
-    assert_eq!(explorer.model.viewer_scroll, 40);
-    assert!(!explorer.viewer_syntax_ready());
+    assert_eq!(explorer.model.viewer_scroll, 0);
+    assert_eq!(explorer.vertical_scroll.requested(), Some(40));
+    assert!(explorer.viewer_syntax_ready());
     let request_id = explorer.latest_file;
 
     explorer.accept(ExplorerOutcome::File {
@@ -418,8 +419,10 @@ fn uncached_scroll_uses_the_model_viewport_until_coverage_arrives() {
             message: None,
         }),
     });
+    explorer.prepare_viewer_scroll();
 
     assert_eq!(explorer.model.viewer_scroll, 40);
+    assert_eq!(explorer.vertical_scroll.requested(), None);
     assert!(explorer.viewer_syntax_ready());
     assert!(
         explorer
@@ -433,8 +436,42 @@ fn uncached_scroll_uses_the_model_viewport_until_coverage_arrives() {
     );
 
     explorer.scroll_viewer(-40);
+    assert_eq!(explorer.model.viewer_scroll, 0);
     assert!(explorer.viewer_syntax_ready());
     assert!(explorer.pending_path.is_none());
+}
+
+#[test]
+fn cold_scroll_targets_accumulate_and_reverse_without_moving_the_committed_viewport() {
+    let mut explorer = ExplorerActivity::new(&RepositorySnapshot::default());
+    let path = PathBuf::from("large.rs");
+    explorer.model.viewer = Some(Viewer {
+        path,
+        title: Box::new(Line::raw("  large.rs")),
+        lines: (1..=200).map(|line| format!("line {line}")).collect(),
+        markers: HashMap::new(),
+        highlighted: HashMap::new(),
+        coverage: vec![diffo_highlight::LineRange {
+            start: 91,
+            end: 120,
+        }],
+        syntax_eligible: true,
+        message: None,
+    });
+    explorer.model.viewer_scroll = 100;
+    explorer.viewport_rows = 10;
+
+    explorer.scroll_viewer(-40);
+    assert_eq!(explorer.model.viewer_scroll, 100);
+    assert_eq!(explorer.vertical_scroll.requested(), Some(60));
+
+    explorer.scroll_viewer(-20);
+    assert_eq!(explorer.model.viewer_scroll, 100);
+    assert_eq!(explorer.vertical_scroll.requested(), Some(40));
+
+    explorer.scroll_viewer(80);
+    assert_eq!(explorer.model.viewer_scroll, 100);
+    assert_eq!(explorer.vertical_scroll.requested(), Some(120));
 }
 
 #[test]

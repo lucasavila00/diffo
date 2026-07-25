@@ -67,15 +67,18 @@ use view::style::{
 };
 
 use prepare::state::{
-    ChangeTarget, DiffKey, DiffViewportMetrics, HIGHLIGHT_PREFETCH_VIEWPORTS, HighlightCache,
-    HunkButtonMetrics, MAX_SYNC_BYTES, MAX_SYNC_LINES, PREPARED_BUFFER_CACHE_SIZE, PrepareCommit,
-    PrepareOutcome, PrepareRequest, ScrollAnchor, ScrollbarAxis, ScrollbarMetrics,
+    ChangeTarget, DiffKey, DiffViewportMetrics, HighlightCache, HunkButtonMetrics, MAX_SYNC_BYTES,
+    MAX_SYNC_LINES, PREPARED_BUFFER_CACHE_SIZE, PrepareCommit, PrepareOutcome, PrepareRequest,
+    ScrollAnchor, ScrollbarAxis, ScrollbarMetrics,
 };
 
 pub use diffo_highlight::{
     HIGHLIGHT_LOOKBEHIND_LINES, MAX_HIGHLIGHT_BYTES_PER_SIDE, MAX_HIGHLIGHT_FILE_LINES,
 };
-use diffo_ui::text_view::{LINE_SCROLL_ROWS, TextRenderMode, TextSurface, TextSurfacePreparation};
+use diffo_ui::text_view::{
+    LINE_SCROLL_ROWS, TextRenderMode, TextSurface, TextSurfacePreparation,
+    syntax_prefetch_viewports,
+};
 pub use diffo_ui::{change_kind_style, plain_syntax_spans, terminal_safe_text};
 pub use prepare::state::{FramePreparation, Renderer, ViewportTransition};
 
@@ -151,9 +154,9 @@ impl Renderer {
     ) -> FramePreparation {
         let requested = self.requested_key(model);
         self.requested.clone_from(&requested);
-        if self.requested_navigation_target.is_some() && requested.as_ref() != self.displayed_key()
+        if self.vertical_scroll.requested().is_some() && requested.as_ref() != self.displayed_key()
         {
-            self.requested_navigation_target = None;
+            self.vertical_scroll.clear();
         }
         let displayed_before = self.displayed_key().cloned();
         let anchor = requested.as_ref().and_then(|requested| {
@@ -167,12 +170,16 @@ impl Renderer {
         } else {
             usize::from(design::panel_content_extent(diff_area.height))
         };
-        let prefetch_viewports = self.update_prefetch(model.diff_scroll);
         let target_scroll = self
             .navigation_preparation_target(requested.as_ref(), model.diff_view_mode)
             .or_else(|| {
                 self.syntax_target(requested.as_ref(), model.diff_view_mode, model.diff_scroll)
             });
+        let prefetch_viewports = syntax_prefetch_viewports(
+            model.diff_scroll,
+            target_scroll.unwrap_or(model.diff_scroll),
+            self.diff_viewport_rows,
+        );
         let commit = self.prepare_requested(
             requested.as_ref(),
             self.diff_viewport_rows,
@@ -294,11 +301,10 @@ impl Renderer {
                 };
                 if let Some(axis) = axis {
                     self.scrollbar_drag = Some(axis);
-                    self.requested_navigation_target = None;
                     let message = self.scrollbar_message(axis, mouse.column, mouse.row);
-                    return Some(RendererEvent::Message(Self::vertical_message(
-                        message, model,
-                    )));
+                    return Some(RendererEvent::Message(
+                        self.vertical_message(message, model),
+                    ));
                 }
             }
         }
@@ -337,15 +343,9 @@ impl Renderer {
             }
             _ => return None,
         };
-        if matches!(
-            message,
-            Message::ScrollDiffPageUp(_)
-                | Message::ScrollDiffPageDown(_)
-                | Message::ScrollDiffVerticalBy(_)
-        ) {
-            self.requested_navigation_target = None;
-        }
-        Some(RendererEvent::Message(message))
+        Some(RendererEvent::Message(
+            self.vertical_message(message, model),
+        ))
     }
 
     fn prepare_file_pickers(&mut self, model: &Model, area: Rect) {
@@ -411,16 +411,6 @@ impl Renderer {
         }
     }
 
-    fn update_prefetch(&mut self, current_scroll: usize) -> usize {
-        let viewports = highlight_prefetch_viewports(
-            self.previous_diff_scroll,
-            current_scroll,
-            self.diff_viewport_rows,
-        );
-        self.previous_diff_scroll = current_scroll;
-        viewports
-    }
-
     #[must_use]
     pub fn is_preparing(&self) -> bool {
         self.requested.as_ref() != self.displayed_key() || !self.submitted.is_empty()
@@ -452,10 +442,10 @@ impl Renderer {
                 if mouse.kind == MouseEventKind::Down(MouseButton::Left)
                     && let Some(change) = self.change_at_marker(mouse.column, mouse.row, model)
                 {
-                    self.requested_navigation_target = Some(change);
-                    return Some(RendererEvent::Message(
-                        crate::diff::Message::JumpDiffToPosition(change),
-                    ));
+                    return Some(RendererEvent::Message(self.vertical_message(
+                        crate::diff::Message::SetDiffScroll(change),
+                        model,
+                    )));
                 }
                 let axis = if mouse.kind == MouseEventKind::Down(MouseButton::Left) {
                     self.scrollbar_at(mouse.column, mouse.row)
@@ -465,42 +455,28 @@ impl Renderer {
                 if let Some(axis) = axis {
                     self.scrollbar_drag = Some(axis);
                     let message = self.scrollbar_message(axis, mouse.column, mouse.row);
-                    self.requested_navigation_target = None;
-                    return Some(RendererEvent::Message(Self::vertical_message(
-                        message, model,
-                    )));
+                    return Some(RendererEvent::Message(
+                        self.vertical_message(message, model),
+                    ));
                 }
             }
         }
         let message = match change_button_action.or_else(|| input::map_event(event, model, area)) {
             Some(crate::diff::Message::JumpToPreviousChange) => {
                 self.change_jump(model, area, false).map(|target| {
-                    self.requested_navigation_target = Some(target);
-                    crate::diff::Message::JumpDiffToPosition(target)
+                    self.vertical_message(crate::diff::Message::SetDiffScroll(target), model)
                 })
             }
             Some(crate::diff::Message::JumpToNextChange) => {
                 self.change_jump(model, area, true).map(|target| {
-                    self.requested_navigation_target = Some(target);
-                    crate::diff::Message::JumpDiffToPosition(target)
+                    self.vertical_message(crate::diff::Message::SetDiffScroll(target), model)
                 })
             }
             message => message,
         }?;
-        if matches!(
-            message,
-            crate::diff::Message::ScrollDiffUp
-                | crate::diff::Message::ScrollDiffDown
-                | crate::diff::Message::ScrollDiffPageUp(_)
-                | crate::diff::Message::ScrollDiffPageDown(_)
-                | crate::diff::Message::ScrollDiffVerticalBy(_)
-                | crate::diff::Message::SetDiffScroll(_)
-        ) {
-            self.requested_navigation_target = None;
-        }
-        Some(RendererEvent::Message(Self::vertical_message(
-            message, model,
-        )))
+        Some(RendererEvent::Message(
+            self.vertical_message(message, model),
+        ))
     }
 
     fn map_open_picker_menu(&mut self, event: &Event, area: Rect) -> Option<RendererEvent> {
@@ -632,14 +608,6 @@ fn picker_event(outcome: PickerOutcome<FileKey>, area: ChangeArea) -> RendererEv
         PickerOutcome::DestructiveAction(file) => {
             RendererEvent::Message(crate::diff::Message::RequestDiscardFile(file.path))
         }
-    }
-}
-
-fn highlight_prefetch_viewports(previous: usize, current: usize, viewport_rows: usize) -> usize {
-    match current.abs_diff(previous) {
-        distance if distance >= viewport_rows.max(1) => 13,
-        1.. => 7,
-        0 => HIGHLIGHT_PREFETCH_VIEWPORTS,
     }
 }
 

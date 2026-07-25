@@ -2,6 +2,7 @@
 
 mod model;
 mod quick_open;
+mod scroll;
 mod view;
 mod worker;
 
@@ -12,11 +13,11 @@ use diffo_core::RepositorySnapshot;
 use diffo_ui::command_palette::{Command, CommandId};
 use diffo_ui::file_picker::{FilePicker, Outcome as PickerOutcome};
 use diffo_ui::text_view::{
-    LINE_SCROLL_ROWS, ScrollCommand, ScrollbarAxis, TextRenderMode, TextSurface,
-    TextSurfacePreparation, Viewport, ViewportMetrics, scrollbar_areas, scrollbar_axis_at,
-    scrollbar_command,
+    LINE_SCROLL_ROWS, PreparedVerticalScroll, ScrollbarAxis, TextRenderMode, TextSurface,
+    TextSurfacePreparation, scrollbar_areas, scrollbar_axis_at, scrollbar_command,
+    syntax_prefetch_viewports,
 };
-use diffo_ui::{PaneSplit, design, maximum_scroll, scroll_offset, wheel_scroll_delta};
+use diffo_ui::{PaneSplit, design, wheel_scroll_delta};
 use ratatui::{Frame, layout::Rect, text::Line};
 
 use model::{EntryId, ExplorerModel};
@@ -55,6 +56,7 @@ pub struct ExplorerActivity {
     paths_pending: bool,
     queued: VecDeque<ExplorerRequest>,
     pending_path: Option<PathBuf>,
+    vertical_scroll: PreparedVerticalScroll,
     pending_quick_open: Option<PathBuf>,
     has_committed_paths: bool,
     viewport_rows: usize,
@@ -76,6 +78,7 @@ impl ExplorerActivity {
             paths_pending: false,
             queued: VecDeque::new(),
             pending_path: None,
+            vertical_scroll: PreparedVerticalScroll::default(),
             pending_quick_open: None,
             has_committed_paths: false,
             viewport_rows: 1,
@@ -111,6 +114,12 @@ impl ExplorerActivity {
             return;
         };
         let id = self.next_id();
+        let committed = self
+            .model
+            .viewer
+            .as_ref()
+            .filter(|viewer| viewer.path == path)
+            .map_or(first_line, |_| self.model.viewer_scroll);
         self.latest_file = id;
         self.pending_path = Some(path.clone());
         self.queued
@@ -123,6 +132,7 @@ impl ExplorerActivity {
             replace,
             first_line,
             viewport_rows: self.viewport_rows,
+            window_viewports: syntax_prefetch_viewports(committed, first_line, self.viewport_rows),
         });
     }
 
@@ -130,6 +140,7 @@ impl ExplorerActivity {
         if !self.model.repository_changed(snapshot) {
             return;
         }
+        self.vertical_scroll.clear();
         self.request_paths();
         if let Some(path) = self.selected_file().cloned() {
             self.request_file(path, self.model.viewer_scroll, true);
@@ -137,6 +148,7 @@ impl ExplorerActivity {
     }
 
     pub fn filesystem_changed(&mut self) {
+        self.vertical_scroll.clear();
         self.request_paths();
         if let Some(path) = self.selected_file().cloned() {
             self.request_file(path, self.model.viewer_scroll, true);
@@ -168,6 +180,7 @@ impl ExplorerActivity {
             .model
             .viewer_horizontal_scroll
             .min(maximum_horizontal_scroll);
+        self.prepare_viewer_scroll();
         let selected_before = self.picker.selected().cloned();
         self.picker.prepare(
             areas.tree,
@@ -233,6 +246,7 @@ impl ExplorerActivity {
                 .viewer_horizontal_scroll
                 .min(metrics.maximum_horizontal);
         }
+        self.prepare_viewer_scroll();
         let selected = self.selected_file().cloned();
         let displayed = self.model.viewer.as_ref().map(|viewer| viewer.path.clone());
         let text_missing = selected != displayed;
@@ -471,6 +485,7 @@ impl ExplorerActivity {
     }
 
     fn selection_changed(&mut self) {
+        self.vertical_scroll.clear();
         if let Some(path) = self.selected_file().cloned() {
             let displayed = self.model.viewer.as_ref().map(|viewer| &viewer.path);
             if displayed != Some(&path) && self.pending_path.as_ref() != Some(&path) {
@@ -493,60 +508,6 @@ impl ExplorerActivity {
             self.selected_file().cloned(),
             self.model.viewer.as_ref().map(|viewer| viewer.path.clone()),
         )
-    }
-
-    fn scroll_viewer(&mut self, amount: i64) {
-        let Some(viewer) = self.model.viewer.as_ref() else {
-            return;
-        };
-        let base = self.model.viewer_scroll;
-        let target = scroll_offset(
-            base,
-            amount,
-            maximum_scroll(viewer.lines.len(), self.viewport_rows),
-        );
-        let visible_end = target.saturating_add(self.viewport_rows);
-        let covered = !viewer.syntax_eligible
-            || viewer.coverage.iter().any(|range| {
-                let start = u32::try_from(target.saturating_add(1)).unwrap_or(u32::MAX);
-                let end = u32::try_from(visible_end.min(viewer.lines.len())).unwrap_or(u32::MAX);
-                range.start <= start && range.end >= end
-            });
-        self.model.viewer_scroll = target;
-        if !covered {
-            self.request_file(viewer.path.clone(), target, false);
-        }
-    }
-
-    fn scroll_viewer_horizontal(&mut self, amount: i64) {
-        let mut viewport = Viewport {
-            vertical: self.model.viewer_scroll,
-            horizontal: self.model.viewer_horizontal_scroll,
-        };
-        viewport.apply(
-            ScrollCommand::Columns(amount),
-            ViewportMetrics {
-                maximum_horizontal: self.maximum_horizontal_scroll,
-                ..ViewportMetrics::default()
-            },
-        );
-        self.model.viewer_horizontal_scroll = viewport.horizontal;
-    }
-
-    fn apply_viewer_command(&mut self, command: ScrollCommand, metrics: ViewportMetrics) {
-        if let ScrollCommand::Vertical(target) = command {
-            let current = self.model.viewer_scroll;
-            let amount = i64::try_from(target).unwrap_or(i64::MAX)
-                - i64::try_from(current).unwrap_or(i64::MAX);
-            self.scroll_viewer(amount);
-        } else {
-            let mut viewport = Viewport {
-                vertical: self.model.viewer_scroll,
-                horizontal: self.model.viewer_horizontal_scroll,
-            };
-            viewport.apply(command, metrics);
-            self.model.viewer_horizontal_scroll = viewport.horizontal;
-        }
     }
 
     pub fn take_request(&mut self) -> Option<ExplorerRequest> {
@@ -590,6 +551,7 @@ impl ExplorerActivity {
                         if !same_document {
                             self.model.viewer_scroll = 0;
                             self.model.viewer_horizontal_scroll = 0;
+                            self.vertical_scroll.clear();
                         }
                         if !replace
                             && let Some(displayed) = self
@@ -614,6 +576,7 @@ impl ExplorerActivity {
                         None
                     }
                     Err(error) => {
+                        self.vertical_scroll.clear();
                         if self.pending_quick_open.take().is_some() {
                             self.request_paths();
                             None
@@ -638,16 +601,19 @@ impl ExplorerActivity {
     }
 
     fn viewer_syntax_ready(&self) -> bool {
+        self.viewer_syntax_ready_at(self.model.viewer_scroll)
+    }
+
+    fn viewer_syntax_ready_at(&self, target: usize) -> bool {
         let Some(viewer) = self.model.viewer.as_ref() else {
             return true;
         };
         if !viewer.syntax_eligible {
             return true;
         }
-        let start = u32::try_from(self.model.viewer_scroll.saturating_add(1)).unwrap_or(u32::MAX);
+        let start = u32::try_from(target.saturating_add(1)).unwrap_or(u32::MAX);
         let end = u32::try_from(
-            self.model
-                .viewer_scroll
+            target
                 .saturating_add(self.viewport_rows)
                 .min(viewer.lines.len()),
         )

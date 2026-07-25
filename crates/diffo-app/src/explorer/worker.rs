@@ -33,6 +33,7 @@ pub enum ExplorerRequest {
         replace: bool,
         first_line: usize,
         viewport_rows: usize,
+        window_viewports: usize,
     },
 }
 
@@ -60,6 +61,13 @@ pub struct ExplorerWorker {
     requests: Sender<ExplorerRequest>,
     outcomes: Receiver<ExplorerOutcome>,
     latest_file: Arc<AtomicU64>,
+}
+
+#[derive(Clone, Copy)]
+struct SyntaxWindow {
+    first_line: usize,
+    viewport_rows: usize,
+    window_viewports: usize,
 }
 
 impl ExplorerWorker {
@@ -91,6 +99,7 @@ impl ExplorerWorker {
                         replace,
                         first_line,
                         viewport_rows,
+                        window_viewports,
                     } => ExplorerOutcome::File {
                         id,
                         replace,
@@ -102,8 +111,11 @@ impl ExplorerWorker {
                                     title,
                                     status,
                                     file,
-                                    first_line,
-                                    viewport_rows,
+                                    SyntaxWindow {
+                                        first_line,
+                                        viewport_rows,
+                                        window_viewports,
+                                    },
                                     &highlighter,
                                 )
                             })
@@ -141,8 +153,7 @@ fn prepare_viewer(
     title: Line<'static>,
     status: Option<ChangeKind>,
     file: ExplorerFile,
-    first_line: usize,
-    viewport_rows: usize,
+    window: SyntaxWindow,
     highlighter: &SyntaxHighlighter,
 ) -> Viewer {
     let ExplorerFileContent::Text(text) = file.content else {
@@ -160,7 +171,12 @@ fn prepare_viewer(
     let lines = text.lines().map(terminal_safe_text).collect::<Vec<_>>();
     let markers = change_markers(&file.patch, status, &lines);
     let syntax_eligible = lines.len() < MAX_HIGHLIGHT_FILE_LINES;
-    let range = visible_range(first_line, viewport_rows, lines.len());
+    let range = visible_range(
+        window.first_line,
+        window.viewport_rows,
+        window.window_viewports,
+        lines.len(),
+    );
     let styles = if syntax_eligible {
         range.map_or_else(HashMap::new, |range| {
             let document = file_document(&lines, range);
@@ -195,15 +211,23 @@ fn prepare_viewer(
     }
 }
 
-fn visible_range(first_line: usize, viewport_rows: usize, line_count: usize) -> Option<LineRange> {
+fn visible_range(
+    first_line: usize,
+    viewport_rows: usize,
+    window_viewports: usize,
+    line_count: usize,
+) -> Option<LineRange> {
     if line_count == 0 {
         return None;
     }
-    let start = first_line.saturating_add(1).min(line_count);
-    let end = first_line
-        .saturating_add(viewport_rows.max(1).saturating_mul(3))
-        .min(line_count)
-        .max(start);
+    let window = diffo_ui::text_view::centered_window(
+        first_line,
+        line_count,
+        viewport_rows,
+        window_viewports,
+    );
+    let start = window.start.saturating_add(1);
+    let end = window.end.max(start);
     Some(LineRange::new(
         u32::try_from(start).unwrap_or(u32::MAX),
         u32::try_from(end).unwrap_or(u32::MAX),
@@ -369,8 +393,11 @@ mod tests {
                 content: ExplorerFileContent::Text(text),
                 patch: String::new(),
             },
-            0,
-            20,
+            SyntaxWindow {
+                first_line: 0,
+                viewport_rows: 20,
+                window_viewports: 3,
+            },
             &highlighter,
         );
         assert!(viewer.syntax_eligible);
@@ -385,12 +412,22 @@ mod tests {
                 content: ExplorerFileContent::Text("value\n".repeat(10_000)),
                 patch: String::new(),
             },
-            0,
-            20,
+            SyntaxWindow {
+                first_line: 0,
+                viewport_rows: 20,
+                window_viewports: 3,
+            },
             &highlighter,
         );
         assert!(!at_limit.syntax_eligible);
         assert!(at_limit.highlighted.is_empty());
+    }
+
+    #[test]
+    fn syntax_window_is_centered_and_preserves_its_size_at_both_boundaries() {
+        assert_eq!(visible_range(50, 10, 3, 100), Some(LineRange::new(41, 70)));
+        assert_eq!(visible_range(0, 10, 3, 100), Some(LineRange::new(1, 30)));
+        assert_eq!(visible_range(95, 10, 3, 100), Some(LineRange::new(71, 100)));
     }
 
     #[test]
@@ -403,8 +440,11 @@ mod tests {
                 content: ExplorerFileContent::Text("before\t\x1b[2J\x08after\n".to_owned()),
                 patch: String::new(),
             },
-            0,
-            20,
+            SyntaxWindow {
+                first_line: 0,
+                viewport_rows: 20,
+                window_viewports: 3,
+            },
             &SyntaxHighlighter::new(),
         );
 

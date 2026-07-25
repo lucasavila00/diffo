@@ -457,7 +457,7 @@ fn cold_large_file_open_commits_at_a_syntax_ready_first_change() -> Result<()> {
 }
 
 #[test]
-fn delayed_open_prefetches_one_page_in_both_scroll_directions() -> Result<()> {
+fn cold_scrolls_cross_coverage_in_both_directions_without_empty_frames() -> Result<()> {
     let repository = TestRepository::new()?;
     let path = repository.worktree.join("middle-syntax.rs");
     fs::write(&path, middle_syntax_file(false)?)?;
@@ -475,10 +475,10 @@ fn delayed_open_prefetches_one_page_in_both_scroll_directions() -> Result<()> {
     )?;
     screen
         .wait_for_text("MIDDLE_CHANGE")?
-        .press(Key::PageUp)?
-        .wait_for_text("LINE_0325")?
-        .press(Key::PageDown)?
-        .wait_for_text("MIDDLE_CHANGE")?
+        .press_many(Key::PageUp, 6)?
+        .wait_for_text("LINE_0200")?
+        .press_many(Key::PageDown, 12)?
+        .wait_for_text("LINE_0525")?
         .press(Key::Char('q'))?
         .wait_for_exit()?;
     drop(screen);
@@ -489,13 +489,37 @@ fn delayed_open_prefetches_one_page_in_both_scroll_directions() -> Result<()> {
         .map(ron::from_str::<BufferFrame>)
         .collect::<std::result::Result<Vec<_>, _>>()?;
     for key in ["PageUp", "PageDown"] {
-        let frame = frames
+        let input = frames
             .iter()
-            .find(|frame| frame.input_events.iter().any(|event| event.contains(key)))
+            .position(|frame| frame.input_events.iter().any(|event| event.contains(key)))
             .with_context(|| format!("trace has no {key} input frame:\n{trace}"))?;
+        let frame = &frames[input];
         assert!(
             frame.syntax_ready,
-            "{key} exposed an unprepared syntax viewport:\n{trace}"
+            "{key} exposed an empty syntax-skeleton frame:\n{trace}"
+        );
+        assert_eq!(
+            frame.scroll_after, frame.scroll_before,
+            "{key} moved before its cold syntax target was ready:\n{trace}"
+        );
+        let committed = frames[input + 1..]
+            .iter()
+            .find_map(|frame| frame.viewport_transition.map(|viewport| viewport.0))
+            .with_context(|| format!("{key} target never committed:\n{trace}"))?;
+        if key == "PageUp" {
+            assert!(
+                committed < frame.scroll_before.0,
+                "{key} target did not move upward:\n{trace}"
+            );
+        } else {
+            assert!(
+                committed > frame.scroll_before.0,
+                "{key} target did not move downward:\n{trace}"
+            );
+        }
+        assert!(
+            committed.abs_diff(frame.scroll_before.0) > 100,
+            "{key} did not cross the initial retained coverage boundary:\n{trace}"
         );
     }
     Ok(())

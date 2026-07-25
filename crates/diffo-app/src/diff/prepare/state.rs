@@ -7,7 +7,7 @@ use crate::diff::FileKey;
 use diffo_diff::{ChangeRegion, DiffDocument, RenderLine, RowKind, SideBySideRow};
 use diffo_highlight::{HighlightedDiff, LineRange, SyntaxHighlighter};
 use diffo_ui::file_picker::FilePicker;
-use diffo_ui::text_view::TextSurfacePreparation;
+use diffo_ui::text_view::{PreparedVerticalScroll, TextSurfacePreparation};
 use ratatui::{layout::Rect, text::Line};
 
 pub struct Renderer {
@@ -18,9 +18,8 @@ pub struct Renderer {
     pub(in crate::diff) prepare_rx: Receiver<PrepareOutcome>,
     pub(in crate::diff) submitted: Vec<(DiffKey, Option<usize>)>,
     pub(in crate::diff) requested: Option<DiffKey>,
-    pub(in crate::diff) requested_navigation_target: Option<usize>,
+    pub(in crate::diff) vertical_scroll: PreparedVerticalScroll,
     pub(in crate::diff) diff_viewport_rows: usize,
-    pub(in crate::diff) previous_diff_scroll: usize,
     pub(in crate::diff) failed: Option<DiffKey>,
     pub(in crate::diff) scrollbars: ScrollbarMetrics,
     pub(in crate::diff) scrollbar_drag: Option<ScrollbarAxis>,
@@ -154,5 +153,4 @@ pub(in crate::diff) enum ScrollbarAxis {
 
 pub(in crate::diff) const MAX_SYNC_BYTES: usize = 64 * 1024;
 pub(in crate::diff) const MAX_SYNC_LINES: usize = 500;
-pub(in crate::diff) const HIGHLIGHT_PREFETCH_VIEWPORTS: usize = 3;
 pub(in crate::diff) const PREPARED_BUFFER_CACHE_SIZE: usize = 4;

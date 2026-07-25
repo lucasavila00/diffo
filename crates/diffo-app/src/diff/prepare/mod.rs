@@ -10,6 +10,7 @@ use super::{
 };
 use diffo_diff::SideBySideRow;
 use diffo_highlight::{HighlightWindowRequest, LineRange};
+use diffo_ui::text_view::{ScrollCommand, ViewportMetrics, centered_window};
 
 mod anchor;
 mod coverage;
@@ -110,10 +111,6 @@ fn projection_highlight_ranges(
 ) -> (Option<LineRange>, Option<LineRange>) {
     let window_viewports = request.prefetch_viewports.max(1);
     debug_assert_eq!(window_viewports % 2, 1);
-    let rows = request
-        .viewport_rows
-        .max(1)
-        .saturating_mul(window_viewports);
     let inline_target = request
         .target_scroll
         .filter(|_| request.mode == DiffViewMode::Inline)
@@ -124,13 +121,13 @@ fn projection_highlight_ranges(
         .filter(|_| request.mode == DiffViewMode::SideBySide)
         .or_else(|| side_by_side_changes.first().map(|change| change.first))
         .unwrap_or(0);
-    let inline_start = centered_window_start(
+    let inline_window = centered_window(
         inline_target,
         inline.len(),
         request.viewport_rows,
         window_viewports,
     );
-    let side_start = centered_window_start(
+    let side_window = centered_window(
         side_target,
         side_by_side.len(),
         request.viewport_rows,
@@ -141,8 +138,8 @@ fn projection_highlight_ranges(
     let include_inline = request.target_scroll.is_none() || request.mode == DiffViewMode::Inline;
     for row in inline
         .iter()
-        .skip(inline_start)
-        .take(rows)
+        .skip(inline_window.start)
+        .take(inline_window.len())
         .filter(|_| include_inline)
     {
         match row.kind {
@@ -156,28 +153,14 @@ fn projection_highlight_ranges(
     let include_side = request.target_scroll.is_none() || request.mode == DiffViewMode::SideBySide;
     for row in side_by_side
         .iter()
-        .skip(side_start)
-        .take(rows)
+        .skip(side_window.start)
+        .take(side_window.len())
         .filter(|_| include_side)
     {
         include_line(&mut old, row.old.as_ref().and_then(|line| line.number));
         include_line(&mut new, row.new.as_ref().and_then(|line| line.number));
     }
     (old, new)
-}
-
-fn centered_window_start(
-    target: usize,
-    projection_rows: usize,
-    viewport_rows: usize,
-    window_viewports: usize,
-) -> usize {
-    let viewport_rows = viewport_rows.max(1);
-    let window_rows = viewport_rows.saturating_mul(window_viewports);
-    let rows_before = viewport_rows.saturating_mul(window_viewports / 2);
-    target
-        .saturating_sub(rows_before)
-        .min(projection_rows.saturating_sub(window_rows))
 }
 
 fn include_line(range: &mut Option<LineRange>, line: Option<u32>) {
@@ -226,7 +209,7 @@ impl Renderer {
         requested: Option<&DiffKey>,
         mode: DiffViewMode,
     ) -> Option<usize> {
-        self.requested_navigation_target.filter(|target| {
+        self.vertical_scroll.requested().filter(|target| {
             requested != self.displayed_key()
                 || !self.syntax_ready_for_viewport(self.displayed_mode(mode), *target)
         })
@@ -238,13 +221,13 @@ impl Renderer {
         mode: DiffViewMode,
         horizontal: usize,
     ) -> Option<ViewportTransition> {
-        let target = self.requested_navigation_target?;
+        let target = self.vertical_scroll.requested()?;
         if requested != self.displayed_key()
             || !self.syntax_ready_for_viewport(self.displayed_mode(mode), target)
         {
             return None;
         }
-        self.requested_navigation_target = None;
+        let _ = self.vertical_scroll.take_ready(true);
         Some(ViewportTransition {
             vertical: target,
             horizontal,
@@ -289,30 +272,39 @@ impl Renderer {
     }
 
     pub(in crate::diff) fn vertical_message(
+        &mut self,
         message: crate::diff::Message,
         model: &crate::diff::Model,
     ) -> crate::diff::Message {
-        let base = model.diff_scroll;
-        let target = match message {
-            crate::diff::Message::SetDiffScroll(target) => target,
+        let command = match message {
+            crate::diff::Message::SetDiffScroll(target) => ScrollCommand::Vertical(target),
             crate::diff::Message::ScrollDiffUp => {
-                diffo_ui::scroll_offset(base, -diffo_ui::text_view::LINE_SCROLL_ROWS, usize::MAX)
+                ScrollCommand::Lines(-diffo_ui::text_view::LINE_SCROLL_ROWS)
             }
             crate::diff::Message::ScrollDiffDown => {
-                diffo_ui::scroll_offset(base, diffo_ui::text_view::LINE_SCROLL_ROWS, usize::MAX)
+                ScrollCommand::Lines(diffo_ui::text_view::LINE_SCROLL_ROWS)
             }
             crate::diff::Message::ScrollDiffPageUp(lines) => {
-                diffo_ui::scroll_offset(base, -i64::try_from(lines).unwrap_or(i64::MAX), usize::MAX)
+                ScrollCommand::Lines(-i64::try_from(lines).unwrap_or(i64::MAX))
             }
             crate::diff::Message::ScrollDiffPageDown(lines) => {
-                diffo_ui::scroll_offset(base, i64::try_from(lines).unwrap_or(i64::MAX), usize::MAX)
+                ScrollCommand::Lines(i64::try_from(lines).unwrap_or(i64::MAX))
             }
-            crate::diff::Message::ScrollDiffVerticalBy(lines) => {
-                diffo_ui::scroll_offset(base, lines, usize::MAX)
-            }
+            crate::diff::Message::ScrollDiffVerticalBy(lines) => ScrollCommand::Lines(lines),
             _ => return message,
         };
-        crate::diff::Message::SetDiffScroll(target)
+        let target = self
+            .vertical_scroll
+            .request(
+                command,
+                model.diff_scroll,
+                ViewportMetrics {
+                    maximum_vertical: usize::MAX,
+                    ..ViewportMetrics::default()
+                },
+            )
+            .unwrap_or(model.diff_scroll);
+        crate::diff::Message::JumpDiffToPosition(target)
     }
 
     pub(in crate::diff) fn syntax_target(
@@ -621,9 +613,8 @@ impl Renderer {
             prepare_rx,
             submitted: Vec::new(),
             requested: None,
-            requested_navigation_target: None,
+            vertical_scroll: diffo_ui::text_view::PreparedVerticalScroll::default(),
             diff_viewport_rows: 1,
-            previous_diff_scroll: 0,
             failed: None,
             scrollbars: ScrollbarMetrics::default(),
             scrollbar_drag: None,

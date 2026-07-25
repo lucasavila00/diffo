@@ -95,6 +95,19 @@ pub(super) struct BufferFrame {
     pub(super) syntax_ready: bool,
 }
 
+#[derive(Deserialize)]
+pub(super) struct TextSurfaceFrame {
+    pub(super) input_events: Vec<String>,
+    pub(super) text_surface: Option<TextSurfaceTrace>,
+}
+
+#[derive(Deserialize)]
+pub(super) struct TextSurfaceTrace {
+    pub(super) surface: String,
+    pub(super) viewport: (usize, usize),
+    pub(super) render_mode: String,
+}
+
 pub(super) fn changed_repository() -> Result<TestRepository> {
     let repository = TestRepository::new()?;
     fs::write(repository.worktree.join("tracked.txt"), "changed\n")?;

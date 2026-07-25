@@ -28,7 +28,7 @@ fn discards_a_stale_prepared_buffer_before_committing_the_latest() {
             viewport_rows: 28,
             mode: model.diff_view_mode,
             target_scroll: None,
-            prefetch_viewports: HIGHLIGHT_PREFETCH_VIEWPORTS,
+            prefetch_viewports: diffo_ui::text_view::syntax_prefetch_viewports(0, 0, 20),
         };
         PrepareOutcome {
             key,
@@ -69,7 +69,14 @@ fn ready_discrete_jump_commits_in_one_frame_without_preparation() {
     let computations = renderer.highlight_computations;
     let target = model.diff_scroll;
     assert!(renderer.syntax_ready_for_viewport(model.diff_view_mode, target));
-    renderer.requested_navigation_target = Some(target);
+    renderer.vertical_scroll.request(
+        diffo_ui::text_view::ScrollCommand::Vertical(target),
+        model.diff_scroll,
+        diffo_ui::text_view::ViewportMetrics {
+            maximum_vertical: usize::MAX,
+            ..diffo_ui::text_view::ViewportMetrics::default()
+        },
+    );
     let preparation = renderer.prepare_frame(&model, area);
 
     assert_eq!(preparation.viewport_transition.unwrap().vertical, target);
@@ -282,12 +289,24 @@ fn initial_highlighting_is_bounded_around_the_first_change() {
 }
 
 #[test]
-fn syntax_prefetch_size_ignores_scroll_direction() {
-    assert_eq!(highlight_prefetch_viewports(100, 96, 20), 7);
-    assert_eq!(highlight_prefetch_viewports(100, 104, 20), 7);
-    assert_eq!(highlight_prefetch_viewports(100, 80, 20), 13);
-    assert_eq!(highlight_prefetch_viewports(100, 120, 20), 13);
-    assert_eq!(highlight_prefetch_viewports(100, 100, 20), 3);
+fn repeated_scroll_input_accumulates_against_the_pending_target_in_both_directions() {
+    let mut model = model();
+    model.diff_scroll = 100;
+    let mut renderer = Renderer::new();
+
+    assert_eq!(
+        renderer.vertical_message(crate::diff::Message::ScrollDiffPageUp(20), &model),
+        crate::diff::Message::JumpDiffToPosition(80)
+    );
+    assert_eq!(
+        renderer.vertical_message(crate::diff::Message::ScrollDiffPageUp(20), &model),
+        crate::diff::Message::JumpDiffToPosition(60)
+    );
+    assert_eq!(
+        renderer.vertical_message(crate::diff::Message::ScrollDiffPageDown(20), &model),
+        crate::diff::Message::JumpDiffToPosition(80)
+    );
+    assert_eq!(model.diff_scroll, 100);
 }
 
 #[test]

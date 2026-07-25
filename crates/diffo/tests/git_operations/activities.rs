@@ -122,6 +122,90 @@ fn rapid_explorer_open_commits_only_the_latest_syntax_ready_file() -> Result<()>
 }
 
 #[test]
+fn explorer_cold_scrolls_keep_full_text_in_both_directions() -> Result<()> {
+    let repository = TestRepository::new()?;
+    let mut contents = String::new();
+    for line in 1..=700 {
+        writeln!(contents, "EXPLORER_LINE_{line:04} value {line}")
+            .context("build Explorer scrolling fixture")?;
+    }
+    fs::write(repository.worktree.join("a-large.txt"), contents)?;
+    git(&repository.worktree, &["add", "a-large.txt"])?;
+    git(
+        &repository.worktree,
+        &["commit", "-m", "Add Explorer scrolling fixture"],
+    )?;
+    let trace_path = repository.root.path().join("explorer-scroll-frames.ronl");
+    let mut screen = DiffoScreen::launch_with_env(
+        diffo_binary()?,
+        &repository.worktree,
+        &[("DIFFO_TRACE_FRAMES", trace_path.as_os_str())],
+    )?;
+    screen
+        .press(Key::Tab)?
+        .wait_for_text("EXPLORER_LINE_0001")?
+        .drag_vertical_scrollbar(0, 100)?
+        .wait_for_text("EXPLORER_LINE_0660")?
+        .drag_vertical_scrollbar(100, 40)?
+        .wait_for_text("EXPLORER_LINE_0280")?
+        .press(Key::Char('q'))?
+        .wait_for_exit()?;
+    drop(screen);
+
+    let trace = fs::read_to_string(&trace_path).context("read Explorer frame trace")?;
+    let frames = trace
+        .lines()
+        .map(ron::from_str::<TextSurfaceFrame>)
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+    let inputs = frames
+        .iter()
+        .enumerate()
+        .filter(|(_, frame)| {
+            frame
+                .input_events
+                .iter()
+                .any(|event| event.contains("Drag(Left)"))
+        })
+        .map(|(index, _)| index)
+        .collect::<Vec<_>>();
+    assert_eq!(
+        inputs.len(),
+        2,
+        "trace has unexpected drag frames:\n{trace}"
+    );
+    for (input, direction) in inputs.into_iter().zip(["down", "up"]) {
+        let surface = frames[input]
+            .text_surface
+            .as_ref()
+            .with_context(|| format!("{direction} input has no text surface:\n{trace}"))?;
+        assert_eq!(surface.surface, "Explorer");
+        assert_eq!(
+            surface.render_mode, "Full",
+            "{direction} exposed an Explorer syntax skeleton:\n{trace}"
+        );
+        let committed = frames[input + 1..]
+            .iter()
+            .filter_map(|frame| frame.text_surface.as_ref())
+            .find(|later| later.surface == "Explorer" && later.viewport.0 != surface.viewport.0)
+            .with_context(|| format!("{direction} target never committed:\n{trace}"))?;
+        if direction == "down" {
+            assert!(committed.viewport.0 > surface.viewport.0, "{trace}");
+        } else {
+            assert!(committed.viewport.0 < surface.viewport.0, "{trace}");
+        }
+        assert!(
+            committed.viewport.0.abs_diff(surface.viewport.0) > 100,
+            "{direction} did not cross cold syntax coverage:\n{trace}"
+        );
+        assert_eq!(
+            committed.render_mode, "Full",
+            "{direction} target committed without syntax:\n{trace}"
+        );
+    }
+    Ok(())
+}
+
+#[test]
 fn quick_open_from_diff_commits_explorer_selection_and_content_atomically() -> Result<()> {
     let repository = TestRepository::new()?;
     fs::write(repository.worktree.join("a.txt"), "ALPHA_CONTENT\n")?;

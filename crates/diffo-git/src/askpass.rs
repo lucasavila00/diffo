@@ -124,11 +124,7 @@ fn handle_connection(
         match answer_rx.recv_timeout(Duration::from_millis(20)) {
             Ok(answer) => break answer,
             Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
-                let disconnected = match stream.read(&mut [0]) {
-                    Err(error) if error.kind() == io::ErrorKind::WouldBlock => false,
-                    Ok(_) | Err(_) => true,
-                };
-                if disconnected {
+                if helper_disconnected(&mut stream) {
                     cancellation.cancel();
                 }
             }
@@ -155,6 +151,14 @@ fn handle_connection(
         _ => write_cancel(&mut stream),
     };
     let _ = result;
+}
+
+fn helper_disconnected(stream: &mut UnixStream) -> bool {
+    let mut byte = [0];
+    match stream.read(&mut byte) {
+        Err(error) if error.kind() == io::ErrorKind::WouldBlock => false,
+        Ok(_) | Err(_) => true,
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -636,5 +640,15 @@ mod tests {
         .unwrap();
         drop(client);
         task.join().unwrap();
+    }
+
+    #[test]
+    fn connection_probe_distinguishes_an_idle_helper_from_a_disconnected_one() {
+        let (client, mut server) = UnixStream::pair().unwrap();
+        server.set_nonblocking(true).unwrap();
+
+        assert!(!helper_disconnected(&mut server));
+        drop(client);
+        assert!(helper_disconnected(&mut server));
     }
 }

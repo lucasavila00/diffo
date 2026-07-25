@@ -195,7 +195,7 @@ fn server_configuration(
          KbdInteractiveAuthentication no\n\
          UsePAM no\n\
          StrictModes no\n\
-         PermitRootLogin no\n\
+         PermitRootLogin prohibit-password\n\
          AllowTcpForwarding no\n\
          X11Forwarding no\n\
          PrintMotd no\n\

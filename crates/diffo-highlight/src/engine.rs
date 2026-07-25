@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, path::Path, thread};
+use std::{collections::BTreeMap, path::Path, sync::OnceLock, thread};
 
 use diffo_diff::{DiffBlock, DiffDocument, DiffLine};
 use two_face::{
@@ -16,9 +16,11 @@ use crate::{
 };
 
 pub struct SyntaxHighlighter {
-    syntaxes: SyntaxSet,
-    theme: Theme,
+    syntaxes: &'static SyntaxSet,
+    theme: &'static Theme,
 }
+
+static ASSETS: OnceLock<(SyntaxSet, Theme)> = OnceLock::new();
 
 impl Default for SyntaxHighlighter {
     fn default() -> Self {
@@ -29,11 +31,14 @@ impl Default for SyntaxHighlighter {
 impl SyntaxHighlighter {
     #[must_use]
     pub fn new() -> Self {
-        let themes = two_face::theme::extra();
-        Self {
-            syntaxes: two_face::syntax::extra_no_newlines(),
-            theme: themes.get(EmbeddedThemeName::MonokaiExtended).clone(),
-        }
+        let (syntaxes, theme) = ASSETS.get_or_init(|| {
+            let themes = two_face::theme::extra();
+            (
+                two_face::syntax::extra_no_newlines(),
+                themes.get(EmbeddedThemeName::MonokaiExtended).clone(),
+            )
+        });
+        Self { syntaxes, theme }
     }
 
     #[must_use]
@@ -71,9 +76,9 @@ impl SyntaxHighlighter {
             thread::scope(|scope| {
                 let old_task = scope.spawn(|| {
                     highlight_side_window(
-                        &self.syntaxes,
+                        self.syntaxes,
                         syntax,
-                        &self.theme,
+                        self.theme,
                         &old,
                         request.old,
                         request.lookbehind_lines,
@@ -82,9 +87,9 @@ impl SyntaxHighlighter {
                 });
                 let new_task = scope.spawn(|| {
                     highlight_side_window(
-                        &self.syntaxes,
+                        self.syntaxes,
                         syntax,
-                        &self.theme,
+                        self.theme,
                         &new,
                         request.new,
                         request.lookbehind_lines,

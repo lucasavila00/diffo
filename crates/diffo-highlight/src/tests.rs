@@ -2,7 +2,10 @@ use std::path::Path;
 
 use diffo_diff::parse_unified_patch;
 
-use super::{HighlightWindowRequest, HighlightedLine, LineRange, SyntaxHighlighter};
+use super::{
+    HIGHLIGHT_LOOKBEHIND_LINES, HighlightWindowRequest, HighlightedLine, LineRange,
+    SyntaxHighlighter,
+};
 
 fn compact_line(line: &HighlightedLine) -> String {
     line.spans
@@ -123,4 +126,35 @@ fn window_byte_budget_finishes_with_plain_fallback() {
     assert_eq!(result.new_coverage, Some(range));
     assert_eq!(result.new_lines_processed, 0);
     assert!(result.styles.new.is_empty());
+}
+
+#[test]
+fn window_lookbehind_preserves_a_multiline_construct() {
+    use std::fmt::Write as _;
+
+    let mut patch = String::from("@@ -1,300 +1,300 @@\n");
+    for number in 1..=300 {
+        let code = match number {
+            100 => "/* comment begins",
+            300 => "comment ends */",
+            _ => "comment body",
+        };
+        writeln!(patch, " {code}").unwrap();
+    }
+    let document = parse_unified_patch(&patch).expect("valid patch");
+    let highlighter = SyntaxHighlighter::new();
+    let complete = highlighter.highlight(Path::new("src/main.rs"), &document);
+    let range = LineRange::new(300, 300);
+    let window = highlighter.highlight_window(
+        Path::new("src/main.rs"),
+        &document,
+        HighlightWindowRequest {
+            old: Some(range),
+            new: Some(range),
+            lookbehind_lines: HIGHLIGHT_LOOKBEHIND_LINES,
+            maximum_bytes_per_side: usize::MAX,
+        },
+    );
+
+    assert_eq!(window.styles.new[&300], complete.new[&300]);
 }

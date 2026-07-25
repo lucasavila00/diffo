@@ -229,7 +229,7 @@ fn quick_open_from_diff_commits_explorer_selection_and_content_atomically() -> R
         .press(Key::Char('o'))?
         .wait_for_text("Quick Open")?
         .type_text("bravo")?
-        .click(&Selector::text("nested/bravo.txt"))?
+        .press(Key::Enter)?
         .wait_for_text("BRAVO_CONTENT")?
         .press(Key::Char('q'))?
         .wait_for_exit()?;

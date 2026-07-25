@@ -25,5 +25,5 @@ cargo bench --package diffo-highlight --bench highlight -- \
 ```
 
 Benchmark inputs are generated before measurement. The harness separately measures
-highlighter initialization, bounded viewport highlighting for representative
-syntaxes, and the 9,999-line reference boundary.
+highlighter initialization, bounded two-sided and one-sided viewport highlighting,
+representative syntaxes, and the 9,999-line reference boundary.

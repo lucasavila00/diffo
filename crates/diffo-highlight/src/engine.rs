@@ -70,11 +70,44 @@ impl SyntaxHighlighter {
                 ..HighlightedWindow::default()
             };
         };
-        let old = collect_side(document, |line| line.old_number);
-        let new = collect_side(document, |line| line.new_number);
+        let old = request
+            .old
+            .map_or_else(Vec::new, |_| collect_side(document, |line| line.old_number));
+        let new = request
+            .new
+            .map_or_else(Vec::new, |_| collect_side(document, |line| line.new_number));
         let ((old_styles, old_lines_processed), (new_styles, new_lines_processed)) =
-            thread::scope(|scope| {
-                let old_task = scope.spawn(|| {
+            if request.old.is_some() && request.new.is_some() {
+                thread::scope(|scope| {
+                    let old_task = scope.spawn(|| {
+                        highlight_side_window(
+                            self.syntaxes,
+                            syntax,
+                            self.theme,
+                            &old,
+                            request.old,
+                            request.lookbehind_lines,
+                            request.maximum_bytes_per_side,
+                        )
+                    });
+                    let new_task = scope.spawn(|| {
+                        highlight_side_window(
+                            self.syntaxes,
+                            syntax,
+                            self.theme,
+                            &new,
+                            request.new,
+                            request.lookbehind_lines,
+                            request.maximum_bytes_per_side,
+                        )
+                    });
+                    (
+                        old_task.join().unwrap_or_default(),
+                        new_task.join().unwrap_or_default(),
+                    )
+                })
+            } else {
+                (
                     highlight_side_window(
                         self.syntaxes,
                         syntax,
@@ -83,9 +116,7 @@ impl SyntaxHighlighter {
                         request.old,
                         request.lookbehind_lines,
                         request.maximum_bytes_per_side,
-                    )
-                });
-                let new_task = scope.spawn(|| {
+                    ),
                     highlight_side_window(
                         self.syntaxes,
                         syntax,
@@ -94,13 +125,9 @@ impl SyntaxHighlighter {
                         request.new,
                         request.lookbehind_lines,
                         request.maximum_bytes_per_side,
-                    )
-                });
-                (
-                    old_task.join().unwrap_or_default(),
-                    new_task.join().unwrap_or_default(),
+                    ),
                 )
-            });
+            };
         HighlightedWindow {
             styles: HighlightedDiff {
                 old: old_styles,
@@ -190,7 +217,10 @@ fn highlight_side_window(
     let mut bytes = 0_usize;
     let mut processed = 0_usize;
     for &(line, number) in lines {
-        if number < start || number > range.end {
+        if number > range.end {
+            break;
+        }
+        if number < start {
             continue;
         }
         let line_bytes = line.text.len();

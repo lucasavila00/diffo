@@ -63,11 +63,28 @@ fn document(language: &Language, lines: usize) -> DiffDocument {
     parse_unified_patch(&patch).expect("benchmark patch must be valid")
 }
 
+fn added_document(language: &Language, lines: usize) -> DiffDocument {
+    let mut patch = format!("@@ -0,0 +1,{lines} @@\n");
+    for number in 1..=lines {
+        writeln!(patch, "+{}", (language.line)(number)).expect("writing to a String cannot fail");
+    }
+    parse_unified_patch(&patch).expect("benchmark patch must be valid")
+}
+
 fn window(start: u32) -> HighlightWindowRequest {
     let range = LineRange::new(start, start + VIEWPORT_LINES - 1);
     HighlightWindowRequest {
         old: Some(range),
         new: Some(range),
+        lookbehind_lines: HIGHLIGHT_LOOKBEHIND_LINES,
+        maximum_bytes_per_side: MAX_HIGHLIGHT_BYTES_PER_SIDE,
+    }
+}
+
+fn added_window(start: u32) -> HighlightWindowRequest {
+    HighlightWindowRequest {
+        old: None,
+        new: window(start).new,
         lookbehind_lines: HIGHLIGHT_LOOKBEHIND_LINES,
         maximum_bytes_per_side: MAX_HIGHLIGHT_BYTES_PER_SIDE,
     }
@@ -117,10 +134,34 @@ fn bench_reference_boundary(criterion: &mut Criterion) {
     group.finish();
 }
 
+fn bench_one_sided_windows(criterion: &mut Criterion) {
+    let language = &LANGUAGES[0];
+    let document = added_document(language, MAX_HIGHLIGHT_FILE_LINES - 1);
+    let highlighter = SyntaxHighlighter::new();
+    let mut group = criterion.benchmark_group("one-sided");
+    for (position, start) in [("top", 1), ("deep", DEEP_VIEWPORT_START)] {
+        group.bench_with_input(
+            BenchmarkId::new("rust", position),
+            &start,
+            |bencher, start| {
+                bencher.iter(|| {
+                    black_box(highlighter.highlight_window(
+                        Path::new(language.path),
+                        &document,
+                        added_window(*start),
+                    ))
+                });
+            },
+        );
+    }
+    group.finish();
+}
+
 criterion_group!(
     benches,
     bench_initialization,
     bench_windows,
-    bench_reference_boundary
+    bench_reference_boundary,
+    bench_one_sided_windows
 );
 criterion_main!(benches);

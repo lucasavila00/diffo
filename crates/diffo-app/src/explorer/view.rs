@@ -290,7 +290,7 @@ mod tests {
     use diffo_highlight::SyntaxHighlighter;
     use diffo_ui::file_picker::Navigation;
     use ratatui::{Terminal, backend::TestBackend, style::Color};
-    use std::collections::HashMap;
+    use std::collections::{BTreeMap, HashMap};
 
     #[test]
     fn tree_picker_shows_non_deleted_git_colors_without_status_letters() {
@@ -409,12 +409,13 @@ mod tests {
         let title = entry_label(&entry);
         let mut model = ExplorerModel::new(&diffo_core::RepositorySnapshot::default());
         model.viewer = Some(super::super::model::Viewer {
+            document_id: super::super::model::ExplorerDocumentId(1),
             path: "different-path.rs".into(),
             title: Box::new(title),
-            lines: Vec::new(),
+            lines: Vec::new().into(),
             markers: HashMap::new(),
-            highlighted: HashMap::new(),
-            coverage: Vec::new(),
+            highlighted: BTreeMap::new(),
+            coverage: Vec::new().into(),
             syntax_eligible: false,
             message: None,
         });
@@ -432,12 +433,13 @@ mod tests {
     fn horizontal_pan_keeps_the_gutter_and_renders_control_text_inertly() {
         let mut model = ExplorerModel::new(&diffo_core::RepositorySnapshot::default());
         model.viewer = Some(super::super::model::Viewer {
+            document_id: super::super::model::ExplorerDocumentId(1),
             path: "wide.txt".into(),
             title: Box::new(Line::raw("  wide.txt")),
-            lines: vec!["01234567\x1b[2JPAN_TARGET".to_owned()],
+            lines: vec!["01234567\x1b[2JPAN_TARGET".to_owned()].into(),
             markers: HashMap::new(),
-            highlighted: HashMap::new(),
-            coverage: Vec::new(),
+            highlighted: BTreeMap::new(),
+            coverage: Vec::new().into(),
             syntax_eligible: false,
             message: None,
         });
@@ -476,12 +478,13 @@ mod tests {
 
         let mut model = ExplorerModel::new(&diffo_core::RepositorySnapshot::default());
         model.viewer = Some(super::super::model::Viewer {
+            document_id: super::super::model::ExplorerDocumentId(1),
             path: "main.rs".into(),
             title: Box::new(Line::raw("  main.rs")),
-            lines: vec![source.to_owned()],
+            lines: vec![source.to_owned()].into(),
             markers: HashMap::new(),
             highlighted: highlighted.into_iter().collect(),
-            coverage: vec![diffo_highlight::LineRange::new(1, 1)],
+            coverage: vec![diffo_highlight::LineRange::new(1, 1)].into(),
             syntax_eligible: true,
             message: None,
         });
@@ -537,12 +540,13 @@ mod tests {
     fn full_screen_file_text_has_no_scroll_controls() {
         let mut model = ExplorerModel::new(&diffo_core::RepositorySnapshot::default());
         model.viewer = Some(super::super::model::Viewer {
+            document_id: super::super::model::ExplorerDocumentId(1),
             path: "many.txt".into(),
             title: Box::new(Line::raw("many.txt")),
             lines: (0..20).map(|line| format!("line {line}")).collect(),
             markers: HashMap::new(),
-            highlighted: HashMap::new(),
-            coverage: Vec::new(),
+            highlighted: BTreeMap::new(),
+            coverage: Vec::new().into(),
             syntax_eligible: false,
             message: None,
         });
@@ -570,12 +574,13 @@ mod tests {
     fn skeleton_renders_line_numbers_without_text_or_markers() {
         let mut model = ExplorerModel::new(&diffo_core::RepositorySnapshot::default());
         model.viewer = Some(super::super::model::Viewer {
+            document_id: super::super::model::ExplorerDocumentId(1),
             path: "pending.rs".into(),
             title: Box::new(Line::raw("  pending.rs")),
-            lines: vec!["TEXT_MUST_BE_HIDDEN".to_owned()],
+            lines: vec!["TEXT_MUST_BE_HIDDEN".to_owned()].into(),
             markers: HashMap::from([(1, GutterMarker::Added)]),
-            highlighted: HashMap::new(),
-            coverage: Vec::new(),
+            highlighted: BTreeMap::new(),
+            coverage: Vec::new().into(),
             syntax_eligible: true,
             message: None,
         });

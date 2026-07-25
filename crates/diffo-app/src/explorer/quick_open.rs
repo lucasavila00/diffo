@@ -13,7 +13,7 @@ impl ExplorerActivity {
             return;
         }
         self.pending_quick_open = Some(path.clone());
-        self.request_file(path, 0, false);
+        self.request_file_load(path, 0);
     }
 
     pub(super) fn commit_quick_open_selection(&mut self, path: &Path) {

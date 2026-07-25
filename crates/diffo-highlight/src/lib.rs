@@ -9,8 +9,8 @@ pub const MAX_HIGHLIGHT_BYTES_PER_SIDE: usize = 512 * 1024;
 
 pub use engine::SyntaxHighlighter;
 pub use types::{
-    HighlightWindowRequest, HighlightedDiff, HighlightedLine, HighlightedWindow, LineRange, Rgb,
-    StyledSpan,
+    HighlightWindowRequest, HighlightedDiff, HighlightedLine, HighlightedTextWindow,
+    HighlightedWindow, LineRange, Rgb, StyledSpan,
 };
 
 #[cfg(test)]

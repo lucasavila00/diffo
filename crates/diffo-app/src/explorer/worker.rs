@@ -1,6 +1,6 @@
 use std::{
-    collections::HashMap,
-    path::PathBuf,
+    collections::{BTreeMap, HashMap},
+    path::{Path, PathBuf},
     sync::{
         Arc,
         atomic::{AtomicU64, Ordering},
@@ -10,39 +10,40 @@ use std::{
 };
 
 use diffo_core::{ChangeKind, ExplorerFile, ExplorerFileContent, Repository};
-use diffo_diff::{DiffBlock, DiffDocument, DiffLine, Hunk, parse_unified_patch};
+use diffo_diff::{DiffBlock, parse_unified_patch};
 use diffo_highlight::{
-    HIGHLIGHT_LOOKBEHIND_LINES, HighlightWindowRequest, LineRange, MAX_HIGHLIGHT_BYTES_PER_SIDE,
+    HIGHLIGHT_LOOKBEHIND_LINES, HighlightedTextWindow, LineRange, MAX_HIGHLIGHT_BYTES_PER_SIDE,
     MAX_HIGHLIGHT_FILE_LINES, SyntaxHighlighter,
 };
 use diffo_ui::terminal_safe_text;
+use diffo_ui::text_view::SyntaxCoverage;
 use ratatui::text::Line;
 
-use super::model::{GutterMarker, Viewer};
+use super::model::{ExplorerDocumentId, GutterMarker, Viewer};
 
 #[derive(Clone, Debug)]
 pub enum ExplorerRequest {
     Paths {
         id: u64,
     },
-    File {
+    LoadFile {
         id: u64,
         path: PathBuf,
         title: Line<'static>,
         status: Option<ChangeKind>,
-        replace: bool,
         first_line: usize,
         viewport_rows: usize,
         window_viewports: usize,
     },
-}
-
-impl ExplorerRequest {
-    fn id(&self) -> u64 {
-        match self {
-            Self::Paths { id } | Self::File { id, .. } => *id,
-        }
-    }
+    HighlightWindow {
+        id: u64,
+        document_id: ExplorerDocumentId,
+        path: PathBuf,
+        lines: Arc<[String]>,
+        first_line: usize,
+        viewport_rows: usize,
+        window_viewports: usize,
+    },
 }
 
 pub enum ExplorerOutcome {
@@ -50,17 +51,22 @@ pub enum ExplorerOutcome {
         id: u64,
         result: Result<Vec<PathBuf>, String>,
     },
-    File {
+    FileLoaded {
         id: u64,
-        replace: bool,
         result: Result<Viewer, String>,
+    },
+    WindowHighlighted {
+        id: u64,
+        document_id: ExplorerDocumentId,
+        result: HighlightedTextWindow,
     },
 }
 
 pub struct ExplorerWorker {
     requests: Sender<ExplorerRequest>,
     outcomes: Receiver<ExplorerOutcome>,
-    latest_file: Arc<AtomicU64>,
+    latest_load: Arc<AtomicU64>,
+    latest_window: Arc<AtomicU64>,
 }
 
 #[derive(Clone, Copy)]
@@ -74,15 +80,27 @@ impl ExplorerWorker {
     pub fn start(repository: Arc<dyn Repository>) -> Self {
         let (request_tx, request_rx) = channel::<ExplorerRequest>();
         let (outcome_tx, outcome_rx) = channel();
-        let latest_file = Arc::new(AtomicU64::new(0));
-        let worker_latest = Arc::clone(&latest_file);
+        let latest_load = Arc::new(AtomicU64::new(0));
+        let latest_window = Arc::new(AtomicU64::new(0));
+        let worker_latest_load = Arc::clone(&latest_load);
+        let worker_latest_window = Arc::clone(&latest_window);
         thread::spawn(move || {
             let highlighter = SyntaxHighlighter::new();
             while let Ok(request) = request_rx.recv() {
-                if matches!(request, ExplorerRequest::File { .. })
-                    && request.id() != worker_latest.load(Ordering::Acquire)
-                {
-                    continue;
+                match &request {
+                    ExplorerRequest::LoadFile { id, .. }
+                        if *id != worker_latest_load.load(Ordering::Acquire) =>
+                    {
+                        continue;
+                    }
+                    ExplorerRequest::HighlightWindow { id, .. }
+                        if *id != worker_latest_window.load(Ordering::Acquire) =>
+                    {
+                        continue;
+                    }
+                    ExplorerRequest::Paths { .. }
+                    | ExplorerRequest::LoadFile { .. }
+                    | ExplorerRequest::HighlightWindow { .. } => {}
                 }
                 let outcome = match request {
                     ExplorerRequest::Paths { id } => ExplorerOutcome::Paths {
@@ -91,22 +109,21 @@ impl ExplorerWorker {
                             .explorer_paths()
                             .map_err(|error| error.to_string()),
                     },
-                    ExplorerRequest::File {
+                    ExplorerRequest::LoadFile {
                         id,
                         path,
                         title,
                         status,
-                        replace,
                         first_line,
                         viewport_rows,
                         window_viewports,
-                    } => ExplorerOutcome::File {
+                    } => ExplorerOutcome::FileLoaded {
                         id,
-                        replace,
                         result: repository
                             .explorer_file(&path)
                             .map(|file| {
                                 prepare_viewer(
+                                    ExplorerDocumentId(id),
                                     path,
                                     title,
                                     status,
@@ -121,8 +138,34 @@ impl ExplorerWorker {
                             })
                             .map_err(|error| error.to_string()),
                     },
+                    ExplorerRequest::HighlightWindow {
+                        id,
+                        document_id,
+                        path,
+                        lines,
+                        first_line,
+                        viewport_rows,
+                        window_viewports,
+                    } => ExplorerOutcome::WindowHighlighted {
+                        id,
+                        document_id,
+                        result: prepare_syntax_window(
+                            &path,
+                            &lines,
+                            SyntaxWindow {
+                                first_line,
+                                viewport_rows,
+                                window_viewports,
+                            },
+                            &highlighter,
+                        ),
+                    },
                 };
-                let stale = matches!(outcome, ExplorerOutcome::File { id, .. } if id != worker_latest.load(Ordering::Acquire));
+                let stale = matches!(
+                    outcome,
+                    ExplorerOutcome::FileLoaded { id, .. }
+                        if id != worker_latest_load.load(Ordering::Acquire)
+                );
                 if !stale && outcome_tx.send(outcome).is_err() {
                     break;
                 }
@@ -131,13 +174,21 @@ impl ExplorerWorker {
         Self {
             requests: request_tx,
             outcomes: outcome_rx,
-            latest_file,
+            latest_load,
+            latest_window,
         }
     }
 
     pub fn submit(&self, request: ExplorerRequest) {
-        if let ExplorerRequest::File { id, .. } = &request {
-            self.latest_file.store(*id, Ordering::Release);
+        match &request {
+            ExplorerRequest::LoadFile { id, .. } => {
+                self.latest_load.store(*id, Ordering::Release);
+                self.latest_window.store(0, Ordering::Release);
+            }
+            ExplorerRequest::HighlightWindow { id, .. } => {
+                self.latest_window.store(*id, Ordering::Release);
+            }
+            ExplorerRequest::Paths { .. } => {}
         }
         let _ = self.requests.send(request);
     }
@@ -149,6 +200,7 @@ impl ExplorerWorker {
 }
 
 fn prepare_viewer(
+    document_id: ExplorerDocumentId,
     path: PathBuf,
     title: Line<'static>,
     status: Option<ChangeKind>,
@@ -158,57 +210,59 @@ fn prepare_viewer(
 ) -> Viewer {
     let ExplorerFileContent::Text(text) = file.content else {
         return Viewer {
+            document_id,
             path,
             title: Box::new(title),
-            lines: Vec::new(),
+            lines: Arc::from([]),
             markers: HashMap::new(),
-            highlighted: HashMap::new(),
-            coverage: Vec::new(),
+            highlighted: BTreeMap::new(),
+            coverage: SyntaxCoverage::default(),
             syntax_eligible: false,
             message: Some("Binary or non-UTF-8 file.".to_owned()),
         };
     };
-    let lines = text.lines().map(terminal_safe_text).collect::<Vec<_>>();
+    let lines: Arc<[String]> = text.lines().map(terminal_safe_text).collect();
     let markers = change_markers(&file.patch, status, &lines);
     let syntax_eligible = lines.len() < MAX_HIGHLIGHT_FILE_LINES;
-    let range = visible_range(
-        window.first_line,
-        window.viewport_rows,
-        window.window_viewports,
-        lines.len(),
-    );
-    let styles = if syntax_eligible {
-        range.map_or_else(HashMap::new, |range| {
-            let document = file_document(&lines, range);
-            highlighter
-                .highlight_window(
-                    &path,
-                    &document,
-                    HighlightWindowRequest {
-                        old: None,
-                        new: Some(range),
-                        lookbehind_lines: HIGHLIGHT_LOOKBEHIND_LINES,
-                        maximum_bytes_per_side: MAX_HIGHLIGHT_BYTES_PER_SIDE,
-                    },
-                )
-                .styles
-                .new
-                .into_iter()
-                .collect()
-        })
+    let syntax_window = if syntax_eligible {
+        prepare_syntax_window(&path, &lines, window, highlighter)
     } else {
-        HashMap::new()
+        HighlightedTextWindow::default()
     };
     Viewer {
+        document_id,
         path,
         title: Box::new(title),
         lines,
         markers,
-        highlighted: styles,
-        coverage: range.into_iter().collect(),
+        highlighted: syntax_window.styles,
+        coverage: SyntaxCoverage::from_range(syntax_window.coverage),
         syntax_eligible,
         message: None,
     }
+}
+
+fn prepare_syntax_window(
+    path: &Path,
+    lines: &[String],
+    window: SyntaxWindow,
+    highlighter: &SyntaxHighlighter,
+) -> HighlightedTextWindow {
+    let Some(range) = visible_range(
+        window.first_line,
+        window.viewport_rows,
+        window.window_viewports,
+        lines.len(),
+    ) else {
+        return HighlightedTextWindow::default();
+    };
+    highlighter.highlight_text_window(
+        path,
+        lines,
+        range,
+        HIGHLIGHT_LOOKBEHIND_LINES,
+        MAX_HIGHLIGHT_BYTES_PER_SIDE,
+    )
 }
 
 fn visible_range(
@@ -232,40 +286,6 @@ fn visible_range(
         u32::try_from(start).unwrap_or(u32::MAX),
         u32::try_from(end).unwrap_or(u32::MAX),
     ))
-}
-
-fn file_document(lines: &[String], range: LineRange) -> DiffDocument {
-    let first = usize::try_from(range.start)
-        .unwrap_or(usize::MAX)
-        .saturating_sub(HIGHLIGHT_LOOKBEHIND_LINES)
-        .max(1);
-    let end = usize::try_from(range.end)
-        .unwrap_or(usize::MAX)
-        .min(lines.len());
-    DiffDocument {
-        hunks: vec![Hunk {
-            header: String::new(),
-            old_start: 1,
-            new_start: 1,
-            blocks: vec![DiffBlock::Context(
-                lines
-                    .iter()
-                    .enumerate()
-                    .skip(first.saturating_sub(1))
-                    .take(end.saturating_sub(first).saturating_add(1))
-                    .map(|(index, text)| {
-                        let number = u32::try_from(index.saturating_add(1)).unwrap_or(u32::MAX);
-                        DiffLine {
-                            old_number: Some(number),
-                            new_number: Some(number),
-                            text: text.clone(),
-                        }
-                    })
-                    .collect(),
-            )],
-        }],
-        binary: false,
-    }
 }
 
 fn change_markers(
@@ -351,6 +371,104 @@ fn change_markers(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use diffo_core::{
+        FailureKind, OperationFailure, RepositoryAction, RepositorySnapshot, RepositorySource,
+    };
+    use std::{sync::atomic::AtomicUsize, time::Duration};
+
+    struct CountingRepository {
+        file_reads: AtomicUsize,
+    }
+
+    impl RepositorySource for CountingRepository {
+        fn snapshot(&self) -> anyhow::Result<RepositorySnapshot> {
+            Ok(RepositorySnapshot::default())
+        }
+    }
+
+    impl Repository for CountingRepository {
+        fn explorer_file(&self, _path: &std::path::Path) -> anyhow::Result<ExplorerFile> {
+            self.file_reads.fetch_add(1, Ordering::Relaxed);
+            Ok(ExplorerFile {
+                content: ExplorerFileContent::Text("line one\nline two\n".to_owned()),
+                patch: String::new(),
+            })
+        }
+
+        fn apply(
+            &self,
+            action: &RepositoryAction,
+        ) -> std::result::Result<diffo_core::OperationResult, OperationFailure> {
+            Err(OperationFailure {
+                action: action.clone(),
+                kind: FailureKind::Unknown,
+                detail: "not used by Explorer worker tests".to_owned(),
+            })
+        }
+    }
+
+    #[test]
+    fn syntax_windows_do_not_reread_repository_files() {
+        let repository = Arc::new(CountingRepository {
+            file_reads: AtomicUsize::new(0),
+        });
+        let worker = ExplorerWorker::start(repository.clone());
+        worker.submit(ExplorerRequest::LoadFile {
+            id: 1,
+            path: PathBuf::from("file.txt"),
+            title: Line::raw("file.txt"),
+            status: None,
+            first_line: 0,
+            viewport_rows: 1,
+            window_viewports: 3,
+        });
+        let loaded = worker
+            .outcomes
+            .recv_timeout(Duration::from_secs(1))
+            .expect("file load outcome");
+        let ExplorerOutcome::FileLoaded {
+            result: Ok(viewer), ..
+        } = loaded
+        else {
+            panic!("expected successful file load");
+        };
+
+        worker.submit(ExplorerRequest::HighlightWindow {
+            id: 2,
+            document_id: viewer.document_id,
+            path: viewer.path.clone(),
+            lines: viewer.lines.clone(),
+            first_line: 1,
+            viewport_rows: 1,
+            window_viewports: 3,
+        });
+        assert!(matches!(
+            worker
+                .outcomes
+                .recv_timeout(Duration::from_secs(1))
+                .expect("syntax-window outcome"),
+            ExplorerOutcome::WindowHighlighted { id: 2, .. }
+        ));
+        assert_eq!(repository.file_reads.load(Ordering::Relaxed), 1);
+
+        worker.submit(ExplorerRequest::LoadFile {
+            id: 3,
+            path: PathBuf::from("file.txt"),
+            title: Line::raw("file.txt"),
+            status: None,
+            first_line: 0,
+            viewport_rows: 1,
+            window_viewports: 3,
+        });
+        assert!(matches!(
+            worker
+                .outcomes
+                .recv_timeout(Duration::from_secs(1))
+                .expect("refresh outcome"),
+            ExplorerOutcome::FileLoaded { id: 3, .. }
+        ));
+        assert_eq!(repository.file_reads.load(Ordering::Relaxed), 2);
+    }
 
     #[test]
     fn maps_added_modified_and_deleted_lines_to_file_numbers() {
@@ -386,6 +504,7 @@ mod tests {
             .collect::<Vec<_>>()
             .join("\n");
         let viewer = prepare_viewer(
+            ExplorerDocumentId(1),
             PathBuf::from("source.rs"),
             Line::raw("  source.rs"),
             None,
@@ -405,6 +524,7 @@ mod tests {
         assert!(viewer.highlighted.contains_key(&1));
 
         let at_limit = prepare_viewer(
+            ExplorerDocumentId(2),
             PathBuf::from("source.rs"),
             Line::raw("  source.rs"),
             None,
@@ -433,6 +553,7 @@ mod tests {
     #[test]
     fn viewer_content_cannot_emit_terminal_control_sequences() {
         let viewer = prepare_viewer(
+            ExplorerDocumentId(1),
             PathBuf::from("control.txt"),
             Line::raw("  control.txt"),
             None,

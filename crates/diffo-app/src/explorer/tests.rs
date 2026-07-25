@@ -2,33 +2,34 @@ use super::model::Viewer;
 use super::*;
 use crossterm::event::{KeyEvent, MouseEvent};
 use ratatui::text::Line;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 #[test]
 fn stale_file_results_do_not_commit() {
     let mut explorer = ExplorerActivity::new(&RepositorySnapshot::default());
-    explorer.latest_file = 2;
+    explorer.latest_load = 2;
     explorer.pending_path = Some(PathBuf::from("new.rs"));
     explorer.model.viewer = Some(Viewer {
+        document_id: ExplorerDocumentId(2),
         path: PathBuf::from("new.rs"),
         title: Box::new(Line::raw("M new.rs")),
-        lines: vec!["new".to_owned()],
+        lines: vec!["new".to_owned()].into(),
         markers: HashMap::new(),
-        highlighted: HashMap::new(),
-        coverage: Vec::new(),
+        highlighted: BTreeMap::new(),
+        coverage: Vec::new().into(),
         syntax_eligible: false,
         message: None,
     });
-    explorer.accept(ExplorerOutcome::File {
+    explorer.accept(ExplorerOutcome::FileLoaded {
         id: 1,
-        replace: false,
         result: Ok(Viewer {
+            document_id: ExplorerDocumentId(1),
             path: PathBuf::from("old.rs"),
             title: Box::new(Line::raw("M old.rs")),
-            lines: vec!["old".to_owned()],
+            lines: vec!["old".to_owned()].into(),
             markers: HashMap::new(),
-            highlighted: HashMap::new(),
-            coverage: Vec::new(),
+            highlighted: BTreeMap::new(),
+            coverage: Vec::new().into(),
             syntax_eligible: false,
             message: None,
         }),
@@ -36,7 +37,7 @@ fn stale_file_results_do_not_commit() {
     let viewer = explorer.model.viewer.as_ref().unwrap();
     assert_eq!(viewer.path, PathBuf::from("new.rs"));
     assert_eq!(*viewer.title, Line::raw("M new.rs"));
-    assert_eq!(viewer.lines, ["new"]);
+    assert_eq!(viewer.lines.as_ref(), ["new"]);
     assert_eq!(explorer.pending_path, Some(PathBuf::from("new.rs")));
 }
 
@@ -59,47 +60,78 @@ fn filesystem_change_refreshes_paths_and_selected_content_without_git_changes() 
     ));
     assert!(matches!(
         explorer.queued.back(),
-        Some(ExplorerRequest::File {
-            path,
-            replace: true,
-            ..
-        }) if path == &PathBuf::from("ignored.txt")
+        Some(ExplorerRequest::LoadFile { path, .. })
+            if path == &PathBuf::from("ignored.txt")
     ));
 }
 
 #[test]
 fn filesystem_replacement_does_not_reuse_old_syntax_coverage() {
     let mut explorer = ExplorerActivity::new(&RepositorySnapshot::default());
-    explorer.latest_file = 2;
+    explorer.latest_load = 2;
     explorer.pending_path = Some(PathBuf::from("ignored.rs"));
     explorer.model.viewer = Some(Viewer {
+        document_id: ExplorerDocumentId(1),
         path: PathBuf::from("ignored.rs"),
         title: Box::new(Line::raw("ignored.rs")),
-        lines: vec!["old".to_owned()],
+        lines: vec!["old".to_owned()].into(),
         markers: HashMap::new(),
-        highlighted: HashMap::from([(1, diffo_highlight::HighlightedLine::default())]),
-        coverage: vec![diffo_highlight::LineRange { start: 1, end: 1 }],
+        highlighted: BTreeMap::from([(1, diffo_highlight::HighlightedLine::default())]),
+        coverage: vec![diffo_highlight::LineRange { start: 1, end: 1 }].into(),
         syntax_eligible: true,
         message: None,
     });
 
-    explorer.accept(ExplorerOutcome::File {
+    explorer.accept(ExplorerOutcome::FileLoaded {
         id: 2,
-        replace: true,
         result: Ok(Viewer {
+            document_id: ExplorerDocumentId(2),
             path: PathBuf::from("ignored.rs"),
             title: Box::new(Line::raw("ignored.rs")),
-            lines: vec!["new".to_owned()],
+            lines: vec!["new".to_owned()].into(),
             markers: HashMap::new(),
-            highlighted: HashMap::new(),
-            coverage: Vec::new(),
+            highlighted: BTreeMap::new(),
+            coverage: Vec::new().into(),
             syntax_eligible: true,
             message: None,
         }),
     });
 
     let viewer = explorer.model.viewer.as_ref().unwrap();
-    assert_eq!(viewer.lines, ["new"]);
+    assert_eq!(viewer.lines.as_ref(), ["new"]);
+    assert!(viewer.highlighted.is_empty());
+    assert!(viewer.coverage.is_empty());
+}
+
+#[test]
+fn stale_syntax_window_cannot_contaminate_a_reloaded_document() {
+    let mut explorer = ExplorerActivity::new(&RepositorySnapshot::default());
+    explorer.model.viewer = Some(Viewer {
+        document_id: ExplorerDocumentId(2),
+        path: PathBuf::from("same.rs"),
+        title: Box::new(Line::raw("same.rs")),
+        lines: vec!["new".to_owned()].into(),
+        markers: HashMap::new(),
+        highlighted: BTreeMap::new(),
+        coverage: Vec::new().into(),
+        syntax_eligible: true,
+        message: None,
+    });
+
+    explorer.accept(ExplorerOutcome::WindowHighlighted {
+        id: 3,
+        document_id: ExplorerDocumentId(1),
+        result: diffo_highlight::HighlightedTextWindow {
+            styles: std::collections::BTreeMap::from([(
+                1,
+                diffo_highlight::HighlightedLine::default(),
+            )]),
+            coverage: Some(diffo_highlight::LineRange::new(1, 1)),
+            lines_processed: 1,
+        },
+    });
+
+    let viewer = explorer.model.viewer.as_ref().unwrap();
     assert!(viewer.highlighted.is_empty());
     assert!(viewer.coverage.is_empty());
 }
@@ -132,19 +164,19 @@ fn quick_open_commits_tree_selection_with_the_viewer() {
     explorer.quick_open(PathBuf::from("src/nested/main.rs"));
     assert_eq!(explorer.picker.selected(), prior.as_ref());
     let request = explorer.take_request().expect("file request");
-    let ExplorerRequest::File { id, .. } = request else {
+    let ExplorerRequest::LoadFile { id, .. } = request else {
         panic!("expected file request");
     };
-    explorer.accept(ExplorerOutcome::File {
+    explorer.accept(ExplorerOutcome::FileLoaded {
         id,
-        replace: false,
         result: Ok(Viewer {
+            document_id: ExplorerDocumentId(id),
             path: PathBuf::from("src/nested/main.rs"),
             title: Box::new(Line::raw("main.rs")),
-            lines: vec!["ready".to_owned()],
+            lines: vec!["ready".to_owned()].into(),
             markers: HashMap::new(),
-            highlighted: HashMap::new(),
-            coverage: Vec::new(),
+            highlighted: BTreeMap::new(),
+            coverage: Vec::new().into(),
             syntax_eligible: false,
             message: None,
         }),
@@ -339,12 +371,13 @@ fn deleted_snapshot_path_is_absent_from_the_tree() {
 fn horizontal_pan_clamps_to_the_visible_code_width_and_returns_to_zero() {
     let mut explorer = ExplorerActivity::new(&RepositorySnapshot::default());
     explorer.model.viewer = Some(Viewer {
+        document_id: ExplorerDocumentId(1),
         path: PathBuf::from("wide.txt"),
         title: Box::new(Line::raw("  wide.txt")),
-        lines: vec!["x".repeat(100)],
+        lines: vec!["x".repeat(100)].into(),
         markers: HashMap::new(),
-        highlighted: HashMap::new(),
-        coverage: Vec::new(),
+        highlighted: BTreeMap::new(),
+        coverage: Vec::new().into(),
         syntax_eligible: false,
         message: None,
     });
@@ -400,12 +433,13 @@ fn uncached_scroll_keeps_the_committed_viewport_until_coverage_arrives() {
         .map(|line| format!("let value_{line} = {line};"))
         .collect::<Vec<_>>();
     explorer.model.viewer = Some(Viewer {
+        document_id: ExplorerDocumentId(7),
         path: path.clone(),
         title: Box::new(Line::raw("  large.rs")),
-        lines: lines.clone(),
+        lines: lines.into(),
         markers: HashMap::new(),
-        highlighted: HashMap::new(),
-        coverage: vec![diffo_highlight::LineRange { start: 1, end: 20 }],
+        highlighted: BTreeMap::new(),
+        coverage: vec![diffo_highlight::LineRange { start: 1, end: 20 }].into(),
         syntax_eligible: true,
         message: None,
     });
@@ -415,21 +449,16 @@ fn uncached_scroll_keeps_the_committed_viewport_until_coverage_arrives() {
     assert_eq!(explorer.model.viewer_scroll, 0);
     assert_eq!(explorer.vertical_scroll.requested(), Some(40));
     assert!(explorer.viewer_syntax_ready());
-    let request_id = explorer.latest_file;
+    let request_id = explorer.latest_window;
 
-    explorer.accept(ExplorerOutcome::File {
+    explorer.accept(ExplorerOutcome::WindowHighlighted {
         id: request_id,
-        replace: false,
-        result: Ok(Viewer {
-            path,
-            title: Box::new(Line::raw("  large.rs")),
-            lines,
-            markers: HashMap::new(),
-            highlighted: HashMap::new(),
-            coverage: vec![diffo_highlight::LineRange { start: 41, end: 60 }],
-            syntax_eligible: true,
-            message: None,
-        }),
+        document_id: ExplorerDocumentId(7),
+        result: diffo_highlight::HighlightedTextWindow {
+            styles: std::collections::BTreeMap::default(),
+            coverage: Some(diffo_highlight::LineRange { start: 41, end: 60 }),
+            lines_processed: 20,
+        },
     });
     explorer.prepare_viewer_scroll();
 
@@ -451,6 +480,7 @@ fn uncached_scroll_keeps_the_committed_viewport_until_coverage_arrives() {
     assert_eq!(explorer.model.viewer_scroll, 0);
     assert!(explorer.viewer_syntax_ready());
     assert!(explorer.pending_path.is_none());
+    assert!(explorer.pending_window.is_none());
 }
 
 #[test]
@@ -458,15 +488,17 @@ fn cold_scroll_targets_accumulate_and_reverse_without_moving_the_committed_viewp
     let mut explorer = ExplorerActivity::new(&RepositorySnapshot::default());
     let path = PathBuf::from("large.rs");
     explorer.model.viewer = Some(Viewer {
+        document_id: ExplorerDocumentId(1),
         path,
         title: Box::new(Line::raw("  large.rs")),
         lines: (1..=200).map(|line| format!("line {line}")).collect(),
         markers: HashMap::new(),
-        highlighted: HashMap::new(),
+        highlighted: BTreeMap::new(),
         coverage: vec![diffo_highlight::LineRange {
             start: 91,
             end: 120,
-        }],
+        }]
+        .into(),
         syntax_eligible: true,
         message: None,
     });
@@ -487,20 +519,39 @@ fn cold_scroll_targets_accumulate_and_reverse_without_moving_the_committed_viewp
 }
 
 #[test]
-fn file_requests_coalesce_to_the_newest_viewport() {
+fn syntax_window_requests_coalesce_and_share_the_committed_document() {
     let mut explorer = ExplorerActivity::new(&RepositorySnapshot::default());
     explorer.queued.clear();
-    explorer
-        .model
-        .install_paths(vec![PathBuf::from("large.rs")]);
+    let lines = std::sync::Arc::<[String]>::from(
+        (1..=100)
+            .map(|line| format!("line {line}"))
+            .collect::<Vec<_>>(),
+    );
+    explorer.model.viewer = Some(Viewer {
+        document_id: ExplorerDocumentId(1),
+        path: PathBuf::from("large.rs"),
+        title: Box::new(Line::raw("  large.rs")),
+        lines: lines.clone(),
+        markers: HashMap::new(),
+        highlighted: BTreeMap::new(),
+        coverage: Vec::new().into(),
+        syntax_eligible: true,
+        message: None,
+    });
 
-    explorer.request_file(PathBuf::from("large.rs"), 20, false);
-    explorer.request_file(PathBuf::from("large.rs"), 80, false);
+    explorer.request_syntax_window(20);
+    explorer.request_syntax_window(80);
 
     let requests = explorer.queued.iter().collect::<Vec<_>>();
     assert_eq!(requests.len(), 1);
-    assert!(matches!(
-        requests[0],
-        ExplorerRequest::File { first_line: 80, .. }
-    ));
+    let ExplorerRequest::HighlightWindow {
+        first_line,
+        lines: requested_lines,
+        ..
+    } = requests[0]
+    else {
+        panic!("expected syntax-window request");
+    };
+    assert_eq!(*first_line, 80);
+    assert!(std::sync::Arc::ptr_eq(&lines, requested_lines));
 }

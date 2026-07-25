@@ -5,9 +5,9 @@ use std::sync::{
 
 use crate::diff::FileKey;
 use diffo_diff::{ChangeRegion, DiffDocument, RenderLine, RowKind, SideBySideRow};
-use diffo_highlight::{HighlightedDiff, LineRange, SyntaxHighlighter};
+use diffo_highlight::{HighlightedDiff, SyntaxHighlighter};
 use diffo_ui::file_picker::FilePicker;
-use diffo_ui::text_view::{PreparedVerticalScroll, TextSurfacePreparation};
+use diffo_ui::text_view::{PreparedVerticalScroll, SyntaxCoverage, TextSurfacePreparation};
 use ratatui::{layout::Rect, text::Line};
 
 pub struct Renderer {
@@ -40,8 +40,8 @@ pub(in crate::diff) struct HighlightCache {
     pub(in crate::diff) side_by_side_changes: Vec<ChangeRegion>,
     pub(in crate::diff) highlighted: HighlightedDiff,
     pub(in crate::diff) syntax_highlighted: bool,
-    pub(in crate::diff) highlighted_old_coverage: Vec<LineRange>,
-    pub(in crate::diff) highlighted_new_coverage: Vec<LineRange>,
+    pub(in crate::diff) highlighted_old_coverage: SyntaxCoverage,
+    pub(in crate::diff) highlighted_new_coverage: SyntaxCoverage,
     #[cfg(test)]
     pub(in crate::diff) highlighted_lines_processed: usize,
 }

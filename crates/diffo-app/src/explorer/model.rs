@@ -4,10 +4,12 @@ use std::{
     collections::{BTreeMap, HashMap},
     ffi::OsString,
     path::{Path, PathBuf},
+    sync::Arc,
 };
 
 use diffo_core::{ChangeKind, RepositorySnapshot};
-use diffo_highlight::{HighlightedLine, LineRange};
+use diffo_highlight::{HighlightedLine, HighlightedTextWindow};
+use diffo_ui::text_view::SyntaxCoverage;
 use ratatui::text::Line;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -18,16 +20,35 @@ pub(crate) enum GutterMarker {
     Conflict,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ExplorerDocumentId(pub(crate) u64);
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct Viewer {
+    pub(crate) document_id: ExplorerDocumentId,
     pub(crate) path: PathBuf,
     pub(crate) title: Box<Line<'static>>,
-    pub(crate) lines: Vec<String>,
+    pub(crate) lines: Arc<[String]>,
     pub(crate) markers: HashMap<usize, GutterMarker>,
-    pub(crate) highlighted: HashMap<u32, HighlightedLine>,
-    pub(crate) coverage: Vec<LineRange>,
+    pub(crate) highlighted: BTreeMap<u32, HighlightedLine>,
+    pub(crate) coverage: SyntaxCoverage,
     pub(crate) syntax_eligible: bool,
     pub(crate) message: Option<String>,
+}
+
+impl Viewer {
+    pub(crate) fn install_syntax(&mut self, result: HighlightedTextWindow) -> bool {
+        let coverage_before = self.coverage.clone();
+        let mut changed = result
+            .styles
+            .iter()
+            .any(|(line, style)| self.highlighted.get(line) != Some(style));
+        self.highlighted.extend(result.styles);
+        self.coverage.merge(result.coverage);
+        self.coverage.retain_styles(&mut self.highlighted);
+        changed |= self.coverage != coverage_before;
+        changed
+    }
 }
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]

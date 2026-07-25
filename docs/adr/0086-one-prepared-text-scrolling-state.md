@@ -28,10 +28,13 @@ modes.
 - Rendering never uses a syntax skeleton as a scrolling fallback.
 - One shared centered-window function places bounded syntax coverage. Equal movement magnitude
   selects equal odd window sizes in either direction.
+- One shared `SyntaxCoverage` abstraction owns coverage readiness, adjacent-window merging, the
+  eight-window bound, and matching style eviction for every syntax-backed text surface.
 
 Diff and Explorer continue to own document-specific syntax readiness, worker requests, stale
-result rejection, and rendering. They may not replace the shared target state, window placement,
-or atomic commit policy.
+result rejection, and rendering. Their document models may use one coverage instance for plain
+text or one per diff side, but they may not reimplement the shared target state, coverage cache,
+window placement, or atomic commit policy.
 
 This realizes the shared text-surface ownership in ADR 0043, extends the common scroll core in
 ADR 0050, and supersedes ADR 0044's allowance for interim scrolling skeletons. ADR 0066 retains

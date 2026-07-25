@@ -158,3 +158,43 @@ fn window_lookbehind_preserves_a_multiline_construct() {
 
     assert_eq!(window.styles.new[&300], complete.new[&300]);
 }
+
+#[test]
+fn direct_text_window_matches_one_sided_diff_highlighting() {
+    let lines = (1..=400)
+        .map(|number| match number {
+            100 => "/* comment begins".to_owned(),
+            300 => "comment ends */".to_owned(),
+            _ => format!("pub const LINE_{number}: usize = {number};"),
+        })
+        .collect::<Vec<_>>();
+    let mut patch = String::from("@@ -0,0 +1,400 @@\n");
+    for line in &lines {
+        use std::fmt::Write as _;
+        writeln!(patch, "+{line}").unwrap();
+    }
+    let document = parse_unified_patch(&patch).expect("valid patch");
+    let range = LineRange::new(280, 320);
+    let highlighter = SyntaxHighlighter::new();
+    let diff = highlighter.highlight_window(
+        Path::new("src/main.rs"),
+        &document,
+        HighlightWindowRequest {
+            old: None,
+            new: Some(range),
+            lookbehind_lines: HIGHLIGHT_LOOKBEHIND_LINES,
+            maximum_bytes_per_side: usize::MAX,
+        },
+    );
+    let text = highlighter.highlight_text_window(
+        Path::new("src/main.rs"),
+        &lines,
+        range,
+        HIGHLIGHT_LOOKBEHIND_LINES,
+        usize::MAX,
+    );
+
+    assert_eq!(text.coverage, Some(range));
+    assert_eq!(text.lines_processed, diff.new_lines_processed);
+    assert_eq!(text.styles, diff.styles.new);
+}

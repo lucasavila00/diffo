@@ -11,8 +11,8 @@ use two_face::{
 };
 
 use crate::{
-    HighlightWindowRequest, HighlightedDiff, HighlightedLine, HighlightedWindow, LineRange, Rgb,
-    StyledSpan,
+    HighlightWindowRequest, HighlightedDiff, HighlightedLine, HighlightedTextWindow,
+    HighlightedWindow, LineRange, Rgb, StyledSpan,
 };
 
 pub struct SyntaxHighlighter {
@@ -140,10 +140,55 @@ impl SyntaxHighlighter {
         }
     }
 
+    #[must_use]
+    pub fn highlight_text_window(
+        &self,
+        path: &Path,
+        lines: &[String],
+        range: LineRange,
+        lookbehind_lines: usize,
+        maximum_bytes: usize,
+    ) -> HighlightedTextWindow {
+        let Some(syntax) = self.syntax_for_first_line(path, lines.first().map(String::as_str))
+        else {
+            return HighlightedTextWindow {
+                coverage: Some(range),
+                ..HighlightedTextWindow::default()
+            };
+        };
+        let (styles, lines_processed) = highlight_numbered_window(
+            self.syntaxes,
+            syntax,
+            self.theme,
+            lines.iter().enumerate().map(|(index, line)| {
+                (
+                    line.as_str(),
+                    u32::try_from(index.saturating_add(1)).unwrap_or(u32::MAX),
+                )
+            }),
+            range,
+            lookbehind_lines,
+            maximum_bytes,
+        );
+        HighlightedTextWindow {
+            styles,
+            coverage: Some(range),
+            lines_processed,
+        }
+    }
+
     fn syntax_for<'a>(
         &'a self,
         path: &Path,
         document: &DiffDocument,
+    ) -> Option<&'a SyntaxReference> {
+        self.syntax_for_first_line(path, first_code_line(document))
+    }
+
+    fn syntax_for_first_line<'a>(
+        &'a self,
+        path: &Path,
+        first_line: Option<&str>,
     ) -> Option<&'a SyntaxReference> {
         path.file_name()
             .and_then(|name| name.to_str())
@@ -153,10 +198,7 @@ impl SyntaxHighlighter {
                     .and_then(|extension| extension.to_str())
                     .and_then(|extension| self.syntaxes.find_syntax_by_extension(extension))
             })
-            .or_else(|| {
-                first_code_line(document)
-                    .and_then(|line| self.syntaxes.find_syntax_by_first_line(line))
-            })
+            .or_else(|| first_line.and_then(|line| self.syntaxes.find_syntax_by_first_line(line)))
     }
 }
 
@@ -209,6 +251,28 @@ fn highlight_side_window(
     let Some(range) = range else {
         return (BTreeMap::new(), 0);
     };
+    highlight_numbered_window(
+        syntaxes,
+        syntax,
+        theme,
+        lines
+            .iter()
+            .map(|(line, number)| (line.text.as_str(), *number)),
+        range,
+        lookbehind_lines,
+        maximum_bytes,
+    )
+}
+
+fn highlight_numbered_window<'a>(
+    syntaxes: &SyntaxSet,
+    syntax: &SyntaxReference,
+    theme: &Theme,
+    lines: impl IntoIterator<Item = (&'a str, u32)>,
+    range: LineRange,
+    lookbehind_lines: usize,
+    maximum_bytes: usize,
+) -> (BTreeMap<u32, HighlightedLine>, usize) {
     let start = range
         .start
         .saturating_sub(u32::try_from(lookbehind_lines).unwrap_or(u32::MAX));
@@ -216,20 +280,20 @@ fn highlight_side_window(
     let mut output = BTreeMap::new();
     let mut bytes = 0_usize;
     let mut processed = 0_usize;
-    for &(line, number) in lines {
+    for (line, number) in lines {
         if number > range.end {
             break;
         }
         if number < start {
             continue;
         }
-        let line_bytes = line.text.len();
+        let line_bytes = line.len();
         if bytes.saturating_add(line_bytes) > maximum_bytes {
             break;
         }
         bytes = bytes.saturating_add(line_bytes);
         processed = processed.saturating_add(1);
-        let Ok(spans) = highlighter.highlight_line(&line.text, syntaxes) else {
+        let Ok(spans) = highlighter.highlight_line(line, syntaxes) else {
             continue;
         };
         if !range.contains(number) {

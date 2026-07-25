@@ -15,6 +15,7 @@ diffo-ui.workspace = true
 ratatui.workspace = true
 
 [dev-dependencies]
+anyhow.workspace = true
 insta.workspace = true
 
 [lints]

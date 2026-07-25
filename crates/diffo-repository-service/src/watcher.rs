@@ -32,7 +32,7 @@ impl RepositoryWatcher {
         let callback_worktree_pending = worktree_pending;
         let mut watcher =
             notify::recommended_watcher(move |event: notify::Result<notify::Event>| match event {
-                Ok(event) => {
+                Ok(event) if requires_refresh(event.kind) => {
                     if event.paths.iter().any(|path| {
                         is_worktree_path(path, &worktree, &control_entry, &git_metadata)
                     }) {
@@ -42,6 +42,7 @@ impl RepositoryWatcher {
                         let _ = callback_requests.send(WorkerRequest::RefreshRequested);
                     }
                 }
+                Ok(_) => {}
                 Err(error) => {
                     let _ = callback_requests.send(WorkerRequest::WatchFailed(error.to_string()));
                 }
@@ -54,6 +55,10 @@ impl RepositoryWatcher {
         }
         Ok(Self { _watcher: watcher })
     }
+}
+
+fn requires_refresh(kind: notify::EventKind) -> bool {
+    !kind.is_access()
 }
 
 fn is_worktree_path(
@@ -71,7 +76,11 @@ fn is_worktree_path(
 
 #[cfg(test)]
 mod tests {
-    use super::is_worktree_path;
+    use super::{is_worktree_path, requires_refresh};
+    use notify::{
+        EventKind,
+        event::{AccessKind, AccessMode, DataChange, ModifyKind},
+    };
     use std::path::{Path, PathBuf};
 
     #[test]
@@ -98,5 +107,16 @@ mod tests {
             control,
             &metadata
         ));
+    }
+
+    #[test]
+    fn ignores_reads_but_keeps_content_changes() {
+        assert!(!requires_refresh(EventKind::Access(AccessKind::Open(
+            AccessMode::Read
+        ))));
+        assert!(!requires_refresh(EventKind::Access(AccessKind::Read)));
+        assert!(requires_refresh(EventKind::Modify(ModifyKind::Data(
+            DataChange::Content
+        ))));
     }
 }

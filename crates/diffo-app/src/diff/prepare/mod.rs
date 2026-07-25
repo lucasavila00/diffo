@@ -13,10 +13,8 @@ use diffo_highlight::{HighlightWindowRequest, LineRange};
 use diffo_ui::text_view::{ScrollCommand, ViewportMetrics, centered_window};
 
 mod anchor;
-mod coverage;
 pub(in crate::diff) mod state;
 use anchor::first_change;
-use coverage::{merge_coverage, range_is_covered, retain_covered_styles};
 
 #[derive(Clone, Copy)]
 struct ProjectionHighlightRequest {
@@ -341,8 +339,7 @@ impl Renderer {
                 prefetch_viewports: 1,
             },
         );
-        range_is_covered(&cache.highlighted_old_coverage, old)
-            && range_is_covered(&cache.highlighted_new_coverage, new)
+        cache.highlighted_old_coverage.covers(old) && cache.highlighted_new_coverage.covers(new)
     }
 
     pub(in crate::diff) fn prepare_requested(
@@ -464,15 +461,18 @@ impl Renderer {
         {
             current.highlighted.old.append(&mut cache.highlighted.old);
             current.highlighted.new.append(&mut cache.highlighted.new);
-            merge_coverage(
-                &mut current.highlighted_old_coverage,
-                cache.highlighted_old_coverage,
-            );
-            merge_coverage(
-                &mut current.highlighted_new_coverage,
-                cache.highlighted_new_coverage,
-            );
-            retain_covered_styles(current);
+            current
+                .highlighted_old_coverage
+                .merge(cache.highlighted_old_coverage.iter().copied());
+            current
+                .highlighted_new_coverage
+                .merge(cache.highlighted_new_coverage.iter().copied());
+            current
+                .highlighted_old_coverage
+                .retain_styles(&mut current.highlighted.old);
+            current
+                .highlighted_new_coverage
+                .retain_styles(&mut current.highlighted.new);
             return;
         }
         let changed = self

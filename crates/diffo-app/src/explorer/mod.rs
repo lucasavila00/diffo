@@ -20,6 +20,7 @@ use diffo_ui::text_view::{
 use diffo_ui::{PaneSplit, design, wheel_scroll_delta};
 use ratatui::{Frame, layout::Rect, text::Line};
 
+pub use model::ExplorerDocumentId;
 use model::{EntryId, ExplorerModel};
 use view::{
     VIEWER_GUTTER_WIDTH, entry_label, explorer_areas, full_screen_viewer_metrics, tree_document,
@@ -52,10 +53,12 @@ pub struct ExplorerActivity {
     picker: FilePicker<EntryId>,
     next_id: u64,
     latest_paths: u64,
-    latest_file: u64,
+    latest_load: u64,
+    latest_window: u64,
     paths_pending: bool,
     queued: VecDeque<ExplorerRequest>,
     pending_path: Option<PathBuf>,
+    pending_window: Option<(u64, ExplorerDocumentId)>,
     vertical_scroll: PreparedVerticalScroll,
     pending_quick_open: Option<PathBuf>,
     has_committed_paths: bool,
@@ -74,10 +77,12 @@ impl ExplorerActivity {
             picker: FilePicker::default(),
             next_id: 0,
             latest_paths: 0,
-            latest_file: 0,
+            latest_load: 0,
+            latest_window: 0,
             paths_pending: false,
             queued: VecDeque::new(),
             pending_path: None,
+            pending_window: None,
             vertical_scroll: PreparedVerticalScroll::default(),
             pending_quick_open: None,
             has_committed_paths: false,
@@ -105,7 +110,7 @@ impl ExplorerActivity {
         self.queued.push_back(ExplorerRequest::Paths { id });
     }
 
-    fn request_file(&mut self, path: PathBuf, first_line: usize, replace: bool) {
+    fn request_file_load(&mut self, path: PathBuf, first_line: usize) {
         let Some((status, title)) = self
             .model
             .file_entry(&path)
@@ -120,19 +125,50 @@ impl ExplorerActivity {
             .as_ref()
             .filter(|viewer| viewer.path == path)
             .map_or(first_line, |_| self.model.viewer_scroll);
-        self.latest_file = id;
+        self.latest_load = id;
         self.pending_path = Some(path.clone());
-        self.queued
-            .retain(|request| !matches!(request, ExplorerRequest::File { .. }));
-        self.queued.push_back(ExplorerRequest::File {
+        self.pending_window = None;
+        self.queued.retain(|request| {
+            !matches!(
+                request,
+                ExplorerRequest::LoadFile { .. } | ExplorerRequest::HighlightWindow { .. }
+            )
+        });
+        self.queued.push_back(ExplorerRequest::LoadFile {
             id,
             path,
             title,
             status,
-            replace,
             first_line,
             viewport_rows: self.viewport_rows,
             window_viewports: syntax_prefetch_viewports(committed, first_line, self.viewport_rows),
+        });
+    }
+
+    fn request_syntax_window(&mut self, first_line: usize) {
+        let Some(viewer) = self.model.viewer.as_ref() else {
+            return;
+        };
+        let document_id = viewer.document_id;
+        let path = viewer.path.clone();
+        let lines = viewer.lines.clone();
+        let id = self.next_id();
+        self.latest_window = id;
+        self.pending_window = Some((id, document_id));
+        self.queued
+            .retain(|request| !matches!(request, ExplorerRequest::HighlightWindow { .. }));
+        self.queued.push_back(ExplorerRequest::HighlightWindow {
+            id,
+            document_id,
+            path,
+            lines,
+            first_line,
+            viewport_rows: self.viewport_rows,
+            window_viewports: syntax_prefetch_viewports(
+                self.model.viewer_scroll,
+                first_line,
+                self.viewport_rows,
+            ),
         });
     }
 
@@ -143,7 +179,7 @@ impl ExplorerActivity {
         self.vertical_scroll.clear();
         self.request_paths();
         if let Some(path) = self.selected_file().cloned() {
-            self.request_file(path, self.model.viewer_scroll, true);
+            self.request_file_load(path, self.model.viewer_scroll);
         }
     }
 
@@ -151,7 +187,7 @@ impl ExplorerActivity {
         self.vertical_scroll.clear();
         self.request_paths();
         if let Some(path) = self.selected_file().cloned() {
-            self.request_file(path, self.model.viewer_scroll, true);
+            self.request_file_load(path, self.model.viewer_scroll);
         }
     }
 
@@ -197,7 +233,7 @@ impl ExplorerActivity {
             && selected.as_ref() != self.pending_path.as_ref()
             && let Some(path) = selected.as_ref()
         {
-            self.request_file(path.clone(), 0, false);
+            self.request_file_load(path.clone(), 0);
         }
         let syntax_ready = self.viewer_syntax_ready();
         let coverage = self
@@ -222,7 +258,7 @@ impl ExplorerActivity {
             },
             coverage_before: coverage,
             coverage_after: coverage,
-            request_id: self.pending_path.as_ref().map(|_| self.latest_file),
+            request_id: self.pending_request_id(),
             cache_hit: !text_missing && syntax_ready,
             coalesced_request: false,
             stale_discarded: false,
@@ -252,13 +288,10 @@ impl ExplorerActivity {
         let text_missing = selected != displayed;
         if text_missing && selected.as_ref() != self.pending_path.as_ref() {
             if let Some(path) = selected.as_ref() {
-                self.request_file(path.clone(), 0, false);
+                self.request_file_load(path.clone(), 0);
             }
-        } else if !self.viewer_syntax_ready()
-            && let Some(viewer) = self.model.viewer.as_ref()
-            && self.pending_path.as_ref() != Some(&viewer.path)
-        {
-            self.request_file(viewer.path.clone(), self.model.viewer_scroll, false);
+        } else if !self.viewer_syntax_ready() && self.pending_window.is_none() {
+            self.request_syntax_window(self.model.viewer_scroll);
         }
         let coverage = self
             .model
@@ -282,7 +315,7 @@ impl ExplorerActivity {
             },
             coverage_before: coverage,
             coverage_after: coverage,
-            request_id: self.pending_path.as_ref().map(|_| self.latest_file),
+            request_id: self.pending_request_id(),
             cache_hit: !text_missing && self.viewer_syntax_ready(),
             coalesced_request: false,
             stale_discarded: false,
@@ -511,10 +544,11 @@ impl ExplorerActivity {
         if let Some(path) = self.selected_file().cloned() {
             let displayed = self.model.viewer.as_ref().map(|viewer| &viewer.path);
             if displayed != Some(&path) && self.pending_path.as_ref() != Some(&path) {
-                self.request_file(path, 0, false);
+                self.request_file_load(path, 0);
             }
         } else {
             self.pending_path = None;
+            self.pending_window = None;
         }
     }
 
@@ -550,14 +584,10 @@ impl ExplorerActivity {
                     (Some(("Explorer refresh failed".to_owned(), error)), true)
                 }
             },
-            ExplorerOutcome::File {
-                id,
-                replace,
-                result,
-            } if id == self.latest_file => {
+            ExplorerOutcome::FileLoaded { id, result } if id == self.latest_load => {
                 let requested_path = self.pending_path.take();
                 match result {
-                    Ok(mut viewer) => {
+                    Ok(viewer) => {
                         if self.pending_quick_open.as_ref() == Some(&viewer.path)
                             && self.model.file_entry(&viewer.path).is_none()
                         {
@@ -575,22 +605,8 @@ impl ExplorerActivity {
                             self.model.viewer_horizontal_scroll = 0;
                             self.vertical_scroll.clear();
                         }
-                        if !replace
-                            && let Some(displayed) = self
-                                .model
-                                .viewer
-                                .as_ref()
-                                .filter(|displayed| displayed.path == viewer.path)
-                        {
-                            let mut highlighted = displayed.highlighted.clone();
-                            highlighted.extend(std::mem::take(&mut viewer.highlighted));
-                            viewer.highlighted = highlighted;
-                            let incoming = std::mem::take(&mut viewer.coverage);
-                            viewer.coverage.clone_from(&displayed.coverage);
-                            viewer.coverage.extend(incoming);
-                            merge_coverage(&mut viewer);
-                        }
                         let viewer_changed = self.model.viewer.as_ref() != Some(&viewer);
+                        self.pending_window = None;
                         self.model.viewer = Some(viewer);
                         if let Some(path) = self.pending_quick_open.take() {
                             self.commit_quick_open_selection(&path);
@@ -616,13 +632,43 @@ impl ExplorerActivity {
                     }
                 }
             }
-            ExplorerOutcome::Paths { .. } | ExplorerOutcome::File { .. } => (None, false),
+            ExplorerOutcome::WindowHighlighted {
+                id,
+                document_id,
+                result,
+            } => {
+                let pending_cleared = self.pending_window == Some((id, document_id));
+                if pending_cleared {
+                    self.pending_window = None;
+                }
+                let content_changed = self
+                    .model
+                    .viewer
+                    .as_mut()
+                    .filter(|viewer| viewer.document_id == document_id)
+                    .is_some_and(|viewer| viewer.install_syntax(result));
+                if content_changed {
+                    self.content_revision = self.content_revision.saturating_add(1);
+                }
+                (None, pending_cleared || content_changed)
+            }
+            ExplorerOutcome::Paths { .. } | ExplorerOutcome::FileLoaded { .. } => (None, false),
         }
     }
 
     #[must_use]
     pub fn is_preparing(&self) -> bool {
-        self.paths_pending || self.pending_path.is_some() || !self.queued.is_empty()
+        self.paths_pending
+            || self.pending_path.is_some()
+            || self.pending_window.is_some()
+            || !self.queued.is_empty()
+    }
+
+    fn pending_request_id(&self) -> Option<u64> {
+        self.pending_path
+            .as_ref()
+            .map(|_| self.latest_load)
+            .or_else(|| self.pending_window.map(|(id, _)| id))
     }
 
     fn viewer_syntax_ready(&self) -> bool {
@@ -645,33 +691,8 @@ impl ExplorerActivity {
         .unwrap_or(u32::MAX);
         viewer
             .coverage
-            .iter()
-            .any(|coverage| coverage.start <= start && coverage.end >= end)
+            .covers(Some(diffo_highlight::LineRange::new(start, end)))
     }
-}
-
-const MAX_COVERAGE_WINDOWS: usize = 8;
-
-fn merge_coverage(viewer: &mut model::Viewer) {
-    let mut merged = Vec::<diffo_highlight::LineRange>::new();
-    for range in viewer.coverage.drain(..) {
-        if let Some(existing) = merged.iter_mut().find(|existing| {
-            existing.start <= range.end.saturating_add(1)
-                && range.start <= existing.end.saturating_add(1)
-        }) {
-            existing.start = existing.start.min(range.start);
-            existing.end = existing.end.max(range.end);
-        } else {
-            merged.push(range);
-        }
-    }
-    if merged.len() > MAX_COVERAGE_WINDOWS {
-        merged.drain(..merged.len() - MAX_COVERAGE_WINDOWS);
-    }
-    viewer
-        .highlighted
-        .retain(|line, _| merged.iter().any(|range| range.contains(*line)));
-    viewer.coverage = merged;
 }
 
 #[cfg(test)]

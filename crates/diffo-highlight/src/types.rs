@@ -58,3 +58,10 @@ pub struct HighlightedWindow {
     pub old_lines_processed: usize,
     pub new_lines_processed: usize,
 }
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct HighlightedTextWindow {
+    pub styles: BTreeMap<u32, HighlightedLine>,
+    pub coverage: Option<LineRange>,
+    pub lines_processed: usize,
+}

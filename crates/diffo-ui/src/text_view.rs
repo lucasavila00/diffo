@@ -1,5 +1,6 @@
 //! Shared read-only text viewport, scrolling, and rendering.
 
+use diffo_highlight::LineRange;
 use ratatui::{
     Frame,
     layout::Rect,
@@ -7,7 +8,7 @@ use ratatui::{
     text::Line,
     widgets::{Paragraph, ScrollbarOrientation},
 };
-use std::ops::Range;
+use std::{collections::BTreeMap, ops::Range};
 
 use crate::{design, maximum_scroll, render_scrollbar, scroll_offset, scrollbar_position, theme};
 
@@ -40,10 +41,87 @@ pub struct TextSurfacePreparation {
 }
 
 pub const LINE_SCROLL_ROWS: i64 = 4;
+const MAX_SYNTAX_COVERAGE_WINDOWS: usize = 8;
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct PreparedVerticalScroll {
     requested: Option<usize>,
+}
+
+#[must_use]
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct SyntaxCoverage {
+    windows: Vec<LineRange>,
+}
+
+impl SyntaxCoverage {
+    pub fn from_range(range: Option<LineRange>) -> Self {
+        Self {
+            windows: range.into_iter().collect(),
+        }
+    }
+
+    #[must_use]
+    pub fn covers(&self, needed: Option<LineRange>) -> bool {
+        needed.is_none_or(|needed| {
+            self.windows
+                .iter()
+                .any(|coverage| coverage.start <= needed.start && coverage.end >= needed.end)
+        })
+    }
+
+    pub fn merge(&mut self, incoming: impl IntoIterator<Item = LineRange>) {
+        for mut range in incoming {
+            let mut insertion = self.windows.len();
+            while let Some(position) = self.windows.iter().position(|existing| {
+                existing.start <= range.end.saturating_add(1)
+                    && range.start <= existing.end.saturating_add(1)
+            }) {
+                let existing = self.windows.remove(position);
+                insertion = insertion.min(position);
+                range.start = range.start.min(existing.start);
+                range.end = range.end.max(existing.end);
+            }
+            self.windows
+                .insert(insertion.min(self.windows.len()), range);
+        }
+        if self.windows.len() > MAX_SYNTAX_COVERAGE_WINDOWS {
+            self.windows
+                .drain(..self.windows.len() - MAX_SYNTAX_COVERAGE_WINDOWS);
+        }
+    }
+
+    pub fn retain_styles<T>(&self, styles: &mut BTreeMap<u32, T>) {
+        styles.retain(|line, _| self.windows.iter().any(|range| range.contains(*line)));
+    }
+
+    #[must_use]
+    pub fn last(&self) -> Option<&LineRange> {
+        self.windows.last()
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &LineRange> {
+        self.windows.iter()
+    }
+
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.windows.is_empty()
+    }
+}
+
+impl FromIterator<LineRange> for SyntaxCoverage {
+    fn from_iter<T: IntoIterator<Item = LineRange>>(iter: T) -> Self {
+        let mut coverage = Self::default();
+        coverage.merge(iter);
+        coverage
+    }
+}
+
+impl From<Vec<LineRange>> for SyntaxCoverage {
+    fn from(windows: Vec<LineRange>) -> Self {
+        windows.into_iter().collect()
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -398,6 +476,26 @@ mod tests {
         assert_eq!(syntax_prefetch_viewports(50, 54, 10), 7);
         assert_eq!(syntax_prefetch_viewports(50, 40, 10), 13);
         assert_eq!(syntax_prefetch_viewports(50, 60, 10), 13);
+    }
+
+    #[test]
+    fn syntax_coverage_merges_bounds_and_evicts_styles_for_every_text_surface() {
+        let mut coverage = SyntaxCoverage::from_range(Some(LineRange::new(10, 20)));
+        coverage.merge([LineRange::new(30, 40), LineRange::new(21, 29)]);
+        assert!(coverage.covers(Some(LineRange::new(10, 40))));
+
+        let mut styles = BTreeMap::from([(10, "first"), (40, "last"), (50, "outside")]);
+        coverage.retain_styles(&mut styles);
+        assert_eq!(styles.into_keys().collect::<Vec<_>>(), [10, 40]);
+
+        let mut bounded = SyntaxCoverage::default();
+        bounded.merge((0..9).map(|index| {
+            let line = index * 10 + 1;
+            LineRange::new(line, line)
+        }));
+        assert!(!bounded.covers(Some(LineRange::new(1, 1))));
+        assert!(bounded.covers(Some(LineRange::new(81, 81))));
+        assert_eq!(bounded.windows.len(), MAX_SYNTAX_COVERAGE_WINDOWS);
     }
 
     #[test]

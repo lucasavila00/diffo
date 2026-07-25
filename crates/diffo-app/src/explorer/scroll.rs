@@ -14,7 +14,6 @@ impl ExplorerActivity {
             self.vertical_scroll.clear();
             return;
         };
-        let path = viewer.path.clone();
         let target = self
             .vertical_scroll
             .request(
@@ -28,8 +27,8 @@ impl ExplorerActivity {
             .unwrap_or(self.model.viewer_scroll);
         if self.viewer_syntax_ready_at(target) {
             self.model.viewer_scroll = self.vertical_scroll.take_ready(true).unwrap_or(target);
-        } else if self.pending_path.as_ref() != Some(&path) {
-            self.request_file(path, target, false);
+        } else if self.pending_window.is_none() {
+            self.request_syntax_window(target);
         }
     }
 
@@ -55,7 +54,7 @@ impl ExplorerActivity {
         if self.viewer_syntax_ready_at(target) {
             self.model.viewer_scroll = self.vertical_scroll.take_ready(true).unwrap_or(target);
         } else {
-            self.request_file(viewer.path.clone(), target, false);
+            self.request_syntax_window(target);
         }
     }
 

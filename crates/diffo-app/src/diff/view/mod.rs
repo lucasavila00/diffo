@@ -257,7 +257,11 @@ impl Renderer {
             frame,
             viewport.content_area,
             lines,
-            model.diff_horizontal_scroll,
+            if displayed_mode == DiffViewMode::Inline {
+                model.diff_horizontal_scroll
+            } else {
+                0
+            },
         );
         self.render_hunk_buttons(frame, area, &viewport);
         self.render_diff_scrollbars(frame, area, &viewport, model);
@@ -444,7 +448,14 @@ impl Renderer {
                     .iter()
                     .skip(first_row)
                     .take(row_count)
-                    .map(|row| side_by_side_line(row, column_width, &cache.highlighted))
+                    .map(|row| {
+                        side_by_side_line(
+                            row,
+                            column_width,
+                            model.diff_horizontal_scroll,
+                            &cache.highlighted,
+                        )
+                    })
                     .collect()
             }
         }

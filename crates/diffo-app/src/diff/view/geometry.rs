@@ -167,7 +167,17 @@ impl Renderer {
         let inner = area.inner(design::PANEL_INSET);
         let rows = self.displayed_rows(mode);
         let changes = self.change_targets(mode);
-        let viewport_columns = usize::from(inner.width);
+        let viewport_columns = if mode == DiffViewMode::SideBySide {
+            usize::from(
+                inner
+                    .width
+                    .saturating_sub(design::SIDE_BY_SIDE_DIVIDER_WIDTH)
+                    / design::SIDE_BY_SIDE_COLUMN_COUNT,
+            )
+            .saturating_sub(usize::from(design::SIDE_BY_SIDE_GUTTER_WIDTH))
+        } else {
+            usize::from(inner.width)
+        };
         let previous_rows = u16::from(inner.height > 0);
         let next_rows = u16::from(inner.height > 1);
         let control_rows = usize::from(previous_rows.saturating_add(next_rows));
@@ -183,9 +193,10 @@ impl Renderer {
             let first_row = requested_scroll.min(maximum_vertical_scroll);
             let new_previous = previous_change_target(changes, first_row, viewport_rows);
             let new_next = next_change_target(changes, first_row, viewport_rows);
-            let columns = self.displayed_columns(mode, viewport_columns, first_row, viewport_rows);
+            let columns = self.displayed_columns(mode, first_row, viewport_rows);
             horizontal_columns = horizontal_columns.max(columns);
-            let new_horizontal = show_horizontal || columns > viewport_columns;
+            let new_horizontal =
+                show_horizontal || (viewport_columns > 0 && columns > viewport_columns);
             if new_previous == previous_change
                 && new_next == next_change
                 && new_horizontal == show_horizontal
@@ -230,7 +241,7 @@ impl Renderer {
         let maximum_vertical_scroll = maximum_scroll(rows, viewport_rows);
         let first_row = requested_scroll.min(maximum_vertical_scroll);
         let columns = self
-            .displayed_columns(mode, viewport_columns, first_row, viewport_rows)
+            .displayed_columns(mode, first_row, viewport_rows)
             .max(horizontal_columns);
         DiffViewportMetrics {
             content_area,

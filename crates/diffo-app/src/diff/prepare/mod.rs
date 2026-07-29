@@ -522,26 +522,34 @@ impl Renderer {
     pub(in crate::diff) fn displayed_columns(
         &self,
         mode: DiffViewMode,
-        viewport_columns: usize,
         first_row: usize,
         row_count: usize,
     ) -> usize {
-        if mode == DiffViewMode::SideBySide {
-            return viewport_columns;
-        }
         if let Some(cache) = self.highlighted.as_ref() {
-            cache
-                .inline
-                .iter()
-                .skip(first_row)
-                .take(row_count)
-                .map(|row| {
-                    Span::raw(terminal_safe_text(&row.text))
-                        .width()
-                        .saturating_add(7)
-                })
-                .max()
-                .unwrap_or(0)
+            match mode {
+                DiffViewMode::Inline => cache
+                    .inline
+                    .iter()
+                    .skip(first_row)
+                    .take(row_count)
+                    .map(|row| {
+                        Span::raw(terminal_safe_text(&row.text))
+                            .width()
+                            .saturating_add(7)
+                    })
+                    .max()
+                    .unwrap_or(0),
+                DiffViewMode::SideBySide => cache
+                    .side_by_side
+                    .iter()
+                    .skip(first_row)
+                    .take(row_count)
+                    .flat_map(|row| [row.old.as_ref(), row.new.as_ref()])
+                    .flatten()
+                    .map(|line| Span::raw(terminal_safe_text(&line.text)).width())
+                    .max()
+                    .unwrap_or(0),
+            }
         } else if let Some(failed) = self.failed.as_ref() {
             failed
                 .patch

@@ -363,6 +363,43 @@ fn horizontal_scrollbar_tracks_only_the_visible_vertical_slice() {
 }
 
 #[test]
+fn side_by_side_horizontal_pan_keeps_gutters_and_divider_fixed() {
+    let mut model = model();
+    model.snapshot.files[0].unstaged.as_mut().unwrap().text = format!(
+        "@@ -1 +1 @@\n-OLD_{}\n+NEW_{}RIGHT_EDGE\n",
+        "x".repeat(80),
+        "y".repeat(80),
+    );
+    model.toggle_diff_view();
+    let mut renderer = Renderer::new();
+    diff_lines(&mut renderer, &model, 0);
+    let area = Rect::new(0, 0, 100, 30);
+    let preparation = renderer.prepare_frame(&model, area);
+
+    assert!(preparation.maximum_horizontal_scroll > 0);
+    let diff_area = horizontal_panes(main_area(area), model.file_pane_percent)[1];
+    let viewport =
+        renderer.diff_viewport_metrics(DiffViewMode::SideBySide, diff_area, model.diff_scroll);
+    assert!(!viewport.horizontal_area.is_empty());
+    model.diff_horizontal_scroll = preparation.maximum_horizontal_scroll;
+    let row = &renderer.diff_lines(
+        &model,
+        viewport.content_area.width,
+        model.diff_scroll,
+        viewport.viewport_rows,
+    )[1];
+    let text = row
+        .spans
+        .iter()
+        .map(|span| span.content.as_ref())
+        .collect::<String>();
+
+    assert!(text.starts_with("   1 "));
+    assert!(text.contains(" │    1 "));
+    assert!(text.ends_with("RIGHT_EDGE"));
+}
+
+#[test]
 fn uncached_scroll_keeps_the_committed_viewport_until_syntax_is_ready_in_both_directions() {
     let mut patch = String::from("@@ -1,700 +1,700 @@\n");
     for line in 1..=700 {

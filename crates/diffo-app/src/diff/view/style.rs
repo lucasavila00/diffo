@@ -88,38 +88,55 @@ pub(in crate::diff) fn side_by_side_skeleton_line(
 pub(in crate::diff) fn side_by_side_line(
     row: &SideBySideRow,
     column_width: usize,
+    horizontal: usize,
     highlighted: &HighlightedDiff,
 ) -> Line<'static> {
-    let mut spans = format_cell(row.old.as_ref(), column_width, highlighted);
+    let mut spans = format_cell(row.old.as_ref(), column_width, horizontal, highlighted);
     spans.push(Span::styled(" │ ", Style::default().fg(theme::CHROME)));
-    spans.extend(format_cell(row.new.as_ref(), column_width, highlighted));
+    spans.extend(format_cell(
+        row.new.as_ref(),
+        column_width,
+        horizontal,
+        highlighted,
+    ));
     Line::from(spans)
 }
 
 pub(in crate::diff) fn format_cell(
     line: Option<&RenderLine>,
     width: usize,
+    horizontal: usize,
     highlighted: &HighlightedDiff,
 ) -> Vec<Span<'static>> {
+    let gutter_width = usize::from(diffo_ui::design::SIDE_BY_SIDE_GUTTER_WIDTH);
+    let code_width = width.saturating_sub(gutter_width);
     let Some(line) = line else {
         return vec![Span::raw(" ".repeat(width))];
     };
     let number = line
         .number
         .map_or_else(|| "    ".to_owned(), |number| format!("{number:>4}"));
-    if matches!(line.kind, RowKind::Header | RowKind::Meta) {
-        return clip_and_pad(
-            vec![Span::styled(
-                format!("{number} {}", line.text),
-                row_style(line.kind),
-            )],
-            width,
-            Style::default(),
-        );
-    }
-    let mut spans = vec![Span::styled(format!("{number} "), gutter_style(line.kind))];
-    spans.extend(code_spans(line, highlighted));
-    clip_and_pad(spans, width, diff_background(line.kind))
+    let style = if matches!(line.kind, RowKind::Header | RowKind::Meta) {
+        row_style(line.kind)
+    } else {
+        gutter_style(line.kind)
+    };
+    let mut spans = vec![Span::styled(format!("{number} "), style)];
+    let code = if matches!(line.kind, RowKind::Header | RowKind::Meta) {
+        vec![Span::styled(
+            terminal_safe_text(&line.text),
+            row_style(line.kind),
+        )]
+    } else {
+        code_spans(line, highlighted)
+    };
+    spans.extend(clip_and_pad_scrolled(
+        code,
+        code_width,
+        horizontal,
+        diff_background(line.kind),
+    ));
+    spans
 }
 
 pub(in crate::diff) fn code_spans(
@@ -240,6 +257,33 @@ pub(in crate::diff) fn clip_and_pad(
         clipped.push(Span::styled(" ".repeat(remaining), padding_style));
     }
     clipped
+}
+
+pub(in crate::diff) fn clip_and_pad_scrolled(
+    spans: Vec<Span<'static>>,
+    width: usize,
+    horizontal: usize,
+    padding_style: Style,
+) -> Vec<Span<'static>> {
+    let mut skipped = horizontal;
+    let spans = spans
+        .into_iter()
+        .filter_map(|span| {
+            let text = span
+                .content
+                .chars()
+                .skip_while(|character| {
+                    if skipped == 0 {
+                        return false;
+                    }
+                    skipped = skipped.saturating_sub(Span::raw(character.to_string()).width());
+                    true
+                })
+                .collect::<String>();
+            (!text.is_empty()).then(|| Span::styled(text, span.style))
+        })
+        .collect();
+    clip_and_pad(spans, width, padding_style)
 }
 
 pub(in crate::diff) fn pad_to_width(

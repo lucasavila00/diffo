@@ -154,6 +154,7 @@ pub mod design {
     pub const PATH_MENU_THIRD_ACTION_ROW: u16 = 5;
     pub const SIDE_BY_SIDE_DIVIDER_WIDTH: u16 = 3;
     pub const SIDE_BY_SIDE_COLUMN_COUNT: u16 = 2;
+    pub const SIDE_BY_SIDE_GUTTER_WIDTH: u16 = 5;
     pub const DIFF_RIGHT_RAIL_WIDTH: u16 = BORDER_WIDTH * 2;
     pub const DIFF_PAGE_NON_CONTENT_ROWS: u16 = 3;
 

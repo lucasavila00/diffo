@@ -167,6 +167,28 @@ fn trackpad_horizontal_scroll_is_terminal_safe_and_reversible() -> Result<()> {
 }
 
 #[test]
+fn trackpad_horizontal_scroll_pans_side_by_side_columns() -> Result<()> {
+    let repository = TestRepository::new()?;
+    let line = format!("START_{}\x1b[2JCONTROL_RIGHT_EDGE\n", "x".repeat(20));
+    fs::write(repository.worktree.join("tracked.txt"), line)?;
+    let mut screen = repository.screen()?;
+
+    screen
+        .wait_for_text("START_")?
+        .press(Key::Char('r'))?
+        .wait_for_text("Side by side")?
+        .scroll_many(ScrollDirection::Right, 30)?
+        .wait_for_text("␛[2JCONTROL_RIGHT_EDGE")?
+        .scroll_many(ScrollDirection::Left, 30)?
+        .wait_for_text("START_")?
+        .drag_horizontal_scrollbar(0, 100)?
+        .wait_for_text("␛[2JCONTROL_RIGHT_EDGE")?
+        .drag_horizontal_scrollbar(100, 0)?
+        .wait_for_text("START_")?;
+    Ok(())
+}
+
+#[test]
 fn vertical_scrollbar_reaches_its_end_with_the_last_diff_line() -> Result<()> {
     let repository = TestRepository::new()?;
     let contents = numbered_lines(120, false)?;

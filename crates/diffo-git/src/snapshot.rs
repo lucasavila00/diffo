@@ -266,6 +266,7 @@ impl GitRepositorySource {
 impl RepositorySource for GitRepositorySource {
     fn snapshot(&self) -> Result<RepositorySnapshot> {
         let status = self.git(&[
+            "--no-optional-locks",
             "status",
             "--porcelain=v2",
             "--branch",

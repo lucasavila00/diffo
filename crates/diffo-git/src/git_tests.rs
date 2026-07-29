@@ -355,6 +355,30 @@ fn stages_and_unstages_all_files() {
 }
 
 #[test]
+fn snapshot_does_not_refresh_the_git_index() {
+    let repo = test_repository();
+    let index_path = repo.path().join(".git/index");
+    let index_before = fs::read(&index_path).expect("read index before snapshot");
+    let tracked = fs::File::open(repo.path().join("tracked.txt")).expect("open tracked file");
+    tracked
+        .set_times(
+            fs::FileTimes::new()
+                .set_modified(std::time::SystemTime::now() + Duration::from_hours(1)),
+        )
+        .expect("change tracked file modification time");
+
+    let snapshot = super::GitRepositorySource::new(repo.path())
+        .snapshot()
+        .expect("snapshot");
+
+    assert!(snapshot.files.is_empty());
+    assert_eq!(
+        fs::read(index_path).expect("read index after snapshot"),
+        index_before
+    );
+}
+
+#[test]
 fn snapshots_the_whole_untracked_file_as_an_addition() {
     let repo = test_repository();
     fs::write(repo.path().join("new.txt"), "first\nsecond").expect("write file");

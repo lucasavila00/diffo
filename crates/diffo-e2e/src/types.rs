@@ -20,6 +20,8 @@ pub enum Key {
 pub enum ScrollDirection {
     Up,
     Down,
+    Left,
+    Right,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

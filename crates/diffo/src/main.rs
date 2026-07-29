@@ -58,7 +58,10 @@ impl WheelFriction {
             return true;
         };
         let direction = match mouse.kind {
-            MouseEventKind::ScrollUp | MouseEventKind::ScrollDown => mouse.kind,
+            MouseEventKind::ScrollUp
+            | MouseEventKind::ScrollDown
+            | MouseEventKind::ScrollLeft
+            | MouseEventKind::ScrollRight => mouse.kind,
             _ => return true,
         };
         let gap = self.last_event.map(|last| now.duration_since(last));
@@ -663,6 +666,10 @@ mod tests {
             &wheel(MouseEventKind::ScrollUp),
             started + Duration::from_millis(218)
         ));
+        let right = wheel(MouseEventKind::ScrollRight);
+        assert!(friction.accepts(&right, started + Duration::from_millis(219)));
+        assert!(friction.accepts(&right, started + Duration::from_millis(267)));
+        assert!(!friction.accepts(&right, started + Duration::from_millis(316)));
     }
 
     #[test]

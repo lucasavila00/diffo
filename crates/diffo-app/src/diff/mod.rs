@@ -23,7 +23,7 @@ use diffo_diff::{
 };
 use diffo_highlight::{HighlightedDiff, HighlightedLine, Rgb, StyledSpan, SyntaxHighlighter};
 use diffo_ui::file_picker::{Navigation as PickerNavigation, Outcome as PickerOutcome};
-use diffo_ui::{design, maximum_scroll, tool_areas, wheel_scroll_delta};
+use diffo_ui::{design, maximum_scroll, tool_areas};
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
@@ -335,11 +335,8 @@ impl Renderer {
             {
                 Message::Quit
             }
-            Event::Mouse(mouse)
-                if area.contains((mouse.column, mouse.row).into())
-                    && wheel_scroll_delta(mouse.kind).is_some() =>
-            {
-                Message::ScrollDiffVerticalBy(wheel_scroll_delta(mouse.kind).unwrap_or_default())
+            Event::Mouse(mouse) if area.contains((mouse.column, mouse.row).into()) => {
+                input::wheel_message(mouse.kind)?
             }
             _ => return None,
         };

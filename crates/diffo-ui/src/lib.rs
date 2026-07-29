@@ -197,13 +197,13 @@ impl FuzzyQuery {
     }
 }
 
-const WHEEL_SCROLL_ROWS: i64 = 1;
+pub(crate) const WHEEL_SCROLL_DISTANCE: i64 = 1;
 
 #[must_use]
 pub const fn wheel_scroll_delta(kind: MouseEventKind) -> Option<i64> {
     match kind {
-        MouseEventKind::ScrollUp => Some(-WHEEL_SCROLL_ROWS),
-        MouseEventKind::ScrollDown => Some(WHEEL_SCROLL_ROWS),
+        MouseEventKind::ScrollUp => Some(-WHEEL_SCROLL_DISTANCE),
+        MouseEventKind::ScrollDown => Some(WHEEL_SCROLL_DISTANCE),
         _ => None,
     }
 }

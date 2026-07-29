@@ -1,5 +1,6 @@
 //! Shared read-only text viewport, scrolling, and rendering.
 
+use crossterm::event::MouseEventKind;
 use diffo_highlight::LineRange;
 use ratatui::{
     Frame,
@@ -10,7 +11,10 @@ use ratatui::{
 };
 use std::{collections::BTreeMap, ops::Range};
 
-use crate::{design, maximum_scroll, render_scrollbar, scroll_offset, scrollbar_position, theme};
+use crate::{
+    WHEEL_SCROLL_DISTANCE, design, maximum_scroll, render_scrollbar, scroll_offset,
+    scrollbar_position, theme,
+};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum TextSurface {
@@ -139,6 +143,17 @@ pub enum ScrollCommand {
     Horizontal(usize),
     Home,
     End,
+}
+
+#[must_use]
+pub const fn wheel_scroll_command(kind: MouseEventKind) -> Option<ScrollCommand> {
+    match kind {
+        MouseEventKind::ScrollUp => Some(ScrollCommand::Lines(-WHEEL_SCROLL_DISTANCE)),
+        MouseEventKind::ScrollDown => Some(ScrollCommand::Lines(WHEEL_SCROLL_DISTANCE)),
+        MouseEventKind::ScrollLeft => Some(ScrollCommand::Columns(-WHEEL_SCROLL_DISTANCE)),
+        MouseEventKind::ScrollRight => Some(ScrollCommand::Columns(WHEEL_SCROLL_DISTANCE)),
+        _ => None,
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -438,6 +453,27 @@ mod tests {
         assert_eq!(viewport.vertical, 30);
         viewport.apply(ScrollCommand::Lines(-99), metrics);
         assert_eq!(viewport.vertical, 0);
+    }
+
+    #[test]
+    fn wheel_commands_cover_both_axes_at_the_shared_distance() {
+        assert_eq!(
+            wheel_scroll_command(MouseEventKind::ScrollUp),
+            Some(ScrollCommand::Lines(-1))
+        );
+        assert_eq!(
+            wheel_scroll_command(MouseEventKind::ScrollDown),
+            Some(ScrollCommand::Lines(1))
+        );
+        assert_eq!(
+            wheel_scroll_command(MouseEventKind::ScrollLeft),
+            Some(ScrollCommand::Columns(-1))
+        );
+        assert_eq!(
+            wheel_scroll_command(MouseEventKind::ScrollRight),
+            Some(ScrollCommand::Columns(1))
+        );
+        assert_eq!(wheel_scroll_command(MouseEventKind::Moved), None);
     }
 
     #[test]

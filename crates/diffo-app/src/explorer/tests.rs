@@ -426,6 +426,56 @@ fn horizontal_pan_clamps_to_the_visible_code_width_and_returns_to_zero() {
 }
 
 #[test]
+fn trackpad_horizontal_scroll_pans_the_viewer_in_both_layouts() {
+    let mut explorer = ExplorerActivity::new(&RepositorySnapshot::default());
+    explorer.model.viewer = Some(Viewer {
+        document_id: ExplorerDocumentId(1),
+        path: PathBuf::from("wide.txt"),
+        title: Box::new(Line::raw("  wide.txt")),
+        lines: vec!["x".repeat(200)].into(),
+        markers: HashMap::new(),
+        highlighted: BTreeMap::new(),
+        coverage: Vec::new().into(),
+        syntax_eligible: false,
+        message: None,
+    });
+    let area = Rect::new(0, 0, 100, 30);
+    let split = PaneSplit::default();
+    explorer.prepare_frame(area, split);
+    let wheel = |kind| {
+        Event::Mouse(MouseEvent {
+            kind,
+            column: 80,
+            row: 10,
+            modifiers: KeyModifiers::NONE,
+        })
+    };
+
+    assert_eq!(
+        explorer.handle_event(&wheel(MouseEventKind::ScrollRight), area, split),
+        Some(ExplorerEvent::Consumed)
+    );
+    assert_eq!(explorer.model.viewer_horizontal_scroll, 1);
+    assert_eq!(
+        explorer.handle_event(&wheel(MouseEventKind::ScrollLeft), area, split),
+        Some(ExplorerEvent::Consumed)
+    );
+    assert_eq!(explorer.model.viewer_horizontal_scroll, 0);
+
+    explorer.prepare_full_screen(area);
+    assert_eq!(
+        explorer.handle_full_screen_event(&wheel(MouseEventKind::ScrollRight), area),
+        Some(ExplorerEvent::Consumed)
+    );
+    assert_eq!(explorer.model.viewer_horizontal_scroll, 1);
+    assert_eq!(
+        explorer.handle_full_screen_event(&wheel(MouseEventKind::ScrollLeft), area),
+        Some(ExplorerEvent::Consumed)
+    );
+    assert_eq!(explorer.model.viewer_horizontal_scroll, 0);
+}
+
+#[test]
 fn uncached_scroll_keeps_the_committed_viewport_until_coverage_arrives() {
     let mut explorer = ExplorerActivity::new(&RepositorySnapshot::default());
     let path = PathBuf::from("large.rs");

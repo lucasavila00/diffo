@@ -194,6 +194,8 @@ impl DiffoScreen {
         let button = match direction {
             ScrollDirection::Up => 64,
             ScrollDirection::Down => 65,
+            ScrollDirection::Left => 66,
+            ScrollDirection::Right => 67,
         };
         let x = column.saturating_add(1);
         let y = row.saturating_add(1);

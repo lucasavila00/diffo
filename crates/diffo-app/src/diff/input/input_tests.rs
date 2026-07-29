@@ -257,6 +257,7 @@ fn commit_editor_captures_mouse_and_keyboard_until_closed() {
 #[test]
 fn maps_mouse_wheel_to_diff_scrolling() {
     let model = model();
+    let area = Rect::new(0, 0, 100, 30);
     let mouse = |kind| {
         Event::Mouse(MouseEvent {
             kind,
@@ -267,11 +268,27 @@ fn maps_mouse_wheel_to_diff_scrolling() {
     };
 
     assert_eq!(
-        map_event(&mouse(MouseEventKind::ScrollUp), &model, Rect::default()),
+        map_event(&mouse(MouseEventKind::ScrollUp), &model, area),
         Some(Message::ScrollDiffVerticalBy(-1))
     );
     assert_eq!(
-        map_event(&mouse(MouseEventKind::ScrollDown), &model, Rect::default()),
+        map_event(&mouse(MouseEventKind::ScrollDown), &model, area),
         Some(Message::ScrollDiffVerticalBy(1))
     );
+    assert_eq!(
+        map_event(&mouse(MouseEventKind::ScrollLeft), &model, area),
+        Some(Message::ScrollDiffHorizontalBy(-1))
+    );
+    assert_eq!(
+        map_event(&mouse(MouseEventKind::ScrollRight), &model, area),
+        Some(Message::ScrollDiffHorizontalBy(1))
+    );
+
+    let outside_buffer = Event::Mouse(MouseEvent {
+        kind: MouseEventKind::ScrollRight,
+        column: 10,
+        row: 10,
+        modifiers: KeyModifiers::NONE,
+    });
+    assert_eq!(map_event(&outside_buffer, &model, area), None);
 }

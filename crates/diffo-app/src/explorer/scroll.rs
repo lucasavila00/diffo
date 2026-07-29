@@ -96,4 +96,14 @@ impl ExplorerActivity {
             self.model.viewer_horizontal_scroll = viewport.horizontal;
         }
     }
+
+    pub(super) fn apply_full_screen_viewer_command(&mut self, command: ScrollCommand) {
+        self.apply_viewer_command(
+            command,
+            ViewportMetrics {
+                maximum_horizontal: self.maximum_horizontal_scroll,
+                ..ViewportMetrics::default()
+            },
+        );
+    }
 }

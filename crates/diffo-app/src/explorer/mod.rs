@@ -13,11 +13,11 @@ use diffo_core::RepositorySnapshot;
 use diffo_ui::command_palette::{Command, CommandId};
 use diffo_ui::file_picker::{FilePicker, Outcome as PickerOutcome};
 use diffo_ui::text_view::{
-    LINE_SCROLL_ROWS, PreparedVerticalScroll, ScrollbarAxis, TextRenderMode, TextSurface,
-    TextSurfacePreparation, scrollbar_areas, scrollbar_axis_at, scrollbar_command,
-    syntax_prefetch_viewports,
+    LINE_SCROLL_ROWS, PreparedVerticalScroll, ScrollCommand, ScrollbarAxis, TextRenderMode,
+    TextSurface, TextSurfacePreparation, scrollbar_areas, scrollbar_axis_at, scrollbar_command,
+    syntax_prefetch_viewports, wheel_scroll_command,
 };
-use diffo_ui::{PaneSplit, design, wheel_scroll_delta};
+use diffo_ui::{PaneSplit, design};
 use ratatui::{Frame, layout::Rect, text::Line};
 
 pub use model::ExplorerDocumentId;
@@ -466,35 +466,36 @@ impl ExplorerActivity {
             self.model.viewer_scroll,
             self.model.viewer_horizontal_scroll,
         );
-        let amount = match event {
+        let command = match event {
             Event::Key(key)
                 if key.kind == KeyEventKind::Press && key.modifiers == KeyModifiers::NONE =>
             {
                 match key.code {
-                    KeyCode::Up => -LINE_SCROLL_ROWS,
-                    KeyCode::Down => LINE_SCROLL_ROWS,
-                    KeyCode::PageUp => -i64::try_from(self.viewport_rows).unwrap_or(i64::MAX),
-                    KeyCode::PageDown => i64::try_from(self.viewport_rows).unwrap_or(i64::MAX),
-                    KeyCode::Left => {
-                        self.scroll_viewer_horizontal(-LINE_SCROLL_ROWS);
-                        return (viewport_before.1 != self.model.viewer_horizontal_scroll)
-                            .then_some(ExplorerEvent::Consumed);
+                    KeyCode::Up => ScrollCommand::Lines(-LINE_SCROLL_ROWS),
+                    KeyCode::Down => ScrollCommand::Lines(LINE_SCROLL_ROWS),
+                    KeyCode::PageUp => {
+                        ScrollCommand::Lines(-i64::try_from(self.viewport_rows).unwrap_or(i64::MAX))
                     }
-                    KeyCode::Right => {
-                        self.scroll_viewer_horizontal(LINE_SCROLL_ROWS);
-                        return (viewport_before.1 != self.model.viewer_horizontal_scroll)
-                            .then_some(ExplorerEvent::Consumed);
+                    KeyCode::PageDown => {
+                        ScrollCommand::Lines(i64::try_from(self.viewport_rows).unwrap_or(i64::MAX))
                     }
+                    KeyCode::Left => ScrollCommand::Columns(-LINE_SCROLL_ROWS),
+                    KeyCode::Right => ScrollCommand::Columns(LINE_SCROLL_ROWS),
                     _ => return None,
                 }
             }
             Event::Mouse(mouse) if area.contains((mouse.column, mouse.row).into()) => {
-                wheel_scroll_delta(mouse.kind)?
+                wheel_scroll_command(mouse.kind)?
             }
             _ => return None,
         };
-        self.scroll_viewer(amount);
-        (viewport_before.0 != self.model.viewer_scroll).then_some(ExplorerEvent::Consumed)
+        self.apply_full_screen_viewer_command(command);
+        (viewport_before
+            != (
+                self.model.viewer_scroll,
+                self.model.viewer_horizontal_scroll,
+            ))
+            .then_some(ExplorerEvent::Consumed)
     }
 
     fn handle_viewer_mouse(&mut self, event: &Event, area: Rect, split: PaneSplit) -> bool {
@@ -529,9 +530,9 @@ impl ExplorerActivity {
                     return true;
                 }
                 if viewer_area.contains((mouse.column, mouse.row).into())
-                    && let Some(amount) = wheel_scroll_delta(mouse.kind)
+                    && let Some(command) = wheel_scroll_command(mouse.kind)
                 {
-                    self.scroll_viewer(amount);
+                    self.apply_viewer_command(command, metrics);
                     return true;
                 }
             }

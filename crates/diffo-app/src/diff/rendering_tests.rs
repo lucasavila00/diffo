@@ -131,6 +131,30 @@ fn scrollbar_length_is_the_number_of_legal_viewport_positions() {
 }
 
 #[test]
+fn full_screen_maps_horizontal_wheel_events_to_diff_pan() {
+    let model = model();
+    let mut renderer = Renderer::new();
+    let area = Rect::new(0, 0, 100, 30);
+    let wheel = |kind| {
+        Event::Mouse(MouseEvent {
+            kind,
+            column: 50,
+            row: 10,
+            modifiers: KeyModifiers::NONE,
+        })
+    };
+
+    assert_eq!(
+        renderer.map_full_screen_event(&wheel(MouseEventKind::ScrollLeft), &model, area),
+        Some(RendererEvent::Message(Message::ScrollDiffHorizontalBy(-1)))
+    );
+    assert_eq!(
+        renderer.map_full_screen_event(&wheel(MouseEventKind::ScrollRight), &model, area),
+        Some(RendererEvent::Message(Message::ScrollDiffHorizontalBy(1)))
+    );
+}
+
+#[test]
 fn maps_change_rows_across_the_overview_track() {
     assert_eq!(overview_position(0, 101, 11), 0);
     assert_eq!(overview_position(50, 101, 11), 5);

@@ -19,6 +19,7 @@ pub(crate) fn help_rows() -> Vec<(String, &'static str)> {
 use bindings::KEY_BINDINGS;
 #[cfg(test)]
 use keyboard::map_key;
+pub(in crate::diff) use mouse::wheel_message;
 
 #[must_use]
 pub fn map_event(event: &Event, model: &Model, area: Rect) -> Option<Message> {

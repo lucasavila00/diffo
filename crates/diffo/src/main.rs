@@ -668,8 +668,7 @@ mod tests {
         ));
         let right = wheel(MouseEventKind::ScrollRight);
         assert!(friction.accepts(&right, started + Duration::from_millis(219)));
-        assert!(friction.accepts(&right, started + Duration::from_millis(267)));
-        assert!(!friction.accepts(&right, started + Duration::from_millis(316)));
+        assert!(!friction.accepts(&right, started + Duration::from_millis(268)));
     }
 
     #[test]

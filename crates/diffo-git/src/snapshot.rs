@@ -179,7 +179,7 @@ impl GitRepositorySource {
             .collect())
     }
 
-    fn file_state(&self, file: ParsedFile) -> Result<FileState> {
+    fn file_state(&self, file: ParsedFile) -> Result<Option<FileState>> {
         let path = file.state.path.to_string_lossy();
         let old_path = file
             .state
@@ -195,10 +195,15 @@ impl GitRepositorySource {
         } else {
             self.diff(&paths, true)?
         };
-        let mut unstaged = if matches!(
-            file.state.kind,
-            ChangeKind::Untracked | ChangeKind::Conflicted
-        ) {
+        let mut unstaged = if file.state.kind == ChangeKind::Untracked {
+            match self.worktree_file_diff(&file.state.path) {
+                Ok(diff) => Some(diff),
+                // Git status and worktree reads are not atomic. Generators can
+                // remove an untracked temporary file between those observations.
+                Err(error) if error_is_not_found(&error) => return Ok(None),
+                Err(error) => return Err(error),
+            }
+        } else if conflicted {
             Some(self.worktree_file_diff(&file.state.path)?)
         } else if file.worktree_status == NO_CHANGE {
             None
@@ -209,20 +214,21 @@ impl GitRepositorySource {
             staged = self.rename_context(staged, &file.state.path, true)?;
             unstaged = self.rename_context(unstaged, &file.state.path, false)?;
         }
-        Ok(FileState {
+        Ok(Some(FileState {
             staged,
             unstaged,
             ..file.state
-        })
+        }))
     }
 
     fn file_states(&self, files: Vec<ParsedFile>) -> Result<Vec<FileState>> {
         let worker_count = files.len().min(MAX_SNAPSHOT_WORKERS);
         if worker_count <= 1 {
-            return files
+            let files = files
                 .into_iter()
                 .map(|file| self.file_state(file))
-                .collect();
+                .collect::<Result<Vec<_>>>()?;
+            return Ok(files.into_iter().flatten().collect());
         }
 
         let mut buckets = (0..worker_count).map(|_| Vec::new()).collect::<Vec<_>>();
@@ -253,7 +259,7 @@ impl GitRepositorySource {
             Ok::<_, anyhow::Error>(completed)
         })?;
         completed.sort_unstable_by_key(|(index, _)| *index);
-        Ok(completed.into_iter().map(|(_, file)| file).collect())
+        Ok(completed.into_iter().filter_map(|(_, file)| file).collect())
     }
 }
 
@@ -281,6 +287,14 @@ impl RepositorySource for GitRepositorySource {
             upstream: parsed.upstream,
         })
     }
+}
+
+fn error_is_not_found(error: &anyhow::Error) -> bool {
+    error.chain().any(|cause| {
+        cause
+            .downcast_ref::<std::io::Error>()
+            .is_some_and(|error| error.kind() == std::io::ErrorKind::NotFound)
+    })
 }
 
 fn append_context_hunk(output: &mut String, path: &Path, bytes: &[u8]) {
@@ -318,5 +332,90 @@ fn append_context_hunk(output: &mut String, path: &Path, bytes: &[u8]) {
     if !contents.is_empty() && !contents.ends_with('\n') {
         output.push('\n');
         output.push_str("\\ No newline at end of file\n");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn parsed_file(path: &str, kind: ChangeKind) -> ParsedFile {
+        ParsedFile {
+            state: FileState {
+                path: PathBuf::from(path),
+                old_path: None,
+                kind,
+                staged: None,
+                unstaged: None,
+            },
+            index_status: NO_CHANGE,
+            worktree_status: NO_CHANGE,
+        }
+    }
+
+    #[test]
+    fn omits_a_vanished_untracked_file() {
+        let root = tempfile::tempdir().expect("repository directory");
+        let source = GitRepositorySource::new(root.path());
+
+        let files = source
+            .file_states(vec![parsed_file("vanished.txt", ChangeKind::Untracked)])
+            .expect("collect file states");
+
+        assert!(files.is_empty());
+    }
+
+    #[test]
+    fn omits_vanished_untracked_files_without_losing_surviving_files() {
+        let root = tempfile::tempdir().expect("repository directory");
+        fs::write(root.path().join("surviving.txt"), "surviving\n").expect("write surviving file");
+        let source = GitRepositorySource::new(root.path());
+
+        let files = source
+            .file_states(vec![
+                parsed_file("vanished.txt", ChangeKind::Untracked),
+                parsed_file("surviving.txt", ChangeKind::Untracked),
+            ])
+            .expect("collect file states");
+
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].path, Path::new("surviving.txt"));
+        assert_eq!(
+            files[0].unstaged.as_ref().map(|diff| diff.text.as_str()),
+            Some("@@ -0,0 +1,1 @@\n+surviving\n")
+        );
+    }
+
+    #[test]
+    fn missing_conflicted_files_remain_errors() {
+        let root = tempfile::tempdir().expect("repository directory");
+        let source = GitRepositorySource::new(root.path());
+
+        let error = source
+            .file_states(vec![parsed_file("missing.txt", ChangeKind::Conflicted)])
+            .expect_err("missing conflict must fail");
+
+        assert!(
+            error
+                .to_string()
+                .contains("failed to inspect worktree file missing.txt")
+        );
+    }
+
+    #[test]
+    fn non_not_found_untracked_file_errors_remain_errors() {
+        let root = tempfile::tempdir().expect("repository directory");
+        fs::create_dir(root.path().join("directory")).expect("create directory");
+        let source = GitRepositorySource::new(root.path());
+
+        let error = source
+            .file_states(vec![parsed_file("directory", ChangeKind::Untracked)])
+            .expect_err("reading a directory as a file must fail");
+
+        assert!(
+            error
+                .to_string()
+                .contains("failed to read worktree file directory")
+        );
     }
 }

@@ -19,6 +19,16 @@ pub struct RepositorySnapshot {
     pub files: Vec<FileState>,
     pub recent_commits: Vec<Commit>,
     pub upstream: Option<UpstreamState>,
+    #[serde(default)]
+    pub operation: RepositoryOperationState,
+}
+
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub enum RepositoryOperationState {
+    #[default]
+    None,
+    Merge,
+    Other,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -130,6 +140,33 @@ pub struct DeleteBranchTarget {
     pub force: bool,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum MergeRefKind {
+    Local,
+    Remote,
+    Tag,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MergeRef {
+    pub kind: MergeRefKind,
+    pub name: String,
+    pub full_ref: String,
+    pub object_id: String,
+    pub commit_id: String,
+    pub tip_commit_unix_seconds: Option<i64>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MergeTarget {
+    pub kind: MergeRefKind,
+    pub name: String,
+    pub full_ref: String,
+    pub object_id: String,
+    pub commit_id: String,
+    pub expected_head: HeadState,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DiscardTarget {
     pub file: FileState,
@@ -195,6 +232,8 @@ pub enum RepositoryAction {
     Checkout(Box<CheckoutTarget>),
     CreateBranch(Box<CreateBranchTarget>),
     DeleteBranch(Box<DeleteBranchTarget>),
+    Merge(Box<MergeTarget>),
+    AbortMerge,
     Discard(Box<DiscardTarget>),
     DiscardAll(Box<DiscardAllTarget>),
     Stash { message: String },
@@ -216,6 +255,8 @@ pub enum OperationResult {
     Checkout { branch: String },
     CreateBranch { branch: String },
     DeleteBranch { branch: String },
+    Merge { name: String, conflicts: usize },
+    AbortMerge,
     Discard { paths: usize },
     Stash { name: String },
     ApplyStash { name: String },
@@ -415,6 +456,15 @@ pub trait Repository: RepositorySource {
     /// Returns an error when branch references cannot be read or parsed.
     fn branches(&self) -> Result<Vec<BranchRef>> {
         anyhow::bail!("branch discovery is unavailable for this repository source")
+    }
+
+    /// List refs that can be merged into the current `HEAD`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when merge references cannot be read or parsed.
+    fn merge_refs(&self) -> Result<Vec<MergeRef>> {
+        anyhow::bail!("merge ref discovery is unavailable for this repository source")
     }
 
     /// List saved stash entries in newest-first order.

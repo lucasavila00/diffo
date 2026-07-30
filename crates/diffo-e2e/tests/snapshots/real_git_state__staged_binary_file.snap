@@ -30,4 +30,5 @@ RepositorySnapshot(
     behind: 0,
     recent_local_commits: [],
   )),
+  operation: r#None,
 )

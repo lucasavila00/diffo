@@ -144,6 +144,10 @@ fn command_label(action: &ApplicationAction) -> String {
         ApplicationAction::Repository(RepositoryAction::DeleteBranch(target)) => {
             format!("Deleting branch {}", target.name)
         }
+        ApplicationAction::Repository(RepositoryAction::Merge(target)) => {
+            format!("Merging {}", target.name)
+        }
+        ApplicationAction::Repository(RepositoryAction::AbortMerge) => "Aborting merge".to_owned(),
         ApplicationAction::Repository(RepositoryAction::Discard(_)) => {
             "Discarding changes".to_owned()
         }

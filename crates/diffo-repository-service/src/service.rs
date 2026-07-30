@@ -10,8 +10,8 @@ use std::{
 
 use anyhow::{Context, Result};
 use diffo_core::{
-    ApplicationCommandId, BranchRef, CancellationHandle, GitPrompt, PromptAnswer, PromptHandler,
-    PromptId, Repository, RepositoryAction, RepositoryQueryId, RepositoryUpdate,
+    ApplicationCommandId, BranchRef, CancellationHandle, GitPrompt, MergeRef, PromptAnswer,
+    PromptHandler, PromptId, Repository, RepositoryAction, RepositoryQueryId, RepositoryUpdate,
     RepositoryWatchPaths, StashEntry, SyncProgress,
 };
 #[cfg(test)]
@@ -30,6 +30,14 @@ pub enum RepositoryEvent {
         branches: Vec<BranchRef>,
     },
     BranchesLoadFailed {
+        query_id: RepositoryQueryId,
+        message: String,
+    },
+    MergeRefsLoaded {
+        query_id: RepositoryQueryId,
+        refs: Vec<MergeRef>,
+    },
+    MergeRefsLoadFailed {
         query_id: RepositoryQueryId,
         message: String,
     },
@@ -329,6 +337,13 @@ impl RepositoryService {
     pub fn load_branches(&self, query_id: RepositoryQueryId) -> bool {
         self.requests
             .send(WorkerRequest::LoadBranches { query_id })
+            .is_ok()
+    }
+
+    #[must_use]
+    pub fn load_merge_refs(&self, query_id: RepositoryQueryId) -> bool {
+        self.requests
+            .send(WorkerRequest::LoadMergeRefs { query_id })
             .is_ok()
     }
 

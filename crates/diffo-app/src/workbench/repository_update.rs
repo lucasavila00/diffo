@@ -99,7 +99,11 @@ impl Workbench {
         }
         self.close_prompt(id);
         self.finish_command_progress(id);
-        let _ = self.update_diff(Message::OperationCompleted(action, result, snapshot));
+        let _ = self.update_diff(Message::OperationCompleted(
+            action,
+            result,
+            Box::new(snapshot),
+        ));
     }
 
     pub fn action_failed(&mut self, id: ApplicationCommandId, failure: OperationFailure) {

@@ -10,6 +10,7 @@ use super::{
     delete_branch::DeleteBranchConfirmation,
     error_dialog::{ErrorDialog, ErrorDialogEvent},
     help,
+    merge::MergePicker,
     quick_open::QuickOpenEvent,
     render_prompt,
     sync_remote::{SyncRemoteEvent, SyncRemotePicker},
@@ -20,6 +21,7 @@ pub(super) enum Modal {
     QuickOpen(super::quick_open::QuickOpen),
     CommandPalette(CommandPalette),
     CheckoutPicker(CheckoutPicker),
+    MergePicker(MergePicker),
     CreateBranch(CreateBranchModal),
     DeleteBranchConfirmation(DeleteBranchConfirmation),
     SyncRemotePicker(SyncRemotePicker),
@@ -47,6 +49,9 @@ impl Workbench {
         ) {
             self.pending_branch_query = None;
         }
+        if matches!(self.modal, Some(Modal::MergePicker(_))) {
+            self.pending_merge_query = None;
+        }
         if matches!(self.modal, Some(Modal::SyncRemotePicker(_))) {
             self.pending_sync_remote_query = None;
         }
@@ -61,6 +66,9 @@ impl Workbench {
         ) {
             self.pending_branch_query = None;
         }
+        if matches!(self.modal, Some(Modal::MergePicker(_))) {
+            self.pending_merge_query = None;
+        }
         if matches!(self.modal, Some(Modal::SyncRemotePicker(_))) {
             self.pending_sync_remote_query = None;
         }
@@ -74,6 +82,7 @@ impl Workbench {
             Some(Modal::QuickOpen(modal)) => modal.render(frame, area),
             Some(Modal::CommandPalette(palette)) => palette.render(frame, content),
             Some(Modal::CheckoutPicker(picker)) => picker.render(frame, area),
+            Some(Modal::MergePicker(picker)) => picker.render(frame, area),
             Some(Modal::CreateBranch(modal)) => modal.render(frame, area),
             Some(Modal::DeleteBranchConfirmation(modal)) => modal.render(frame, area),
             Some(Modal::SyncRemotePicker(picker)) => picker.render(frame, area),
@@ -96,6 +105,7 @@ impl Workbench {
             Modal::QuickOpen(_) => self.handle_quick_open_event(event, area),
             Modal::CommandPalette(_) => self.handle_palette_event(event, area),
             Modal::CheckoutPicker(_) => self.handle_checkout_picker_event(event, area),
+            Modal::MergePicker(_) => self.handle_merge_picker_event(event, area),
             Modal::CreateBranch(_) => self.handle_create_branch_event(event, area),
             Modal::DeleteBranchConfirmation(_) => {
                 self.handle_delete_branch_confirmation_event(event, area);
@@ -365,6 +375,7 @@ mod tests {
             Modal::Help,
             Modal::command_palette(Vec::new()),
             Modal::CheckoutPicker(CheckoutPicker::loading(RepositoryQueryId(1))),
+            Modal::MergePicker(MergePicker::loading(RepositoryQueryId(1))),
             Modal::CreateBranch(CreateBranchModal::loading(RepositoryQueryId(1))),
             Modal::DeleteBranchConfirmation(DeleteBranchConfirmation::new(
                 diffo_core::DeleteBranchTarget {

@@ -43,6 +43,9 @@ pub(super) enum WorkerRequest {
     LoadBranches {
         query_id: RepositoryQueryId,
     },
+    LoadMergeRefs {
+        query_id: RepositoryQueryId,
+    },
     LoadStashes {
         query_id: RepositoryQueryId,
     },
@@ -61,6 +64,9 @@ pub(super) enum WorkerRequest {
 enum DebouncedRequest {
     Refresh,
     LoadBranches {
+        query_id: RepositoryQueryId,
+    },
+    LoadMergeRefs {
         query_id: RepositoryQueryId,
     },
     LoadStashes {
@@ -102,6 +108,15 @@ pub(super) fn worker_loop(
                     DebouncedRequest::Refresh => Some(collect_refresh(repository, &mut generation)),
                     DebouncedRequest::LoadBranches { query_id } => {
                         if events.send(collect_branches(repository, query_id)).is_err() {
+                            break;
+                        }
+                        Some(collect_refresh(repository, &mut generation))
+                    }
+                    DebouncedRequest::LoadMergeRefs { query_id } => {
+                        if events
+                            .send(collect_merge_refs(repository, query_id))
+                            .is_err()
+                        {
                             break;
                         }
                         Some(collect_refresh(repository, &mut generation))
@@ -150,6 +165,9 @@ pub(super) fn worker_loop(
             WorkerRequest::LoadBranches { query_id } => {
                 Some(collect_branches(repository, query_id))
             }
+            WorkerRequest::LoadMergeRefs { query_id } => {
+                Some(collect_merge_refs(repository, query_id))
+            }
             WorkerRequest::LoadStashes { query_id } => Some(collect_stashes(repository, query_id)),
             WorkerRequest::LoadRemotes { query_id } => Some(collect_remotes(repository, query_id)),
             WorkerRequest::WatchFailed(message) => {
@@ -193,6 +211,9 @@ fn debounce(requests: &Receiver<WorkerRequest>, refresh_pending: &AtomicBool) ->
             Ok(WorkerRequest::LoadBranches { query_id }) => {
                 return DebouncedRequest::LoadBranches { query_id };
             }
+            Ok(WorkerRequest::LoadMergeRefs { query_id }) => {
+                return DebouncedRequest::LoadMergeRefs { query_id };
+            }
             Ok(WorkerRequest::LoadStashes { query_id }) => {
                 return DebouncedRequest::LoadStashes { query_id };
             }
@@ -212,6 +233,16 @@ fn collect_branches(repository: &dyn Repository, query_id: RepositoryQueryId) ->
     match repository.branches() {
         Ok(branches) => RepositoryEvent::BranchesLoaded { query_id, branches },
         Err(error) => RepositoryEvent::BranchesLoadFailed {
+            query_id,
+            message: error.to_string(),
+        },
+    }
+}
+
+fn collect_merge_refs(repository: &dyn Repository, query_id: RepositoryQueryId) -> RepositoryEvent {
+    match repository.merge_refs() {
+        Ok(refs) => RepositoryEvent::MergeRefsLoaded { query_id, refs },
+        Err(error) => RepositoryEvent::MergeRefsLoadFailed {
             query_id,
             message: error.to_string(),
         },

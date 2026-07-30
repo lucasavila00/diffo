@@ -33,6 +33,7 @@ fn clean_repository() -> Result<()> {
         behind: 0,
         recent_local_commits: [],
       )),
+      operation: r#None,
     )
     "#);
     Ok(())
@@ -62,6 +63,7 @@ fn unborn_repository_with_untracked_file() -> Result<()> {
       ],
       recent_commits: [],
       upstream: None,
+      operation: r#None,
     )
     "#);
     Ok(())
@@ -138,6 +140,7 @@ fn local_branch_is_ahead_and_behind_upstream() -> Result<()> {
           ),
         ],
       )),
+      operation: r#None,
     )
     "#);
     Ok(())
@@ -176,6 +179,7 @@ fn local_branch_is_ahead_of_upstream() -> Result<()> {
           ),
         ],
       )),
+      operation: r#None,
     )
     "#);
     Ok(())
@@ -206,6 +210,7 @@ fn local_branch_is_behind_upstream() -> Result<()> {
         behind: 1,
         recent_local_commits: [],
       )),
+      operation: r#None,
     )
     "#);
     Ok(())
@@ -229,6 +234,7 @@ fn detached_head() -> Result<()> {
         ),
       ],
       upstream: None,
+      operation: r#None,
     )
     "#);
     Ok(())
@@ -295,6 +301,7 @@ fn ignored_file_is_not_reported() -> Result<()> {
           ),
         ],
       )),
+      operation: r#None,
     )
     "#);
     Ok(())

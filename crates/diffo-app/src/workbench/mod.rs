@@ -31,6 +31,7 @@ mod delete_branch;
 mod error_dialog;
 mod full_screen;
 mod help;
+mod merge;
 mod modal;
 mod pending_scroll;
 mod presentation;
@@ -113,6 +114,7 @@ pub struct Workbench {
     modal: Option<Modal>,
     last_prompt_id: Option<PromptId>,
     pending_branch_query: Option<RepositoryQueryId>,
+    pending_merge_query: Option<RepositoryQueryId>,
     pending_sync_remote_query: Option<RepositoryQueryId>,
     next_query_id: u64,
     presentation: PresentationState,
@@ -224,6 +226,7 @@ impl Workbench {
             modal: None,
             last_prompt_id: None,
             pending_branch_query: None,
+            pending_merge_query: None,
             pending_sync_remote_query: None,
             next_query_id: 1,
             presentation: PresentationState::new(),
@@ -580,7 +583,10 @@ impl Workbench {
         let model_before = self.diff.model.clone();
         let commit_submission = message == Message::ExecuteCommit;
         match &message {
-            Message::SnapshotLoaded(snapshot) | Message::OperationCompleted(_, _, snapshot) => {
+            Message::SnapshotLoaded(snapshot) => {
+                self.explorer.repository_changed(snapshot);
+            }
+            Message::OperationCompleted(_, _, snapshot) => {
                 self.explorer.repository_changed(snapshot);
             }
             _ => {}
@@ -617,11 +623,11 @@ impl Workbench {
     }
 
     fn open_active_palette(&mut self) {
-        let commands = SHARED_COMMANDS
-            .iter()
-            .chain(self.active_commands())
-            .copied()
-            .collect::<Vec<_>>();
+        let mut commands = SHARED_COMMANDS.to_vec();
+        if let Some(command) = merge::palette_command(&self.diff.model.snapshot) {
+            commands.insert(3, command);
+        }
+        commands.extend_from_slice(self.active_commands());
         self.set_modal(Modal::command_palette(commands));
     }
 
@@ -631,7 +637,8 @@ impl Workbench {
         } else if command == SYNC_COMMAND {
             let _ = self.execute_sync();
             return None;
-        } else if self.execute_branch_picker_command(command)
+        } else if self.execute_merge_command(command)
+            || self.execute_branch_picker_command(command)
             || self.execute_create_branch_command(command)
         {
             return None;

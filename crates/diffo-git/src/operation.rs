@@ -65,7 +65,10 @@ impl GitRepositorySource {
             return Ok(OperationOutcome::Cancelled);
         }
 
-        if let Some(result) = self.apply_everyday(action, cancellation) {
+        if let Some(result) = self
+            .apply_everyday(action, cancellation)
+            .or_else(|| self.apply_merge(action, cancellation))
+        {
             return result;
         }
 
@@ -113,6 +116,9 @@ impl GitRepositorySource {
             }
             RepositoryAction::DeleteBranch(target) => {
                 configure_delete_branch(self, &mut command, action, target)?;
+            }
+            RepositoryAction::Merge(_) | RepositoryAction::AbortMerge => {
+                unreachable!("merge actions are handled before single commands")
             }
             RepositoryAction::Discard(_)
             | RepositoryAction::DiscardAll(_)
@@ -390,7 +396,7 @@ impl GitRepositorySource {
             .map_err(|error| operation_failure(action, FailureKind::Unknown, &error.to_string()))
     }
 
-    fn conflicted_file_count(&self) -> usize {
+    pub(super) fn conflicted_file_count(&self) -> usize {
         self.git_text(&["diff", "--name-only", "--diff-filter=U"])
             .map_or(0, |paths| paths.lines().count())
     }
@@ -616,6 +622,9 @@ fn collect_operation_result(
         }),
         RepositoryAction::CreateBranch(target) => Ok(create_branch_result(target)),
         RepositoryAction::DeleteBranch(target) => Ok(delete_branch_result(target)),
+        RepositoryAction::Merge(_) | RepositoryAction::AbortMerge => {
+            unreachable!("merge actions collect their own results")
+        }
         RepositoryAction::Discard(_)
         | RepositoryAction::DiscardAll(_)
         | RepositoryAction::Stash { .. }

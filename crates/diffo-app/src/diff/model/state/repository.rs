@@ -64,6 +64,8 @@ impl Model {
                 | OperationResult::Checkout { .. }
                 | OperationResult::CreateBranch { .. }
                 | OperationResult::DeleteBranch { .. }
+                | OperationResult::Merge { .. }
+                | OperationResult::AbortMerge
                 | OperationResult::Discard { .. }
                 | OperationResult::Stash { .. }
                 | OperationResult::ApplyStash { .. }
@@ -176,6 +178,8 @@ pub(super) fn same_repository_operation(left: &RepositoryAction, right: &Reposit
                 RepositoryAction::DeleteBranch(_),
                 RepositoryAction::DeleteBranch(_)
             )
+            | (RepositoryAction::Merge(_), RepositoryAction::Merge(_))
+            | (RepositoryAction::AbortMerge, RepositoryAction::AbortMerge)
             | (RepositoryAction::Discard(_), RepositoryAction::Discard(_))
             | (
                 RepositoryAction::DiscardAll(_),

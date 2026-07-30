@@ -162,4 +162,5 @@ RepositorySnapshot(
       ),
     ],
   )),
+  operation: r#None,
 )

@@ -12,6 +12,8 @@ mod content;
 mod create_branch;
 #[path = "git_operations/delete_branch.rs"]
 mod delete_branch;
+#[path = "git_operations/merge.rs"]
+mod merge;
 #[path = "git_operations/navigation.rs"]
 mod navigation;
 #[path = "git_operations/network.rs"]

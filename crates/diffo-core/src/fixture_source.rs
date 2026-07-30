@@ -334,6 +334,8 @@ impl Repository for MutableFixtureRepository {
                 | RepositoryAction::Checkout(_)
                 | RepositoryAction::CreateBranch(_)
                 | RepositoryAction::DeleteBranch(_)
+                | RepositoryAction::Merge(_)
+                | RepositoryAction::AbortMerge
                 | RepositoryAction::Discard(_)
                 | RepositoryAction::DiscardAll(_)
                 | RepositoryAction::Stash { .. }

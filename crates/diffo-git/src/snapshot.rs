@@ -286,6 +286,7 @@ impl RepositorySource for GitRepositorySource {
             files,
             recent_commits: self.recent_commits()?,
             upstream: parsed.upstream,
+            operation: self.repository_operation_state(),
         })
     }
 }

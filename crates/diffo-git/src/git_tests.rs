@@ -22,6 +22,7 @@ mod create_branch;
 mod delete_branch;
 mod everyday;
 mod explorer;
+mod merge;
 mod sync_publication_tests;
 mod sync_target_tests;
 mod sync_tests;

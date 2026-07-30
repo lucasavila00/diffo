@@ -4,6 +4,8 @@ mod state;
 
 use diffo_core::{OperationFailure, OperationResult, RepositoryAction, RepositorySnapshot};
 
+#[cfg(test)]
+pub(crate) use state::operation_result_toast;
 pub use state::{
     ChangeArea, DiffViewMode, FileKey, Model, NetworkOperation, Toast, ToastKind, ToastQueue,
 };
@@ -48,7 +50,7 @@ pub enum Message {
     ExecuteSyncToRemote(String),
     SnapshotLoaded(RepositorySnapshot),
     OperationFailed(String),
-    OperationCompleted(RepositoryAction, OperationResult, RepositorySnapshot),
+    OperationCompleted(RepositoryAction, OperationResult, Box<RepositorySnapshot>),
     OperationCancelled(RepositoryAction),
     ActionFailed(OperationFailure),
 }
@@ -106,7 +108,7 @@ pub fn update(model: &mut Model, message: Message) -> Option<Effect> {
             return Some(Effect::Error("Repository refresh failed".to_owned(), error));
         }
         Message::OperationCompleted(action, result, snapshot) => {
-            if model.complete_operation(&action, &result, snapshot)
+            if model.complete_operation(&action, &result, *snapshot)
                 && let Some((kind, title)) = state::operation_result_toast(&result)
             {
                 return Some(Effect::Toast(kind, title));

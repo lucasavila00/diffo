@@ -191,7 +191,7 @@ fn current_unix_seconds() -> i64 {
         })
 }
 
-fn relative_commit_age(
+pub(super) fn relative_commit_age(
     tip_commit_unix_seconds: Option<i64>,
     now_unix_seconds: i64,
 ) -> Option<String> {
@@ -239,6 +239,7 @@ impl Workbench {
         if let Some(Modal::CheckoutPicker(picker)) = self.modal.as_mut() {
             picker.refresh(&self.diff.model.snapshot);
         }
+        self.refresh_merge_picker();
     }
 
     pub fn branches_loaded(&mut self, query_id: RepositoryQueryId, branches: Vec<BranchRef>) {

@@ -50,6 +50,15 @@ impl Default for ToastQueue {
 }
 
 pub(crate) fn operation_result_toast(result: &OperationResult) -> Option<(ToastKind, String)> {
+    if let OperationResult::Merge { conflicts, .. } = result
+        && *conflicts > 0
+    {
+        let noun = if *conflicts == 1 { "file" } else { "files" };
+        return Some((
+            ToastKind::Info,
+            format!("Merge stopped with conflicts in {conflicts} {noun}"),
+        ));
+    }
     let title = match result {
         OperationResult::Stage | OperationResult::Unstage => return None,
         OperationResult::Fetch { updated_refs: 0 } => "Fetch complete".to_owned(),
@@ -62,6 +71,8 @@ pub(crate) fn operation_result_toast(result: &OperationResult) -> Option<(ToastK
             format!("Created and checked out {branch}")
         }
         OperationResult::DeleteBranch { branch } => format!("Deleted branch {branch}"),
+        OperationResult::Merge { name, .. } => format!("Merged {name}"),
+        OperationResult::AbortMerge => "Merge aborted".to_owned(),
         OperationResult::Discard { paths: 1 } => "Discarded changes in 1 path".to_owned(),
         OperationResult::Discard { paths } => format!("Discarded changes in {paths} paths"),
         OperationResult::Stash { name } => format!("Created {name}"),
@@ -87,6 +98,8 @@ pub(crate) fn operation_failure_error(failure: &OperationFailure) -> (String, St
         RepositoryAction::Checkout(_) => "Checkout",
         RepositoryAction::CreateBranch(_) => "Create branch",
         RepositoryAction::DeleteBranch(_) => "Delete branch",
+        RepositoryAction::Merge(_) => "Merge",
+        RepositoryAction::AbortMerge => "Abort merge",
         RepositoryAction::Discard(_) | RepositoryAction::DiscardAll(_) => "Discard changes",
         RepositoryAction::Stash { .. } => "Stash changes",
         RepositoryAction::ApplyStash(_) => "Apply stash",

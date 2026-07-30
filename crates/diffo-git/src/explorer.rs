@@ -148,6 +148,10 @@ impl Repository for GitRepositorySource {
         self.branch_refs()
     }
 
+    fn merge_refs(&self) -> Result<Vec<diffo_core::MergeRef>> {
+        self.merge_refs_list()
+    }
+
     fn stashes(&self) -> Result<Vec<diffo_core::StashEntry>> {
         self.stash_entries()
     }

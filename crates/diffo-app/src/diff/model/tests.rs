@@ -65,7 +65,7 @@ fn commit_and_sync_are_independent_actions() {
             OperationResult::Commit {
                 hash: "abc1234".to_owned(),
             },
-            refreshed,
+            Box::new(refreshed),
         ),
     );
     assert!(model.commit_message.is_empty());
@@ -101,7 +101,7 @@ fn commit_and_sync_are_independent_actions() {
                     establish_upstream: false,
                 }),
             },
-            refreshed,
+            Box::new(refreshed),
         ),
     );
     assert_eq!(model.network_operation(), None);
@@ -150,7 +150,7 @@ fn passive_and_unrelated_results_cannot_finish_a_sync() {
         Message::OperationCompleted(
             RepositoryAction::Fetch,
             OperationResult::Fetch { updated_refs: 1 },
-            changed,
+            Box::new(changed),
         ),
     );
     update(
@@ -246,7 +246,7 @@ fn returns_contextual_stage_effect() {
         Message::OperationCompleted(
             RepositoryAction::Stage(PathBuf::from("file.txt")),
             OperationResult::Stage,
-            refreshed,
+            Box::new(refreshed),
         ),
     );
 

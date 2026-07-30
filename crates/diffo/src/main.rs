@@ -32,6 +32,7 @@ use ratatui::{Terminal, backend::CrosstermBackend};
 
 mod frame_trace;
 mod launcher;
+mod merge;
 mod tool_tasks;
 mod update_tasks;
 
@@ -270,15 +271,7 @@ fn run_watch_dump(
                         diffo_core::PromptAnswer::Cancel,
                     );
                 }
-                RepositoryEvent::Update(_)
-                | RepositoryEvent::WorktreeChanged
-                | RepositoryEvent::Progress { .. }
-                | RepositoryEvent::BranchesLoaded { .. }
-                | RepositoryEvent::BranchesLoadFailed { .. }
-                | RepositoryEvent::StashesLoaded { .. }
-                | RepositoryEvent::StashesLoadFailed { .. }
-                | RepositoryEvent::RemotesLoaded { .. }
-                | RepositoryEvent::RemotesLoadFailed { .. } => {}
+                _ => {}
             }
         }
         std::thread::sleep(Duration::from_millis(10));
@@ -460,6 +453,7 @@ fn dispatch_events(
             workbench.branches_load_failed(query_id, "repository service is unavailable");
         }
     }
+    merge::dispatch_queries(workbench, repository_service);
     while let Some(query_id) = workbench.take_sync_remote_query() {
         if !repository_service.load_remotes(query_id) {
             workbench.sync_remotes_load_failed(query_id, "repository service is unavailable");
@@ -538,6 +532,12 @@ fn drain_repository_events(repository_service: &RepositoryService, workbench: &m
             }
             RepositoryEvent::BranchesLoadFailed { query_id, message } => {
                 workbench.branches_load_failed(query_id, &message);
+            }
+            RepositoryEvent::MergeRefsLoaded { query_id, refs } => {
+                workbench.merge_refs_loaded(query_id, refs);
+            }
+            RepositoryEvent::MergeRefsLoadFailed { query_id, message } => {
+                workbench.merge_refs_load_failed(query_id, &message);
             }
             RepositoryEvent::RemotesLoaded { query_id, remotes } => {
                 workbench.sync_remotes_loaded(query_id, remotes);

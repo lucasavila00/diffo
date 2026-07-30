@@ -87,14 +87,16 @@ pub(in crate::diff) fn file_group_areas(
 ) -> std::rc::Rc<[ratatui::layout::Rect]> {
     let file_groups_height = design::MIN_FILE_GROUP_HEIGHT.saturating_mul(2);
     let available_unpushed_height = area.height.saturating_sub(file_groups_height);
-    let unpushed_rows = model.snapshot.upstream.as_ref().map_or(1, |upstream| {
-        let commit_rows = upstream.recent_local_commits.len();
-        if commit_rows == 0 {
-            1
-        } else {
-            commit_rows + usize::from(upstream.ahead > 3)
+    let unpushed_rows = match (&model.snapshot.head, &model.snapshot.upstream) {
+        (HeadState::Named { .. }, Some(upstream)) => {
+            summary_row_count(upstream.recent_local_commits.len(), upstream.ahead > 3)
         }
-    });
+        (HeadState::Named { .. }, None) => {
+            let commit_count = model.snapshot.recent_commits.len();
+            summary_row_count(commit_count, commit_count > 3)
+        }
+        _ => 1,
+    };
     let desired_unpushed_height = u16::try_from(unpushed_rows)
         .unwrap_or(u16::MAX)
         .saturating_add(design::PANEL_BORDER_OVERHEAD);
@@ -115,35 +117,18 @@ pub(in crate::diff) fn render_unpushed_commits(frame: &mut Frame, area: Rect, mo
         return;
     }
     let inner_width = usize::from(area.width.saturating_sub(design::PANEL_BORDER_OVERHEAD));
-    let rows = if let (HeadState::Named { .. }, Some(upstream)) =
-        (&model.snapshot.head, &model.snapshot.upstream)
-    {
-        if upstream.recent_local_commits.is_empty() {
-            vec![Line::raw(truncate_width(
-                "No unpushed commits",
-                inner_width,
-            ))]
-        } else {
-            let mut rows = upstream
-                .recent_local_commits
-                .iter()
-                .take(3)
-                .map(|commit| {
-                    let id = commit.id.chars().take(7).collect::<String>();
-                    let label = terminal_safe_text(&format!("{id} {}", commit.summary));
-                    Line::raw(truncate_width(&label, inner_width))
-                })
-                .collect::<Vec<_>>();
-            if upstream.ahead > 3 {
-                rows.push(Line::raw(truncate_width(
-                    &format!("... and {} more", upstream.ahead - 3),
-                    inner_width,
-                )));
-            }
-            rows
-        }
-    } else {
-        vec![Line::raw(truncate_width("No upstream", inner_width))]
+    let rows = match (&model.snapshot.head, &model.snapshot.upstream) {
+        (HeadState::Named { .. }, Some(upstream)) => commit_summary_rows(
+            &upstream.recent_local_commits,
+            (upstream.ahead > 3).then(|| format!("... and {} more", upstream.ahead - 3)),
+            inner_width,
+        ),
+        (HeadState::Named { .. }, None) => commit_summary_rows(
+            &model.snapshot.recent_commits,
+            (model.snapshot.recent_commits.len() > 3).then(|| "... and more".to_owned()),
+            inner_width,
+        ),
+        _ => vec![Line::raw(truncate_width("No upstream", inner_width))],
     };
     frame.render_widget(
         Paragraph::new(rows).block(
@@ -154,6 +139,41 @@ pub(in crate::diff) fn render_unpushed_commits(frame: &mut Frame, area: Rect, mo
         ),
         area,
     );
+}
+
+fn summary_row_count(commit_count: usize, has_more: bool) -> usize {
+    if commit_count == 0 {
+        1
+    } else {
+        commit_count.min(3) + usize::from(has_more)
+    }
+}
+
+fn commit_summary_rows(
+    commits: &[diffo_core::Commit],
+    remainder: Option<String>,
+    inner_width: usize,
+) -> Vec<Line<'static>> {
+    if commits.is_empty() {
+        return vec![Line::raw(truncate_width(
+            "No unpushed commits",
+            inner_width,
+        ))];
+    }
+
+    let mut rows = commits
+        .iter()
+        .take(3)
+        .map(|commit| {
+            let id = commit.id.chars().take(7).collect::<String>();
+            let label = terminal_safe_text(&format!("{id} {}", commit.summary));
+            Line::raw(truncate_width(&label, inner_width))
+        })
+        .collect::<Vec<_>>();
+    if let Some(remainder) = remainder {
+        rows.push(Line::raw(truncate_width(&remainder, inner_width)));
+    }
+    rows
 }
 
 pub(in crate::diff) fn picker_document<'a>(

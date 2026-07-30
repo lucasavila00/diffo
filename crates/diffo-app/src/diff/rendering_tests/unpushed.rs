@@ -24,6 +24,23 @@ fn model_with_unpushed(ahead: usize, commits: &[(&str, &str)]) -> Model {
     })
 }
 
+fn model_without_upstream(commits: &[(&str, &str)]) -> Model {
+    Model::new(RepositorySnapshot {
+        head: HeadState::Named {
+            name: "main".to_owned(),
+            commit: "123456789abcdef".to_owned(),
+        },
+        recent_commits: commits
+            .iter()
+            .map(|(id, summary)| Commit {
+                id: (*id).to_owned(),
+                summary: (*summary).to_owned(),
+            })
+            .collect(),
+        ..RepositorySnapshot::default()
+    })
+}
+
 #[test]
 fn lists_three_commits_and_the_exact_remainder() {
     let model = model_with_unpushed(
@@ -75,6 +92,29 @@ fn handles_unavailable_empty_and_unsafe_subjects() {
 }
 
 #[test]
+fn treats_every_commit_as_unpushed_without_an_upstream() {
+    let model = model_without_upstream(&[
+        ("111111111", "Newest commit"),
+        ("222222222", "Second commit"),
+        ("333333333", "Third commit"),
+        ("444444444", "Oldest commit"),
+    ]);
+    let backend = TestBackend::new(28, 6);
+    let mut terminal = Terminal::new(backend).unwrap();
+
+    terminal
+        .draw(|frame| render_unpushed_commits(frame, frame.area(), &model))
+        .unwrap();
+
+    let text = buffer_text(terminal.backend().buffer());
+    assert!(text.contains("1111111 Newest commit"));
+    assert!(text.contains("2222222 Second commit"));
+    assert!(text.contains("3333333 Third commit"));
+    assert!(text.contains("... and more"));
+    assert!(!text.contains("No upstream"));
+}
+
+#[test]
 fn yields_height_to_both_file_groups() {
     let model = model_with_unpushed(7, &[("1", "one"), ("2", "two"), ("3", "three")]);
 
@@ -91,5 +131,16 @@ fn yields_height_to_both_file_groups() {
             .map(|area| area.height)
             .collect::<Vec<_>>(),
         [2, 2, 2]
+    );
+
+    let no_upstream =
+        model_without_upstream(&[("1", "one"), ("2", "two"), ("3", "three"), ("4", "four")]);
+    let no_upstream = file_group_areas(Rect::new(0, 0, 20, 10), &no_upstream);
+    assert_eq!(
+        no_upstream
+            .iter()
+            .map(|area| area.height)
+            .collect::<Vec<_>>(),
+        [6, 2, 2]
     );
 }

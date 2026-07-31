@@ -121,9 +121,9 @@ fn fixed_change_button_lanes_saturate_in_narrow_layouts() {
 }
 
 fn navigation_layout_patch() -> String {
-    let mut patch = String::from("@@ -1,40 +1,40 @@\n");
-    for line in 1..=40 {
-        if matches!(line, 3 | 38) {
+    let mut patch = String::from("@@ -1,240 +1,240 @@\n");
+    for line in 1..=240 {
+        if matches!(line, 3 | 238) {
             writeln!(patch, "-old {line}").unwrap();
             writeln!(patch, "+new {line}").unwrap();
         } else {

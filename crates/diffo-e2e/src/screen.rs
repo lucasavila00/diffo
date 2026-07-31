@@ -24,6 +24,7 @@ const ROWS: u16 = 30;
 const COLUMNS: u16 = 100;
 const ACTIVITY_BAR_WIDTH: u16 = 5;
 const TIMEOUT: Duration = Duration::from_secs(10);
+const STARTUP_TIMEOUT: Duration = Duration::from_secs(30);
 const SELECTION_BACKGROUND: vt100::Color = vt100::Color::Idx(8);
 
 pub struct DiffoScreen {
@@ -90,7 +91,7 @@ impl DiffoScreen {
             writer: Some(writer),
             child,
         };
-        screen.wait_for_text("[ Commands (1 / F1) ]")?;
+        screen.wait_for_text_until("[ Commands (1 / F1) ]", STARTUP_TIMEOUT)?;
         Ok(screen)
     }
 
@@ -266,7 +267,11 @@ impl DiffoScreen {
     ///
     /// Returns an error when the process exits or the deadline expires.
     pub fn wait_for_text(&mut self, text: &str) -> Result<&mut Self> {
-        let deadline = Instant::now() + TIMEOUT;
+        self.wait_for_text_until(text, TIMEOUT)
+    }
+
+    fn wait_for_text_until(&mut self, text: &str, timeout: Duration) -> Result<&mut Self> {
+        let deadline = Instant::now() + timeout;
         loop {
             self.pump_available();
             if !find_text(&self.cells(), text).is_empty() {
@@ -274,7 +279,8 @@ impl DiffoScreen {
             }
             if Instant::now() >= deadline {
                 bail!(
-                    "text {text:?} was not visible within ten seconds\n{}",
+                    "text {text:?} was not visible within {} seconds\n{}",
+                    timeout.as_secs(),
                     self.contents()
                 );
             }

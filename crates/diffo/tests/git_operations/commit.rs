@@ -139,8 +139,11 @@ fn rejected_commit_keeps_editor_closed_and_preserves_draft() -> Result<()> {
         .wait_for_text_gone("Commit failed")?
         .press(Key::Char('m'))?
         .wait_for_text("Cancel (Esc)")?
-        .wait_for_text("Preserved draft")?;
-    drop(screen);
+        .wait_for_text("Preserved draft")?
+        .press(Key::Escape)?
+        .wait_for_text_gone("Cancel (Esc)")?
+        .press(Key::Char('q'))?
+        .wait_for_exit()?;
 
     let trace = fs::read_to_string(&trace_path).context("read commit failure frame trace")?;
     let frames = trace

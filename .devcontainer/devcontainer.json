@@ -5,7 +5,8 @@
 	"build": {
 		"dockerfile": "Dockerfile"
 	},
-	"postCreateCommand": "git config --global --add safe.directory /workspaces/workspace"
+	"postCreateCommand": "git config --global --add safe.directory /workspaces/workspace",
+	"remoteUser": "vscode"
 
 	// Use 'mounts' to make the cargo cache persistent in a Docker Volume.
 	// "mounts": [

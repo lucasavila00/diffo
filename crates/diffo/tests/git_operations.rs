@@ -22,6 +22,8 @@ mod network;
 mod overlays;
 #[path = "git_operations/quiet.rs"]
 mod quiet;
+#[path = "git_operations/rail_layout.rs"]
+mod rail_layout;
 #[path = "git_operations/scrolling.rs"]
 mod scrolling;
 #[path = "git_operations/ssh.rs"]

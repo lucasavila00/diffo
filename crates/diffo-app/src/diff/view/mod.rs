@@ -273,7 +273,7 @@ impl Renderer {
         area: Rect,
         viewport: &DiffViewportMetrics,
     ) {
-        let inner = area.inner(design::PANEL_INSET);
+        let inner = geometry::diff_panel_inner(area);
         let previous_area = viewport.previous_change.map(|_| {
             Rect::new(
                 inner.x,

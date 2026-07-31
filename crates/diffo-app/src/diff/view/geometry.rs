@@ -22,6 +22,15 @@ pub(in crate::diff) fn overview_position(
     u16::try_from(position).unwrap_or(track_height - 1)
 }
 
+pub(in crate::diff) fn diff_panel_inner(area: Rect) -> Rect {
+    Rect::new(
+        area.x.saturating_add(design::BORDER_WIDTH.min(area.width)),
+        area.y.saturating_add(design::BORDER_WIDTH.min(area.height)),
+        design::panel_content_extent(area.width),
+        design::panel_content_extent(area.height),
+    )
+}
+
 pub(in crate::diff) fn main_area(area: ratatui::layout::Rect) -> ratatui::layout::Rect {
     Layout::default()
         .direction(Direction::Vertical)
@@ -164,7 +173,7 @@ impl Renderer {
         area: Rect,
         requested_scroll: usize,
     ) -> DiffViewportMetrics {
-        let inner = area.inner(design::PANEL_INSET);
+        let inner = diff_panel_inner(area);
         let rows = self.displayed_rows(mode);
         let changes = self.change_targets(mode);
         let viewport_columns = if mode == DiffViewMode::SideBySide {

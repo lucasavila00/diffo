@@ -696,4 +696,5 @@ fn large_hunk_patch() -> String {
     patch
 }
 
+mod rails;
 mod transitions;

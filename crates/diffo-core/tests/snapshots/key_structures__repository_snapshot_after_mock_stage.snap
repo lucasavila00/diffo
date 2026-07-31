@@ -29,6 +29,15 @@ RepositorySnapshot(
       )),
     ),
     FileState(
+      path: "src/rail-layout.rs",
+      old_path: None,
+      kind: Modified,
+      staged: None,
+      unstaged: Some(FileDiff(
+        text: "diff --git a/src/rail-layout.rs b/src/rail-layout.rs\n--- a/src/rail-layout.rs\n+++ b/src/rail-layout.rs\n@@ -1,40 +1,40 @@\n line 01\n line 02\n-old first change\n+new first change\n line 04\n line 05\n line 06\n line 07\n line 08\n line 09\n line 10\n line 11\n line 12\n line 13\n line 14\n line 15\n line 16\n line 17\n line 18\n line 19\n line 20\n line 21\n line 22\n line 23\n line 24\n line 25\n line 26\n line 27\n line 28\n line 29\n line 30\n line 31\n line 32\n line 33\n line 34\n line 35\n line 36\n line 37\n-old last change\n+new last change\n line 39\n line 40\n",
+      )),
+    ),
+    FileState(
       path: "scripts/report.py",
       old_path: None,
       kind: Modified,

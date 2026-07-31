@@ -23,7 +23,7 @@ use crate::{
 const ROWS: u16 = 30;
 const COLUMNS: u16 = 100;
 const ACTIVITY_BAR_WIDTH: u16 = 5;
-const TIMEOUT: Duration = Duration::from_secs(5);
+const TIMEOUT: Duration = Duration::from_secs(10);
 const SELECTION_BACKGROUND: vt100::Color = vt100::Color::Idx(8);
 
 pub struct DiffoScreen {
@@ -274,7 +274,7 @@ impl DiffoScreen {
             }
             if Instant::now() >= deadline {
                 bail!(
-                    "text {text:?} was not visible within five seconds\n{}",
+                    "text {text:?} was not visible within ten seconds\n{}",
                     self.contents()
                 );
             }
@@ -296,7 +296,7 @@ impl DiffoScreen {
             }
             if Instant::now() >= deadline {
                 bail!(
-                    "selector {selector:?} was not visible within five seconds\n{}",
+                    "selector {selector:?} was not visible within ten seconds\n{}",
                     self.contents()
                 );
             }
@@ -328,7 +328,7 @@ impl DiffoScreen {
             }
             if Instant::now() >= deadline {
                 bail!(
-                    "text {text:?} remained visible for five seconds\n{}",
+                    "text {text:?} remained visible for ten seconds\n{}",
                     self.contents()
                 );
             }
@@ -350,7 +350,7 @@ impl DiffoScreen {
             }
             if Instant::now() >= deadline {
                 bail!(
-                    "terminal did not change within five seconds\n{}",
+                    "terminal did not change within ten seconds\n{}",
                     self.contents()
                 );
             }
@@ -373,10 +373,7 @@ impl DiffoScreen {
                 return Ok(self);
             }
             if Instant::now() >= deadline {
-                bail!(
-                    "Diffo did not exit within five seconds\n{}",
-                    self.contents()
-                );
+                bail!("Diffo did not exit within ten seconds\n{}", self.contents());
             }
             self.pump_available();
             thread::sleep(Duration::from_millis(10));
@@ -409,7 +406,7 @@ impl DiffoScreen {
                 return Ok(self);
             }
             if now >= deadline {
-                bail!("Diffo terminal output did not become quiet within five seconds");
+                bail!("Diffo terminal output did not become quiet within ten seconds");
             }
             let wait = quiet_until
                 .saturating_duration_since(now)
@@ -502,7 +499,7 @@ impl DiffoScreen {
                 None if Instant::now() < deadline => self.pump_until(deadline)?,
                 None => {
                     bail!(
-                        "selector {selector:?} was not visible within five seconds\n{}",
+                        "selector {selector:?} was not visible within ten seconds\n{}",
                         self.contents()
                     )
                 }

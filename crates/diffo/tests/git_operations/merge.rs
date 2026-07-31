@@ -103,6 +103,7 @@ fn late_cancellation_installs_the_head_git_already_changed() -> Result<()> {
         .press(Key::Enter)?
         .wait_for_text_gone("Loading refs...")?
         .type_text("topic")?
+        .wait_for(&Selector::selected_row("topic"))?
         .press(Key::Enter)?
         .wait_for_text("Merging topic")?;
     gate.wait_until_blocked()?;
@@ -202,6 +203,7 @@ fn cancelling_before_merge_mutation_preserves_head() -> Result<()> {
         .press(Key::Enter)?
         .wait_for_text_gone("Loading refs...")?
         .type_text("topic")?
+        .wait_for(&Selector::selected_row("topic"))?
         .press(Key::Enter)?
         .wait_for_text("Merging topic")?;
     gate.wait_until_blocked()?;

@@ -8,11 +8,11 @@ permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.head_ref || github.run_id }}
   cancel-in-progress: true
 
 jobs:
-  rust:
+  checks:
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -65,3 +65,18 @@ jobs:
               cargo test --workspace -- --test-threads=8
             echo "::endgroup::"
           done
+
+  publish:
+    needs:
+      - checks
+      - stress
+    if: >-
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/main' &&
+      needs.checks.result == 'success' &&
+      needs.stress.result == 'success'
+    permissions:
+      contents: write
+    uses: ./.github/workflows/release.yml
+    with:
+      source_sha: ${{ github.sha }}

@@ -9,7 +9,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use super::{failure::classify_failure, status::parse_status};
+use super::status::parse_status;
 use diffo_core::{
     BranchKind, CancellationHandle, ChangeKind, CheckoutTarget, FailureKind, GitPrompt, HeadState,
     OperationOutcome, OperationResult, ProgressHandler, PromptAnswer, PromptHandler, PromptId,
@@ -23,6 +23,7 @@ mod create_branch;
 mod delete_branch;
 mod everyday;
 mod explorer;
+mod failure;
 mod merge;
 mod sync_publication_tests;
 mod sync_target_tests;
@@ -585,36 +586,6 @@ fn sync_rebases_clean_divergence_and_pushes_without_a_merge_commit() {
         ""
     );
     assert_eq!(new_local, remote_head(&repository.seed));
-}
-
-#[test]
-fn classifies_failures_without_returning_git_secrets() {
-    for (action, output, expected) in [
-        (
-            RepositoryAction::Sync,
-            "[rejected] (non-fast-forward)",
-            FailureKind::PushRejected,
-        ),
-        (
-            RepositoryAction::Sync,
-            "pre-receive hook declined: token=secret",
-            FailureKind::HookRejected,
-        ),
-        (
-            RepositoryAction::Sync,
-            "CONFLICT in file",
-            FailureKind::RebaseConflict,
-        ),
-        (
-            RepositoryAction::Fetch,
-            "fatal: could not resolve host",
-            FailureKind::Network,
-        ),
-    ] {
-        let failure = classify_failure(&action, output);
-        assert_eq!(failure.kind, expected);
-        assert!(!failure.detail.contains("secret"));
-    }
 }
 
 struct SyncRepository {

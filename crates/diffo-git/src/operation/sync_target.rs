@@ -2,7 +2,10 @@ use std::process::{Command, Stdio};
 
 use diffo_core::{FailureKind, OperationFailure, RepositoryAction, SyncPlan};
 
-use crate::{GitRepositorySource, failure::operation_failure};
+use crate::{
+    GitRepositorySource,
+    failure::{operation_failure, output_failure},
+};
 
 pub(super) struct SyncTarget {
     pub(super) remote: String,
@@ -205,16 +208,18 @@ impl GitRepositorySource {
             return Ok(());
         }
         if output.status.code() == Some(1) {
-            return Err(operation_failure(
+            return Err(output_failure(
                 action,
                 FailureKind::BranchConflict,
                 "the local and remote branches have unrelated histories",
+                &output,
             ));
         }
-        Err(operation_failure(
+        Err(output_failure(
             action,
             FailureKind::Unknown,
             "could not compare the local and remote branch histories",
+            &output,
         ))
     }
 

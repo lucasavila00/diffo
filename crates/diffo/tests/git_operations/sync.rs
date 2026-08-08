@@ -215,7 +215,10 @@ fn conflicting_divergence_aborts_rebase_and_never_pushes() -> Result<()> {
     confirm_protected_push(&mut screen, 1, "origin/master")?;
     screen
         .wait_for_text("Rebase conflicted in 1 file and was")?
-        .wait_for_text("aborted. Nothing was pushed.")?;
+        .wait_for_text("aborted. Nothing was")?
+        .wait_for_text("pushed.")?
+        .wait_for_text("Git exit status: 1")?
+        .wait_for_text("stderr:")?;
 
     assert_eq!(local_head(&repository)?, local_before);
     assert_eq!(remote_head(&repository)?, remote);

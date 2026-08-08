@@ -325,10 +325,14 @@ fn conflicting_sync_aborts_rebase_and_does_not_push() {
     let failure = confirmed_sync(&repository.work).expect_err("conflicting sync must stop");
 
     assert_eq!(failure.kind, FailureKind::RebaseConflict);
-    assert_eq!(
-        failure.detail,
-        "Rebase conflicted in 1 file and was aborted. Nothing was pushed."
+    assert!(
+        failure
+            .detail
+            .starts_with("Rebase conflicted in 1 file and was aborted. Nothing was pushed.")
     );
+    assert!(failure.detail.contains("Git exit status: 1"));
+    assert!(failure.detail.contains("stderr:"));
+    assert!(failure.detail.contains("stdout:"));
     assert_eq!(
         git_stdout(&repository.work, &["rev-parse", "HEAD"]),
         old_local

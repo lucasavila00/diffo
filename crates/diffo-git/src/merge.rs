@@ -9,7 +9,7 @@ use diffo_core::{
 
 use super::{
     GitRepositorySource,
-    failure::{classify_failure, command_output, operation_failure},
+    failure::{classify_failure, operation_failure},
     operation::{CommandOutcome, run_cancellable},
     status::parse_status,
 };
@@ -105,7 +105,7 @@ impl GitRepositorySource {
                         conflicts,
                     }))
                 } else {
-                    Err(classify_failure(action, &command_output(&output)))
+                    Err(classify_failure(action, &output))
                 }
             }
         }
@@ -137,9 +137,7 @@ impl GitRepositorySource {
             CommandOutcome::Output(output) if output.status.success() => {
                 Ok(OperationOutcome::Completed(OperationResult::AbortMerge))
             }
-            CommandOutcome::Output(output) => {
-                Err(classify_failure(action, &command_output(&output)))
-            }
+            CommandOutcome::Output(output) => Err(classify_failure(action, &output)),
         }
     }
 

@@ -23,7 +23,11 @@ fn real_remote_error_shows_the_executed_action() -> Result<()> {
         .type_text("fetch")?
         .press(Key::Enter)?
         .wait_for_text("Fetch failed")?
-        .wait_for_text("no remote configured")?;
+        .wait_for_text("no remote configured")?
+        .wait_for_text("Git exit status:")?
+        .wait_for_text("stderr:")?
+        .wait_for_text("does not appear to be a git")?
+        .wait_for_text("Could not read from remote repository")?;
     Ok(())
 }
 

@@ -8,7 +8,7 @@ use diffo_core::{
 
 use super::{
     GitRepositorySource,
-    failure::{classify_failure, command_output, operation_failure},
+    failure::{classify_failure, command_output, operation_failure, output_failure},
     operation::{CommandOutcome, run_cancellable},
     refs::ref_exists,
 };
@@ -118,7 +118,7 @@ impl GitRepositorySource {
             match Self::run(action, &mut command, cancellation)? {
                 CommandOutcome::Cancelled => return Ok(OperationOutcome::Cancelled),
                 CommandOutcome::Output(output) if !output.status.success() => {
-                    return Err(classify_failure(action, &command_output(&output)));
+                    return Err(classify_failure(action, &output));
                 }
                 CommandOutcome::Output(_) => {}
             }
@@ -129,7 +129,7 @@ impl GitRepositorySource {
             match Self::run(action, &mut command, cancellation)? {
                 CommandOutcome::Cancelled => return Ok(OperationOutcome::Cancelled),
                 CommandOutcome::Output(output) if !output.status.success() => {
-                    return Err(classify_failure(action, &command_output(&output)));
+                    return Err(classify_failure(action, &output));
                 }
                 CommandOutcome::Output(_) => {}
             }
@@ -154,7 +154,7 @@ impl GitRepositorySource {
         match Self::run(action, &mut command, cancellation)? {
             CommandOutcome::Cancelled => return Ok(OperationOutcome::Cancelled),
             CommandOutcome::Output(output) if !output.status.success() => {
-                return Err(classify_failure(action, &command_output(&output)));
+                return Err(classify_failure(action, &output));
             }
             CommandOutcome::Output(_) => {}
         }
@@ -190,13 +190,14 @@ impl GitRepositorySource {
             CommandOutcome::Output(output) => {
                 let text = command_output(&output);
                 if text.to_ascii_lowercase().contains("conflict") {
-                    Err(operation_failure(
+                    Err(output_failure(
                         action,
                         FailureKind::StashConflict,
                         "stash apply conflicted; the stash was kept",
+                        &output,
                     ))
                 } else {
-                    Err(classify_failure(action, &text))
+                    Err(classify_failure(action, &output))
                 }
             }
         }
@@ -233,7 +234,7 @@ impl GitRepositorySource {
         match Self::run(action, &mut command, cancellation)? {
             CommandOutcome::Cancelled => Ok(OperationOutcome::Cancelled),
             CommandOutcome::Output(output) if !output.status.success() => {
-                Err(classify_failure(action, &command_output(&output)))
+                Err(classify_failure(action, &output))
             }
             CommandOutcome::Output(_) => Ok(OperationOutcome::Completed(OperationResult::Amend {
                 hash: self.head(action)?,
@@ -303,22 +304,25 @@ impl GitRepositorySource {
                     hash: self.head(action)?,
                 }))
             }
-            outcome => {
+            CommandOutcome::Cancelled => {
                 self.abort_revert();
-                if matches!(outcome, CommandOutcome::Cancelled) {
-                    return Ok(OperationOutcome::Cancelled);
-                }
+                Ok(OperationOutcome::Cancelled)
+            }
+            CommandOutcome::Output(output) => {
+                self.abort_revert();
                 if self.head(action).ok().as_deref() != Some(&before) {
-                    return Err(operation_failure(
+                    return Err(output_failure(
                         action,
                         FailureKind::Unknown,
                         "revert failed and could not restore the original branch",
+                        &output,
                     ));
                 }
-                Err(operation_failure(
+                Err(output_failure(
                     action,
                     FailureKind::RebaseConflict,
                     "revert conflicted and was aborted",
+                    &output,
                 ))
             }
         }
@@ -361,7 +365,7 @@ impl GitRepositorySource {
         match Self::run(action, &mut rename, cancellation)? {
             CommandOutcome::Cancelled => return Ok(OperationOutcome::Cancelled),
             CommandOutcome::Output(output) if !output.status.success() => {
-                return Err(classify_failure(action, &command_output(&output)));
+                return Err(classify_failure(action, &output));
             }
             CommandOutcome::Output(_) => {}
         }
@@ -371,7 +375,7 @@ impl GitRepositorySource {
             match Self::run(action, &mut unset, cancellation)? {
                 CommandOutcome::Cancelled => return Ok(OperationOutcome::Cancelled),
                 CommandOutcome::Output(output) if !output.status.success() => {
-                    return Err(classify_failure(action, &command_output(&output)));
+                    return Err(classify_failure(action, &output));
                 }
                 CommandOutcome::Output(_) => {}
             }
@@ -560,7 +564,7 @@ impl GitRepositorySource {
         match Self::run(action, command, cancellation)? {
             CommandOutcome::Cancelled => Ok(OperationOutcome::Cancelled),
             CommandOutcome::Output(output) if !output.status.success() => {
-                Err(classify_failure(action, &command_output(&output)))
+                Err(classify_failure(action, &output))
             }
             CommandOutcome::Output(_) => Ok(OperationOutcome::Completed(result)),
         }

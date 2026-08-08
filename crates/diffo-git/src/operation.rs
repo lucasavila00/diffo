@@ -21,7 +21,7 @@ use super::{
     askpass::{ASKPASS_MARKER, ASKPASS_SOCKET, AskpassBridge},
     create_branch::{configure_create_branch, operation_result as create_branch_result},
     delete_branch::{configure_delete_branch, operation_result as delete_branch_result},
-    failure::{classify_failure, command_output, finish_sync_command, operation_failure},
+    failure::{classify_failure, finish_sync_command, operation_failure, output_failure},
     refs::{checkout_local_name, ref_exists},
 };
 
@@ -141,9 +141,7 @@ impl GitRepositorySource {
             CommandOutcome::Cancelled => return Ok(OperationOutcome::Cancelled),
         };
         if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            return Err(classify_failure(action, &format!("{stdout}\n{stderr}")));
+            return Err(classify_failure(action, &output));
         }
         collect_operation_result(self, action, before_fetch.as_ref())
             .map(OperationOutcome::Completed)
@@ -181,7 +179,7 @@ impl GitRepositorySource {
         )? {
             CommandOutcome::Cancelled => return Ok(OperationOutcome::Cancelled),
             CommandOutcome::Output(output) if !output.status.success() => {
-                return Err(classify_failure(action, &command_output(&output)));
+                return Err(classify_failure(action, &output));
             }
             CommandOutcome::Output(_) => {}
         }
@@ -340,18 +338,20 @@ impl GitRepositorySource {
                 self.abort_rebase();
                 if conflicts > 0 {
                     let noun = if conflicts == 1 { "file" } else { "files" };
-                    return Err(operation_failure(
+                    return Err(output_failure(
                         action,
                         FailureKind::RebaseConflict,
                         &format!(
                             "Rebase conflicted in {conflicts} {noun} and was aborted. Nothing was pushed."
                         ),
+                        &output,
                     ));
                 }
-                return Err(operation_failure(
+                return Err(output_failure(
                     action,
                     FailureKind::Unknown,
                     "rebase failed and was aborted; nothing was pushed",
+                    &output,
                 ));
             }
             CommandOutcome::Output(_) => {}

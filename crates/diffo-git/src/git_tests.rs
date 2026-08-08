@@ -18,6 +18,7 @@ use diffo_core::{
 };
 
 mod checkout;
+mod commit;
 mod create_branch;
 mod delete_branch;
 mod everyday;

@@ -106,7 +106,7 @@ impl GitRepositorySource {
                 unreachable!("sync is handled before single commands")
             }
             RepositoryAction::Commit(message) => {
-                command.args(["commit", "-m", message]);
+                command.args(["commit", "--no-verify", "-m", message]);
             }
             RepositoryAction::Checkout(target) => {
                 configure_checkout(self, &mut command, action, target)?;

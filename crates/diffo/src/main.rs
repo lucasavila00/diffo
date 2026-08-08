@@ -17,7 +17,7 @@ use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use crossterm::event::EnableMouseCapture;
 use crossterm::{
     Command,
-    event::{self, DisableMouseCapture, Event, MouseEventKind},
+    event::{self, DisableMouseCapture, Event},
     execute,
     terminal::{Clear, ClearType},
 };
@@ -35,47 +35,16 @@ mod launcher;
 mod merge;
 mod tool_tasks;
 mod update_tasks;
+mod wheel_friction;
 
 use diffo_app::workbench::{PromptResponse, Workbench, WorkbenchEffect};
 use frame_trace::{FrameRecord, FrameTracer, input_events as trace_input_events};
 use tool_tasks::ToolTasks;
 use update_tasks::UpdateTasks;
+use wheel_friction::{WheelFriction, filter as filter_wheel_momentum};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct EnableActionMouseCapture;
-
-const WHEEL_ACTIVE_INTERVAL: Duration = Duration::from_millis(48);
-const WHEEL_BURST_RESET: Duration = Duration::from_millis(120);
-
-#[derive(Default)]
-struct WheelFriction {
-    direction: Option<MouseEventKind>,
-    last_event: Option<Instant>,
-}
-
-impl WheelFriction {
-    fn accepts(&mut self, event: &Event, now: Instant) -> bool {
-        let Event::Mouse(mouse) = event else {
-            return true;
-        };
-        let direction = match mouse.kind {
-            MouseEventKind::ScrollUp
-            | MouseEventKind::ScrollDown
-            | MouseEventKind::ScrollLeft
-            | MouseEventKind::ScrollRight => mouse.kind,
-            _ => return true,
-        };
-        let gap = self.last_event.map(|last| now.duration_since(last));
-        let starts_burst =
-            self.direction != Some(direction) || gap.is_none_or(|gap| gap >= WHEEL_BURST_RESET);
-        self.last_event = Some(now);
-        if starts_burst {
-            self.direction = Some(direction);
-            return true;
-        }
-        gap.is_some_and(|gap| gap <= WHEEL_ACTIVE_INTERVAL)
-    }
-}
 
 impl Command for EnableActionMouseCapture {
     fn write_ansi(&self, f: &mut impl fmt::Write) -> fmt::Result {
@@ -333,7 +302,7 @@ fn run(
         let input_events = trace_input_events(&events, workbench.secret_prompt_open());
         pending_trace_events.extend(input_events);
         let input_time = Instant::now();
-        events.retain(|event| wheel_friction.accepts(event, input_time));
+        filter_wheel_momentum(&mut events, workbench, &mut wheel_friction, input_time);
         let scroll_before = (
             workbench.diff_model().diff_scroll,
             workbench.diff_model().diff_horizontal_scroll,
@@ -629,12 +598,10 @@ fn copy_with_tmux(value: &str) -> Result<()> {
 }
 #[cfg(test)]
 mod tests {
-    use std::time::{Duration, Instant};
-
-    use super::{EnableActionMouseCapture, WheelFriction, trace_input_events};
+    use super::{EnableActionMouseCapture, trace_input_events};
     use crossterm::{
         Command,
-        event::{Event, KeyModifiers, MouseEvent, MouseEventKind},
+        event::{Event, KeyModifiers},
     };
 
     #[test]
@@ -648,27 +615,6 @@ mod tests {
         );
         assert_eq!(sequence.len(), 32, "mouse setup has a fixed byte budget");
         assert!(!sequence.contains("\x1b[?1003h"));
-    }
-
-    #[test]
-    fn wheel_friction_preserves_active_scroll_and_cuts_off_the_tail() {
-        let mut friction = WheelFriction::default();
-        let started = Instant::now();
-        let down = wheel(MouseEventKind::ScrollDown);
-
-        assert!(friction.accepts(&down, started));
-        assert!(friction.accepts(&down, started));
-        assert!(friction.accepts(&down, started));
-        assert!(friction.accepts(&down, started + Duration::from_millis(48)));
-        assert!(!friction.accepts(&down, started + Duration::from_millis(97)));
-        assert!(friction.accepts(&down, started + Duration::from_millis(217)));
-        assert!(friction.accepts(
-            &wheel(MouseEventKind::ScrollUp),
-            started + Duration::from_millis(218)
-        ));
-        let right = wheel(MouseEventKind::ScrollRight);
-        assert!(friction.accepts(&right, started + Duration::from_millis(219)));
-        assert!(!friction.accepts(&right, started + Duration::from_millis(268)));
     }
 
     #[test]
@@ -687,14 +633,5 @@ mod tests {
         let redacted = trace_input_events(&events, true).join("");
         assert!(!redacted.contains(sentinel));
         assert!(redacted.contains("[redacted]"));
-    }
-
-    fn wheel(kind: MouseEventKind) -> Event {
-        Event::Mouse(MouseEvent {
-            kind,
-            column: 50,
-            row: 10,
-            modifiers: KeyModifiers::NONE,
-        })
     }
 }

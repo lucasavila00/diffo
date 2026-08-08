@@ -1,10 +1,27 @@
 use super::{
-    Command, CommandId, DiffActivity, Event, ExplorerActivity, ExplorerEvent, Frame,
-    FramePreparation, PaneSplit, Rect, RendererEvent, TextRenderMode, TextSurfacePreparation, Tool,
-    Workbench, WorkbenchCommand, WorkbenchEffect, WorkbenchTask,
+    Activity, Command, CommandId, DiffActivity, Event, ExplorerActivity, ExplorerEvent, Frame,
+    FramePreparation, KeyCode, KeyEventKind, KeyModifiers, PaneSplit, Rect, RendererEvent,
+    TextRenderMode, TextSurfacePreparation, Tool, Workbench, WorkbenchCommand, WorkbenchEffect,
+    WorkbenchTask,
 };
 
 impl Workbench {
+    /// Returns whether this event is a plain Diff change-navigation key press.
+    #[must_use]
+    pub fn is_diff_change_navigation(&self, event: &Event) -> bool {
+        self.active == Activity::Diff
+            && self.modal.is_none()
+            && !self.full_screen
+            && !self.diff.captures_global_input()
+            && matches!(
+                event,
+                Event::Key(key)
+                    if key.kind == KeyEventKind::Press
+                        && key.modifiers == KeyModifiers::NONE
+                        && matches!(key.code, KeyCode::Char('n' | 'p'))
+            )
+    }
+
     pub fn filesystem_changed(&mut self) {
         self.explorer.filesystem_changed();
     }

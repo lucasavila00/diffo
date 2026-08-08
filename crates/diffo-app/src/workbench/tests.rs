@@ -7,6 +7,7 @@ use diffo_core::{
 };
 use ratatui::{Terminal, backend::TestBackend, buffer::Buffer, style::Color};
 
+mod momentum;
 mod prompt;
 mod sync;
 

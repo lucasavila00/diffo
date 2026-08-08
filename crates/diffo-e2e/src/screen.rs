@@ -169,6 +169,25 @@ impl DiffoScreen {
         Ok(self)
     }
 
+    /// Sends wheel events, one key, and more wheel events in one terminal write.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the key is unsupported or the PTY cannot accept input.
+    pub fn scroll_key_scroll(
+        &mut self,
+        direction: ScrollDirection,
+        before: usize,
+        key: Key,
+        after: usize,
+    ) -> Result<&mut Self> {
+        let mut bytes = Self::wheel_bytes(direction, before, 74, 9);
+        bytes.extend(key_bytes(key)?);
+        bytes.extend(Self::wheel_bytes(direction, after, 74, 9));
+        self.write(&bytes)?;
+        Ok(self)
+    }
+
     /// Sends wheel events over one visible control.
     ///
     /// # Errors
@@ -192,6 +211,10 @@ impl DiffoScreen {
         column: u16,
         row: u16,
     ) -> Result<()> {
+        self.write(&Self::wheel_bytes(direction, count, column, row))
+    }
+
+    fn wheel_bytes(direction: ScrollDirection, count: usize, column: u16, row: u16) -> Vec<u8> {
         let button = match direction {
             ScrollDirection::Up => 64,
             ScrollDirection::Down => 65,
@@ -201,7 +224,7 @@ impl DiffoScreen {
         let x = column.saturating_add(1);
         let y = row.saturating_add(1);
         let event = format!("\x1b[<{button};{x};{y}M");
-        self.write(event.repeat(count).as_bytes())
+        event.repeat(count).into_bytes()
     }
 
     /// Drags the visible vertical scrollbar between two percentages.

@@ -395,7 +395,7 @@ fn inline_and_side_by_side_each_treat_a_replacement_as_one_block() -> Result<()>
 }
 
 #[test]
-fn delayed_next_change_commits_the_target_and_syntax_atomically() -> Result<()> {
+fn wheel_momentum_cannot_displace_an_atomic_next_change_target() -> Result<()> {
     let repository = TestRepository::new()?;
     let path = repository.worktree.join("delayed-navigation.rs");
     fs::write(&path, delayed_navigation_file(false)?)?;
@@ -413,7 +413,7 @@ fn delayed_next_change_commits_the_target_and_syntax_atomically() -> Result<()> 
     )?;
     screen
         .wait_for_text("FIRST_DELAYED_CHANGE")?
-        .press(Key::Char('n'))?
+        .scroll_key_scroll(ScrollDirection::Down, 2, Key::Char('n'), 3)?
         .wait_for_text("MIDDLE_DELAYED_CHANGE")?
         .press(Key::Char('q'))?
         .wait_for_exit()?;
@@ -434,6 +434,25 @@ fn delayed_next_change_commits_the_target_and_syntax_atomically() -> Result<()> 
         })
         .with_context(|| format!("trace has no next-change input frame:\n{trace}"))?;
     let input = &frames[input_index];
+    assert_eq!(
+        input
+            .input_events
+            .iter()
+            .filter(|event| event.contains("ScrollDown"))
+            .count(),
+        5,
+        "trace did not retain the complete wheel tail:\n{trace}"
+    );
+    assert!(frames.iter().all(|frame| {
+        !frame
+            .input_events
+            .iter()
+            .any(|event| event.contains("ScrollDown"))
+            || frame
+                .input_events
+                .iter()
+                .any(|event| event.contains("Char('n')"))
+    }));
     let old_scroll = input.scroll_before.0;
     assert_eq!(input.viewport_transition, None);
     assert_eq!(input.scroll_after.0, old_scroll);
@@ -455,6 +474,11 @@ fn delayed_next_change_commits_the_target_and_syntax_atomically() -> Result<()> 
     assert!(committed.syntax_ready);
     assert_eq!(committed.first_rendered_row, target);
     assert_eq!(committed.scroll_after.0, target);
+    assert!(
+        frames[commit_index..]
+            .iter()
+            .all(|frame| { frame.first_rendered_row == target && frame.scroll_after.0 == target })
+    );
     Ok(())
 }
 

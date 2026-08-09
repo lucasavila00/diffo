@@ -140,7 +140,12 @@ fn resolve_from_login_shell(executable: &str, shell: &OsStr) -> Option<OsString>
     if !output.status.success() {
         return None;
     }
-    let stdout = String::from_utf8(output.stdout).ok()?;
+    resolved_executable_from_stdout(&output.stdout)
+}
+
+#[cfg(any(not(feature = "codex-mock"), test))]
+fn resolved_executable_from_stdout(stdout: &[u8]) -> Option<OsString> {
+    let stdout = std::str::from_utf8(stdout).ok()?;
     let path = stdout.lines().rev().find(|line| !line.trim().is_empty())?;
     let path = Path::new(path.trim());
     (path.is_absolute() && path.is_file()).then(|| path.as_os_str().to_owned())
@@ -435,7 +440,7 @@ mod tests {
     }
 
     #[test]
-    fn resolves_codex_from_inherited_or_login_shell_path() {
+    fn resolves_codex_from_inherited_path_and_login_shell_output() {
         let directory = tempfile::tempdir().expect("executable directory");
         let executable = directory.path().join("codex");
         fs::write(&executable, "#!/bin/sh\n").expect("write fake Codex");
@@ -451,23 +456,10 @@ mod tests {
             Some(executable.as_os_str().to_owned())
         );
 
-        let shell = directory.path().join("login-shell");
-        fs::write(
-            &shell,
-            format!(
-                "#!/bin/sh\n\
-                 [ \"$1\" = -lc ] || exit 31\n\
-                 [ \"$2\" = 'command -v -- codex' ] || exit 32\n\
-                 printf '%s\\n' '{}'\n",
-                executable.display()
-            ),
-        )
-        .expect("write fake login shell");
-        fs::set_permissions(&shell, fs::Permissions::from_mode(0o755))
-            .expect("make fake shell executable");
-
         assert_eq!(
-            resolve_executable("codex", Some(OsStr::new("")), shell.as_os_str()),
+            resolved_executable_from_stdout(
+                format!("shell startup message\n{}\n", executable.display()).as_bytes()
+            ),
             Some(executable.into_os_string())
         );
     }

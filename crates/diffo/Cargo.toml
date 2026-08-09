@@ -26,6 +26,9 @@ serde_json.workspace = true
 signal-hook.workspace = true
 tempfile.workspace = true
 
+[target.'cfg(unix)'.dependencies]
+nix.workspace = true
+
 [lints]
 workspace = true
 

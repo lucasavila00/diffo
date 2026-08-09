@@ -88,6 +88,11 @@ Use one Codex worker for AI commits and Review. Only one Codex request runs at a
 Install results during frame preparation only when the request ID and snapshot still
 match. Cancel or discard results when the repository changes.
 
+Use the shared bounded Codex process runner and its 120-second deadline. Authentication,
+access, rate-limit, network, service, configuration, incompatible-CLI, timeout, crash,
+I/O, and response-validation failures keep the current repository and review state
+intact and show an actionable error without exposing credentials.
+
 ## Ownership
 
 - `diffo-ai-config` owns the fixed AI policy and CLI contracts.

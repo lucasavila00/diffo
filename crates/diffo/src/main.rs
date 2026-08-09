@@ -30,6 +30,7 @@ use diffo_git::{GitRepositorySource, NotRepository, run_askpass_if_requested};
 use diffo_repository_service::{RepositoryEvent, RepositoryService};
 use ratatui::{Terminal, backend::CrosstermBackend};
 
+mod codex_failure;
 mod codex_tasks;
 mod frame_trace;
 mod launcher;
@@ -464,12 +465,10 @@ fn dispatch_events(
                 }
             }
             diffo_app::workbench::ApplicationAction::AiCommit(request) => {
-                if !tasks.codex.start(id, request, command.cancellation) {
+                if let Err(error) = tasks.codex.start(id, request, command.cancellation) {
                     let _ = workbench.ai_commit_finished(
                         id,
-                        diffo_app::workbench::AiCommitOutcome::Failed(
-                            "Codex is already handling another AI request".to_owned(),
-                        ),
+                        diffo_app::workbench::AiCommitOutcome::Failed(error),
                     );
                 }
             }
@@ -480,12 +479,10 @@ fn dispatch_events(
     }
     while let Some(task) = workbench.take_review_codex_task() {
         let id = task.id;
-        if !tasks.codex.start_review(task) {
+        if let Err(error) = tasks.codex.start_review(task) {
             workbench.accept_review_codex_result(diffo_app::review::ReviewCodexTaskResult {
                 id,
-                outcome: diffo_app::review::ReviewCodexOutcome::Failed(
-                    "Codex is already handling another AI request".to_owned(),
-                ),
+                outcome: diffo_app::review::ReviewCodexOutcome::Failed(error),
             });
         }
     }

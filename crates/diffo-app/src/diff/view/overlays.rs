@@ -27,6 +27,7 @@ pub enum CommandProgressAction {
     CancelAll,
 }
 
+#[derive(Clone, Copy)]
 pub struct CommandProgress<'a> {
     pub rows: &'a [CommandProgressRow],
     pub hidden: usize,

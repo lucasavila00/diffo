@@ -17,14 +17,14 @@ impl Model {
             return None;
         }
         let selected = self.selected.clone()?;
-        self.prepare_toggle_stage(selected)
+        self.prepare_toggle_stage(&selected)
     }
 
-    pub(crate) fn prepare_toggle_stage(&mut self, requested: FileKey) -> Option<RepositoryAction> {
+    pub(crate) fn prepare_toggle_stage(&mut self, requested: &FileKey) -> Option<RepositoryAction> {
         let keys = file_keys(&self.snapshot);
         let selected = keys
             .iter()
-            .find(|key| **key == requested)
+            .find(|key| *key == requested)
             .cloned()
             .or_else(|| {
                 keys.iter()

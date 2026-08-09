@@ -601,7 +601,7 @@ impl Workbench {
     ) -> Result<ApplicationAction, &'static str> {
         let repository = match intent {
             CommandIntent::Repository(action) => Some(action.clone()),
-            CommandIntent::ToggleStage(key) => self.diff.model.prepare_toggle_stage(key.clone()),
+            CommandIntent::ToggleStage(key) => self.diff.model.prepare_toggle_stage(key),
             CommandIntent::ToggleStageAll => self.diff.model.prepare_toggle_stage_all(),
             CommandIntent::StageAll => self.diff.model.prepare_stage_all(),
             CommandIntent::UnstageAll => self.diff.model.prepare_unstage_all(),

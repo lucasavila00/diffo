@@ -56,7 +56,7 @@ fn generated_commit_message_commits_staged_changes() -> Result<()> {
 
 #[cfg(feature = "codex-mock")]
 #[test]
-fn stage_all_then_ai_commit_uses_the_offline_codex_mock() -> Result<()> {
+fn stage_all_ai_commit_and_sync_run_as_one_queue() -> Result<()> {
     let repository = TestRepository::new()?;
     fs::write(
         repository.worktree.join("tracked.txt"),
@@ -68,7 +68,9 @@ fn stage_all_then_ai_commit_uses_the_offline_codex_mock() -> Result<()> {
         .wait_for_text("tracked.txt")?
         .press(Key::Char('a'))?
         .press(Key::Char('i'))?
-        .wait_for_text("Committed ")?;
+        .press(Key::Char('9'))?;
+
+    confirm_protected_push(&mut screen, 1, "origin/master")?;
 
     wait_for("AI-generated commit", || {
         Ok(
@@ -80,6 +82,12 @@ fn stage_all_then_ai_commit_uses_the_offline_codex_mock() -> Result<()> {
         git_output(&repository.worktree, &["show", "HEAD:tracked.txt"])?,
         "AI committed change"
     );
+    wait_for("AI-generated commit is pushed", || {
+        let local = git_output(&repository.worktree, &["rev-parse", "HEAD"])?;
+        let remote = git_output(&repository.worktree, &["ls-remote", "origin", "HEAD"])?;
+        Ok(remote.starts_with(&local))
+    })?;
+    screen.wait_for_text("Pushed master.")?;
 
     Ok(())
 }

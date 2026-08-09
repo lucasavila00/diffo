@@ -192,6 +192,65 @@ fn generation_failure_cancels_every_command_behind_it() {
 }
 
 #[test]
+fn ai_commit_keeps_its_goal_while_its_phase_changes() {
+    let mut workbench = Workbench::new(queue_snapshot("STAGED"));
+    workbench.request_ai_commit();
+    let command = workbench
+        .take_application_command(Instant::now())
+        .expect("AI command");
+
+    assert_eq!(
+        workbench
+            .commands
+            .entries()
+            .next()
+            .map(|(_, label, _)| label),
+        Some("AI commit — Generating commit message".to_owned())
+    );
+
+    let _ = workbench
+        .ai_commit_finished(
+            command.id,
+            AiCommitOutcome::Generated("feat: describe queue work".to_owned()),
+        )
+        .expect("commit handoff");
+    assert_eq!(
+        workbench
+            .commands
+            .entries()
+            .next()
+            .map(|(_, label, _)| label),
+        Some("AI commit — Committing".to_owned())
+    );
+}
+
+#[test]
+fn commands_entered_while_cancellation_finishes_form_a_fresh_queue() {
+    let mut workbench = Workbench::new(RepositorySnapshot::default());
+    workbench.commands.enqueue(RepositoryAction::Fetch);
+    let running = workbench
+        .take_application_command(Instant::now())
+        .expect("fetch starts");
+    assert!(workbench.cancel_application_command(running.id));
+
+    let _ = workbench.handle_events(&[key(KeyCode::Char('9'))], Rect::new(0, 0, 100, 30));
+    assert_eq!(workbench.commands.queued_len(), 1);
+
+    workbench.operation_cancelled(
+        running.id,
+        RepositoryAction::Fetch,
+        RepositorySnapshot::default(),
+    );
+    let next = workbench
+        .take_application_command(Instant::now())
+        .expect("new queue survives cancellation");
+    assert_eq!(
+        next.action,
+        ApplicationAction::Repository(RepositoryAction::Sync)
+    );
+}
+
+#[test]
 fn queue_controls_truncate_waiting_work_and_cancel_the_active_command() {
     let mut workbench = Workbench::new(RepositorySnapshot::default());
     workbench.commands.enqueue(RepositoryAction::Fetch);
@@ -250,4 +309,55 @@ fn preparation_failure_discards_every_waiting_command() {
             if error.title == "Queued command stopped"
                 && error.detail.contains("no longer has the changes")
     ));
+}
+
+#[test]
+fn stale_file_intent_discards_every_command_behind_it() {
+    let mut workbench = Workbench::new(queue_snapshot("STAGED"));
+    let selected = workbench
+        .diff
+        .model
+        .selected
+        .clone()
+        .expect("selected file");
+    workbench
+        .commands
+        .enqueue_intent(CommandIntent::ToggleStage(selected));
+    workbench.commands.enqueue_update();
+    workbench.repository_changed(RepositorySnapshot::default());
+
+    assert!(workbench.take_application_command(Instant::now()).is_none());
+    assert!(!workbench.commands.has_work());
+}
+
+#[test]
+fn queue_cancel_controls_stay_available_above_a_modal() {
+    let mut workbench = Workbench::new(RepositorySnapshot::default());
+    workbench.commands.enqueue(RepositoryAction::Fetch);
+    let running = workbench
+        .take_application_command(Instant::now())
+        .expect("fetch starts");
+    workbench.set_modal(Modal::Help);
+    let area = Rect::new(0, 0, 100, 30);
+    let content = workbench_areas(area).content;
+    let backend = TestBackend::new(area.width, area.height);
+    let mut terminal = Terminal::new(backend).unwrap();
+
+    terminal.draw(|frame| workbench.render(frame)).unwrap();
+    let overlay_text = buffer_region(
+        terminal.backend().buffer(),
+        Rect::new(content.right().saturating_sub(45), 1, 44, 4),
+    );
+    assert!(format!("{overlay_text:?}").contains("Commands"));
+
+    let click = Event::Mouse(MouseEvent {
+        kind: MouseEventKind::Down(MouseButton::Left),
+        column: content.right().saturating_sub(3),
+        row: content.y.saturating_add(2),
+        modifiers: KeyModifiers::NONE,
+    });
+    let _ = workbench.handle_event(&click, area);
+
+    assert!(running.cancellation.is_cancelled());
+    assert!(matches!(workbench.modal, Some(Modal::Help)));
 }

@@ -6,7 +6,7 @@ Buffer {
     area: Rect { x: 0, y: 0, width: 44, height: 4 },
     content: [
         "┌ Commands ────────────────────────────────┐",
-        "│ Fetching…                              │",
+        "│ Fetch…                                 │",
         "│                              × Cancel all│",
         "└──────────────────────────────────────────┘",
     ],

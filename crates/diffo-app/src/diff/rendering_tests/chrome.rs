@@ -184,6 +184,53 @@ fn command_progress_shows_order_overflow_and_every_cancel_target() {
 }
 
 #[test]
+fn command_progress_does_not_draw_clipped_controls_on_tiny_areas() {
+    let rows = vec![crate::diff::CommandProgressRow {
+        id: diffo_core::ApplicationCommandId(1),
+        label: "Sync — Fetching".to_owned(),
+        state: crate::diff::CommandProgressState::Active,
+    }];
+    for area in [Rect::new(0, 0, 20, 24), Rect::new(0, 0, 80, 4)] {
+        let backend = TestBackend::new(area.width, area.height);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal
+            .draw(|frame| {
+                crate::diff::render_command_progress(
+                    frame,
+                    crate::diff::CommandProgress {
+                        rows: &rows,
+                        hidden: 0,
+                        animation_tick: 0,
+                    },
+                    area,
+                );
+            })
+            .unwrap();
+        let rendered = terminal
+            .backend()
+            .buffer()
+            .content
+            .iter()
+            .map(|cell| cell.symbol())
+            .collect::<String>();
+        assert!(!rendered.contains("Commands"));
+        assert_eq!(
+            crate::diff::command_action_at_position(
+                crate::diff::CommandProgress {
+                    rows: &rows,
+                    hidden: 0,
+                    animation_tick: 0,
+                },
+                area,
+                area.right().saturating_sub(2),
+                2,
+            ),
+            None
+        );
+    }
+}
+
+#[test]
 fn commit_message_and_file_diff_boxes_share_the_chrome_border() {
     let model = model();
     let area = Rect::new(0, 0, 80, 24);

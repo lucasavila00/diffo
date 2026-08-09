@@ -207,6 +207,7 @@ fn full_screen_diff_renders_styled_raw_hunks_and_x_closes_it() {
     let _ = workbench.handle_event(&open, area);
     workbench.prepare_frame(area);
     assert!(workbench.full_screen());
+    let _ = start_repository_command(&mut workbench, RepositoryAction::Fetch);
 
     let backend = TestBackend::new(area.width, area.height);
     let mut terminal = Terminal::new(backend).unwrap();
@@ -228,6 +229,12 @@ fn full_screen_diff_renders_styled_raw_hunks_and_x_closes_it() {
     assert_eq!(terminal.backend().buffer()[(0, 2)].bg, Color::Indexed(52));
     assert_eq!(terminal.backend().buffer()[(0, 3)].bg, Color::Indexed(22));
     assert!(!row(0).contains("File Diff"));
+    assert!(
+        (0..area.height)
+            .map(row)
+            .collect::<String>()
+            .contains("Commands")
+    );
 
     let _ = workbench.handle_event(&key(KeyCode::Char('F')), area);
     assert!(workbench.full_screen());

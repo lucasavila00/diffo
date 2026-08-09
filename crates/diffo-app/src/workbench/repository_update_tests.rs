@@ -177,6 +177,7 @@ fn generations_reject_stale_updates_and_only_matching_command_ids_finish_command
     let _ = workbench
         .take_application_command(started)
         .expect("fetch command starts");
+    workbench.commands.enqueue(RepositoryAction::Sync);
     workbench.tick(started + Duration::from_millis(150));
     let failure = |command_id| RepositoryUpdateKind::CommandFailed {
         command_id,
@@ -201,6 +202,7 @@ fn generations_reject_stale_updates_and_only_matching_command_ids_finish_command
         kind: failure(ApplicationCommandId(99)),
     }));
     assert_eq!(workbench.active_command_id(), Some(id));
+    assert_eq!(workbench.commands.queued_len(), 1);
     assert!(workbench.command_progress.is_visible());
     assert!(workbench.toasts.as_slice().is_empty());
 
@@ -209,6 +211,8 @@ fn generations_reject_stale_updates_and_only_matching_command_ids_finish_command
         kind: failure(id),
     }));
     assert!(workbench.commands.active().is_none());
+    assert!(!workbench.commands.has_work());
+    assert!(workbench.take_application_command(Instant::now()).is_none());
     assert!(!workbench.command_progress.is_visible());
     assert!(matches!(
         workbench.modal,

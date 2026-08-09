@@ -1,4 +1,5 @@
 use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers};
+use diffo_core::RepositoryAction;
 
 use super::{Activity, CommandIntent, Message, Modal, Tool, Workbench, WorkbenchCommand};
 use crate::workbench::sync_remote::SyncRemotePicker;
@@ -85,9 +86,8 @@ impl Workbench {
             return None;
         }
         if self.commands.has_work() {
-            self.commands.enqueue_intent(CommandIntent::Repository(
-                diffo_core::RepositoryAction::Sync,
-            ));
+            self.commands
+                .enqueue_intent(CommandIntent::Repository(RepositoryAction::Sync));
             self.request_redraw();
             return None;
         }

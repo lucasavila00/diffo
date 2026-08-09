@@ -422,6 +422,7 @@ fn keyboard_selection_immediately_opens_the_selected_step() {
     let mut review = ReviewActivity::new(initial, CodexAvailability::Available);
     review.cached = Some(CachedReview { request, result });
     review.open_selected_stop();
+    let before = render_text(&review);
 
     assert!(matches!(
         review.handle_event(&key('j'), Rect::new(0, 0, 100, 30), PaneSplit::default()),
@@ -429,6 +430,16 @@ fn keyboard_selection_immediately_opens_the_selected_step() {
     ));
     assert_eq!(review.selected_stop, 1);
     assert_eq!(review.active_hunk_id.as_deref(), Some(ids[1].as_str()));
+    let after = render_text(&review);
+    let row = |text: &str, needle: &str| {
+        text.lines()
+            .position(|line| line.contains(needle))
+            .unwrap_or(usize::MAX)
+    };
+    for label in ["Review order", "1. Step 0", "2. Step 1"] {
+        assert_eq!(row(&before, label), row(&after, label), "{label} moved");
+    }
+    assert!(row(&after, "Review order") < row(&after, "Review step 2 of 2"));
 
     let _ = review.handle_event(&key('k'), Rect::new(0, 0, 100, 30), PaneSplit::default());
     assert_eq!(review.selected_stop, 0);

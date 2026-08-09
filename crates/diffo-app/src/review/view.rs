@@ -180,63 +180,6 @@ fn render_ready(
     y = y.saturating_add(1).min(area.bottom());
 
     let count = cached.result.stops.len();
-    let final_step = review.active_request.is_none() && review.selected_stop + 1 == count;
-    let progress = format!("Review step {} of {count}", review.selected_stop + 1);
-    render_row(
-        frame,
-        area,
-        &mut y,
-        Line::styled(progress, Style::default().add_modifier(Modifier::BOLD)),
-    );
-    let state = match target.file.area {
-        ChangeArea::Staged => "Staged",
-        ChangeArea::Unstaged => "Unstaged",
-    };
-    render_row(
-        frame,
-        area,
-        &mut y,
-        Line::styled(
-            terminal_safe_text(&target.file.path.to_string_lossy()),
-            Style::default().fg(theme::CHROME),
-        ),
-    );
-    render_row(
-        frame,
-        area,
-        &mut y,
-        Line::styled(
-            format!("{} · {state}", stop.category.label()),
-            Style::default().fg(theme::CHROME),
-        ),
-    );
-    if final_step {
-        render_row(
-            frame,
-            area,
-            &mut y,
-            Line::styled("End of guided review", Style::default().fg(theme::SUCCESS)),
-        );
-    }
-    y = y.saturating_add(1).min(area.bottom());
-    render_row(
-        frame,
-        area,
-        &mut y,
-        Line::styled(
-            "Why this matters",
-            Style::default().add_modifier(Modifier::BOLD),
-        ),
-    );
-    let reason_height = 3.min(area.bottom().saturating_sub(y));
-    if reason_height > 0 {
-        frame.render_widget(
-            Paragraph::new(stop.reason.clone()).wrap(Wrap { trim: false }),
-            Rect::new(area.x, y, area.width, reason_height),
-        );
-        y = y.saturating_add(reason_height);
-    }
-    y = y.saturating_add(1).min(area.bottom());
     render_row(
         frame,
         area,
@@ -246,13 +189,14 @@ fn render_ready(
             Style::default().add_modifier(Modifier::BOLD),
         ),
     );
-
-    let capacity = usize::from(area.bottom().saturating_sub(y));
+    let remaining = area.bottom().saturating_sub(y);
+    let capacity =
+        usize::from(remaining.saturating_sub(10).max(u16::from(remaining > 0))).min(count);
     let start = review
         .selected_stop
         .saturating_sub(capacity.saturating_sub(1) / 2)
         .min(count.saturating_sub(capacity));
-    cached
+    let stop_areas = cached
         .result
         .stops
         .iter()
@@ -279,7 +223,74 @@ fn render_ready(
             );
             Some((row, index))
         })
-        .collect()
+        .collect();
+    y = y.saturating_add(1).min(area.bottom());
+
+    let final_step = review.active_request.is_none() && review.selected_stop + 1 == count;
+    let progress = format!("Review step {} of {count}", review.selected_stop + 1);
+    render_row(
+        frame,
+        area,
+        &mut y,
+        Line::styled(progress, Style::default().add_modifier(Modifier::BOLD)),
+    );
+    render_row(
+        frame,
+        area,
+        &mut y,
+        Line::styled(
+            terminal_safe_text(&stop.title),
+            Style::default().add_modifier(Modifier::BOLD),
+        ),
+    );
+    let state = match target.file.area {
+        ChangeArea::Staged => "Staged",
+        ChangeArea::Unstaged => "Unstaged",
+    };
+    render_row(
+        frame,
+        area,
+        &mut y,
+        Line::styled(
+            terminal_safe_text(&target.file.path.to_string_lossy()),
+            Style::default().fg(theme::CHROME),
+        ),
+    );
+    render_row(
+        frame,
+        area,
+        &mut y,
+        Line::styled(
+            format!("{} · {state}", stop.category.label()),
+            Style::default().fg(theme::CHROME),
+        ),
+    );
+    let completion = final_step
+        .then(|| Line::styled("End of guided review", Style::default().fg(theme::SUCCESS)));
+    render_row(
+        frame,
+        area,
+        &mut y,
+        completion.unwrap_or_else(|| Line::raw("")),
+    );
+    y = y.saturating_add(1).min(area.bottom());
+    render_row(
+        frame,
+        area,
+        &mut y,
+        Line::styled(
+            "Why this matters",
+            Style::default().add_modifier(Modifier::BOLD),
+        ),
+    );
+    let reason_height = 3.min(area.bottom().saturating_sub(y));
+    if reason_height > 0 {
+        frame.render_widget(
+            Paragraph::new(stop.reason.clone()).wrap(Wrap { trim: false }),
+            Rect::new(area.x, y, area.width, reason_height),
+        );
+    }
+    stop_areas
 }
 
 fn render_row(frame: &mut Frame, area: Rect, y: &mut u16, line: Line<'static>) {

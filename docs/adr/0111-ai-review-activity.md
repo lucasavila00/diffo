@@ -22,10 +22,11 @@ Review teaches the complete flow before generation: `Enter` starts, `j` and `k` 
 between review steps, `Space` stages or unstages the current file, and `i` commits staged
 changes. User-facing text says change, file, and review step; protocol terms never appear.
 
-The left pane shows a short overview, an ordered list of up to eight steps, the selected
-file and staging state, why the step matters, and persistent controls. The right pane
-reuses Diffo's diff renderer. Starting a review opens the first step. `j`, `k`, and mouse
-selection immediately open their step; `Enter` recenters it after scrolling.
+The left pane shows a short overview, a stable ordered list of up to eight steps, the
+selected file and staging state, why the step matters, and persistent controls. Keep the
+order above the selected-step details so selection changes never move its rows. The right
+pane reuses Diffo's diff renderer. Starting a review opens the first step. `j`, `k`, and
+mouse selection immediately open their step; `Enter` recenters it after scrolling.
 
 `Space` stages or unstages the whole selected file through the existing command queue.
 Successful staging advances one step in review order, including when the next step is in

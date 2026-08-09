@@ -67,15 +67,16 @@ fn render_text(review: &ReviewActivity) -> String {
 #[test]
 fn generation_is_explicit_and_installs_only_known_hunks() {
     let mut review = ReviewActivity::new(snapshot("new"), CodexAvailability::Available);
-    assert!(review.take_task().is_none());
+    assert!(review.active_request.is_none());
 
-    assert!(
-        review
-            .handle_event(&enter(), Rect::new(0, 0, 100, 30), PaneSplit::default())
-            .is_some()
-    );
-    let task = review.take_task().expect("generation task");
-    let request = &task.request;
+    let Some(ReviewEvent::Generate(request)) =
+        review.handle_event(&enter(), Rect::new(0, 0, 100, 30), PaneSplit::default())
+    else {
+        panic!("generation request");
+    };
+    let id = ApplicationCommandId(1);
+    review.generation_queued(id, request.clone());
+    review.generation_started(id, CancellationHandle::default());
     let first_hunk_id = request.first_hunk_id().to_owned();
     let result = request
         .validate_review(
@@ -90,8 +91,9 @@ fn generation_is_explicit_and_installs_only_known_hunks() {
         .unwrap();
 
     assert!(review.accept(ReviewCodexTaskResult {
-        id: task.id,
+        id,
         outcome: ReviewCodexOutcome::Generated(result),
+        complete: true,
     }));
     assert!(review.ready().is_some());
     assert_eq!(
@@ -339,7 +341,12 @@ fn clean_generating_stale_failed_and_unavailable_states_explain_the_next_action(
     assert!(render_text(&clean).contains("Nothing to review"));
 
     let mut generating = ReviewActivity::new(snapshot("new"), CodexAvailability::Available);
-    let _ = generating.handle_event(&enter(), Rect::new(0, 0, 100, 30), PaneSplit::default());
+    let Some(ReviewEvent::Generate(request)) =
+        generating.handle_event(&enter(), Rect::new(0, 0, 100, 30), PaneSplit::default())
+    else {
+        panic!("generation request");
+    };
+    generating.generation_queued(ApplicationCommandId(1), request);
     assert!(render_text(&generating).contains("Building your review"));
     assert!(render_text(&generating).contains("Enter  Cancel review"));
 
@@ -396,5 +403,5 @@ fn unavailable_codex_never_creates_a_task() {
             .handle_event(&enter(), Rect::new(0, 0, 100, 30), PaneSplit::default())
             .is_none()
     );
-    assert!(review.take_task().is_none());
+    assert!(review.active_request.is_none());
 }

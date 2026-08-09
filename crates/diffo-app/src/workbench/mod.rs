@@ -18,7 +18,7 @@ use diffo_ui::{PaneSplit, tool_areas};
 use ratatui::{Frame, layout::Rect};
 
 use crate::explorer::{ExplorerActivity, ExplorerEvent, ExplorerOutcome, ExplorerRequest};
-use crate::review::{CodexAvailability, ReviewActivity, ReviewCodexTask, ReviewCodexTaskResult};
+use crate::review::{CodexAvailability, ReviewActivity, ReviewCodexOutcome, ReviewCodexTaskResult};
 mod activity_bar;
 mod ai_commit;
 mod application_update;
@@ -319,7 +319,19 @@ impl Workbench {
     }
 
     pub fn cancel_application_command(&mut self, id: ApplicationCommandId) -> bool {
-        self.commands.cancel(id)
+        let running = self
+            .commands
+            .active()
+            .is_some_and(|command| command.id == id);
+        let changed = self.commands.cancel(id);
+        if changed {
+            if running {
+                self.review.generation_cancelling(id);
+            } else {
+                self.review.generation_cancelled_before_start(id);
+            }
+        }
+        changed
     }
 
     #[must_use]
@@ -584,11 +596,15 @@ impl Workbench {
         match &message {
             Message::SnapshotLoaded(snapshot) => {
                 self.explorer.repository_changed(snapshot);
-                self.review.repository_changed(snapshot.clone());
+                if let Some(id) = self.review.repository_changed(snapshot.clone()) {
+                    let _ = self.cancel_application_command(id);
+                }
             }
             Message::OperationCompleted(_, _, snapshot) => {
                 self.explorer.repository_changed(snapshot);
-                self.review.repository_changed((**snapshot).clone());
+                if let Some(id) = self.review.repository_changed((**snapshot).clone()) {
+                    let _ = self.cancel_application_command(id);
+                }
             }
             _ => {}
         }
@@ -680,14 +696,34 @@ impl Workbench {
         self.set_modal(Modal::Error(error));
     }
 
-    pub fn take_review_codex_task(&mut self) -> Option<ReviewCodexTask> {
-        self.review.take_task()
-    }
-
     pub fn accept_review_codex_result(&mut self, result: ReviewCodexTaskResult) {
-        if self.review.accept(result) {
-            self.request_redraw();
+        let id = result.id;
+        let complete = result.complete;
+        let cancelling = self
+            .commands
+            .active()
+            .is_some_and(|command| command.id == id && command.state == CommandState::Cancelling);
+        let result = if cancelling {
+            ReviewCodexTaskResult {
+                outcome: ReviewCodexOutcome::Cancelled,
+                ..result
+            }
+        } else {
+            result
+        };
+        let command_result = match &result.outcome {
+            ReviewCodexOutcome::Generated(_) => CommandResult::Succeeded,
+            ReviewCodexOutcome::Failed(_) => CommandResult::Failed,
+            ReviewCodexOutcome::Cancelled => CommandResult::Cancelled,
+        };
+        if !self.review.accept(result) {
+            return;
         }
+        if complete {
+            let _ = self.commands.acknowledge(id, command_result);
+            self.finish_command_progress(id);
+        }
+        self.request_redraw();
     }
 }
 

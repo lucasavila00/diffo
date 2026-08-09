@@ -486,18 +486,20 @@ fn dispatch_events(
                     );
                 }
             }
+            diffo_app::workbench::ApplicationAction::AiReview(request) => {
+                if let Err(error) = tasks.codex.start_review(id, request, command.cancellation) {
+                    workbench.accept_review_codex_result(
+                        diffo_app::review::ReviewCodexTaskResult {
+                            id,
+                            outcome: diffo_app::review::ReviewCodexOutcome::Failed(error),
+                            complete: true,
+                        },
+                    );
+                }
+            }
             diffo_app::workbench::ApplicationAction::Update => {
                 tasks.updates.start_update(id, command.cancellation);
             }
-        }
-    }
-    while let Some(task) = workbench.take_review_codex_task() {
-        let id = task.id;
-        if let Err(error) = tasks.codex.start_review(task) {
-            workbench.accept_review_codex_result(diffo_app::review::ReviewCodexTaskResult {
-                id,
-                outcome: diffo_app::review::ReviewCodexOutcome::Failed(error),
-            });
         }
     }
     Ok(())

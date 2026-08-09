@@ -12,7 +12,7 @@ use crate::diff::{
     CommandProgress, CommandProgressRow, CommandProgressState as CommandRowState, FileKey, Message,
     command_at_position,
 };
-use crate::review::{ReviewEvent, ReviewEvent::ToggleStage};
+use crate::review::{ReviewEvent, ReviewEvent::ToggleStage, ReviewRequest};
 
 use super::{AiCommitRequest, CommandProgressState as WorkbenchProgressState, Workbench};
 
@@ -20,6 +20,7 @@ use super::{AiCommitRequest, CommandProgressState as WorkbenchProgressState, Wor
 pub enum ApplicationAction {
     Repository(RepositoryAction),
     AiCommit(AiCommitRequest),
+    AiReview(ReviewRequest),
     Update,
 }
 
@@ -33,6 +34,7 @@ pub(crate) enum CommandIntent {
     UnstageFile(PathBuf),
     Commit(String),
     AiCommit,
+    AiReview(ReviewRequest),
     Update,
 }
 
@@ -260,6 +262,7 @@ fn intent_label(intent: &CommandIntent) -> String {
         CommandIntent::UnstageFile(_) => "Unstage file".to_owned(),
         CommandIntent::Commit(_) => "Commit".to_owned(),
         CommandIntent::AiCommit => "AI commit".to_owned(),
+        CommandIntent::AiReview(_) => "AI review".to_owned(),
         CommandIntent::Update => "Update Diffo".to_owned(),
     }
 }
@@ -270,6 +273,7 @@ fn command_phase(action: &ApplicationAction) -> Option<String> {
             RepositoryAction::Sync | RepositoryAction::SyncToRemote(_),
         ) => Some("Fetching".to_owned()),
         ApplicationAction::AiCommit(_) => Some("Generating commit message".to_owned()),
+        ApplicationAction::AiReview(_) => Some("Building review".to_owned()),
         _ => None,
     }
 }
@@ -335,6 +339,7 @@ fn command_goal(action: &ApplicationAction) -> String {
             format!("Renaming branch to {}", target.new_name)
         }
         ApplicationAction::AiCommit(_) => "AI commit".to_owned(),
+        ApplicationAction::AiReview(_) => "AI review".to_owned(),
         ApplicationAction::Update => "Update Diffo".to_owned(),
     }
 }
@@ -343,6 +348,21 @@ impl Workbench {
     pub(super) fn handle_review_event(&mut self, event: Option<ReviewEvent>) -> bool {
         let Some(event) = event else { return false };
         match event {
+            ReviewEvent::Generate(request) => {
+                if self.commands.has_work() {
+                    self.review.generation_rejected(
+                        "Finish the current command before starting an AI review.",
+                    );
+                } else {
+                    let id = self
+                        .commands
+                        .enqueue_intent(CommandIntent::AiReview(request.clone()));
+                    self.review.generation_queued(id, request);
+                }
+            }
+            ReviewEvent::Cancel(id) => {
+                let _ = self.cancel_application_command(id);
+            }
             ToggleStage(file) => {
                 self.commands
                     .enqueue_intent(CommandIntent::ToggleStage(file));
@@ -373,7 +393,7 @@ impl Workbench {
         ) else {
             return false;
         };
-        let changed = self.commands.cancel(id);
+        let changed = self.cancel_application_command(id);
         if changed && self.commands.ai_commit_id().is_none() {
             self.diff.model.finish_ai_commit();
         }
@@ -427,6 +447,10 @@ impl Workbench {
             return None;
         }
         let command = self.commands.activate(queued, action);
+        if matches!(command.action, ApplicationAction::AiReview(_)) {
+            self.review
+                .generation_started(command.id, command.cancellation.clone());
+        }
         self.last_prompt_id = None;
         self.command_progress = WorkbenchProgressState::Waiting {
             command_id: command.id,
@@ -454,6 +478,9 @@ impl Workbench {
                 return AiCommitRequest::from_snapshot(&self.diff.model.snapshot)
                     .map(ApplicationAction::AiCommit)
                     .ok_or("There are no staged changes for the AI commit");
+            }
+            CommandIntent::AiReview(request) => {
+                return Ok(ApplicationAction::AiReview(request.clone()));
             }
             CommandIntent::Update => return Ok(ApplicationAction::Update),
         };

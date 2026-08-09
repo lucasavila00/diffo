@@ -194,6 +194,38 @@ fn generation_failure_cancels_every_command_behind_it() {
 }
 
 #[test]
+fn ai_review_uses_shared_progress_and_cancellation() {
+    let mut workbench = Workbench::new(queue_snapshot("STAGED"));
+    let area = Rect::new(0, 0, 100, 30);
+    let _ = workbench.handle_events(&[key(KeyCode::Tab), key(KeyCode::Tab)], area);
+    let _ = workbench.handle_events(&[key(KeyCode::Enter)], area);
+    let started = Instant::now();
+    let command = workbench
+        .take_application_command(started)
+        .expect("AI review starts");
+
+    assert!(matches!(command.action, ApplicationAction::AiReview(_)));
+    assert_eq!(
+        workbench
+            .commands
+            .entries()
+            .next()
+            .map(|(_, label, _)| label),
+        Some("AI review — Building review".to_owned())
+    );
+
+    workbench.tick(started + Duration::from_millis(150));
+    assert!(workbench.command_progress.is_visible());
+    let _ = workbench.handle_events(&[key(KeyCode::Enter)], area);
+
+    assert!(command.cancellation.is_cancelled());
+    assert_eq!(
+        workbench.commands.active().map(|active| active.state),
+        Some(CommandState::Cancelling)
+    );
+}
+
+#[test]
 fn ai_commit_keeps_its_goal_while_its_phase_changes() {
     let mut workbench = Workbench::new(queue_snapshot("STAGED"));
     workbench.request_ai_commit();

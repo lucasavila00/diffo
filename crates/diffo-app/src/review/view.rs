@@ -68,7 +68,7 @@ fn render_state(frame: &mut Frame, area: Rect, review: &ReviewActivity) -> Rect 
         lines.push(Line::raw(""));
         lines.push(Line::styled(reason.clone(), disabled_control_style()));
     } else if let Some(active) = &review.active_request {
-        let label = if active.cancellation.is_cancelled() {
+        let label = if active.cancelling {
             "Cancelling review…"
         } else {
             "Building your review…"
@@ -295,14 +295,19 @@ fn footer_lines(review: &ReviewActivity) -> Vec<Line<'static>> {
     if !review.available() || !review.has_changes() {
         return Vec::new();
     }
-    if review.active_request.is_some() {
-        return vec![Line::styled("Enter  Cancel review", mouse_target_style())];
-    }
     if review.ready().is_some() {
         let mut lines = vec![Line::styled(
             "j / k  Previous / next",
             Style::default().fg(theme::CHROME),
         )];
+        if review.active_request.is_some() {
+            lines.push(Line::styled(
+                "Building more steps",
+                Style::default().fg(theme::INFORMATION),
+            ));
+            lines.push(Line::styled("Enter  Cancel review", mouse_target_style()));
+            return lines;
+        }
         if let Some(file) = review.active_file() {
             let staging = match file.area {
                 ChangeArea::Staged => "Space  Unstage file",
@@ -315,6 +320,9 @@ fn footer_lines(review: &ReviewActivity) -> Vec<Line<'static>> {
             Style::default().fg(theme::CHROME),
         ));
         return lines;
+    }
+    if review.active_request.is_some() {
+        return vec![Line::styled("Enter  Cancel review", mouse_target_style())];
     }
     vec![
         Line::styled(

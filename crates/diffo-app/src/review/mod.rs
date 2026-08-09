@@ -4,7 +4,7 @@ mod request;
 mod view;
 
 use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind};
-use diffo_core::{CancellationHandle, RepositorySnapshot};
+use diffo_core::{ApplicationCommandId, CancellationHandle, RepositorySnapshot};
 use diffo_ui::{PaneSplit, tool_areas};
 use ratatui::{Frame, layout::Rect};
 
@@ -25,17 +25,11 @@ impl CodexAvailability {
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct ReviewCodexTask {
-    pub id: u64,
-    pub request: ReviewRequest,
-    pub cancellation: CancellationHandle,
-}
-
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ReviewCodexTaskResult {
-    pub id: u64,
+    pub id: ApplicationCommandId,
     pub outcome: ReviewCodexOutcome,
+    pub complete: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -47,6 +41,8 @@ pub enum ReviewCodexOutcome {
 
 pub(crate) enum ReviewEvent {
     Redraw,
+    Generate(ReviewRequest),
+    Cancel(ApplicationCommandId),
     ToggleStage(crate::diff::FileKey),
     AiCommit,
 }
@@ -57,8 +53,10 @@ struct CachedReview {
 }
 
 struct ActiveRequest {
-    id: u64,
-    cancellation: CancellationHandle,
+    id: ApplicationCommandId,
+    request: ReviewRequest,
+    cancellation: Option<CancellationHandle>,
+    cancelling: bool,
 }
 
 pub(crate) struct ReviewActivity {
@@ -67,8 +65,6 @@ pub(crate) struct ReviewActivity {
     renderer: Renderer,
     cached: Option<CachedReview>,
     active_request: Option<ActiveRequest>,
-    pending_task: Option<ReviewCodexTask>,
-    next_request_id: u64,
     failure: Option<String>,
     selected_stop: usize,
     active_hunk_id: Option<String>,
@@ -86,8 +82,6 @@ impl ReviewActivity {
             renderer: Renderer::new(),
             cached: None,
             active_request: None,
-            pending_task: None,
-            next_request_id: 1,
             failure: None,
             selected_stop: 0,
             active_hunk_id: None,
@@ -110,9 +104,12 @@ impl ReviewActivity {
         }
     }
 
-    pub(crate) fn repository_changed(&mut self, snapshot: RepositorySnapshot) {
+    pub(crate) fn repository_changed(
+        &mut self,
+        snapshot: RepositorySnapshot,
+    ) -> Option<ApplicationCommandId> {
         if self.model.snapshot == snapshot {
-            return;
+            return None;
         }
         let active_before = self.active_file();
         let rebound = self
@@ -134,15 +131,19 @@ impl ReviewActivity {
             }) {
                 self.open_next_stop();
             }
-            return;
+            return None;
         }
-        if let Some(active) = self.active_request.take() {
-            active.cancellation.cancel();
-        }
-        self.pending_task = None;
+        let cancelled = self.active_request.as_mut().map(|active| {
+            if let Some(cancellation) = &active.cancellation {
+                cancellation.cancel();
+            }
+            active.cancelling = true;
+            active.id
+        });
         self.pending_hunk_id = None;
         self.active_hunk_id = None;
         self.failure = None;
+        cancelled
     }
 
     #[must_use]
@@ -177,20 +178,21 @@ impl ReviewActivity {
         if !self.available() {
             return None;
         }
-        if self.active_request.is_some() {
-            if plain_key(event, KeyCode::Enter) {
-                self.cancel_active();
-                return Some(ReviewEvent::Redraw);
-            }
-            return None;
+        let generating = self.active_request.is_some();
+        if generating && plain_key(event, KeyCode::Enter) {
+            return self
+                .active_request
+                .as_ref()
+                .map(|active| ReviewEvent::Cancel(active.id));
         }
-        if plain_key(event, KeyCode::Char('i')) {
+        if !generating && plain_key(event, KeyCode::Char('i')) {
             return Some(ReviewEvent::AiCommit);
         }
         if self.ready().is_none() {
-            if plain_key(event, KeyCode::Enter) || clicked(event, self.generate_area) {
-                self.start_generation();
-                return Some(ReviewEvent::Redraw);
+            if !generating
+                && (plain_key(event, KeyCode::Enter) || clicked(event, self.generate_area))
+            {
+                return self.generation_request().map(ReviewEvent::Generate);
             }
             return None;
         }
@@ -203,11 +205,12 @@ impl ReviewActivity {
             self.select_previous();
             return Some(ReviewEvent::Redraw);
         }
-        if plain_key(event, KeyCode::Enter) {
+        if !generating && plain_key(event, KeyCode::Enter) {
             self.open_selected_stop();
             return Some(ReviewEvent::Redraw);
         }
-        if plain_key(event, KeyCode::Char(' '))
+        if !generating
+            && plain_key(event, KeyCode::Char(' '))
             && let Some(file) = self.active_file()
         {
             return Some(ReviewEvent::ToggleStage(file));
@@ -238,35 +241,61 @@ impl ReviewActivity {
         }
     }
 
-    fn start_generation(&mut self) {
+    fn generation_request(&mut self) -> Option<ReviewRequest> {
         let Some(request) = ReviewRequest::from_snapshot(&self.model.snapshot) else {
             self.failure = Some("There are no staged or unstaged changes to review.".to_owned());
-            return;
+            return None;
         };
-        let id = self.next_id();
-        let cancellation = CancellationHandle::default();
+        self.failure = None;
+        Some(request)
+    }
+
+    pub(crate) fn generation_queued(&mut self, id: ApplicationCommandId, request: ReviewRequest) {
         self.active_request = Some(ActiveRequest {
             id,
-            cancellation: cancellation.clone(),
-        });
-        self.pending_task = Some(ReviewCodexTask {
-            id,
             request,
-            cancellation,
+            cancellation: None,
+            cancelling: false,
         });
         self.failure = None;
     }
 
-    fn next_id(&mut self) -> u64 {
-        let id = self.next_request_id;
-        self.next_request_id = self.next_request_id.saturating_add(1);
-        id
+    pub(crate) fn generation_started(
+        &mut self,
+        id: ApplicationCommandId,
+        cancellation: CancellationHandle,
+    ) {
+        if let Some(active) = self
+            .active_request
+            .as_mut()
+            .filter(|active| active.id == id)
+        {
+            active.cancellation = Some(cancellation);
+        }
     }
 
-    fn cancel_active(&mut self) {
-        if let Some(active) = &self.active_request {
-            active.cancellation.cancel();
+    pub(crate) fn generation_cancelling(&mut self, id: ApplicationCommandId) {
+        if let Some(active) = self
+            .active_request
+            .as_mut()
+            .filter(|active| active.id == id)
+        {
+            active.cancelling = true;
         }
+    }
+
+    pub(crate) fn generation_cancelled_before_start(&mut self, id: ApplicationCommandId) {
+        if self
+            .active_request
+            .as_ref()
+            .is_some_and(|active| active.id == id)
+        {
+            self.active_request = None;
+        }
+    }
+
+    pub(crate) fn generation_rejected(&mut self, detail: impl Into<String>) {
+        self.failure = Some(detail.into());
     }
 
     fn select_next(&mut self) {
@@ -331,40 +360,75 @@ impl ReviewActivity {
             .map(|hunk| hunk.file.clone())
     }
 
-    pub(crate) fn take_task(&mut self) -> Option<ReviewCodexTask> {
-        self.pending_task.take()
-    }
-
     pub(crate) fn accept(&mut self, result: ReviewCodexTaskResult) -> bool {
         let Some(active) = self
             .active_request
-            .take()
+            .as_ref()
             .filter(|active| active.id == result.id)
         else {
             return false;
         };
-        if active.cancellation.is_cancelled() {
+        let request = active.request.clone();
+        let cancelled = active
+            .cancellation
+            .as_ref()
+            .is_some_and(CancellationHandle::is_cancelled);
+        if cancelled {
+            if result.complete {
+                self.active_request = None;
+            }
             return true;
         }
         match result.outcome {
             ReviewCodexOutcome::Generated(review) => {
-                let Some(request) = ReviewRequest::from_snapshot(&self.model.snapshot) else {
-                    return true;
-                };
-                self.cached = Some(CachedReview {
-                    request,
-                    result: review,
-                });
+                let first = self.cached.is_none();
+                self.merge_review(request, review);
                 self.failure = None;
-                self.selected_stop = 0;
-                self.open_selected_stop();
+                if first {
+                    self.selected_stop = 0;
+                    self.open_selected_stop();
+                }
             }
             ReviewCodexOutcome::Failed(error) => {
                 self.failure = Some(error);
             }
             ReviewCodexOutcome::Cancelled => {}
         }
+        if result.complete {
+            self.active_request = None;
+        }
         true
+    }
+
+    fn merge_review(&mut self, request: ReviewRequest, review: ReviewResult) {
+        let cached = self.cached.get_or_insert_with(|| CachedReview {
+            request,
+            result: ReviewResult {
+                overview: Vec::new(),
+                stops: Vec::new(),
+            },
+        });
+        for overview in review.overview {
+            if cached.result.overview.len() == 3 {
+                break;
+            }
+            if !cached.result.overview.contains(&overview) {
+                cached.result.overview.push(overview);
+            }
+        }
+        for stop in review.stops {
+            if cached.result.stops.len() == 8 {
+                break;
+            }
+            if !cached
+                .result
+                .stops
+                .iter()
+                .any(|known| known.primary_hunk_id == stop.primary_hunk_id)
+            {
+                cached.result.stops.push(stop);
+            }
+        }
     }
 
     pub(crate) fn prepare_frame(&mut self, area: Rect, split: PaneSplit) -> FramePreparation {

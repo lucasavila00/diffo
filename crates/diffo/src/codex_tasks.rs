@@ -20,8 +20,8 @@ use diffo_ai_config::{
 };
 use diffo_app::{
     review::{
-        AttentionCategory, CodexAvailability, ReviewCodexOutcome, ReviewCodexTask,
-        ReviewCodexTaskResult, ReviewRequest, ReviewStop,
+        AttentionCategory, CodexAvailability, ReviewCodexOutcome, ReviewCodexTaskResult,
+        ReviewRequest, ReviewStop,
     },
     workbench::{AiCommitOutcome, AiCommitRequest, Workbench},
 };
@@ -115,7 +115,12 @@ impl CodexTasks {
         Ok(())
     }
 
-    pub(crate) fn start_review(&self, task: ReviewCodexTask) -> Result<(), String> {
+    pub(crate) fn start_review(
+        &self,
+        id: ApplicationCommandId,
+        request: ReviewRequest,
+        cancellation: CancellationHandle,
+    ) -> Result<(), String> {
         let executable = self.executable.as_ref().map_err(Clone::clone)?;
         if self
             .busy
@@ -132,15 +137,12 @@ impl CodexTasks {
             .name("codex-ai".to_owned())
             .spawn(move || {
                 let _busy = BusyGuard(busy);
-                let outcome = run_review_codex(
-                    &executable,
-                    &repository_root,
-                    &task.request,
-                    &task.cancellation,
-                );
+                let outcome =
+                    run_review_codex(&executable, &repository_root, &request, &cancellation);
                 let _ = sender.send(CodexTaskResult::Review(ReviewCodexTaskResult {
-                    id: task.id,
+                    id,
                     outcome,
+                    complete: true,
                 }));
             });
         if let Err(error) = spawn {

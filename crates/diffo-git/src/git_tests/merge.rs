@@ -192,6 +192,47 @@ fn keeps_conflicts_visible_and_abort_restores_the_destination() {
 }
 
 #[test]
+fn completes_a_resolved_merge_without_a_staged_diff() {
+    let repo = test_repository();
+    git(repo.path(), &["switch", "-c", "topic"]);
+    fs::write(repo.path().join("tracked.txt"), "topic\n").unwrap();
+    git(repo.path(), &["commit", "-am", "topic"]);
+    git(repo.path(), &["switch", "main"]);
+    fs::write(repo.path().join("tracked.txt"), "main\n").unwrap();
+    git(repo.path(), &["commit", "-am", "main"]);
+    let merge = Command::new("git")
+        .args(["merge", "--no-edit", "topic"])
+        .current_dir(repo.path())
+        .output()
+        .unwrap();
+    assert!(!merge.status.success());
+    fs::write(repo.path().join("tracked.txt"), "main\n").unwrap();
+    git(repo.path(), &["add", "tracked.txt"]);
+    assert!(git_stdout(repo.path(), &["diff", "--cached", "--name-only"]).is_empty());
+    let source = crate::GitRepositorySource::new(repo.path());
+    let ready = source.snapshot().unwrap();
+    assert_eq!(ready.operation, RepositoryOperationState::Merge);
+    assert!(ready.files.is_empty());
+
+    let result = source
+        .apply(&RepositoryAction::Commit("Complete merge".to_owned()))
+        .unwrap();
+
+    assert!(matches!(result, OperationResult::Commit { .. }));
+    assert_eq!(
+        git_stdout(repo.path(), &["show", "-s", "--format=%s", "HEAD"]),
+        "Complete merge"
+    );
+    assert_eq!(
+        git_stdout(repo.path(), &["show", "-s", "--format=%P", "HEAD"])
+            .split_whitespace()
+            .count(),
+        2
+    );
+    assert!(!repo.path().join(".git/MERGE_HEAD").exists());
+}
+
+#[test]
 fn rejects_moved_sources_changed_heads_and_unborn_destinations() {
     let repo = test_repository();
     git(repo.path(), &["branch", "topic"]);

@@ -51,6 +51,7 @@ pub(super) fn find_dialog_action(
     }
     let label = match action {
         "Commit" => "[ Commit (Enter) ]".to_owned(),
+        "Complete merge" => "[ Complete merge (Enter) ]".to_owned(),
         "Cancel" => "[ Cancel (Esc) ]".to_owned(),
         _ => format!("[ {action} ]"),
     };

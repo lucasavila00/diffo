@@ -9,7 +9,7 @@ pub(crate) use state::operation_result_toast;
 pub use state::{
     ChangeArea, DiffViewMode, FileKey, Model, NetworkOperation, Toast, ToastKind, ToastQueue,
 };
-pub(crate) use state::{sync_plan_title, sync_progress_label};
+pub(crate) use state::{MergePhase, sync_plan_title, sync_progress_label};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Message {

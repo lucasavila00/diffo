@@ -150,6 +150,29 @@ fn fixed_commit_composer_action_uses_the_enabled_control_style() {
 }
 
 #[test]
+fn ready_merge_uses_merge_labels_in_both_commit_controls() {
+    let mut model = model();
+    model.snapshot.operation = RepositoryOperationState::Merge;
+    model.snapshot.files.clear();
+    let area = Rect::new(0, 0, 80, 24);
+    let backend = TestBackend::new(area.width, area.height);
+    let mut terminal = Terminal::new(backend).unwrap();
+
+    terminal
+        .draw(|frame| crate::diff::render_commit_composer(frame, frame.area(), &model))
+        .unwrap();
+    let text = buffer_text(terminal.backend().buffer());
+    assert!(text.contains("Complete merge"));
+    assert!(!text.contains("Commit (Enter)"));
+
+    terminal
+        .draw(|frame| crate::diff::render_commit_editor(frame, &model, frame.area()))
+        .unwrap();
+    let text = buffer_text(terminal.backend().buffer());
+    assert!(text.contains("Complete merge (Enter)"));
+}
+
+#[test]
 fn commit_dialog_actions_use_the_enabled_control_style() {
     let mut model = model();
     model.snapshot.files[0].staged = Some(FileDiff {

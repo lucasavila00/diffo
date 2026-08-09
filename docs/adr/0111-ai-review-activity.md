@@ -30,10 +30,10 @@ setup action. Other activities remain available.
 
 ### Prompt and response handling
 
-Run one bounded Review request with the shared Codex runner,
-`gpt-5.6-luna`, a read-only sandbox, structured output, and a 120-second
-deadline. One request lets Codex produce a coherent repository-wide summary and
-order while avoiding repeated process startup.
+Run one bounded Review request with the shared Codex runner, `gpt-5.6-luna`, a
+read-only sandbox, structured output, and a 120-second deadline. One request
+lets Codex produce a coherent repository-wide summary and order while avoiding
+repeated process startup.
 
 Send staged and unstaged patches through stdin as untrusted data. Give each
 navigable changed region an opaque target ID and diff row. Expose at most 32

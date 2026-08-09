@@ -7,9 +7,9 @@ not run AI; `Enter` or the visible Generate button starts a review.
 ## User flow
 
 The initial screen teaches the complete path: generate, choose suggestions with
-`n`, `p`, or a click, stage or unstage the selected file with `Space`, and commit
-staged work with `i`. Explanatory text is inert. Only rendered buttons have
-click targets.
+`n`, `p`, or a click, stage or unstage the selected file with `Space`, and
+commit staged work with `i`. Explanatory text is inert. Only rendered buttons
+have click targets.
 
 The left pane keeps the summary and review path above the selected suggestion's
 details. Every suggestion points to one concrete change in one file. Selecting
@@ -36,17 +36,17 @@ and end when there are more. The complete XML-shaped context is capped at 256
 KiB; fair prefix/suffix patch samples and explicit omission markers replace
 oversized content.
 
-Diffo starts one ephemeral, read-only `codex exec` request with
-`gpt-5.6-luna`, the fixed prompt, and a temporary output schema. The one request
-sees the bounded repository context together, so its overview and order are
-coherent and only one CLI process is started. Repository data goes through
-stdin and is explicitly untrusted.
+Diffo starts one ephemeral, read-only `codex exec` request with `gpt-5.6-luna`,
+the fixed prompt, and a temporary output schema. The one request sees the
+bounded repository context together, so its overview and order are coherent and
+only one CLI process is started. Repository data goes through stdin and is
+explicitly untrusted.
 
-The schema allows one to three overview lines and one to eight suggestions.
-Each suggestion contains a title, attention category, reason, and target ID.
-Diffo independently validates lengths, control characters, categories, known
-IDs, and uniqueness before installing the result atomically. Late, malformed,
-cancelled, or snapshot-mismatched results cannot alter the active review.
+The schema allows one to three overview lines and one to eight suggestions. Each
+suggestion contains a title, attention category, reason, and target ID. Diffo
+independently validates lengths, control characters, categories, known IDs, and
+uniqueness before installing the result atomically. Late, malformed, cancelled,
+or snapshot-mismatched results cannot alter the active review.
 
 ## Availability, failures, and tests
 

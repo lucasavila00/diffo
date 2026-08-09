@@ -1,7 +1,5 @@
 # ADR 0002: Snapshot and source
 
-Status: Accepted
-
 ## Decision
 
 The UI reads one immutable `RepositorySnapshot`:

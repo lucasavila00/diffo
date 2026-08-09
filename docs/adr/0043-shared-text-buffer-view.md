@@ -1,16 +1,14 @@
 # ADR 0043: One text-buffer surface
 
-Status: Accepted
-
 ## Problem
 
-Diff and Explorer both have a right-side text buffer. They implement it separately.
-The UX already differs. More copies will drift more.
+Diff and Explorer both have a right-side text buffer. They implement it
+separately. The UX already differs. More copies will drift more.
 
 ## Decision
 
-Create a `diffo-text-view` crate. Diff, Explorer, and future text-buffer surfaces must
-use it. No private replacement implementations.
+Create a `diffo-text-view` crate. Diff, Explorer, and future text-buffer
+surfaces must use it. No private replacement implementations.
 
 The crate owns the whole read-only text surface:
 
@@ -25,42 +23,45 @@ The crate owns the whole read-only text surface:
 - empty, loading, and error presentation; and
 - atomic document, syntax coverage, viewport, and metrics commits.
 
-This guarantees the same UX everywhere. The same command moves the same distance.
-Wheel, arrows, page keys, scrollbar clicks, and drags behave the same. Bounds,
-gutter behavior, loading behavior, and scroll speed cannot vary by activity.
+This guarantees the same UX everywhere. The same command moves the same
+distance. Wheel, arrows, page keys, scrollbar clicks, and drags behave the same.
+Bounds, gutter behavior, loading behavior, and scroll speed cannot vary by
+activity.
 
-The crate accepts prepared, display-ready rows with styled text and optional gutter
-or marker cells. It does not know about Git, paths, hunks, staged state, or diff row
-kinds.
+The crate accepts prepared, display-ready rows with styled text and optional
+gutter or marker cells. It does not know about Git, paths, hunks, staged state,
+or diff row kinds.
 
-Diff keeps patch parsing, inline and side-by-side projection, hunk targets, and diff
-styles. Explorer keeps file loading and change-marker projection. Both convert their
-result into the shared prepared document.
+Diff keeps patch parsing, inline and side-by-side projection, hunk targets, and
+diff styles. Explorer keeps file loading and change-marker projection. Both
+convert their result into the shared prepared document.
 
 `diffo-highlight` owns syntax detection, parsing, look-behind, styled spans,
-plain-text fallback, the 10,000-line boundary, and byte budgets. Diff and Explorer
-own background requests and stale-result rejection. `diffo-text-view` only stores
-syntax coverage and renders prepared spans. It never performs highlighting.
+plain-text fallback, the 10,000-line boundary, and byte budgets. Diff and
+Explorer own background requests and stale-result rejection. `diffo-text-view`
+only stores syntax coverage and renders prepared spans. It never performs
+highlighting.
 
-Rendering reads committed state only. A new document, its viewport, bounds, targets,
-and visible syntax commit together during frame preparation. Until then, keep the
-old document visible.
+Rendering reads committed state only. A new document, its viewport, bounds,
+targets, and visible syntax commit together during frame preparation. Until
+then, keep the old document visible.
 
 ## Crate boundaries
 
-`diffo-text-view` depends on `diffo-ui`, `diffo-highlight`, and Ratatui. It must not
-depend on `diffo-app`, `diffo-diff`, `diffo-explorer`, `diffo-tui`, Git, Crossterm, or
-the binary.
+`diffo-text-view` depends on `diffo-ui`, `diffo-highlight`, and Ratatui. It must
+not depend on `diffo-app`, `diffo-diff`, `diffo-explorer`, `diffo-tui`, Git,
+Crossterm, or the binary.
 
-Move shared viewport, scrolling, scrollbar, gutter, and text rendering code out of
-`diffo-tui` and `diffo-explorer`. Delete the old implementations after migration.
+Move shared viewport, scrolling, scrollbar, gutter, and text rendering code out
+of `diffo-tui` and `diffo-explorer`. Delete the old implementations after
+migration.
 
 ## Tests
 
 - Run the same UX contract tests against Diff and Explorer.
 - Test exact line, wheel, and page distances.
-- Test every scroll command, bound, click target, drag endpoint, and nearby inert
-  cell in `diffo-text-view`.
+- Test every scroll command, bound, click target, drag endpoint, and nearby
+  inert cell in `diffo-text-view`.
 - Test fixed gutters during horizontal scrolling.
 - Keep delayed PTY tests for opens, stale results, and uncached vertical jumps.
 - Keep the strict syntax limits, atomic-frame rules, and sub-100 ms 9,999-line

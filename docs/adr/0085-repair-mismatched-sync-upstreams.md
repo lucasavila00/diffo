@@ -1,10 +1,7 @@
 # ADR 0085: Repair mismatched sync upstreams
 
-Status: Accepted
-
-Refines the sync target in
-[ADR 0070](0070-rebase-unpushed-work-when-syncing.md) and supersedes the
-mismatched-name behavior in
+Refines the sync target in [ADR 0070](0070-rebase-unpushed-work-when-syncing.md)
+and supersedes the mismatched-name behavior in
 [ADR 0079](0079-confirm-protected-branch-pushes.md).
 
 ## Problem
@@ -14,8 +11,8 @@ A local branch can track a differently named remote branch. For example,
 upstream.
 
 Diffo used that upstream as the push destination and explicitly pushed
-`HEAD:refs/heads/master`. This bypassed Git's default name-mismatch safeguard and
-could push feature work directly to a protected branch.
+`HEAD:refs/heads/master`. This bypassed Git's default name-mismatch safeguard
+and could push feature work directly to a protected branch.
 
 ## Decision
 

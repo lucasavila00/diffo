@@ -1,7 +1,5 @@
 # ADR 0013: Commands and file actions
 
-Status: Accepted
-
 ## Footer and overlays
 
 Keep the footer small:
@@ -23,10 +21,10 @@ The palette has exactly two commands:
 - `Git: Fetch`
 - `Git: Pull`
 
-Enter runs the selected command. Run Git through the serialized repository service
-worker. Do not block input or rendering or give Git the terminal. Network prompts use
-the typed askpass path from ADR 0053. Refresh the snapshot after the command. Show
-failures in the status bar.
+Enter runs the selected command. Run Git through the serialized repository
+service worker. Do not block input or rendering or give Git the terminal.
+Network prompts use the typed askpass path from ADR 0053. Refresh the snapshot
+after the command. Show failures in the status bar.
 
 ## File actions
 
@@ -35,11 +33,12 @@ Show an action at the right of every writable file row:
 - `[+]` stages an unstaged file.
 - `[-]` unstages a staged file.
 
-Clicking the action does not depend on selection. Clicking the rest of the row only
-selects it. Hide actions in read-only mode.
+Clicking the action does not depend on selection. Clicking the rest of the row
+only selects it. Hide actions in read-only mode.
 
-The Changes header shows `[+] Stage All`. Only `+` is clickable. The Staged header
-shows `[-] Unstage All`. Only `-` is clickable. Labels and brackets are not buttons.
+The Changes header shows `[+] Stage All`. Only `+` is clickable. The Staged
+header shows `[-] Unstage All`. Only `-` is clickable. Labels and brackets are
+not buttons.
 
 Mock remote failures name the received action, for example:
 
@@ -53,8 +52,8 @@ This proves the command reached the repository effect boundary.
 
 Do not reset scroll for every watcher snapshot.
 
-Preserve vertical and horizontal scroll when the selected `FileKey` and its diff are
-unchanged. Reset scroll when selection changes or the selected diff changes.
+Preserve vertical and horizontal scroll when the selected `FileKey` and its diff
+are unchanged. Reset scroll when selection changes or the selected diff changes.
 
 ## Regression tests
 

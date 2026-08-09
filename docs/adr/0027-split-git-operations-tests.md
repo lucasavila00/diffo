@@ -1,7 +1,5 @@
 # ADR 0027: Split `diffo/tests/git_operations.rs`
 
-Status: Accepted
-
 ## Decision
 
 Keep `git_operations.rs` as module declarations only.

@@ -1,7 +1,5 @@
 # ADR 0063: Use one-cell Unicode file icons
 
-Status: Accepted
-
 Refines [ADR 0049](0049-shared-file-picker.md),
 [ADR 0054](0054-readable-tree-labels-and-controls.md), and
 [ADR 0061](0061-align-explorer-tree-names.md).
@@ -14,20 +12,20 @@ Show folder and file-type icons. Spend one cell per row.
 
 Diffo targets the latest stock Ghostty.
 
-Ghostty bundles JetBrains Mono and Nerd Font symbols. Since Ghostty 1.2, Nerd Font
-symbols work without installing or selecting a patched font.
+Ghostty bundles JetBrains Mono and Nerd Font symbols. Since Ghostty 1.2, Nerd
+Font symbols work without installing or selecting a patched font.
 
 ## Prior art
 
-- VS Code matches full file names, compound extensions, extensions, languages, and
-  folder state.
+- VS Code matches full file names, compound extensions, extensions, languages,
+  and folder state.
 - `nvim-web-devicons` maps file names and extensions to one glyph.
-- `eza`, `lsd`, and Yazi use the same pattern: one leading glyph selected from file
-  type, file name, or extension.
+- `eza`, `lsd`, and Yazi use the same pattern: one leading glyph selected from
+  file type, file name, or extension.
 
 ## Options
 
-- Text badges such as `rs `. Rejected. Three cells.
+- Text badges such as `rs`. Rejected. Three cells.
 - Emoji. Rejected. Often two cells.
 - Terminal images. Rejected. Too much machinery.
 - One-cell Nerd Font glyphs. Chosen. Stock Ghostty supports them.
@@ -47,7 +45,8 @@ No separator space.
 - Files use a language or file-type icon.
 - Unknown files use a generic file icon.
 - Closed and open folders use different folder icons.
-- The folder icon replaces `▸` and `▾`. It shows both entry kind and expansion state.
+- The folder icon replaces `▸` and `▾`. It shows both entry kind and expansion
+  state.
 - Git-status letters stay. Icons do not replace status.
 - Names at the same tree depth stay aligned.
 - Icons inherit the row foreground. No language-specific colors.
@@ -60,8 +59,8 @@ No separator space.
 3. final extension;
 4. generic file icon.
 
-Use fixed code points known to exist in stock Ghostty. Do not load themes, inspect
-file contents, or detect fonts at runtime.
+Use fixed code points known to exist in stock Ghostty. Do not load themes,
+inspect file contents, or detect fonts at runtime.
 
 ## Tradeoffs
 
@@ -73,7 +72,8 @@ file contents, or detect fonts at runtime.
 ## Verification
 
 - Assert every icon has terminal width one.
-- Test file-name, compound-extension, extension, folder-state, and fallback matches.
+- Test file-name, compound-extension, extension, folder-state, and fallback
+  matches.
 - Test the same icons in Diff and Explorer.
 - Test file and folder alignment.
 - Test Git-status styling and narrow layouts.

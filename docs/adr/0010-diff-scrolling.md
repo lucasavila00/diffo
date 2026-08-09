@@ -1,7 +1,5 @@
 # ADR 0010: Diff scrolling
 
-Status: Accepted
-
 ## Controls
 
 - Up and Down move four lines. Mouse wheel moves one line per event.
@@ -21,17 +19,17 @@ overflow. ADR 0025 defines the visible-slice rule.
 - Drag the track to scroll.
 - Put both tracks one cell inside the diff pane.
 - Do not use the terminal edge. Ghostty can draw its own scrollbar there.
-- Reserve the bottom-right corner for the horizontal track. Stop the vertical track
-  one row early.
+- Reserve the bottom-right corner for the horizontal track. Stop the vertical
+  track one row early.
 - Map the last track cell to the exact maximum scroll offset.
 
-The renderer owns scrollbar geometry. It turns mouse positions into absolute scroll
-messages. The app model owns the scroll positions.
+The renderer owns scrollbar geometry. It turns mouse positions into absolute
+scroll messages. The app model owns the scroll positions.
 
-Tests drag both scrollbars. Horizontal drag to 100% must reveal the end of a long
-line.
+Tests drag both scrollbars. Horizontal drag to 100% must reveal the end of a
+long line.
 
 ## Terminal
 
-Use Ratatui's alternate screen. Purge that buffer once at startup. Do not clear every
-frame.
+Use Ratatui's alternate screen. Purge that buffer once at startup. Do not clear
+every frame.

@@ -1,7 +1,5 @@
 # ADR 0005: Watch the filesystem
 
-Status: Superseded by [ADR 0012](0012-live-repository-refresh.md)
-
 ## Decision
 
 Watch the worktree and Git metadata. Treat every event as "refresh state."

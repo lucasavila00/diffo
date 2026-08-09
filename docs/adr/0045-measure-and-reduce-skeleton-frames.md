@@ -1,7 +1,5 @@
 # ADR 0045: Measure and reduce skeleton frames
 
-Status: Accepted
-
 ## Problem
 
 Skeleton frames keep scrolling responsive, but appear too often.
@@ -37,9 +35,10 @@ Report per fixed PTY workload:
 - work completed but discarded;
 - input-to-full-content latency.
 
-Add `make measure-text-readiness`. Use release Diffo, a 100x30 PTY, fixed Diff and
-Explorer fixtures, and fixed slow wheel, fast wheel, page, scrollbar-drag, and hunk
-jump workloads. Print raw counts and medians. Do not add a flaky CI timing limit.
+Add `make measure-text-readiness`. Use release Diffo, a 100x30 PTY, fixed Diff
+and Explorer fixtures, and fixed slow wheel, fast wheel, page, scrollbar-drag,
+and hunk jump workloads. Print raw counts and medians. Do not add a flaky CI
+timing limit.
 
 Then improve in this order:
 
@@ -49,9 +48,9 @@ Then improve in this order:
 4. Prefetch ahead of direction and speed, with a smaller window behind.
 5. Reuse prepared spans when revisiting a viewport.
 
-Keep memory, parser look-behind, byte budgets, the 10,000-line boundary, and render
-work bounded. Do not highlight full files. Do not block the input or render loop.
-Skeleton behavior remains the fallback.
+Keep memory, parser look-behind, byte budgets, the 10,000-line boundary, and
+render work bounded. Do not highlight full files. Do not block the input or
+render loop. Skeleton behavior remains the fallback.
 
 ## Acceptance
 

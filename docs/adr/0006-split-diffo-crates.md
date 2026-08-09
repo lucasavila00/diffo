@@ -1,11 +1,9 @@
 # ADR 0006: Split Diffo into crates
 
-Status: Accepted
-
 ## Problem
 
-`git-diff-tui` holds state, Git commands, fixtures, UI, and startup code. These parts
-change for different reasons.
+`git-diff-tui` holds state, Git commands, fixtures, UI, and startup code. These
+parts change for different reasons.
 
 ## Crates
 

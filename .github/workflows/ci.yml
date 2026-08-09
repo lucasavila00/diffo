@@ -34,6 +34,12 @@ jobs:
       - name: Run all checks
         run: make all
 
+      - name: Verify generated files are committed
+        run: |
+          git add --all
+          git diff --cached --stat
+          git diff --cached --exit-code
+
   stress:
     runs-on: ubuntu-latest
     timeout-minutes: 15

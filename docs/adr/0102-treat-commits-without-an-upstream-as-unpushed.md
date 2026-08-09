@@ -1,13 +1,11 @@
 # ADR 0102: Treat commits without an upstream as unpushed
 
-Status: Accepted
-
 Refines [ADR 0082](0082-unpushed-commits-panel.md).
 
 ## Problem
 
-The Unpushed panel says `No upstream` when a branch has no upstream. That is true,
-but not useful: the panel hides the commits a first push would publish.
+The Unpushed panel says `No upstream` when a branch has no upstream. That is
+true, but not useful: the panel hides the commits a first push would publish.
 
 ## Decision
 

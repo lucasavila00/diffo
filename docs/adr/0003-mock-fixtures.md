@@ -1,7 +1,5 @@
 # ADR 0003: Structured mock fixtures
 
-Status: Accepted
-
 ## Decision
 
 Mock state uses JSON or RON files that deserialize into `RepositorySnapshot`.
@@ -15,8 +13,8 @@ A fixture can contain:
 
 `make diffo-mock` loads a fixture through `FixtureRepositorySource`.
 
-Raw `.diff` files are only for diff parser tests. They cannot hold full repository
-state.
+Raw `.diff` files are only for diff parser tests. They cannot hold full
+repository state.
 
 ## Done when
 

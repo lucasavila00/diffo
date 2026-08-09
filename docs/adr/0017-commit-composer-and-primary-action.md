@@ -1,7 +1,5 @@
 # ADR 0017: Commit composer and primary action
 
-Status: Accepted
-
 ## UI
 
 Put a commit composer above the Staged and Changes lists.
@@ -12,8 +10,10 @@ Put a commit composer above the Staged and Changes lists.
 - Clicking Commit with the generated placeholder uses that text as the commit
   message. Typed text overrides it.
 - Typed text uses normal foreground color.
-- Ctrl+C always quits. Esc leaves the input. Enter runs the enabled primary action.
-- Passive repository watcher refreshes keep the input focused and preserve typed text.
+- Ctrl+C always quits. Esc leaves the input. Enter runs the enabled primary
+  action.
+- Passive repository watcher refreshes keep the input focused and preserve typed
+  text.
 - Read-only mode shows the composer but never enables mutations.
 
 Show one primary button. The pure app model chooses its state:
@@ -24,27 +24,29 @@ Show one primary button. The pure app model chooses its state:
 4. Ahead: enabled `Push`.
 5. Otherwise: disabled `Commit`.
 
-Commit wins over sync state when it is ready. Do not guess how to resolve divergence.
-The button has a two-row body and one blank row before the file groups.
+Commit wins over sync state when it is ready. Do not guess how to resolve
+divergence. The button has a two-row body and one blank row before the file
+groups.
 
 ## Effects
 
-Add `Commit(String)` and `Push` repository actions. Keep Pull as the existing action.
-Git uses non-interactive `git commit -m`, `git push`, and `git pull --no-edit`.
+Add `Commit(String)` and `Push` repository actions. Keep Pull as the existing
+action. Git uses non-interactive `git commit -m`, `git push`, and
+`git pull --no-edit`.
 
-Keep the commit message while Commit is running. Clear it only after a successful
-snapshot refresh. Preserve it when the operation fails.
+Keep the commit message while Commit is running. Clear it only after a
+successful snapshot refresh. Preserve it when the operation fails.
 
-Keep Commit, Push, and Pull disabled while their repository effect is pending. Keep
-the current label visible so the user can see which action is running.
+Keep Commit, Push, and Pull disabled while their repository effect is pending.
+Keep the current label visible so the user can see which action is running.
 
-Mock errors include the received action. The mutable mock can create a local mock
-commit; remote sync still reports that no remote is configured.
+Mock errors include the received action. The mutable mock can create a local
+mock commit; remote sync still reports that no remote is configured.
 
 ## Tests
 
 - Pure tests cover Commit, Push, Pull, disabled, and Push + Pull states.
-- A compiled PTY test types a message, commits, sees Push, pushes, and verifies the
-  remote HEAD.
+- A compiled PTY test types a message, commits, sees Push, pushes, and verifies
+  the remote HEAD.
 - A focused commit field cannot consume Ctrl+C.
 - Coordinate tests cover the input and enabled/disabled button.

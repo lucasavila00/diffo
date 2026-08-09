@@ -5,7 +5,7 @@ expression: terminal.backend().buffer()
 Buffer {
     area: Rect { x: 0, y: 0, width: 40, height: 5 },
     content: [
-        "┌Commit message (m)────────────────────┐",
+        "┌Commit message────────────────────────┐",
         "│Update 1 file                         │",
         "└──────────────────────────────────────┘",
         "           [ Commit (Enter) ]           ",
@@ -13,8 +13,6 @@ Buffer {
     ],
     styles: [
         x: 0, y: 0, fg: DarkGray, bg: Reset, underline: Reset, modifier: NONE,
-        x: 16, y: 0, fg: White, bg: Reset, underline: Reset, modifier: BOLD,
-        x: 19, y: 0, fg: DarkGray, bg: Reset, underline: Reset, modifier: NONE,
         x: 0, y: 3, fg: White, bg: Reset, underline: Reset, modifier: BOLD,
     ]
 }

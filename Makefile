@@ -1,8 +1,11 @@
-.PHONY: all check-e2e-binary check-file-lines diffo install diffo-mock e2e e2e-review measure-cpu measure-startup measure-text-readiness
+DPRINT_VERSION := 0.55.2
+DPRINT := target/tools/dprint-$(DPRINT_VERSION)/bin/dprint
+
+.PHONY: all check-e2e-binary check-file-lines cloc diffo install diffo-mock e2e e2e-review md measure-cpu measure-startup measure-text-readiness
 
 # Run every automated repository check once. Workspace tests include the black-box
 # diffo-e2e package and the diffo integration tests.
-all:
+all: md
 	cargo fmt --all --check
 	cargo build --package codex-mock
 	PATH="$(CURDIR)/target/debug:$$PATH" cargo test --workspace --all-features
@@ -25,6 +28,21 @@ check-file-lines:
 		fi; \
 	done; \
 	test -z "$$failed"; }
+
+# Count tracked files, excluding files that contain or are dedicated to tests.
+cloc:
+	cloc . --vcs=git \
+		--exclude-content='^\s*#\[cfg\(test\)\]' \
+		--fullpath \
+		--not-match-f='(^|/)(diffo-e2e|benches|tests?|[^/]+_tests?)(/|\.rs$$)'
+
+# Format every Markdown document with the repository-pinned dprint tool and plugin.
+md: $(DPRINT)
+	$(DPRINT) fmt
+
+$(DPRINT):
+	CARGO_INSTALL_ROOT="$(CURDIR)/target/tools/dprint-$(DPRINT_VERSION)" \
+		cargo install --locked --version $(DPRINT_VERSION) dprint
 
 # Build and run the diff viewer using Cargo's debug profile.
 diffo:

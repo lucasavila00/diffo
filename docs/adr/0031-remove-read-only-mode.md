@@ -1,7 +1,5 @@
 # ADR 0031: Remove read-only mode
 
-Status: Accepted
-
 ## Decision
 
 Diffo repositories are always actionable.

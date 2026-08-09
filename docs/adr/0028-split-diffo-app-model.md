@@ -1,7 +1,5 @@
 # ADR 0028: Split `diffo-app/src/model.rs`
 
-Status: Accepted
-
 ## Decision
 
 Keep `model.rs` for state types, `Model`, construction, and module exports.
@@ -13,5 +11,5 @@ Keep `model.rs` for state types, `Model`, construction, and module exports.
 - `model/repository.rs`: snapshot install and operation completion.
 - `model/toast.rs`: toast queue and failure text.
 
-Use separate `impl Model` blocks. Move tests beside their owner.
-Do not change fields, messages, effects, or public exports.
+Use separate `impl Model` blocks. Move tests beside their owner. Do not change
+fields, messages, effects, or public exports.

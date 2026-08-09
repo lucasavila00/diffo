@@ -1,7 +1,5 @@
 # ADR 0011: Generated stress diffs
 
-Status: Accepted
-
 ## Decision
 
 Mock mode generates large patches at runtime. Do not store them in RON.
@@ -13,15 +11,8 @@ Generate files with:
 - 500,000 lines.
 - 5,000,000 lines.
 
-Generate deterministic Rust source with varied declarations and pseudo-random unique
-names. This makes scroll movement and anchoring visible. Do not use one repeated
-placeholder line.
+Generate deterministic Rust source with varied declarations and pseudo-random
+unique names. This makes scroll movement and anchoring visible. Do not use one
+repeated placeholder line.
 
 Keep the normal generated Rust, JSON, and long-line cases too.
-
-## Tests
-
-- Check every generated path exists.
-- Check every patch has the exact requested added-line count.
-- Check a sample has no duplicate generated lines.
-- Keep fixture files small in Git.

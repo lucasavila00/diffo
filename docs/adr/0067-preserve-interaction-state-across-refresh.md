@@ -1,17 +1,15 @@
 # ADR 0067: Keep user state during refresh
 
-Status: Accepted
-
 Refines [ADR 0012](0012-live-repository-refresh.md) and
 [ADR 0037](0037-git-checkout-to.md).
 
 ## Problem
 
-In `Git: Checkout to...`, Down moves the selection. Then the screen flashes and the
-first branch is selected again.
+In `Git: Checkout to...`, Down moves the selection. Then the screen flashes and
+the first branch is selected again.
 
-Cause: a repository refresh replaces the picker items. Replacement resets selection
-and scroll. The key works. The refresh undoes it.
+Cause: a repository refresh replaces the picker items. Replacement resets
+selection and scroll. The key works. The refresh undoes it.
 
 Tests missed this ordering. They test input and refresh separately.
 
@@ -30,12 +28,5 @@ Background refresh must not reset user state.
 - If there is no match, clear selection.
 - Update items, selection, and scroll in one commit.
 
-This rule applies to every control that receives background data while the user can
-navigate, type, expand, or scroll.
-
-## Tests
-
-- Down, refresh, Enter must choose the branch selected by the user.
-- Test reorder, new payload, removal, disabled selection, and empty results.
-- Add a real-Git PTY test with keyboard input interleaved with a repository refresh.
-- Every future live control needs one test that interleaves input and refresh.
+This rule applies to every control that receives background data while the user
+can navigate, type, expand, or scroll.

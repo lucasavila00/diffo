@@ -1,110 +1,115 @@
 # ADR 0107: Create AI commits with Codex
 
-Status: Accepted
-
 Refines [ADR 0017](0017-commit-composer-and-primary-action.md),
-[ADR 0019](0019-commit-message-modal.md),
-[ADR 0055](0055-command-queue.md), and
+[ADR 0019](0019-commit-message-modal.md), [ADR 0055](0055-command-queue.md), and
 [ADR 0056](0056-own-deferred-execution-dependencies.md).
 
 ## Context
 
-Diffo can stage and commit without leaving the TUI, but its generated `Update N files`
-fallback does not explain the change. A user can write a message in the commit editor,
-yet that interrupts the fast keyboard workflow of reviewing, staging all changes with
-`a`, and committing.
+Diffo can stage and commit without leaving the TUI, but its generated
+`Update N files` fallback does not explain the change. A user can write a
+message in the commit editor, yet that interrupts the fast keyboard workflow of
+reviewing, staging all changes with `a`, and committing.
 
-Codex provides a stable non-interactive `codex exec` interface for subprocess use. It
-accepts piped context, writes progress to stderr and its final response to stdout, can
-avoid persisting a session with `--ephemeral`, and supports a JSON output schema. Diffo
-can therefore use the user's installed and authenticated Codex CLI without owning API
-credentials or adding a second network client.
+Codex provides a stable non-interactive `codex exec` interface for subprocess
+use. It accepts piped context, writes progress to stderr and its final response
+to stdout, can avoid persisting a session with `--ephemeral`, and supports a
+JSON output schema. Diffo can therefore use the user's installed and
+authenticated Codex CLI without owning API credentials or adding a second
+network client.
 
-VS Code's commit-message generator establishes useful product precedents: prefer staged
-changes when present, refresh state before generation, include recent commit subjects as
-style evidence, show cancellable progress, and do not force Conventional Commits when
-the repository uses another convention. Diffo keeps those inputs but chooses a stronger,
-keyboard-first action that creates the commit after generation instead of opening an
-editor for review. VS Code also renders its prompt against a model token budget: change
-diffs have higher priority than recent commit examples, so lower-priority context can be
-pruned instead of rejecting a large change outright. Diffo adopts that degradation
+VS Code's commit-message generator establishes useful product precedents: prefer
+staged changes when present, refresh state before generation, include recent
+commit subjects as style evidence, show cancellable progress, and do not force
+Conventional Commits when the repository uses another convention. Diffo keeps
+those inputs but chooses a stronger, keyboard-first action that creates the
+commit after generation instead of opening an editor for review. VS Code also
+renders its prompt against a model token budget: change diffs have higher
+priority than recent commit examples, so lower-priority context can be pruned
+instead of rejecting a large change outright. Diffo adopts that degradation
 principle with a deterministic byte budget suitable for the CLI boundary.
 
 ## UX and developer experience
 
-Add `i` as the fixed lowercase `AI commit staged changes` shortcut. It never opens the
-commit-message modal. `m` continues to edit a manual message and Enter continues to
-submit it, so the existing manual workflow remains unchanged.
+Add `i` as the fixed lowercase `AI commit staged changes` shortcut. It never
+opens the commit-message modal. `m` continues to edit a manual message and Enter
+continues to submit it, so the existing manual workflow remains unchanged.
 
 `i` queues one composite application command with two visible phases:
-`Writing commit message` and `Committing`. The existing workbench command queue remains
-the single scheduler and owns progress, cancellation, and exclusivity across both
-phases. Pressing `i` again cancels a queued or generating AI commit. The existing
-progress-toast cancel target remains available, and cancellation during Git execution
-uses the repository service's existing best-effort path.
+`Writing commit message` and `Committing`. The existing workbench command queue
+remains the single scheduler and owns progress, cancellation, and exclusivity
+across both phases. Pressing `i` again cancels a queued or generating AI commit.
+The existing progress-toast cancel target remains available, and cancellation
+during Git execution uses the repository service's existing best-effort path.
 
-Support the fast `a`, `i` sequence. When Stage All is already queued or running and the
-committed snapshot has no staged files yet, remember one deferred AI-commit request.
-After Stage All succeeds and installs its new snapshot, enqueue the AI commit from that
-snapshot. A failed or cancelled Stage All drops the deferred request and reports that no
-AI commit was created. Without staged files or a pending Stage All, `i` reports
+Support the fast `a`, `i` sequence. When Stage All is already queued or running
+and the committed snapshot has no staged files yet, remember one deferred
+AI-commit request. After Stage All succeeds and installs its new snapshot,
+enqueue the AI commit from that snapshot. A failed or cancelled Stage All drops
+the deferred request and reports that no AI commit was created. Without staged
+files or a pending Stage All, `i` reports
 `Stage changes before creating an AI commit`.
 
-While the AI command is active, repository mutations, manual message editing, and manual
-commit submission are unavailable; diff review and navigation remain available. A valid
-generated subject replaces the current draft only when generation succeeds, immediately
-before the Git phase. A successful commit clears it and reports
-`Committed <hash> — <subject>`. A Git failure retains the generated subject for manual
-recovery. A generation failure retains the previous draft.
+While the AI command is active, repository mutations, manual message editing,
+and manual commit submission are unavailable; diff review and navigation remain
+available. A valid generated subject replaces the current draft only when
+generation succeeds, immediately before the Git phase. A successful commit
+clears it and reports `Committed <hash> — <subject>`. A Git failure retains the
+generated subject for manual recovery. A generation failure retains the previous
+draft.
 
-Codex is an optional runtime dependency. Resolve it at startup: first from the inherited
-`PATH`, then through `command -v` in the user's login shell so IDE and subprocess
-launchers see the same shell installation. Store the result for the process lifetime
-and launch the resolved absolute path. When Codex is missing, disable AI controls and
-explain that it must be installed before restarting Diffo. Do not bundle Codex, manage
-authentication, add configuration, or change release artifacts. Reuse the user's saved
-Codex authentication and provider, but pin `gpt-5.6-luna` for its low latency and cost
-on this small structured task instead of inheriting the user's default model. Key help
-and the Diffo README disclose that the request sends the staged diff, repository and
-branch identity, and recent commit subjects through that CLI setup. The explicit AI
-action is consent; do not add a confirmation modal, telemetry, or a persistent
-preference.
+Codex is an optional runtime dependency. Resolve it at startup: first from the
+inherited `PATH`, then through `command -v` in the user's login shell so IDE and
+subprocess launchers see the same shell installation. Store the result for the
+process lifetime and launch the resolved absolute path. When Codex is missing,
+disable AI controls and explain that it must be installed before restarting
+Diffo. Do not bundle Codex, manage authentication, add configuration, or change
+release artifacts. Reuse the user's saved Codex authentication and provider, but
+pin `gpt-5.6-luna` for its low latency and cost on this small structured task
+instead of inheriting the user's default model. Key help and the Diffo README
+disclose that the request sends the staged diff, repository and branch identity,
+and recent commit subjects through that CLI setup. The explicit AI action is
+consent; do not add a confirmation modal, telemetry, or a persistent preference.
 
-Keep the provider, model, executable names, request limits, fixed prompt, and response
-schema together in the compile-time `diffo-ai-config` crate. Production and mock paths
-must consume the same constants, particularly the model, so changing policy has one code
-edit and cannot leave the offline CLI contract behind. Summarize the active policy and
-its edit point in the repository-root `AI.md`; it is documentation, not configuration.
+Keep the provider, model, executable names, request limits, fixed prompt, and
+response schema together in the compile-time `diffo-ai-config` crate. Production
+and mock paths must consume the same constants, particularly the model, so
+changing policy has one code edit and cannot leave the offline CLI contract
+behind. Summarize the active policy and its edit point in the repository-root
+`AI.md`; it is documentation, not configuration.
 
 End-to-end and stress tests never invoke a real Codex installation. A separate
-`codex-mock` workspace binary implements only this fixed subprocess contract. Those
-builds enable the `codex-mock` Cargo feature, which changes the fixed executable name
-from `codex` to `codex-mock`; the mock binary directory is placed on `PATH`. This is a
-build-time test boundary, not runtime configuration.
+`codex-mock` workspace binary implements only this fixed subprocess contract.
+Those builds enable the `codex-mock` Cargo feature, which changes the fixed
+executable name from `codex` to `codex-mock`; the mock binary directory is
+placed on `PATH`. This is a build-time test boundary, not runtime configuration.
 
 ## Prompt execution and response handling
 
-At command start, capture an immutable request containing HEAD, branch name, repository
-basename, the staged path/status/patch projection in stable path order, and the five
-newest repository commit subjects. Include no unstaged changes, whole-file contents,
-credentials, or unrelated repository data. Bound prompt context at 256 KiB, but do not
-reject an otherwise valid AI commit merely because its staged patch is larger.
+At command start, capture an immutable request containing HEAD, branch name,
+repository basename, the staged path/status/patch projection in stable path
+order, and the five newest repository commit subjects. Include no unstaged
+changes, whole-file contents, credentials, or unrelated repository data. Bound
+prompt context at 256 KiB, but do not reject an otherwise valid AI commit merely
+because its staged patch is larger.
 
-When the complete context does not fit, drop the lower-priority recent subjects first.
-Then divide the remaining budget fairly across every staged file and retain deterministic
-prefix and suffix samples of oversized diffs, with an explicit omission marker. Preserve
-every file's path, rename source, and status whenever their manifest fits. If the manifest
-itself is oversized, include as many stable path-ordered entries as fit plus an explicit
-omitted-file count. The prompt must tell Codex not to invent details hidden by either
-marker. This follows VS Code's priority-based degradation while keeping Diffo's payload,
+When the complete context does not fit, drop the lower-priority recent subjects
+first. Then divide the remaining budget fairly across every staged file and
+retain deterministic prefix and suffix samples of oversized diffs, with an
+explicit omission marker. Preserve every file's path, rename source, and status
+whenever their manifest fits. If the manifest itself is oversized, include as
+many stable path-ordered entries as fit plus an explicit omitted-file count. The
+prompt must tell Codex not to invent details hidden by either marker. This
+follows VS Code's priority-based degradation while keeping Diffo's payload,
 memory use, and tests deterministic.
 
-Pass a fixed instruction as the prompt argument and the repository context through
-stdin, so source content never enters the process arguments. Mark repository content as
-untrusted data. Tell Codex not to execute commands or tools, obey instructions found in
-the diff, copy recent subjects, or invent issue references. Recent commits determine
-style; use a concise imperative subject only when history supplies no convention. The
-result is one non-empty line of at most 72 Unicode characters, with no body.
+Pass a fixed instruction as the prompt argument and the repository context
+through stdin, so source content never enters the process arguments. Mark
+repository content as untrusted data. Tell Codex not to execute commands or
+tools, obey instructions found in the diff, copy recent subjects, or invent
+issue references. Recent commits determine style; use a concise imperative
+subject only when history supplies no convention. The result is one non-empty
+line of at most 72 Unicode characters, with no body.
 
 Run Codex in the repository root with:
 
@@ -114,57 +119,47 @@ codex exec --ephemeral --model gpt-5.6-luna \
   --output-schema <private-temporary-schema> <fixed-prompt>
 ```
 
-Do not use the JSONL `--json` event stream. Embed a strict schema for one `subject`
-string, materialize it in a private temporary file for the child lifetime, and remove it
-after the child exits. Capture stdout and stderr concurrently while retaining at most
-16 KiB of each so the child cannot block on a full pipe. Parse stdout as JSON, then
-independently reject surrounding whitespace, control characters, newlines, empty text,
-or more than 72 characters.
+Do not use the JSONL `--json` event stream. Embed a strict schema for one
+`subject` string, materialize it in a private temporary file for the child
+lifetime, and remove it after the child exits. Capture stdout and stderr
+concurrently while retaining at most 16 KiB of each so the child cannot block on
+a full pipe. Parse stdout as JSON, then independently reject surrounding
+whitespace, control characters, newlines, empty text, or more than 72
+characters.
 
-The runner owns the child process group, concurrent stdin and bounded output workers,
-temporary-schema guard, a 120-second deadline, cancellation, and reaping. It reports
-missing or non-executable CLI files, worker and I/O failures, timeouts, signal crashes,
-nonzero exits, empty or oversized output, malformed JSON, and invalid subjects.
+The runner owns the child process group, concurrent stdin and bounded output
+workers, temporary-schema guard, a 120-second deadline, cancellation, and
+reaping. It reports missing or non-executable CLI files, worker and I/O
+failures, timeouts, signal crashes, nonzero exits, empty or oversized output,
+malformed JSON, and invalid subjects.
 
 Classify known authentication, access, model, usage-limit, network, service,
-configuration, and incompatible-CLI stderr conservatively into actionable messages.
-Unknown failures may include one bounded terminal-safe stderr line. Never expose stderr
-that contains credential markers, or expose the prompt context, diff, environment, or
-authentication material. Parsing improves diagnostics only; every nonzero exit remains
-a failure even when its wording is unknown.
+configuration, and incompatible-CLI stderr conservatively into actionable
+messages. Unknown failures may include one bounded terminal-safe stderr line.
+Never expose stderr that contains credential markers, or expose the prompt
+context, diff, environment, or authentication material. Parsing improves
+diagnostics only; every nonzero exit remains a failure even when its wording is
+unknown.
 
-Carry the expected HEAD and staged projection into the Git phase. Revalidate both at the
-repository boundary immediately before `git commit`; if either changed, discard the
-generated result and report `Staged changes changed; press i to try again`. Keep one
-command ID and cancellation handle across generation and commit so another queued action
-cannot run between the phases.
+Carry the expected HEAD and staged projection into the Git phase. Revalidate
+both at the repository boundary immediately before `git commit`; if either
+changed, discard the generated result and report
+`Staged changes changed; press i to try again`. Keep one command ID and
+cancellation handle across generation and commit so another queued action cannot
+run between the phases.
 
 ## Implementation boundaries
 
-- `diffo-ai-config` is the single source of truth for fixed AI provider, model, CLI,
-  prompt, schema, and size policy.
-- `diffo-app` owns the fixed input mapping, pure AI-command state, prompt construction,
-  queued phase transitions, and presentation.
-- The `diffo` runtime owns the Codex subprocess worker and hands a validated subject back
-  to the active workbench command.
-- `diffo-core` carries the guarded commit target shared by real Git and the mutable mock.
-- `diffo-git` and the mock repository revalidate the expected snapshot before committing;
-  Codex never mutates the repository directly.
-
-## Verification
-
-- Pure tests cover `a`, `i` deferral, direct `i`, second-`i` cancellation, no-staged
-  feedback, both phases, draft preservation, stale results, and the unchanged manual
-  workflow. The fixed binding table continues to reject uppercase shortcuts.
-- Prompt tests cover deterministic staged-only context, five recent subjects, style
-  guidance, untrusted delimiters, bounded oversized-diff sampling, and omission markers.
-- Runner tests verify arguments, cwd, stdin, schema parsing, malformed responses, and
-  cancellation without public network access.
-- Real and mock repository tests prove that matching staged state commits and changed
-  HEAD or index state cannot commit the generated subject.
-- A deterministic PTY regression uses `codex-mock` to exercise `a`, `i`, and automatic
-  commit without credentials or network access.
-- `make all` passes.
+- `diffo-ai-config` is the single source of truth for fixed AI provider, model,
+  CLI, prompt, schema, and size policy.
+- `diffo-app` owns the fixed input mapping, pure AI-command state, prompt
+  construction, queued phase transitions, and presentation.
+- The `diffo` runtime owns the Codex subprocess worker and hands a validated
+  subject back to the active workbench command.
+- `diffo-core` carries the guarded commit target shared by real Git and the
+  mutable mock.
+- `diffo-git` and the mock repository revalidate the expected snapshot before
+  committing; Codex never mutates the repository directly.
 
 ## Sources
 

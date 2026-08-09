@@ -436,10 +436,14 @@ fn keyboard_selection_immediately_opens_the_selected_step() {
             .position(|line| line.contains(needle))
             .unwrap_or(usize::MAX)
     };
-    for label in ["Review order", "1. Step 0", "2. Step 1"] {
+    for label in [
+        "Review order · one change per step",
+        "1. Step 0",
+        "2. Step 1",
+    ] {
         assert_eq!(row(&before, label), row(&after, label), "{label} moved");
     }
-    assert!(row(&after, "Review order") < row(&after, "Review step 2 of 2"));
+    assert!(row(&after, "Review order") < row(&after, "Selected change 2 of 2"));
 
     let _ = review.handle_event(&key('k'), Rect::new(0, 0, 100, 30), PaneSplit::default());
     assert_eq!(review.selected_stop, 0);
@@ -488,11 +492,12 @@ fn ready_screen_connects_the_review_step_to_staging_and_commit_actions() {
 
     let text = render_text(&review);
     assert!(text.contains("Summary"));
-    assert!(text.contains("Review step 1 of 2"));
-    assert!(text.contains("a.rs"));
-    assert!(text.contains("behavior · Unstaged"));
+    assert!(text.contains("Review order · one change per step"));
+    assert!(text.contains("Selected change 1 of 2"));
+    assert!(text.contains("File · a.rs"));
+    assert!(text.contains("Focus · one change · behavior"));
+    assert!(text.contains("File state · Unstaged"));
     assert!(text.contains("Why this matters"));
-    assert!(text.contains("Review order"));
     assert!(text.contains("Stage file"));
     assert!(text.contains("Commit staged work"));
 }

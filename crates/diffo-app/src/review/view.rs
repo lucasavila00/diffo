@@ -110,7 +110,7 @@ fn render_state(frame: &mut Frame, area: Rect, review: &ReviewActivity) -> Rect 
         lines.push(Line::raw("Review your changes in a suggested order."));
         lines.push(Line::raw(""));
         lines.push(Line::raw(
-            "Codex will summarize the work and open the first change worth inspecting.",
+            "Codex summarizes the work, then opens one change in one file at a time.",
         ));
         lines.push(Line::raw(""));
         if let Some(error) = &review.failure {
@@ -185,13 +185,13 @@ fn render_ready(
         area,
         &mut y,
         Line::styled(
-            "Review order",
+            "Review order · one change per step",
             Style::default().add_modifier(Modifier::BOLD),
         ),
     );
     let remaining = area.bottom().saturating_sub(y);
     let capacity =
-        usize::from(remaining.saturating_sub(10).max(u16::from(remaining > 0))).min(count);
+        usize::from(remaining.saturating_sub(11).max(u16::from(remaining > 0))).min(count);
     let start = review
         .selected_stop
         .saturating_sub(capacity.saturating_sub(1) / 2)
@@ -227,7 +227,7 @@ fn render_ready(
     y = y.saturating_add(1).min(area.bottom());
 
     let final_step = review.active_request.is_none() && review.selected_stop + 1 == count;
-    let progress = format!("Review step {} of {count}", review.selected_stop + 1);
+    let progress = format!("Selected change {} of {count}", review.selected_stop + 1);
     render_row(
         frame,
         area,
@@ -252,7 +252,10 @@ fn render_ready(
         area,
         &mut y,
         Line::styled(
-            terminal_safe_text(&target.file.path.to_string_lossy()),
+            format!(
+                "File · {}",
+                terminal_safe_text(&target.file.path.to_string_lossy())
+            ),
             Style::default().fg(theme::CHROME),
         ),
     );
@@ -261,7 +264,16 @@ fn render_ready(
         area,
         &mut y,
         Line::styled(
-            format!("{} · {state}", stop.category.label()),
+            format!("Focus · one change · {}", stop.category.label()),
+            Style::default().fg(theme::CHROME),
+        ),
+    );
+    render_row(
+        frame,
+        area,
+        &mut y,
+        Line::styled(
+            format!("File state · {state}"),
             Style::default().fg(theme::CHROME),
         ),
     );
@@ -331,7 +343,7 @@ fn footer_lines(review: &ReviewActivity) -> Vec<Line<'static>> {
                 ));
             }
             lines.push(Line::styled(
-                format!("{count} review {steps} ready · j / k  Previous / next"),
+                format!("{count} review {steps} ready · j / k  Previous / next change"),
                 Style::default().fg(theme::CHROME),
             ));
             if active.cancelling {
@@ -345,7 +357,7 @@ fn footer_lines(review: &ReviewActivity) -> Vec<Line<'static>> {
             return lines;
         }
         lines.push(Line::styled(
-            "j / k  Previous / next",
+            "j / k  Previous / next change",
             Style::default().fg(theme::CHROME),
         ));
         if let Some(file) = review.active_file() {
@@ -369,7 +381,10 @@ fn footer_lines(review: &ReviewActivity) -> Vec<Line<'static>> {
             "How it works",
             Style::default().add_modifier(Modifier::BOLD),
         ),
-        Line::styled("j / k  Previous / next", Style::default().fg(theme::CHROME)),
+        Line::styled(
+            "j / k  Previous / next change",
+            Style::default().fg(theme::CHROME),
+        ),
         Line::styled("Space  Stage / unstage", Style::default().fg(theme::CHROME)),
         Line::styled("       the whole file", Style::default().fg(theme::CHROME)),
         Line::styled("i  Commit staged work", Style::default().fg(theme::CHROME)),

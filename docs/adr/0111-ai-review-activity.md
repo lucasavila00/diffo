@@ -23,10 +23,12 @@ between review steps, `Space` stages or unstages the current file, and `i` commi
 changes. User-facing text says change, file, and review step; protocol terms never appear.
 
 The left pane shows a short overview, a stable ordered list of up to eight steps, the
-selected file and staging state, why the step matters, and persistent controls. Keep the
-order above the selected-step details so selection changes never move its rows. The right
-pane reuses Diffo's diff renderer. Starting a review opens the first step. `j`, `k`, and
-mouse selection immediately open their step; `Enter` recenters it after scrolling.
+selected file and staging state, why the step matters, and persistent controls. Each step
+focuses on one concrete change in one file. Its explanation may connect related work, but
+the selection is never a file-wide or multi-file group. Keep the order above the
+selected-step details so selection changes never move its rows. The right pane reuses
+Diffo's diff renderer. Starting a review opens the first step. `j`, `k`, and mouse
+selection immediately open their step; `Enter` recenters it after scrolling.
 
 `Space` stages or unstages the whole selected file through the existing command queue.
 Successful staging advances one step in review order, including when the next step is in
@@ -52,8 +54,10 @@ lifetime.
 
 Send staged and unstaged changes through stdin as untrusted data. Give each hunk a stable
 opaque ID. The response contains one to three overview lines and one to eight ordered
-stops. Each stop contains a title, a fixed attention category, a reason, and one hunk ID.
-Reject malformed output, invalid bounds or categories, and unknown or repeated IDs.
+stops. Each stop focuses on one hunk in one file and contains a title, a fixed attention
+category, a reason, and that hunk ID. Other changes may inform the reason but cannot form
+a grouped selection. Reject malformed output, invalid bounds or categories, and unknown
+or repeated IDs.
 
 Process at most two changed file projections per Codex call, in stable order, within one
 120-second queued command. Install each validated batch immediately so the user can

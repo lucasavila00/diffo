@@ -1,11 +1,19 @@
-use std::collections::VecDeque;
-use std::path::PathBuf;
+use std::{
+    collections::VecDeque,
+    path::PathBuf,
+    time::{Duration, Instant},
+};
 
+use crossterm::event::{Event, MouseButton, MouseEventKind};
 use diffo_core::{ApplicationCommandId, CancellationHandle, RepositoryAction};
+use ratatui::layout::Rect;
 
-use crate::diff::FileKey;
+use crate::diff::{
+    CommandProgress, CommandProgressAction, CommandProgressRow,
+    CommandProgressState as CommandRowState, FileKey, Message, command_action_at_position,
+};
 
-use super::AiCommitRequest;
+use super::{AiCommitRequest, CommandProgressState as WorkbenchProgressState, Workbench};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ApplicationAction {
@@ -50,6 +58,7 @@ pub struct ApplicationCommand {
     pub id: ApplicationCommandId,
     pub action: ApplicationAction,
     pub label: String,
+    pub phase: Option<String>,
     pub cancellation: CancellationHandle,
     pub state: CommandState,
 }
@@ -162,14 +171,24 @@ impl CommandQueue {
         self.active.is_some() || !self.queued.is_empty()
     }
 
-    pub fn entries(&self) -> impl Iterator<Item = (ApplicationCommandId, &str, CommandState)> {
+    pub fn entries(&self) -> impl Iterator<Item = (ApplicationCommandId, String, CommandState)> {
         self.active
             .iter()
-            .map(|command| (command.id, command.label.as_str(), command.state))
+            .map(|command| {
+                let label = if command.state == CommandState::Running {
+                    command.phase.as_ref().map_or_else(
+                        || command.label.clone(),
+                        |phase| format!("{} — {phase}", command.label),
+                    )
+                } else {
+                    command.label.clone()
+                };
+                (command.id, label, command.state)
+            })
             .chain(
                 self.queued
                     .iter()
-                    .map(|command| (command.id, command.label.as_str(), CommandState::Queued)),
+                    .map(|command| (command.id, command.label.clone(), CommandState::Queued)),
             )
     }
 
@@ -188,7 +207,8 @@ impl CommandQueue {
         debug_assert!(self.active.is_none());
         let command = ApplicationCommand {
             id: queued.id,
-            label: command_label(&action),
+            label: queued.label,
+            phase: command_phase(&action),
             action,
             cancellation: queued.cancellation,
             state: CommandState::Running,
@@ -244,6 +264,9 @@ impl CommandQueue {
 
 fn intent_label(intent: &CommandIntent) -> String {
     match intent {
+        CommandIntent::Repository(RepositoryAction::Sync | RepositoryAction::SyncToRemote(_)) => {
+            "Sync".to_owned()
+        }
         CommandIntent::Repository(action) => {
             command_label(&ApplicationAction::Repository(action.clone()))
         }
@@ -257,6 +280,16 @@ fn intent_label(intent: &CommandIntent) -> String {
         CommandIntent::AiCommit => "AI commit".to_owned(),
         CommandIntent::Sync | CommandIntent::SyncToRemote(_) => "Sync".to_owned(),
         CommandIntent::Update => "Update Diffo".to_owned(),
+    }
+}
+
+fn command_phase(action: &ApplicationAction) -> Option<String> {
+    match action {
+        ApplicationAction::Repository(
+            RepositoryAction::Sync | RepositoryAction::SyncToRemote(_),
+        ) => Some("Fetching".to_owned()),
+        ApplicationAction::AiCommit(_) => Some("Generating commit message".to_owned()),
+        _ => None,
     }
 }
 
@@ -320,6 +353,158 @@ fn command_label(action: &ApplicationAction) -> String {
         }
         ApplicationAction::AiCommit(_) => "Writing commit message".to_owned(),
         ApplicationAction::Update => "Updating Diffo".to_owned(),
+    }
+}
+
+impl Workbench {
+    pub(super) fn cancel_clicked_command(&mut self, event: &Event, area: Rect) -> bool {
+        let Event::Mouse(mouse) = event else {
+            return false;
+        };
+        if mouse.kind != MouseEventKind::Down(MouseButton::Left) {
+            return false;
+        }
+        let (rows, hidden) = self.command_progress_rows();
+        let Some(action) = command_action_at_position(
+            CommandProgress {
+                rows: &rows,
+                hidden,
+                animation_tick: self.command_animation_tick,
+            },
+            area,
+            mouse.column,
+            mouse.row,
+        ) else {
+            return false;
+        };
+        let changed = match action {
+            CommandProgressAction::Cancel(id) => self.commands.cancel(id),
+            CommandProgressAction::CancelAll => self.commands.cancel_all(),
+        };
+        if changed && self.commands.ai_commit_id().is_none() {
+            self.diff.model.finish_ai_commit();
+        }
+        changed
+    }
+
+    pub(super) fn command_progress_rows(&self) -> (Vec<CommandProgressRow>, usize) {
+        let visible_commands = if self.commands.active().is_some() {
+            4
+        } else {
+            3
+        };
+        let total = self.commands.entries().count();
+        let rows = self
+            .commands
+            .entries()
+            .take(visible_commands)
+            .map(|(id, label, state)| CommandProgressRow {
+                id,
+                label,
+                state: match state {
+                    CommandState::Queued => CommandRowState::Queued,
+                    CommandState::Cancelling => CommandRowState::Cancelling,
+                    CommandState::Running | CommandState::Finished(_) => CommandRowState::Active,
+                },
+            })
+            .collect();
+        (rows, total.saturating_sub(visible_commands))
+    }
+
+    pub fn take_application_command(&mut self, now: Instant) -> Option<ApplicationCommand> {
+        let queued = self.commands.take_next()?;
+        let action = match self.prepare_command_intent(&queued.intent) {
+            Ok(action) => action,
+            Err(detail) => {
+                self.commands.fail_preparation();
+                self.diff.model.finish_ai_commit();
+                self.show_error("Queued command stopped", detail);
+                return None;
+            }
+        };
+        if let ApplicationAction::Repository(repository_action) = &action
+            && !self
+                .diff
+                .model
+                .activate_repository_action(repository_action.clone())
+        {
+            self.diff.model.cancel_operation(repository_action);
+            self.commands.fail_preparation();
+            self.diff.model.finish_ai_commit();
+            self.show_error(
+                "Queued command stopped",
+                "The previous repository command has not finished",
+            );
+            return None;
+        }
+        let command = self.commands.activate(queued, action);
+        self.last_prompt_id = None;
+        self.command_progress = WorkbenchProgressState::Waiting {
+            command_id: command.id,
+            reveal_at: now + Duration::from_millis(150),
+        };
+        self.command_animation_tick = 0;
+        self.request_redraw();
+        Some(command)
+    }
+
+    fn prepare_command_intent(
+        &mut self,
+        intent: &CommandIntent,
+    ) -> Result<ApplicationAction, &'static str> {
+        let repository = match intent {
+            CommandIntent::Repository(action) => Some(action.clone()),
+            CommandIntent::ToggleStage(key) => self.diff.model.prepare_toggle_stage(key),
+            CommandIntent::ToggleStageAll => self.diff.model.prepare_toggle_stage_all(),
+            CommandIntent::StageAll => self.diff.model.prepare_stage_all(),
+            CommandIntent::UnstageAll => self.diff.model.prepare_unstage_all(),
+            CommandIntent::StageFile(path) => self.diff.model.prepare_stage_file(path.clone()),
+            CommandIntent::UnstageFile(path) => self.diff.model.prepare_unstage_file(path.clone()),
+            CommandIntent::Commit(draft) => self.diff.model.prepare_commit(draft),
+            CommandIntent::Sync => Some(RepositoryAction::Sync),
+            CommandIntent::SyncToRemote(remote) => {
+                Some(RepositoryAction::SyncToRemote(remote.clone()))
+            }
+            CommandIntent::AiCommit => {
+                return AiCommitRequest::from_snapshot(&self.diff.model.snapshot)
+                    .map(ApplicationAction::AiCommit)
+                    .ok_or("There are no staged changes for the AI commit");
+            }
+            CommandIntent::Update => return Ok(ApplicationAction::Update),
+        };
+        repository
+            .map(ApplicationAction::Repository)
+            .ok_or("The repository no longer has the changes this command needs")
+    }
+
+    pub(super) fn enqueue_followup_intent(&mut self, message: &Message) -> bool {
+        let intent = match message {
+            Message::ToggleStageSelected => self
+                .diff
+                .model
+                .selected
+                .clone()
+                .map(CommandIntent::ToggleStage),
+            Message::ToggleStageAll => Some(CommandIntent::ToggleStageAll),
+            Message::StageAll => Some(CommandIntent::StageAll),
+            Message::UnstageAll => Some(CommandIntent::UnstageAll),
+            Message::StageFile(path) => Some(CommandIntent::StageFile(path.clone())),
+            Message::UnstageFile(path) => Some(CommandIntent::UnstageFile(path.clone())),
+            Message::ExecuteCommit => Some(CommandIntent::Commit(self.diff.model.commit_draft())),
+            Message::ExecuteSync => Some(CommandIntent::Sync),
+            Message::ExecuteSyncToRemote(remote) => {
+                Some(CommandIntent::SyncToRemote(remote.clone()))
+            }
+            _ => return false,
+        };
+        if let Some(intent) = intent {
+            if matches!(message, Message::ExecuteCommit) {
+                self.close_modal();
+            }
+            self.commands.enqueue_intent(intent);
+            self.request_redraw();
+        }
+        true
     }
 }
 
@@ -423,5 +608,34 @@ mod tests {
         queue.acknowledge(fetch, CommandResult::Failed).unwrap();
 
         assert!(!queue.has_work());
+    }
+
+    #[test]
+    fn multi_step_commands_keep_the_goal_visible_while_the_phase_changes() {
+        let mut queue = CommandQueue::new();
+        let sync = queue.enqueue(RepositoryAction::Sync);
+        let ai = queue.enqueue_ai_commit();
+        assert_eq!(
+            queue.entries().collect::<Vec<_>>(),
+            vec![
+                (sync, "Sync".to_owned(), CommandState::Queued),
+                (ai, "AI commit".to_owned(), CommandState::Queued),
+            ]
+        );
+
+        let queued = queue.take_next().expect("sync queued");
+        let _ = queue.activate(
+            queued,
+            ApplicationAction::Repository(RepositoryAction::Sync),
+        );
+        assert_eq!(
+            queue.entries().next(),
+            Some((sync, "Sync — Fetching".to_owned(), CommandState::Running))
+        );
+        queue.active_mut().unwrap().phase = Some("Pushing".to_owned());
+        assert_eq!(
+            queue.entries().next(),
+            Some((sync, "Sync — Pushing".to_owned(), CommandState::Running))
+        );
     }
 }

@@ -6,7 +6,9 @@ use diffo_core::{
     SyncPlan,
 };
 use ratatui::{Terminal, backend::TestBackend, buffer::Buffer, style::Color};
+use std::time::Duration;
 
+mod command_queue;
 mod momentum;
 mod prompt;
 mod sync;
@@ -431,67 +433,6 @@ fn clicking_the_progress_marker_requests_cancellation_until_acknowledged() {
     );
     assert!(workbench.commands.active().is_none());
     assert!(workbench.toasts.as_slice().is_empty());
-}
-
-#[test]
-fn queue_controls_truncate_waiting_work_and_cancel_the_active_command() {
-    let mut workbench = Workbench::new(RepositorySnapshot::default());
-    workbench.commands.enqueue(RepositoryAction::Fetch);
-    let running = workbench
-        .take_application_command(Instant::now())
-        .expect("fetch starts");
-    let sync = workbench.commands.enqueue(RepositoryAction::Sync);
-    workbench.commands.enqueue_update();
-    let area = Rect::new(0, 0, 100, 30);
-    let content = workbench_areas(area).content;
-    let cancel_sync = Event::Mouse(MouseEvent {
-        kind: MouseEventKind::Down(MouseButton::Left),
-        column: content.right().saturating_sub(3),
-        row: content.y.saturating_add(3),
-        modifiers: KeyModifiers::NONE,
-    });
-
-    let _ = workbench.handle_event(&cancel_sync, area);
-
-    assert_eq!(workbench.commands.queued_len(), 0);
-    assert_eq!(
-        workbench.commands.active().map(|command| command.id),
-        Some(running.id)
-    );
-    assert!(!workbench.commands.entries().any(|(id, _, _)| id == sync));
-
-    workbench.commands.enqueue(RepositoryAction::Sync);
-    let cancel_all = Event::Mouse(MouseEvent {
-        kind: MouseEventKind::Down(MouseButton::Left),
-        column: content.right().saturating_sub(5),
-        row: content.y.saturating_add(4),
-        modifiers: KeyModifiers::NONE,
-    });
-    let _ = workbench.handle_event(&cancel_all, area);
-
-    assert!(running.cancellation.is_cancelled());
-    assert_eq!(workbench.commands.queued_len(), 0);
-    assert_eq!(
-        workbench.commands.active().map(|command| command.state),
-        Some(CommandState::Cancelling)
-    );
-}
-
-#[test]
-fn preparation_failure_discards_every_waiting_command() {
-    let mut workbench = Workbench::new(RepositorySnapshot::default());
-    workbench.commands.enqueue_intent(CommandIntent::StageAll);
-    workbench.commands.enqueue_update();
-
-    assert!(workbench.take_application_command(Instant::now()).is_none());
-
-    assert!(!workbench.commands.has_work());
-    assert!(matches!(
-        workbench.modal,
-        Some(Modal::Error(ref error))
-            if error.title == "Queued command stopped"
-                && error.detail.contains("no longer has the changes")
-    ));
 }
 
 #[test]

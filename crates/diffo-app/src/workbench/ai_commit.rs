@@ -377,7 +377,7 @@ impl Workbench {
                 }));
                 let command = self.commands.active_mut()?;
                 command.action = ApplicationAction::Repository(action.clone());
-                "Committing".clone_into(&mut command.label);
+                command.phase = Some("Committing".to_owned());
                 let cancellation = command.cancellation.clone();
                 let _ = self.diff.model.start_repository_action(action.clone());
                 self.request_redraw();
@@ -413,9 +413,7 @@ fn push_escaped(output: &mut String, character: char) {
 mod tests {
     use std::{path::PathBuf, time::Instant};
 
-    use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
     use diffo_core::{ChangeKind, FileDiff, FileState, OperationResult, RepositorySnapshot};
-    use ratatui::layout::Rect;
 
     use super::*;
     use crate::{
@@ -442,10 +440,6 @@ mod tests {
                 .collect(),
             ..RepositorySnapshot::default()
         }
-    }
-
-    fn key(character: char) -> Event {
-        Event::Key(KeyEvent::new(KeyCode::Char(character), KeyModifiers::NONE))
     }
 
     #[test]
@@ -559,156 +553,6 @@ mod tests {
     }
 
     #[test]
-    fn stage_ai_commit_and_sync_can_be_entered_as_one_queue() {
-        let mut initial = snapshot("OLD STAGED".to_owned());
-        initial.files[0].staged = None;
-        initial.head = HeadState::Named {
-            name: "main".to_owned(),
-            commit: "old-head".to_owned(),
-        };
-        initial.upstream = Some(diffo_core::UpstreamState {
-            name: "origin/main".to_owned(),
-            ahead: 0,
-            behind: 0,
-            recent_local_commits: Vec::new(),
-        });
-        let mut workbench = Workbench::new(initial);
-
-        let _ = workbench.handle_events(&[key('a'), key('i'), key('9')], Rect::new(0, 0, 100, 30));
-
-        assert_eq!(workbench.commands.queued_len(), 3);
-        let stage = workbench
-            .take_application_command(Instant::now())
-            .expect("stage starts");
-        assert_eq!(
-            stage.action,
-            ApplicationAction::Repository(RepositoryAction::StageAll)
-        );
-
-        let mut staged = snapshot("NEW STAGED".to_owned());
-        staged.files[0].unstaged = None;
-        staged.head = HeadState::Named {
-            name: "main".to_owned(),
-            commit: "old-head".to_owned(),
-        };
-        staged.upstream = Some(diffo_core::UpstreamState {
-            name: "origin/main".to_owned(),
-            ahead: 0,
-            behind: 0,
-            recent_local_commits: Vec::new(),
-        });
-        workbench.operation_completed(
-            stage.id,
-            RepositoryAction::StageAll,
-            OperationResult::Stage,
-            staged.clone(),
-        );
-
-        let ai = workbench
-            .take_application_command(Instant::now())
-            .expect("AI generation starts");
-        let ApplicationAction::AiCommit(request) = &ai.action else {
-            panic!("AI intent should resolve after staging");
-        };
-        assert!(request.prompt_context("repo").contains("NEW STAGED"));
-        let handoff = workbench
-            .ai_commit_finished(
-                ai.id,
-                AiCommitOutcome::Generated("feat: queue commands".to_owned()),
-            )
-            .expect("commit handoff");
-        let mut committed = staged;
-        committed.files.clear();
-        committed.head = HeadState::Named {
-            name: "main".to_owned(),
-            commit: "new-head".to_owned(),
-        };
-        workbench.operation_completed(
-            ai.id,
-            handoff.action,
-            OperationResult::Commit {
-                hash: "new-head".to_owned(),
-            },
-            committed,
-        );
-
-        let sync = workbench
-            .take_application_command(Instant::now())
-            .expect("sync starts after commit");
-        assert_eq!(
-            sync.action,
-            ApplicationAction::Repository(RepositoryAction::Sync)
-        );
-    }
-
-    #[test]
-    fn repeated_stage_all_shortcuts_resolve_one_turn_at_a_time() {
-        let mut initial = snapshot("UNSTAGED".to_owned());
-        initial.files[0].unstaged = initial.files[0].staged.take();
-        let mut workbench = Workbench::new(initial);
-
-        let _ = workbench.handle_events(&[key('a'), key('a')], Rect::new(0, 0, 100, 30));
-
-        let stage = workbench
-            .take_application_command(Instant::now())
-            .expect("stage starts");
-        assert_eq!(
-            stage.action,
-            ApplicationAction::Repository(RepositoryAction::StageAll)
-        );
-        let mut staged = snapshot("STAGED".to_owned());
-        staged.files[0].unstaged = None;
-        workbench.operation_completed(
-            stage.id,
-            RepositoryAction::StageAll,
-            OperationResult::Stage,
-            staged,
-        );
-
-        let unstage = workbench
-            .take_application_command(Instant::now())
-            .expect("second toggle starts");
-        assert_eq!(
-            unstage.action,
-            ApplicationAction::Repository(RepositoryAction::UnstageAll)
-        );
-    }
-
-    #[test]
-    fn manual_commit_can_be_queued_before_staging_finishes() {
-        let mut initial = snapshot("UNSTAGED".to_owned());
-        initial.files[0].unstaged = initial.files[0].staged.take();
-        let mut workbench = Workbench::new(initial);
-
-        let _ = workbench.handle_events(
-            &[
-                key('a'),
-                Event::Key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE)),
-            ],
-            Rect::new(0, 0, 100, 30),
-        );
-        let stage = workbench
-            .take_application_command(Instant::now())
-            .expect("stage starts");
-        let mut staged = snapshot("STAGED".to_owned());
-        staged.files[0].unstaged = None;
-        workbench.operation_completed(
-            stage.id,
-            RepositoryAction::StageAll,
-            OperationResult::Stage,
-            staged,
-        );
-
-        let commit = workbench
-            .take_application_command(Instant::now())
-            .expect("commit starts");
-        assert_eq!(
-            commit.action,
-            ApplicationAction::Repository(RepositoryAction::Commit("Update 1 file".to_owned()))
-        );
-    }
-
-    #[test]
     fn second_ai_shortcut_cancels_the_queued_request_but_not_stage_all() {
         let mut unstaged = snapshot("UNSTAGED".to_owned());
         unstaged.files[0].unstaged = unstaged.files[0].staged.take();
@@ -773,25 +617,6 @@ mod tests {
         );
         assert_eq!(workbench.diff.model.commit_message, "manual draft");
         assert!(!workbench.diff.model.ai_commit_pending());
-    }
-
-    #[test]
-    fn generation_failure_cancels_every_command_behind_it() {
-        let mut workbench = Workbench::new(snapshot("STAGED".to_owned()));
-        workbench.request_ai_commit();
-        workbench
-            .commands
-            .enqueue_intent(super::super::CommandIntent::Sync);
-        let command = workbench
-            .take_application_command(Instant::now())
-            .expect("AI command");
-
-        let _ = workbench.ai_commit_finished(
-            command.id,
-            AiCommitOutcome::Failed("not authenticated".to_owned()),
-        );
-
-        assert!(!workbench.commands.has_work());
     }
 
     #[test]

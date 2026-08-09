@@ -26,7 +26,7 @@ impl Workbench {
         }) else {
             return;
         };
-        command.label = crate::diff::model::sync_progress_label(&progress);
+        command.phase = Some(crate::diff::model::sync_progress_label(&progress));
         if let SyncProgress::Plan(plan) = progress {
             self.show_toast(ToastKind::Info, crate::diff::model::sync_plan_title(&plan));
         } else {

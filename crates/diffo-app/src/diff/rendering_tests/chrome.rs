@@ -117,7 +117,7 @@ fn command_progress_shows_order_overflow_and_every_cancel_target() {
     let rows = vec![
         crate::diff::CommandProgressRow {
             id: diffo_core::ApplicationCommandId(1),
-            label: "Staging".to_owned(),
+            label: "Sync — Fetching".to_owned(),
             state: crate::diff::CommandProgressState::Active,
         },
         crate::diff::CommandProgressRow {
@@ -151,6 +151,7 @@ fn command_progress_shows_order_overflow_and_every_cancel_target() {
             .collect::<Vec<_>>()
             .concat()
     };
+    assert!(line(2).contains("Sync — Fetching"));
     assert!(line(3).contains("2. AI commit"));
     assert!(line(4).contains("3. Sync"));
     assert!(line(5).contains("+2 more"));

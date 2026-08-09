@@ -32,7 +32,7 @@ fn sync_progress_shows_the_selected_plan_and_concrete_git_step() {
         workbench
             .commands
             .active()
-            .map(|command| command.label.as_str()),
+            .and_then(|command| command.phase.as_deref()),
         Some("Rebasing 2 commits")
     );
 }
@@ -61,7 +61,9 @@ fn first_sync_progress_and_completion_use_the_selected_remote_action() {
             .commands
             .active()
             .unwrap()
-            .label
+            .phase
+            .as_deref()
+            .unwrap()
             .contains("set origin/topic as upstream")
     );
 

@@ -50,10 +50,7 @@ pub fn render_command_progress(
             .title(" Commands "),
         area,
     );
-    let inner = area.inner(ratatui::layout::Margin {
-        horizontal: design::BORDER_WIDTH,
-        vertical: design::BORDER_WIDTH,
-    });
+    let inner = area.inner(design::PANEL_INSET);
     for (index, row) in progress.rows.iter().enumerate() {
         let y = inner
             .y
@@ -121,10 +118,7 @@ pub fn command_action_at_position(
     row: u16,
 ) -> Option<CommandProgressAction> {
     let progress_area = command_progress_area(area, progress.rows.len())?;
-    let inner = progress_area.inner(ratatui::layout::Margin {
-        horizontal: design::BORDER_WIDTH,
-        vertical: design::BORDER_WIDTH,
-    });
+    let inner = progress_area.inner(design::PANEL_INSET);
     if !inner.contains((column, row).into()) {
         return None;
     }

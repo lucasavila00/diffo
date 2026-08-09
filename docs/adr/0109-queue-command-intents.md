@@ -32,8 +32,13 @@ waiting commands, their order and state, `+N more` when needed, a cancel target 
 row, and `Cancel all`. Keep it visible when changing activities. Do not add hover
 behavior.
 
+Every row has a stable goal and, when useful, a changing phase. Never name a command
+after only its first step. Show `Sync — Fetching`, then `Sync — Pushing`; show
+`AI commit — Generating commit message`, then `AI commit — Committing`. New multi-step
+commands must follow the same rule.
+
 AI message generation and the guarded commit are one queue item. Keep the same command
-ID and cancellation handle, and change its label from generating to committing.
+ID and cancellation handle while its phase changes.
 
 Use this queue for all user-started asynchronous repository, AI, and update commands.
 Keep read-only background preparation and picker queries on their existing schedulers.
@@ -45,6 +50,6 @@ installed by its predecessor. Cover repeated toggles, stale targets, preparation
 execution failures, active and queued cancellation, cancel-all, and the rule that no
 discarded command starts.
 
-Rendering tests cover queue order, state labels, overflow, cancellation hit targets,
-small terminals, modals, and activity changes. End-to-end tests cover the complete AI
-commit workflow without sleeps.
+Rendering tests cover queue order, goal and phase labels, overflow, cancellation hit
+targets, small terminals, modals, and activity changes. End-to-end tests cover the
+complete AI commit workflow without sleeps.

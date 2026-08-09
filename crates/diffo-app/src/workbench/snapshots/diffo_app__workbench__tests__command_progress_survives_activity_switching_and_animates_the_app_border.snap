@@ -1,19 +1,28 @@
 ---
 source: crates/diffo-app/src/workbench/tests.rs
-expression: "buffer_region(terminal.backend().buffer(), Rect::new(55, 1, 44, 3),)"
+expression: "buffer_region(terminal.backend().buffer(), Rect::new(55, 1, 44, 6),)"
 ---
 Buffer {
-    area: Rect { x: 0, y: 0, width: 44, height: 3 },
+    area: Rect { x: 0, y: 0, width: 44, height: 6 },
     content: [
-        "┌─────────────────────────────────────────┐",
-        "│ Fetching…                               │",
+        "┌ Commands ────────────────────────────────┐",
+        "│ Fetching…                              │",
+        "│                                          │",
+        "│                                          │",
+        "│                                          │",
         "└──────────────────────────────────────────┘",
     ],
     styles: [
         x: 0, y: 0, fg: DarkGray, bg: Reset, underline: Reset, modifier: NONE,
-        x: 42, y: 0, fg: White, bg: Reset, underline: Reset, modifier: BOLD,
-        x: 43, y: 0, fg: DarkGray, bg: Reset, underline: Reset, modifier: NONE,
         x: 1, y: 1, fg: Indexed(25), bg: Reset, underline: Reset, modifier: NONE,
+        x: 41, y: 1, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 42, y: 1, fg: White, bg: Reset, underline: Reset, modifier: BOLD,
         x: 43, y: 1, fg: DarkGray, bg: Reset, underline: Reset, modifier: NONE,
+        x: 1, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 43, y: 2, fg: DarkGray, bg: Reset, underline: Reset, modifier: NONE,
+        x: 1, y: 3, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 43, y: 3, fg: DarkGray, bg: Reset, underline: Reset, modifier: NONE,
+        x: 1, y: 4, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 43, y: 4, fg: DarkGray, bg: Reset, underline: Reset, modifier: NONE,
     ]
 }

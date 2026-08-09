@@ -10,8 +10,7 @@ use ratatui::{
 };
 
 use super::{
-    Activity, CommandState, Tool, Workbench, explorer_frame_preparation, render_activity_bar,
-    workbench_areas,
+    Activity, Tool, Workbench, explorer_frame_preparation, render_activity_bar, workbench_areas,
 };
 
 pub(super) struct PresentationState {
@@ -124,10 +123,11 @@ impl Workbench {
 
     pub fn render(&mut self, frame: &mut Frame) {
         let area = frame.area();
+        let content = workbench_areas(area).content;
         if self.render_full_screen(frame) {
+            self.render_command_queue(frame, content);
             return;
         }
-        let content = workbench_areas(area).content;
         match self.active {
             Activity::Diff => self.diff.render(frame, content, self.pane_split),
             Activity::Explorer => self.explorer.render(frame, content, self.pane_split),
@@ -137,21 +137,6 @@ impl Workbench {
         self.render_full_screen_entry(frame);
         render_pane_drag_marker(frame, tool_areas(content).content, self.pane_split);
         render_toasts(frame, self.toasts.as_slice(), content);
-        if let Some(command) = self
-            .commands
-            .active()
-            .filter(|_| self.command_progress.is_visible())
-        {
-            render_command_progress(
-                frame,
-                CommandProgress {
-                    label: &command.label,
-                    cancelling: command.state == CommandState::Cancelling,
-                    animation_tick: self.command_animation_tick,
-                },
-                content,
-            );
-        }
         render_activity_bar(frame, area, self.active, self.review.available());
         if self.command_progress.is_visible() {
             frame.render_widget(
@@ -162,6 +147,22 @@ impl Workbench {
             );
         }
         self.render_modal(frame, content, area);
+        self.render_command_queue(frame, content);
+    }
+
+    fn render_command_queue(&self, frame: &mut Frame, content: Rect) {
+        let (rows, hidden) = self.command_progress_rows();
+        if !rows.is_empty() {
+            render_command_progress(
+                frame,
+                CommandProgress {
+                    rows: &rows,
+                    hidden,
+                    animation_tick: self.command_animation_tick,
+                },
+                content,
+            );
+        }
     }
 }
 

@@ -6,7 +6,9 @@ use diffo_core::{
     SyncPlan,
 };
 use ratatui::{Terminal, backend::TestBackend, buffer::Buffer, style::Color};
+use std::time::Duration;
 
+mod command_queue;
 mod momentum;
 mod prompt;
 mod sync;
@@ -207,6 +209,7 @@ fn full_screen_diff_renders_styled_raw_hunks_and_x_closes_it() {
     let _ = workbench.handle_event(&open, area);
     workbench.prepare_frame(area);
     assert!(workbench.full_screen());
+    let _ = start_repository_command(&mut workbench, RepositoryAction::Fetch);
 
     let backend = TestBackend::new(area.width, area.height);
     let mut terminal = Terminal::new(backend).unwrap();
@@ -228,6 +231,12 @@ fn full_screen_diff_renders_styled_raw_hunks_and_x_closes_it() {
     assert_eq!(terminal.backend().buffer()[(0, 2)].bg, Color::Indexed(52));
     assert_eq!(terminal.backend().buffer()[(0, 3)].bg, Color::Indexed(22));
     assert!(!row(0).contains("File Diff"));
+    assert!(
+        (0..area.height)
+            .map(row)
+            .collect::<String>()
+            .contains("Commands")
+    );
 
     let _ = workbench.handle_event(&key(KeyCode::Char('F')), area);
     assert!(workbench.full_screen());
@@ -399,7 +408,7 @@ fn command_progress_survives_activity_switching_and_animates_the_app_border() {
     assert_eq!(workbench.active, Activity::Explorer);
     insta::assert_debug_snapshot!(buffer_region(
         terminal.backend().buffer(),
-        Rect::new(55, 1, 44, 3),
+        Rect::new(55, 1, 44, 6),
     ));
     assert_ne!(terminal.backend().buffer()[(0, 0)].fg, first_border);
 }
@@ -418,7 +427,7 @@ fn clicking_the_progress_marker_requests_cancellation_until_acknowledged() {
     let click = Event::Mouse(MouseEvent {
         kind: MouseEventKind::Down(MouseButton::Left),
         column: content.right().saturating_sub(3),
-        row: content.y.saturating_add(1),
+        row: content.y.saturating_add(2),
         modifiers: KeyModifiers::NONE,
     });
 
@@ -461,15 +470,8 @@ fn network_activity_does_not_own_the_toast_queue() {
     workbench.show_toast(ToastKind::Info, "Existing result");
     let existing_id = workbench.toasts.as_slice()[0].id;
 
-    assert_eq!(
-        workbench
-            .diff
-            .model
-            .start_repository_action(RepositoryAction::Fetch),
-        Some(RepositoryAction::Fetch)
-    );
     let id = workbench.commands.enqueue(RepositoryAction::Fetch);
-    let _ = workbench.commands.start_next();
+    let _ = workbench.take_application_command(Instant::now());
     assert_eq!(
         workbench.diff.model.network_operation(),
         Some(NetworkOperation::Fetch)

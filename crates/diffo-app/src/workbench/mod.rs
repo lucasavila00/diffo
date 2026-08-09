@@ -2,13 +2,11 @@
 
 use std::{
     collections::{HashMap, VecDeque},
-    time::{Duration, Instant},
+    time::Instant,
 };
 
 use crate::diff::{Effect, Message, Model, ToastKind, ToastQueue, update};
-use crate::diff::{
-    FramePreparation, Renderer, RendererEvent, command_cancel_at_position, toast_at_position,
-};
+use crate::diff::{FramePreparation, Renderer, RendererEvent, toast_at_position};
 use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind};
 use diffo_core::{
     ApplicationCommandId, GitPrompt, PromptId, RepositoryAction, RepositoryQueryId,
@@ -55,6 +53,7 @@ pub use activity_bar::{
 };
 pub use ai_commit::*;
 pub use application_update::UpdateOutcome;
+pub(crate) use command_queue::CommandIntent;
 pub use command_queue::{
     ApplicationAction, ApplicationCommand, CommandQueue, CommandResult, CommandState,
 };
@@ -110,7 +109,6 @@ pub struct Workbench {
     toast_deadlines: HashMap<u64, Instant>,
     pending_errors: VecDeque<ErrorDialog>,
     commands: CommandQueue,
-    deferred_ai_commit: ai_commit::DeferredAiCommit,
     repository_generation: u64,
     command_progress: CommandProgressState,
     command_animation_tick: usize,
@@ -233,7 +231,6 @@ impl Workbench {
             toast_deadlines: HashMap::new(),
             pending_errors: VecDeque::new(),
             commands: CommandQueue::new(),
-            deferred_ai_commit: ai_commit::DeferredAiCommit::default(),
             repository_generation: 0,
             command_progress: CommandProgressState::Hidden,
             command_animation_tick: 0,
@@ -363,13 +360,16 @@ impl Workbench {
     }
 
     fn handle_event(&mut self, event: &Event, area: Rect) -> Option<WorkbenchCommand> {
+        let content = workbench_areas(area).content;
+        if self.cancel_clicked_command(event, content) {
+            return Some(WorkbenchCommand::Redraw);
+        }
         if self.modal.is_some() {
             return self.handle_modal_event(event, area);
         }
         if !self.full_screen && self.select_activity(event, area) {
             return Some(WorkbenchCommand::Redraw);
         }
-        let content = workbench_areas(area).content;
         let tool_captures_global_input = match self.active {
             Activity::Diff => self.diff.captures_global_input(),
             Activity::Explorer => self.explorer.captures_global_input(),
@@ -508,27 +508,7 @@ impl Workbench {
     }
 
     fn handle_overlay_click(&mut self, event: &Event, area: Rect) -> bool {
-        self.dismiss_clicked_toast(event, area) || self.cancel_clicked_command(event, area)
-    }
-
-    fn cancel_clicked_command(&mut self, event: &Event, area: Rect) -> bool {
-        let Event::Mouse(mouse) = event else {
-            return false;
-        };
-        if mouse.kind != MouseEventKind::Down(MouseButton::Left)
-            || !command_cancel_at_position(area, mouse.column, mouse.row)
-        {
-            return false;
-        }
-        let Some(id) = self
-            .commands
-            .active()
-            .filter(|_| self.command_progress.is_visible())
-            .map(|command| command.id)
-        else {
-            return false;
-        };
-        self.commands.cancel(id)
+        self.dismiss_clicked_toast(event, area)
     }
 
     fn sync_diff_pane_state(&mut self) {
@@ -542,21 +522,6 @@ impl Workbench {
             Activity::Explorer => self.explorer.dismiss_popover(),
             Activity::Review => {}
         }
-    }
-
-    pub fn take_application_command(&mut self, now: Instant) -> Option<ApplicationCommand> {
-        let command = self.commands.start_next()?;
-        self.last_prompt_id = None;
-        self.command_progress = CommandProgressState::Waiting {
-            command_id: command.id,
-            reveal_at: now + Duration::from_millis(150),
-        };
-        self.command_animation_tick = 0;
-        if let ApplicationAction::Repository(action) = &command.action {
-            let _ = self.diff.model.start_repository_action(action.clone());
-        }
-        self.request_redraw();
-        Some(command)
     }
 
     pub fn accept_task_result(&mut self, result: WorkbenchTaskResult) {
@@ -583,6 +548,9 @@ impl Workbench {
     fn update_diff(&mut self, message: Message) -> Option<WorkbenchEffect> {
         if message == Message::ExecuteAiCommit {
             self.request_ai_commit();
+            return None;
+        }
+        if self.commands.has_work() && self.enqueue_followup_intent(&message) {
             return None;
         }
         if message == Message::FocusCommitInput {

@@ -1,5 +1,5 @@
 use super::{
-    ChangeArea, Model, PathBuf, PendingFileAction, RepositoryAction, StageFileAction,
+    ChangeArea, FileKey, Model, PathBuf, PendingFileAction, RepositoryAction, StageFileAction,
     UnstageFileAction, file_keys,
 };
 
@@ -17,33 +17,43 @@ impl Model {
             return None;
         }
         let selected = self.selected.clone()?;
+        self.prepare_toggle_stage(&selected)
+    }
+
+    pub(crate) fn prepare_toggle_stage(&mut self, requested: &FileKey) -> Option<RepositoryAction> {
+        let keys = file_keys(&self.snapshot);
+        let selected = keys
+            .iter()
+            .find(|key| *key == requested)
+            .cloned()
+            .or_else(|| {
+                keys.iter()
+                    .find(|key| key.path == requested.path && key.area != requested.area)
+                    .cloned()
+            })?;
         let action = match selected.area {
-            ChangeArea::Unstaged => self.stage_selected(),
-            ChangeArea::Staged => self.unstage_selected(),
+            ChangeArea::Unstaged => RepositoryAction::Stage(selected.path.clone()),
+            ChangeArea::Staged => RepositoryAction::Unstage(selected.path.clone()),
         };
-        if action.is_some() {
-            let peers = file_keys(&self.snapshot)
-                .into_iter()
-                .filter(|key| key.area == selected.area)
-                .collect::<Vec<_>>();
-            let next = peers
-                .iter()
-                .position(|key| key == &selected)
-                .and_then(|index| {
-                    (peers.len() > 1).then(|| peers[(index + 1) % peers.len()].clone())
-                });
-            self.pending_file_action = Some(match selected.area {
-                ChangeArea::Unstaged => PendingFileAction::StageFile(StageFileAction {
-                    path: selected.path,
-                    next_unstaged: next,
-                }),
-                ChangeArea::Staged => PendingFileAction::UnstageFile(UnstageFileAction {
-                    path: selected.path,
-                    next_staged: next,
-                }),
-            });
-        }
-        action
+        let peers = keys
+            .into_iter()
+            .filter(|key| key.area == selected.area)
+            .collect::<Vec<_>>();
+        let next = peers
+            .iter()
+            .position(|key| key == &selected)
+            .and_then(|index| (peers.len() > 1).then(|| peers[(index + 1) % peers.len()].clone()));
+        self.pending_file_action = Some(match selected.area {
+            ChangeArea::Unstaged => PendingFileAction::StageFile(StageFileAction {
+                path: selected.path,
+                next_unstaged: next,
+            }),
+            ChangeArea::Staged => PendingFileAction::UnstageFile(UnstageFileAction {
+                path: selected.path,
+                next_staged: next,
+            }),
+        });
+        Some(action)
     }
 
     #[must_use]
@@ -58,6 +68,10 @@ impl Model {
         if self.ai_commit_pending {
             return None;
         }
+        self.prepare_toggle_stage_all()
+    }
+
+    pub(crate) fn prepare_toggle_stage_all(&self) -> Option<RepositoryAction> {
         if self
             .snapshot
             .files
@@ -79,6 +93,10 @@ impl Model {
         if self.ai_commit_pending {
             return None;
         }
+        self.prepare_stage_all()
+    }
+
+    pub(crate) fn prepare_stage_all(&self) -> Option<RepositoryAction> {
         self.snapshot
             .files
             .iter()
@@ -91,6 +109,10 @@ impl Model {
         if self.ai_commit_pending {
             return None;
         }
+        self.prepare_unstage_all()
+    }
+
+    pub(crate) fn prepare_unstage_all(&self) -> Option<RepositoryAction> {
         self.snapshot
             .files
             .iter()
@@ -103,6 +125,10 @@ impl Model {
         if self.ai_commit_pending {
             return None;
         }
+        self.prepare_stage_file(path)
+    }
+
+    pub(crate) fn prepare_stage_file(&self, path: PathBuf) -> Option<RepositoryAction> {
         self.snapshot
             .files
             .iter()
@@ -118,6 +144,10 @@ impl Model {
         if self.ai_commit_pending {
             return None;
         }
+        self.prepare_unstage_file(path)
+    }
+
+    pub(crate) fn prepare_unstage_file(&self, path: PathBuf) -> Option<RepositoryAction> {
         self.snapshot
             .files
             .iter()

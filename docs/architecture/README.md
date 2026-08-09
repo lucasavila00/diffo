@@ -1,5 +1,17 @@
 # Architecture
 
+This directory is the source of truth for Diffo's current architecture:
+
+- [AI commits](ai-commits.md) describes the Codex integration and its safety
+  boundaries.
+- [Sync](sync.md) describes the current branch synchronization algorithm.
+
+Architecture decision records in the [decision log](../adr/) explain why
+consequential choices were made. Living architecture pages describe the system as it
+works now; decision records retain the context and tradeoffs from when a choice was
+made. When implementation changes, update the relevant living page. Add a decision
+record only when the rationale and alternatives will matter to future maintainers.
+
 ## What Diffo is
 
 Diffo is one terminal program. It shows the current Git repository. User can read

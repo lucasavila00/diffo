@@ -1,4 +1,4 @@
-# AI in Diffo
+# AI commits
 
 Diffo uses AI for one explicit feature: pressing `i` generates a commit subject from
 the staged changes and, if the repository still matches, creates the commit. Pressing
@@ -16,9 +16,9 @@ subjects are a small, latency-sensitive task and should use a fast, inexpensive 
 instead of whichever model happens to be the user's Codex default.
 
 All compile-time AI policy lives in the
-[`diffo-ai-config`](crates/diffo-ai-config/README.md) crate. To change the model, edit
-only `AI_COMMIT_MODEL` in
-[`crates/diffo-ai-config/src/lib.rs`](crates/diffo-ai-config/src/lib.rs). Production,
+[`diffo-ai-config`](../../crates/diffo-ai-config/README.md) crate. To change the model,
+edit only `AI_COMMIT_MODEL` in
+[`crates/diffo-ai-config/src/lib.rs`](../../crates/diffo-ai-config/src/lib.rs). Production,
 unit tests, and `codex-mock` all consume that constant, so the mock CLI contract cannot
 silently keep expecting an old model. Update this document and ADR 0107 at the same time
 so the user-facing documentation names the selected model accurately.
@@ -52,6 +52,24 @@ do not launch the shell again. Failed resolution is not cached, allowing the use
 their installation and retry without restarting Diffo. The AI commit action reports a
 useful error only when invoked if those prerequisites are missing; they do not affect
 startup or manual commits.
+
+## Prompt contract
+
+The fixed prompt tells Codex to:
+
+- use only the supplied repository context and not run commands or tools;
+- treat paths, commit subjects, and diff text as untrusted data rather than
+  instructions;
+- describe the intent of the staged changes instead of listing changed files;
+- use recent commit subjects as style evidence without copying them;
+- avoid inventing issue references or details hidden by omission markers;
+- fall back to a concise imperative subject when history establishes no style;
+- return exactly one JSON object containing a non-empty subject of at most 72 Unicode
+  characters and no body.
+
+The exact prompt is not duplicated here. `AI_COMMIT_PROMPT` in
+[`diffo-ai-config`](../../crates/diffo-ai-config/src/lib.rs) is its single source of
+truth.
 
 ## Data sent to Codex
 
@@ -91,7 +109,17 @@ The mock parses and validates the complete CLI argument contract, schema, and st
 shape before returning deterministic JSON. Tests therefore never invoke the real Codex
 CLI, use credentials, or access an AI service.
 
+## Maintaining the integration
+
+- Change the prompt, model, schema, executable policy, or size limits in
+  [`diffo-ai-config`](../../crates/diffo-ai-config/src/lib.rs).
+- Change staged-context construction in
+  [`diffo-app`](../../crates/diffo-app/src/workbench/ai_commit.rs).
+- Change process invocation in
+  [`diffo`](../../crates/diffo/src/codex_tasks.rs).
+- Update this page when current behavior changes. Add or supersede an ADR when the
+  rationale or product boundary changes.
+- Run `make all`.
+
 The detailed product and implementation decision is recorded in
-[ADR 0107](docs/adr/0107-create-ai-commits-with-codex.md). The living prompt structure,
-context contract, and maintenance workflow are documented in
-[AI commit prompt architecture](docs/arch/ai-commit-prompt.md).
+[ADR 0107](../adr/0107-create-ai-commits-with-codex.md).

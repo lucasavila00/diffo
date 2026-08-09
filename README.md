@@ -26,5 +26,11 @@ a Git repository.
 ## AI commits
 
 Diffo can generate and create a commit from staged changes with Codex. See
-[AI.md](AI.md) for the supported provider and model, data boundaries, safety checks,
-and offline testing contract.
+[AI commits](docs/architecture/ai-commits.md) for the supported provider and model,
+data boundaries, safety checks, and offline testing contract.
+
+## Architecture
+
+The [architecture documentation](docs/architecture/) describes how Diffo works now.
+The [architecture decision log](docs/adr/) preserves the context and tradeoffs behind
+consequential decisions.

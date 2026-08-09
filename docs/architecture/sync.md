@@ -134,5 +134,5 @@ unchanged.
 - Never push after a failed or conflicted rebase.
 - Fetch may update remote-tracking refs even when a later step stops.
 
-Decision records: [ADR 0081](docs/adr/0081-broaden-sync-preconditions.md) and
-[ADR 0085](docs/adr/0085-repair-mismatched-sync-upstreams.md).
+Decision records: [ADR 0081](../adr/0081-broaden-sync-preconditions.md) and
+[ADR 0085](../adr/0085-repair-mismatched-sync-upstreams.md).

@@ -1,7 +1,7 @@
 use super::support::*;
 
 #[test]
-fn mock_change_buttons_toggle_without_moving_their_rows() -> Result<()> {
+fn mock_change_warnings_toggle_without_moving_their_rows() -> Result<()> {
     let repository = TestRepository::new()?;
     let fixture = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../diffo-core/fixtures/repository-state.ron")
@@ -24,7 +24,7 @@ fn mock_change_buttons_toggle_without_moving_their_rows() -> Result<()> {
         .wait_for_text("new first change")?
         .wait_for(&next)?
         .wait_for_text_gone(" Previous change (p)")?;
-    let next_row = screen.position(&next)?.context("next button row")?.1;
+    let next_row = screen.position(&next)?.context("next warning row")?.1;
 
     screen
         .press_many(Key::Down, 2)?
@@ -33,10 +33,10 @@ fn mock_change_buttons_toggle_without_moving_their_rows() -> Result<()> {
         .wait_for(&next)?;
     let middle_previous_row = screen
         .position(&previous)?
-        .context("middle previous button row")?
+        .context("middle previous warning row")?
         .1;
     assert_eq!(
-        screen.position(&next)?.context("middle next button")?.1,
+        screen.position(&next)?.context("middle next warning")?.1,
         next_row
     );
 
@@ -48,7 +48,7 @@ fn mock_change_buttons_toggle_without_moving_their_rows() -> Result<()> {
     assert_eq!(
         screen
             .position(&previous)?
-            .context("ending previous button")?
+            .context("ending previous warning")?
             .1,
         middle_previous_row
     );

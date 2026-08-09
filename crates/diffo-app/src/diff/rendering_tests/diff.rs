@@ -331,35 +331,68 @@ fn maps_inset_scrollbar_clicks_to_absolute_positions() {
 
 #[test]
 fn horizontal_scrollbar_tracks_only_the_visible_vertical_slice() {
-    let mut model = model();
-    let mut patch = String::from("@@ -1,100 +1,100 @@\n-old first\n+new first\n");
-    for line in 0..100 {
-        if line == 80 {
-            writeln!(patch, " {}", "wide-content-".repeat(20)).unwrap();
-        } else {
-            writeln!(patch, " short line {line}").unwrap();
+    for mode in [DiffViewMode::Inline, DiffViewMode::SideBySide] {
+        let mut model = model();
+        model.diff_view_mode = mode;
+        let mut patch = String::from("@@ -1,100 +1,100 @@\n-old first\n+new first\n");
+        for line in 0..100 {
+            if line == 80 {
+                writeln!(patch, " {}", "wide-content-".repeat(20)).unwrap();
+            } else {
+                writeln!(patch, " short line {line}").unwrap();
+            }
         }
+        model.snapshot.files[0].unstaged.as_mut().unwrap().text = patch;
+        let mut renderer = Renderer::new();
+        let area = Rect::new(0, 0, 100, 30);
+        let diff_area = horizontal_panes(main_area(area), model.file_pane_percent)[1];
+
+        let top = renderer.prepare_frame(&model, area);
+        let top_viewport = renderer.diff_viewport_metrics(mode, diff_area, model.diff_scroll);
+        assert_eq!(top.maximum_horizontal_scroll, 0);
+        assert!(top_viewport.horizontal_area.is_empty());
+
+        model.diff_scroll = 70;
+        let wide = renderer.prepare_frame(&model, area);
+        let wide_viewport = renderer.diff_viewport_metrics(mode, diff_area, model.diff_scroll);
+        assert!(wide.maximum_horizontal_scroll > 0);
+        assert!(!wide_viewport.horizontal_area.is_empty());
+        assert_eq!(top_viewport.content_area, wide_viewport.content_area);
+        assert_eq!(
+            top_viewport.maximum_vertical_scroll,
+            wide_viewport.maximum_vertical_scroll
+        );
+        model.diff_horizontal_scroll = wide.maximum_horizontal_scroll;
+
+        model.diff_scroll = 0;
+        let top_again = renderer.prepare_frame(&model, area);
+        assert_eq!(top_again.maximum_horizontal_scroll, 0);
+        model.clamp_diff_scroll(
+            top_again.maximum_vertical_scroll,
+            top_again.maximum_horizontal_scroll,
+        );
+        assert_eq!(model.diff_horizontal_scroll, 0);
     }
-    model.snapshot.files[0].unstaged.as_mut().unwrap().text = patch;
-    let mut renderer = Renderer::new();
+}
+
+#[test]
+fn page_movement_uses_the_full_diff_viewport() {
+    let mut model = model();
+    model.snapshot.files[0].unstaged.as_mut().unwrap().text = large_hunk_patch();
     let area = Rect::new(0, 0, 100, 30);
+    let mut renderer = Renderer::new();
+    renderer.prepare_frame(&model, area);
+    let diff_area = horizontal_panes(main_area(area), model.file_pane_percent)[1];
+    let viewport =
+        renderer.diff_viewport_metrics(model.diff_view_mode, diff_area, model.diff_scroll);
+    let event = Event::Key(KeyEvent::new(KeyCode::PageDown, KeyModifiers::NONE));
 
-    let top = renderer.prepare_frame(&model, area);
-    assert_eq!(top.maximum_horizontal_scroll, 0);
-
-    model.diff_scroll = 70;
-    let wide = renderer.prepare_frame(&model, area);
-    assert!(wide.maximum_horizontal_scroll > 0);
-    model.diff_horizontal_scroll = wide.maximum_horizontal_scroll;
-
-    model.diff_scroll = 0;
-    let top_again = renderer.prepare_frame(&model, area);
-    assert_eq!(top_again.maximum_horizontal_scroll, 0);
-    model.clamp_diff_scroll(
-        top_again.maximum_vertical_scroll,
-        top_again.maximum_horizontal_scroll,
+    assert_eq!(
+        renderer.map_event(&event, &model, area),
+        Some(RendererEvent::Message(
+            crate::diff::Message::JumpDiffToPosition(viewport.viewport_rows)
+        ))
     );
-    assert_eq!(model.diff_horizontal_scroll, 0);
 }
 
 #[test]
@@ -479,11 +512,12 @@ fn hunk_markers_have_a_separate_clickable_rail_beside_the_scrollbar() {
         .unwrap();
 
     let changes = &renderer.highlighted.as_ref().unwrap().inline_changes;
-    let target = changes[1].first;
+    let marker = changes[1].first;
+    let target = marker.saturating_sub(1);
     let marker_column = renderer.scrollbars.vertical_area.x.saturating_add(1);
     let marker_row = renderer.scrollbars.vertical_area.y
         + overview_position(
-            target,
+            marker,
             renderer.scrollbars.rows,
             renderer.scrollbars.vertical_area.height,
         );
@@ -526,8 +560,19 @@ fn hunk_markers_have_a_separate_clickable_rail_beside_the_scrollbar() {
     assert_eq!(transition.vertical, target);
 }
 
+fn assert_inert_warning_click(renderer: &mut Renderer, model: &Model, area: Rect, warning: Rect) {
+    assert_eq!(
+        renderer.map_event(
+            &mouse_at(MouseEventKind::Down(MouseButton::Left), warning),
+            model,
+            area,
+        ),
+        None
+    );
+}
+
 #[test]
-fn large_hunk_buttons_are_fixed_and_do_not_wrap() {
+fn change_warnings_overlay_fixed_edge_rows_and_do_not_activate() {
     let mut model = model();
     model.snapshot.files[0].unstaged.as_mut().unwrap().text = large_hunk_patch();
     let area = Rect::new(0, 0, 100, 30);
@@ -536,14 +581,14 @@ fn large_hunk_buttons_are_fixed_and_do_not_wrap() {
     let mut terminal = Terminal::new(backend).unwrap();
     let top_preparation = renderer.prepare_frame(&model, area);
     wait_for_syntax_ready(&mut renderer, &model);
+    let diff_area = horizontal_panes(main_area(area), model.file_pane_percent)[1];
     let top_viewport =
-        renderer.diff_viewport_metrics(model.diff_view_mode, area, model.diff_scroll);
+        renderer.diff_viewport_metrics(model.diff_view_mode, diff_area, model.diff_scroll);
     terminal
         .draw(|frame| renderer.render(frame, &model))
         .unwrap();
-
-    assert!(renderer.hunk_buttons.previous.is_none());
-    let next_area = renderer.hunk_buttons.next.expect("next button");
+    assert!(renderer.change_warnings.previous.is_none());
+    let next_area = renderer.change_warnings.next.expect("next warning");
     let next_target = renderer
         .change_jump(&model, area, true)
         .expect("next target");
@@ -555,19 +600,17 @@ fn large_hunk_buttons_are_fixed_and_do_not_wrap() {
         next_target,
     );
     insta::assert_debug_snapshot!(
-        "next_button",
+        "next_warning",
         buffer_region(terminal.backend().buffer(), next_area)
     );
+    assert!((next_area.x..next_area.right()).all(|column| {
+        !terminal.backend().buffer()[(column, next_area.y)]
+            .modifier
+            .contains(Modifier::BOLD)
+    }));
     assert!(renderer.scrollbars.horizontal_area.height > 0);
     assert_eq!(next_area.bottom(), renderer.scrollbars.horizontal_area.y);
-    assert_jump_event(
-        &mut renderer,
-        &mouse_at(MouseEventKind::Down(MouseButton::Left), next_area),
-        &model,
-        area,
-        next_target,
-    );
-
+    assert_inert_warning_click(&mut renderer, &model, area, next_area);
     let transition = renderer
         .prepare_frame(&model, area)
         .viewport_transition
@@ -576,27 +619,18 @@ fn large_hunk_buttons_are_fixed_and_do_not_wrap() {
     assert!(renderer.submitted.is_empty());
     model.diff_scroll = transition.vertical;
     let middle_viewport =
-        renderer.diff_viewport_metrics(model.diff_view_mode, area, model.diff_scroll);
+        renderer.diff_viewport_metrics(model.diff_view_mode, diff_area, model.diff_scroll);
     terminal
         .draw(|frame| renderer.render(frame, &model))
         .unwrap();
-    let previous_area = renderer.hunk_buttons.previous.expect("previous button");
-    let previous_target = renderer
-        .change_jump(&model, area, false)
-        .expect("previous target");
+    let previous_area = renderer.change_warnings.previous.expect("previous warning");
     insta::assert_debug_snapshot!(
-        "previous_button",
+        "previous_warning",
         buffer_region(terminal.backend().buffer(), previous_area)
     );
     assert_eq!(previous_area.y, area.y.saturating_add(1));
-    assert!(renderer.hunk_buttons.next.is_some());
-    assert_jump_event(
-        &mut renderer,
-        &mouse_at(MouseEventKind::Down(MouseButton::Left), previous_area),
-        &model,
-        area,
-        previous_target,
-    );
+    assert!(renderer.change_warnings.next.is_some());
+    assert_inert_warning_click(&mut renderer, &model, area, previous_area);
 
     model.diff_scroll = renderer
         .highlighted
@@ -608,77 +642,18 @@ fn large_hunk_buttons_are_fixed_and_do_not_wrap() {
         .unwrap();
     let end_preparation = renderer.prepare_frame(&model, area);
     let end_viewport =
-        renderer.diff_viewport_metrics(model.diff_view_mode, area, model.diff_scroll);
+        renderer.diff_viewport_metrics(model.diff_view_mode, diff_area, model.diff_scroll);
     terminal
         .draw(|frame| renderer.render(frame, &model))
         .unwrap();
-    assert!(renderer.hunk_buttons.next.is_none());
+    assert!(renderer.change_warnings.next.is_none());
     assert_eq!(
         end_preparation.maximum_vertical_scroll,
         top_preparation.maximum_vertical_scroll
     );
-    assert_eq!(top_viewport.content_area.y, middle_viewport.content_area.y);
-    assert_eq!(middle_viewport.content_area.y, end_viewport.content_area.y);
-    assert_eq!(
-        viewport_control_bottom(top_viewport),
-        viewport_control_bottom(middle_viewport)
-    );
-    assert_eq!(
-        viewport_control_bottom(middle_viewport),
-        viewport_control_bottom(end_viewport)
-    );
-    assert_eq!(
-        renderer.hunk_button_direction_at(next_area.x, next_area.y),
-        None
-    );
-}
-
-#[test]
-fn whole_block_navigation_uses_projection_specific_region_bounds() {
-    let mut patch = String::from("@@ -1,20 +1,20 @@\n context\n");
-    for line in 0..10 {
-        writeln!(patch, "-old {line}").unwrap();
-    }
-    for line in 0..10 {
-        writeln!(patch, "+new {line}").unwrap();
-    }
-    for line in 0..9 {
-        writeln!(patch, " context {line}").unwrap();
-    }
-    let area = Rect::new(0, 0, 100, 16);
-
-    let mut inline_model = model();
-    inline_model.snapshot.files[0]
-        .unstaged
-        .as_mut()
-        .unwrap()
-        .text = patch.clone();
-    let mut inline_renderer = Renderer::new();
-    inline_renderer.prepare_frame(&inline_model, area);
-    let inline = inline_renderer.diff_viewport_metrics_at(DiffViewMode::Inline, area, 0);
-
-    let mut side_model = model();
-    side_model.diff_view_mode = DiffViewMode::SideBySide;
-    side_model.snapshot.files[0].unstaged.as_mut().unwrap().text = patch;
-    let mut side_renderer = Renderer::new();
-    side_renderer.prepare_frame(&side_model, area);
-    let side = side_renderer.diff_viewport_metrics_at(DiffViewMode::SideBySide, area, 0);
-
-    assert_eq!(inline.viewport_rows, side.viewport_rows);
-    assert_eq!(inline.next_change, None);
-    assert_eq!(side.next_change, None);
-    assert_eq!(
-        inline_renderer.highlighted.as_ref().unwrap().inline_changes[0],
-        diffo_diff::ChangeRegion { first: 2, last: 21 }
-    );
-    assert_eq!(
-        side_renderer
-            .highlighted
-            .as_ref()
-            .unwrap()
-            .side_by_side_changes[0],
-        diffo_diff::ChangeRegion { first: 2, last: 11 }
-    );
+    assert_eq!(top_viewport.content_area, middle_viewport.content_area);
+    assert_eq!(middle_viewport.content_area, end_viewport.content_area);
+    assert_inert_warning_click(&mut renderer, &model, area, next_area);
 }
 
 fn large_hunk_patch() -> String {

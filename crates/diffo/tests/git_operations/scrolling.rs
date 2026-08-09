@@ -204,7 +204,7 @@ fn vertical_scrollbar_reaches_its_end_with_the_last_diff_line() -> Result<()> {
 }
 
 #[test]
-fn large_hunk_buttons_click_between_changes_without_wrapping() -> Result<()> {
+fn change_warning_clicks_are_inert_and_shortcuts_navigate() -> Result<()> {
     let repository = TestRepository::new()?;
     let path = repository.worktree.join("navigation.rs");
     fs::write(&path, navigation_file(false)?)?;
@@ -219,13 +219,21 @@ fn large_hunk_buttons_click_between_changes_without_wrapping() -> Result<()> {
     screen
         .wait_for_text("FIRST_CHANGE")?
         .click(&Selector::text(" Next change (n)"))?
+        .wait_for_text("FIRST_CHANGE")?;
+    assert!(!screen.contents().contains("MIDDLE_CHANGE"));
+    screen
+        .press(Key::Char('n'))?
         .wait_for_text("MIDDLE_CHANGE")?;
     assert!(screen.contents().contains(" Previous change (p)"));
     screen
-        .click(&Selector::text(" Next change (n)"))?
+        .press(Key::Char('n'))?
         .wait_for_text("LAST_CHANGE")?
         .wait_for_text_gone(" Next change (n)")?
         .click(&Selector::text(" Previous change (p)"))?
+        .wait_for_text("LAST_CHANGE")?;
+    assert!(!screen.contents().contains("MIDDLE_CHANGE"));
+    screen
+        .press(Key::Char('p'))?
         .wait_for_text("MIDDLE_CHANGE")?;
     Ok(())
 }
@@ -275,16 +283,16 @@ fn fully_visible_changes_are_skipped_in_both_directions_without_wrapping() -> Re
         .wait_for_text("CLUSTER_CHANGE_A")?
         .wait_for_text("CLUSTER_CHANGE_B")?
         .wait_for_text("CLUSTER_CHANGE_C")?
-        .click(&Selector::text(" Previous change (p)"))?
+        .press(Key::Char('p'))?
         .wait_for_text("EARLY_CLUSTER_CHANGE")?;
 
     screen.press(Key::Char('p'))?;
     thread::sleep(Duration::from_millis(100));
     screen
         .wait_for_text("EARLY_CLUSTER_CHANGE")?
-        .click(&Selector::text(" Next change (n)"))?
+        .press(Key::Char('n'))?
         .wait_for_text("CLUSTER_CHANGE_A")?
-        .click(&Selector::text(" Next change (n)"))?
+        .press(Key::Char('n'))?
         .wait_for_text("LATE_CLUSTER_CHANGE")?
         .wait_for_text_gone(" Next change (n)")?
         .press(Key::Char('n'))?;
@@ -318,12 +326,12 @@ fn viewport_spanning_change_is_one_atomic_navigation_stop() -> Result<()> {
 
     screen
         .wait_for_text("EARLY_BLOCK_CHANGE")?
-        .click(&Selector::text(" Next change (n)"))?
+        .press(Key::Char('n'))?
         .wait_for_text("OLD_TALL_CHANGE_050")?
         .press(Key::Char('n'))?
         .wait_for_text("LATE_BLOCK_CHANGE")?
         .wait_for_text_gone(" Next change (n)")?
-        .click(&Selector::text(" Previous change (p)"))?
+        .press(Key::Char('p'))?
         .wait_for_text("OLD_TALL_CHANGE_050")?
         .press(Key::Char('p'))?
         .wait_for_text("EARLY_BLOCK_CHANGE")?
@@ -339,12 +347,15 @@ fn viewport_spanning_change_is_one_atomic_navigation_stop() -> Result<()> {
         .collect::<std::result::Result<Vec<_>, _>>()?;
     let input_index = frames
         .iter()
-        .position(|frame| {
+        .enumerate()
+        .filter(|(_, frame)| {
             frame
                 .input_events
                 .iter()
                 .any(|event| event.contains("Char('n')"))
         })
+        .nth(1)
+        .map(|(index, _)| index)
         .with_context(|| format!("trace has no next-change input frame:\n{trace}"))?;
     let old_scroll = frames[input_index].scroll_before.0;
     let commit_offset = frames[input_index..]

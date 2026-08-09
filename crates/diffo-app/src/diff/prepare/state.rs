@@ -25,7 +25,7 @@ pub struct Renderer {
     pub(in crate::diff) scrollbar_drag: Option<ScrollbarAxis>,
     pub(in crate::diff) staged_picker: FilePicker<FileKey>,
     pub(in crate::diff) unstaged_picker: FilePicker<FileKey>,
-    pub(in crate::diff) hunk_buttons: HunkButtonMetrics,
+    pub(in crate::diff) change_warnings: ChangeWarningAreas,
     pub(in crate::diff) content_revision: u64,
     #[cfg(test)]
     pub(in crate::diff) highlight_computations: usize,
@@ -121,7 +121,7 @@ pub(in crate::diff) struct ScrollbarMetrics {
 }
 
 #[derive(Clone, Copy, Debug, Default)]
-pub(in crate::diff) struct HunkButtonMetrics {
+pub(in crate::diff) struct ChangeWarningAreas {
     pub(in crate::diff) previous: Option<Rect>,
     pub(in crate::diff) next: Option<Rect>,
 }

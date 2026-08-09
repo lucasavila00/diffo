@@ -52,7 +52,7 @@ use view::files::{
     unstaged_files,
 };
 #[cfg(test)]
-use view::geometry::scrollbar_position_count;
+use view::geometry::{diff_panel_inner, scrollbar_position_count};
 use view::geometry::{horizontal_panes, main_area, overview_position};
 use view::overlays::commit_editor_action_at_position;
 pub use view::overlays::{
@@ -68,7 +68,7 @@ use view::style::{
 };
 
 use prepare::state::{
-    ChangeTarget, DiffKey, DiffViewportMetrics, HighlightCache, HunkButtonMetrics, MAX_SYNC_BYTES,
+    ChangeTarget, ChangeWarningAreas, DiffKey, DiffViewportMetrics, HighlightCache, MAX_SYNC_BYTES,
     MAX_SYNC_LINES, PREPARED_BUFFER_CACHE_SIZE, PrepareCommit, PrepareOutcome, PrepareRequest,
     ScrollAnchor, ScrollbarAxis, ScrollbarMetrics,
 };
@@ -421,17 +421,8 @@ impl Renderer {
         if let Some(outcome) = self.map_picker_input(event, model, area) {
             return Some(outcome);
         }
-        let mut change_button_action = None;
         if let Event::Mouse(mouse) = event {
-            if mouse.kind == MouseEventKind::Down(MouseButton::Left)
-                && let Some(next) = self.hunk_button_direction_at(mouse.column, mouse.row)
-            {
-                change_button_action = Some(if next {
-                    crate::diff::Message::JumpToNextChange
-                } else {
-                    crate::diff::Message::JumpToPreviousChange
-                });
-            } else if mouse.kind == MouseEventKind::Up(MouseButton::Left) {
+            if mouse.kind == MouseEventKind::Up(MouseButton::Left) {
                 self.scrollbar_drag = None;
             } else if matches!(
                 mouse.kind,
@@ -459,7 +450,7 @@ impl Renderer {
                 }
             }
         }
-        let message = match change_button_action.or_else(|| input::map_event(event, model, area)) {
+        let message = match input::map_event(event, model, area) {
             Some(crate::diff::Message::JumpToPreviousChange) => {
                 self.change_jump(model, area, false).map(|target| {
                     self.vertical_message(crate::diff::Message::SetDiffScroll(target), model)

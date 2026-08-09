@@ -71,21 +71,6 @@ impl Renderer {
         }
     }
 
-    pub(in crate::diff) fn hunk_button_direction_at(&self, column: u16, row: u16) -> Option<bool> {
-        let position = (column, row).into();
-        if self
-            .hunk_buttons
-            .previous
-            .is_some_and(|area| area.contains(position))
-        {
-            return Some(false);
-        }
-        self.hunk_buttons
-            .next
-            .is_some_and(|area| area.contains(position))
-            .then_some(true)
-    }
-
     pub(in crate::diff) fn change_at_marker(
         &self,
         column: u16,
@@ -101,17 +86,17 @@ impl Renderer {
             DiffViewMode::Inline => &cache.inline_changes,
             DiffViewMode::SideBySide => &cache.side_by_side_changes,
         };
-        changes.iter().map(|change| change.first).find(|change| {
+        changes.iter().enumerate().find_map(|(index, change)| {
             let marker_row = self
                 .scrollbars
                 .vertical_area
                 .y
                 .saturating_add(overview_position(
-                    *change,
+                    change.first,
                     self.scrollbars.rows,
                     self.scrollbars.vertical_area.height,
                 ));
-            marker_row == row
+            (marker_row == row).then(|| change_scroll(changes, index))
         })
     }
 
@@ -187,71 +172,24 @@ impl Renderer {
         } else {
             usize::from(inner.width)
         };
-        let previous_rows = u16::from(inner.height > 0);
-        let next_rows = u16::from(inner.height > 1);
-        let control_rows = usize::from(previous_rows.saturating_add(next_rows));
-        let mut previous_change = None;
-        let mut next_change = None;
-        let mut show_horizontal = false;
-        let mut horizontal_columns = 0;
-
-        for _ in 0..8 {
-            let reserved_rows = control_rows + usize::from(show_horizontal);
-            let viewport_rows = usize::from(inner.height).saturating_sub(reserved_rows);
-            let maximum_vertical_scroll = maximum_scroll(rows, viewport_rows);
-            let first_row = requested_scroll.min(maximum_vertical_scroll);
-            let new_previous = previous_change_target(changes, first_row, viewport_rows);
-            let new_next = next_change_target(changes, first_row, viewport_rows);
-            let columns = self.displayed_columns(mode, first_row, viewport_rows);
-            horizontal_columns = horizontal_columns.max(columns);
-            let new_horizontal =
-                show_horizontal || (viewport_columns > 0 && columns > viewport_columns);
-            if new_previous == previous_change
-                && new_next == next_change
-                && new_horizontal == show_horizontal
-            {
-                break;
-            }
-            previous_change = new_previous;
-            next_change = new_next;
-            show_horizontal = new_horizontal;
-        }
-
-        if previous_rows == 0 {
-            previous_change = None;
-        }
-        if next_rows == 0 {
-            next_change = None;
-        }
-        let horizontal_rows =
-            u16::from(show_horizontal && inner.height > previous_rows.saturating_add(next_rows));
-        let content_y = inner.y.saturating_add(previous_rows);
-        let content_bottom = inner
-            .bottom()
-            .saturating_sub(horizontal_rows)
-            .saturating_sub(next_rows);
-        let content_area = Rect::new(
-            inner.x,
-            content_y,
-            inner.width,
-            content_bottom.saturating_sub(content_y),
-        );
-        let horizontal_area = if horizontal_rows == design::SINGLE_LINE_HEIGHT {
+        let content_area = inner;
+        let viewport_rows = usize::from(content_area.height);
+        let maximum_vertical_scroll = maximum_scroll(rows, viewport_rows);
+        let first_row = requested_scroll.min(maximum_vertical_scroll);
+        let previous_change = previous_change_target(changes, first_row, viewport_rows);
+        let next_change = next_change_target(changes, first_row, viewport_rows);
+        let columns = self.displayed_columns(mode, first_row, viewport_rows);
+        let show_horizontal = viewport_columns > 0 && columns > viewport_columns;
+        let horizontal_area = if show_horizontal && !inner.is_empty() {
             Rect::new(
                 inner.x,
-                inner.bottom().saturating_sub(design::SINGLE_LINE_HEIGHT),
+                inner.bottom(),
                 inner.width,
                 design::SINGLE_LINE_HEIGHT,
             )
         } else {
             Rect::default()
         };
-        let viewport_rows = usize::from(content_area.height);
-        let maximum_vertical_scroll = maximum_scroll(rows, viewport_rows);
-        let first_row = requested_scroll.min(maximum_vertical_scroll);
-        let columns = self
-            .displayed_columns(mode, first_row, viewport_rows)
-            .max(horizontal_columns);
         DiffViewportMetrics {
             content_area,
             horizontal_area,
@@ -277,9 +215,10 @@ fn next_change_target(
     let first_below = first_row.saturating_add(viewport_rows);
     changes
         .iter()
-        .find(|change| change.first >= first_below)
-        .map(|change| ChangeTarget {
-            scroll: change.first,
+        .enumerate()
+        .find(|(_, change)| change.first >= first_below)
+        .map(|(index, change)| ChangeTarget {
+            scroll: change_scroll(changes, index),
             edge_row: change.first,
         })
 }
@@ -294,12 +233,17 @@ fn previous_change_target(
     }
     changes
         .iter()
+        .enumerate()
         .rev()
-        .find(|change| change.last < first_row)
-        .map(|change| ChangeTarget {
-            scroll: change.first,
+        .find(|(_, change)| change.last < first_row)
+        .map(|(index, change)| ChangeTarget {
+            scroll: change_scroll(changes, index),
             edge_row: change.last,
         })
+}
+
+fn change_scroll(changes: &[crate::diff::ChangeRegion], index: usize) -> usize {
+    changes[index].first.saturating_sub(usize::from(index > 0))
 }
 
 #[cfg(test)]
@@ -326,20 +270,20 @@ mod tests {
 
     #[test]
     fn skips_fully_visible_changes_in_both_directions() {
-        assert_eq!(next_change_target(CHANGES, 1, 8), Some(target(10, 10)));
+        assert_eq!(next_change_target(CHANGES, 1, 8), Some(target(9, 10)));
         assert_eq!(previous_change_target(CHANGES, 4, 8), Some(target(2, 3)));
     }
 
     #[test]
     fn skips_regions_crossing_viewport_edges() {
-        assert_eq!(next_change_target(CHANGES, 4, 3), Some(target(10, 10)));
+        assert_eq!(next_change_target(CHANGES, 4, 3), Some(target(9, 10)));
         assert_eq!(previous_change_target(CHANGES, 7, 3), Some(target(2, 3)));
     }
 
     #[test]
     fn skips_a_region_taller_than_the_viewport() {
-        assert_eq!(next_change_target(CHANGES, 12, 5), Some(target(34, 34)));
-        assert_eq!(previous_change_target(CHANGES, 20, 5), Some(target(6, 7)));
+        assert_eq!(next_change_target(CHANGES, 12, 5), Some(target(33, 34)));
+        assert_eq!(previous_change_target(CHANGES, 20, 5), Some(target(5, 7)));
     }
 
     #[test]

@@ -145,9 +145,9 @@ fn explorer_cold_scrolls_keep_full_text_in_both_directions() -> Result<()> {
         .press(Key::Tab)?
         .wait_for_text("EXPLORER_LINE_0001")?
         .drag_vertical_scrollbar(0, 100)?
-        .wait_for_text("EXPLORER_LINE_0660")?
+        .wait_for_text("EXPLORER_LINE_0674")?
         .drag_vertical_scrollbar(100, 40)?
-        .wait_for_text("EXPLORER_LINE_0280")?
+        .wait_for_text("EXPLORER_LINE_0259")?
         .press(Key::Char('q'))?
         .wait_for_exit()?;
     drop(screen);

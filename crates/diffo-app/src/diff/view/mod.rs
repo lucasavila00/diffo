@@ -1,27 +1,28 @@
 use super::{
-    Alignment, Block, Borders, DiffBlock, DiffViewMode, DiffViewportMetrics, Frame,
-    HunkButtonMetrics, Line, Model, Paragraph, Rect, Renderer, RowKind, ScrollbarMetrics, Style,
-    inline_line, inline_skeleton_line, overview_position, raw_hunk_line, resize_border_style,
-    side_by_side_line, side_by_side_skeleton_line, terminal_safe_text,
+    Alignment, Block, Borders, ChangeWarningAreas, Clear, DiffBlock, DiffViewMode,
+    DiffViewportMetrics, Frame, Line, Model, Paragraph, Rect, Renderer, RowKind, ScrollbarMetrics,
+    Style, inline_line, inline_skeleton_line, overview_position, raw_hunk_line,
+    resize_border_style, side_by_side_line, side_by_side_skeleton_line, terminal_safe_text,
 };
 use diffo_ui::text_view::{Viewport, ViewportMetrics, render_lines, render_scrollbars};
-use diffo_ui::{design, icons, mouse_target_style, theme};
+use diffo_ui::{design, icons, theme};
 
 pub(in crate::diff) mod files;
 pub(in crate::diff) mod geometry;
 pub(in crate::diff) mod overlays;
 pub(in crate::diff) mod style;
 
-pub(in crate::diff) fn render_hunk_button(
+pub(in crate::diff) fn render_change_warning(
     frame: &mut Frame,
     area: Rect,
     label: &str,
     background: Style,
 ) {
+    frame.render_widget(Clear, area);
     frame.render_widget(
         Paragraph::new(label)
             .alignment(Alignment::Center)
-            .style(mouse_target_style().patch(background)),
+            .style(Style::default().fg(theme::TEXT).patch(background)),
         area,
     );
 }
@@ -263,53 +264,84 @@ impl Renderer {
                 0
             },
         );
-        self.render_hunk_buttons(frame, area, &viewport);
+        self.render_change_warnings(frame, &viewport);
         self.render_diff_scrollbars(frame, area, &viewport, model);
     }
 
-    pub(in crate::diff) fn render_hunk_buttons(
+    pub(in crate::diff) fn render_change_warnings(
         &mut self,
         frame: &mut Frame,
-        area: Rect,
         viewport: &DiffViewportMetrics,
     ) {
-        let inner = geometry::diff_panel_inner(area);
-        let previous_area = viewport.previous_change.map(|_| {
-            Rect::new(
-                inner.x,
-                viewport
-                    .content_area
-                    .y
-                    .saturating_sub(design::SINGLE_LINE_HEIGHT),
-                inner.width,
-                design::SINGLE_LINE_HEIGHT,
-            )
-        });
-        let next_area = viewport.next_change.map(|_| {
-            Rect::new(
-                inner.x,
-                viewport.content_area.bottom(),
-                inner.width,
-                design::SINGLE_LINE_HEIGHT,
-            )
-        });
-        self.hunk_buttons = HunkButtonMetrics {
-            previous: previous_area,
-            next: next_area,
-        };
-        if let (Some(button), Some(target)) = (self.hunk_buttons.previous, viewport.previous_change)
+        self.change_warnings = ChangeWarningAreas::default();
+        if viewport.content_area.is_empty() {
+            return;
+        }
+
+        let warning_width = viewport
+            .content_area
+            .width
+            .saturating_sub(design::DIFF_RIGHT_RAIL_WIDTH);
+        let top = Rect::new(
+            viewport.content_area.x,
+            viewport.content_area.y,
+            warning_width,
+            design::SINGLE_LINE_HEIGHT,
+        );
+        let bottom = Rect::new(
+            viewport.content_area.x,
+            viewport
+                .content_area
+                .bottom()
+                .saturating_sub(design::SINGLE_LINE_HEIGHT),
+            warning_width,
+            design::SINGLE_LINE_HEIGHT,
+        );
+
+        if top == bottom
+            && let (Some(previous), Some(next)) = (viewport.previous_change, viewport.next_change)
         {
-            render_hunk_button(
+            let previous_width = top.width / 2;
+            let previous_area = Rect::new(top.x, top.y, previous_width, top.height);
+            let next_area = Rect::new(
+                top.x.saturating_add(previous_width),
+                top.y,
+                top.width.saturating_sub(previous_width),
+                top.height,
+            );
+            self.change_warnings = ChangeWarningAreas {
+                previous: Some(previous_area),
+                next: Some(next_area),
+            };
+            render_change_warning(
                 frame,
-                button,
+                previous_area,
+                &format!("{} p", icons::CHANGE_PREVIOUS),
+                self.change_navigation_background(previous.edge_row, false),
+            );
+            render_change_warning(
+                frame,
+                next_area,
+                &format!("n {}", icons::CHANGE_NEXT),
+                self.change_navigation_background(next.edge_row, true),
+            );
+            return;
+        }
+
+        if let Some(target) = viewport.previous_change {
+            self.change_warnings.previous = Some(top);
+            render_change_warning(
+                frame,
+                top,
                 &format!("{} Previous change (p)", icons::CHANGE_PREVIOUS),
                 self.change_navigation_background(target.edge_row, false),
             );
         }
-        if let (Some(button), Some(target)) = (self.hunk_buttons.next, viewport.next_change) {
-            render_hunk_button(
+        if let Some(target) = viewport.next_change {
+            self.change_warnings.next = Some(bottom);
+            render_change_warning(
                 frame,
-                button,
+                bottom,
                 &format!("{} Next change (n)", icons::CHANGE_NEXT),
                 self.change_navigation_background(target.edge_row, true),
             );

@@ -3,7 +3,7 @@ source: crates/diffo-app/src/diff/rendering_tests/diff.rs
 expression: "buffer_region(terminal.backend().buffer(),\nRect::new(renderer.scrollbars.vertical_area.x,\nrenderer.scrollbars.vertical_area.y, 2,\nrenderer.scrollbars.vertical_area.height,),)"
 ---
 Buffer {
-    area: Rect { x: 0, y: 0, width: 2, height: 25 },
+    area: Rect { x: 0, y: 0, width: 2, height: 27 },
     content: [
         "█",
         "█│",
@@ -11,6 +11,8 @@ Buffer {
         "█│",
         "█│",
         "█│",
+        "█│",
+        "║│",
         "║│",
         "║│",
         "║│",

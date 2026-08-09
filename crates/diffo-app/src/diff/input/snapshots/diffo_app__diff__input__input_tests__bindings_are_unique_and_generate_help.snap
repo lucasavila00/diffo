@@ -19,7 +19,7 @@ expression: help
     "r: Toggle inline / side-by-side view",
     "m: Edit commit message",
     "i: AI commit staged changes",
-    "Enter: Commit staged changes",
+    "Enter: Commit staged changes or complete merge",
     "n / p: Next / previous change",
     "Space: Stage / unstage selected file",
     "a: Stage / unstage all files",

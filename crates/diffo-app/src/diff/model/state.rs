@@ -1,7 +1,8 @@
 use std::path::{Path, PathBuf};
 
 use diffo_core::{
-    FailureKind, OperationFailure, OperationResult, RepositoryAction, RepositorySnapshot,
+    ChangeKind, FailureKind, OperationFailure, OperationResult, RepositoryAction,
+    RepositoryOperationState, RepositorySnapshot,
 };
 
 mod commit;
@@ -56,6 +57,30 @@ pub enum DiffViewMode {
 pub enum NetworkOperation {
     Fetch,
     Sync,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum MergePhase {
+    Conflicts(usize),
+    Ready,
+}
+
+impl MergePhase {
+    pub(crate) fn from_snapshot(snapshot: &RepositorySnapshot) -> Option<Self> {
+        if snapshot.operation != RepositoryOperationState::Merge {
+            return None;
+        }
+        let conflicts = snapshot
+            .files
+            .iter()
+            .filter(|file| file.kind == ChangeKind::Conflicted)
+            .count();
+        Some(if conflicts == 0 {
+            Self::Ready
+        } else {
+            Self::Conflicts(conflicts)
+        })
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -134,6 +159,10 @@ impl Model {
             cursor,
             pending_file_action: None,
         }
+    }
+
+    pub(crate) fn merge_phase(&self) -> Option<MergePhase> {
+        MergePhase::from_snapshot(&self.snapshot)
     }
 }
 

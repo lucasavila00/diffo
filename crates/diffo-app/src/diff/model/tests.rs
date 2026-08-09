@@ -2,10 +2,12 @@ use std::path::PathBuf;
 
 use diffo_core::{
     ChangeKind, FailureKind, FileDiff, FileState, OperationFailure, OperationResult,
-    RepositoryAction, RepositorySnapshot, SyncPlan, UpstreamState,
+    RepositoryAction, RepositoryOperationState, RepositorySnapshot, SyncPlan, UpstreamState,
 };
 
-use super::{ChangeArea, DiffViewMode, Effect, FileKey, Message, Model, NetworkOperation, update};
+use super::{
+    ChangeArea, DiffViewMode, Effect, FileKey, MergePhase, Message, Model, NetworkOperation, update,
+};
 
 fn model() -> Model {
     Model::new(RepositorySnapshot {
@@ -120,6 +122,42 @@ fn generated_commit_message_is_used_when_input_is_empty() {
         update(&mut model, Message::ExecuteCommit),
         Some(Effect::Repository(RepositoryAction::Commit(
             "Update 1 file".to_owned()
+        )))
+    );
+}
+
+#[test]
+fn merge_completion_requires_resolved_conflicts_but_not_a_staged_diff() {
+    let mut unresolved = model();
+    unresolved.snapshot.operation = RepositoryOperationState::Merge;
+    unresolved.snapshot.files.push(FileState {
+        path: PathBuf::from("conflicted.txt"),
+        old_path: None,
+        kind: ChangeKind::Conflicted,
+        staged: None,
+        unstaged: Some(FileDiff {
+            text: "conflict".to_owned(),
+        }),
+    });
+
+    assert_eq!(unresolved.merge_phase(), Some(MergePhase::Conflicts(1)));
+    assert_eq!(
+        unresolved.suggested_commit_message().as_deref(),
+        Some("Complete merge")
+    );
+    assert!(!unresolved.commit_enabled());
+    assert_eq!(update(&mut unresolved, Message::ExecuteCommit), None);
+
+    let mut ready = Model::new(RepositorySnapshot {
+        operation: RepositoryOperationState::Merge,
+        ..RepositorySnapshot::default()
+    });
+    assert_eq!(ready.merge_phase(), Some(MergePhase::Ready));
+    assert!(ready.commit_enabled());
+    assert_eq!(
+        update(&mut ready, Message::ExecuteCommit),
+        Some(Effect::Repository(RepositoryAction::Commit(
+            "Complete merge".to_owned()
         )))
     );
 }

@@ -1,4 +1,4 @@
-use super::{Model, NetworkOperation, RepositoryAction};
+use super::{MergePhase, Model, NetworkOperation, RepositoryAction};
 
 impl Model {
     pub fn commit_message_input(&mut self, character: char) {
@@ -45,6 +45,9 @@ impl Model {
 
     #[must_use]
     pub fn suggested_commit_message(&self) -> Option<String> {
+        if self.merge_phase().is_some() {
+            return Some("Complete merge".to_owned());
+        }
         let staged_files = self
             .snapshot
             .files
@@ -71,6 +74,7 @@ impl Model {
     pub fn commit_enabled(&self) -> bool {
         !self.ai_commit_pending
             && self.pending_operation.is_none()
+            && !matches!(self.merge_phase(), Some(MergePhase::Conflicts(_)))
             && self.effective_commit_message().is_some()
     }
 

@@ -1,26 +1,31 @@
 name: Release Diffo
 
 on:
-  push:
-    branches:
-      - main
+  workflow_call:
+    inputs:
+      source_sha:
+        description: Commit that passed checks and stress tests
+        required: true
+        type: string
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  publish:
+  build:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
       TARGET: x86_64-unknown-linux-gnu
       ASSET: diffo-x86_64-unknown-linux-gnu
+      SOURCE_SHA: ${{ inputs.source_sha }}
 
     steps:
-      - name: Check out main commit
+      - name: Check out validated commit
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: ${{ inputs.source_sha }}
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -30,8 +35,12 @@ jobs:
       - name: Derive internal update version
         run: |
           set -euo pipefail
+          if [[ ! "${SOURCE_SHA}" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Validated source SHA is invalid: ${SOURCE_SHA}" >&2
+            exit 1
+          fi
           source_sha=$(git rev-parse HEAD)
-          test "${source_sha}" = "${GITHUB_SHA}"
+          test "${source_sha}" = "${SOURCE_SHA}"
           package_version=$(cargo metadata --no-deps --format-version 1 |
             jq -r '.packages[] | select(.name == "diffo") | .version')
           release_line=${package_version%.*}
@@ -64,10 +73,77 @@ jobs:
             '{schema:1,version:$version,sha:$sha,assets:[{name:$name,length:$length,target:$target,sha256:$sha256}]}' \
             > dist/update-v1.json
           (cd dist && sha256sum "${ASSET}" update-v1.json > SHA256SUMS)
+          tar --create --gzip --file diffo-release.tar.gz --directory dist .
+
+      - name: Upload release artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: diffo-release-${{ inputs.source_sha }}
+          path: diffo-release.tar.gz
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 1
+
+  publish:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    concurrency:
+      group: diffo-release-branch
+      cancel-in-progress: false
+    env:
+      ASSET: diffo-x86_64-unknown-linux-gnu
+      SOURCE_SHA: ${{ inputs.source_sha }}
+
+    steps:
+      - name: Check out validated commit
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.source_sha }}
+
+      - name: Download release artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: diffo-release-${{ inputs.source_sha }}
+          path: release-bundle/
+
+      - name: Verify release artifacts
+        run: |
+          set -euo pipefail
+          mkdir dist
+          tar --extract --gzip --file release-bundle/diffo-release.tar.gz --directory dist
+          test -x "dist/${ASSET}"
+          (cd dist && sha256sum --check SHA256SUMS)
 
       - name: Publish main commit to release branch
         run: |
           set -euo pipefail
+          if [[ ! "${SOURCE_SHA}" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Validated source SHA is invalid: ${SOURCE_SHA}" >&2
+            exit 1
+          fi
+          test "$(git rev-parse HEAD)" = "${SOURCE_SHA}"
+          release_lease=
+          if git fetch origin '+refs/heads/release:refs/remotes/origin/release'; then
+            release_lease=$(git rev-parse refs/remotes/origin/release)
+            published_sha=$(git show refs/remotes/origin/release:update-v1.json | jq -er '.sha')
+            if [[ ! "${published_sha}" =~ ^[0-9a-f]{40}$ ]]; then
+              echo "Published manifest has an invalid source SHA: ${published_sha}" >&2
+              exit 1
+            fi
+            git cat-file -e "${published_sha}^{commit}"
+            if git merge-base --is-ancestor "${SOURCE_SHA}" "${published_sha}"; then
+              echo "Release already contains ${SOURCE_SHA} or a newer main commit."
+              exit 0
+            fi
+            if ! git merge-base --is-ancestor "${published_sha}" "${SOURCE_SHA}"; then
+              echo "Validated and published commits have unrelated histories." >&2
+              exit 1
+            fi
+          fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           asset_blob=$(git hash-object -w "dist/${ASSET}")
@@ -79,7 +155,9 @@ jobs:
               git mktree
           )
           publication_commit=$(
-            printf 'Publish %s\n' "${DIFFO_BUILD_SHA}" |
+            printf 'Publish %s\n' "${SOURCE_SHA}" |
               git commit-tree "${publication_tree}"
           )
-          git push --force origin "${publication_commit}:refs/heads/release"
+          git push \
+            --force-with-lease="refs/heads/release:${release_lease}" \
+            origin "${publication_commit}:refs/heads/release"

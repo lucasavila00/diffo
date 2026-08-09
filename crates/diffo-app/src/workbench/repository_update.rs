@@ -26,7 +26,7 @@ impl Workbench {
         }) else {
             return;
         };
-        command.label = crate::diff::model::sync_progress_label(&progress);
+        command.phase = Some(crate::diff::model::sync_progress_label(&progress));
         if let SyncProgress::Plan(plan) = progress {
             self.show_toast(ToastKind::Info, crate::diff::model::sync_plan_title(&plan));
         } else {
@@ -90,12 +90,7 @@ impl Workbench {
         result: OperationResult,
         snapshot: RepositorySnapshot,
     ) {
-        let starts_deferred_ai_commit = action == RepositoryAction::StageAll;
-        if self
-            .commands
-            .acknowledge(id, CommandResult::Succeeded)
-            .is_none()
-        {
+        if !self.commands.acknowledge(id, CommandResult::Succeeded) {
             return;
         }
         self.close_prompt(id);
@@ -105,9 +100,6 @@ impl Workbench {
             result,
             Box::new(snapshot),
         ));
-        if starts_deferred_ai_commit {
-            self.start_deferred_ai_commit();
-        }
     }
 
     pub fn action_failed(&mut self, id: ApplicationCommandId, failure: OperationFailure) {
@@ -120,21 +112,15 @@ impl Workbench {
         failure: OperationFailure,
         snapshot: Option<RepositorySnapshot>,
     ) {
-        if failure.action == RepositoryAction::StageAll {
-            self.cancel_deferred_ai_commit();
-        }
         if self.handle_delete_branch_failure(id, &failure) {
             return;
         }
-        if self
-            .commands
-            .acknowledge(id, CommandResult::Failed)
-            .is_none()
-        {
+        if !self.commands.acknowledge(id, CommandResult::Failed) {
             return;
         }
         self.close_prompt(id);
         self.finish_command_progress(id);
+        self.diff.model.finish_ai_commit();
         let _ = self.update_diff(Message::ActionFailed(failure));
         if let Some(snapshot) = snapshot {
             self.repository_changed(snapshot);
@@ -147,18 +133,12 @@ impl Workbench {
         action: RepositoryAction,
         snapshot: RepositorySnapshot,
     ) {
-        if action == RepositoryAction::StageAll {
-            self.cancel_deferred_ai_commit();
-        }
-        if self
-            .commands
-            .acknowledge(id, CommandResult::Cancelled)
-            .is_none()
-        {
+        if !self.commands.acknowledge(id, CommandResult::Cancelled) {
             return;
         }
         self.close_prompt(id);
         self.finish_command_progress(id);
+        self.diff.model.finish_ai_commit();
         let _ = self.update_diff(Message::OperationCancelled(action));
         self.repository_changed(snapshot);
     }

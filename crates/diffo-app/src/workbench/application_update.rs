@@ -15,8 +15,11 @@ impl Workbench {
         } else {
             CommandResult::Failed
         };
-        if self.commands.acknowledge(id, result).is_none() {
+        if !self.commands.acknowledge(id, result) {
             return;
+        }
+        if result != CommandResult::Succeeded {
+            self.diff.model.finish_ai_commit();
         }
         self.finish_command_progress(id);
         match outcome {

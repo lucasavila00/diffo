@@ -86,7 +86,10 @@ fn missing_upstream_sync_selects_origin_and_queues_the_same_sync_operation() {
         Some(crate::diff::NetworkOperation::Sync)
     );
     assert_eq!(
-        workbench.commands.start_next().unwrap().action,
+        workbench
+            .take_application_command(std::time::Instant::now())
+            .unwrap()
+            .action,
         ApplicationAction::Repository(RepositoryAction::SyncToRemote("origin".to_owned()))
     );
 }
@@ -107,7 +110,10 @@ fn missing_upstream_sync_uses_a_picker_only_for_ambiguous_non_origin_remotes() {
 
     assert!(workbench.modal.is_none());
     assert_eq!(
-        workbench.commands.start_next().unwrap().action,
+        workbench
+            .take_application_command(std::time::Instant::now())
+            .unwrap()
+            .action,
         ApplicationAction::Repository(RepositoryAction::SyncToRemote("alpha".to_owned()))
     );
 }
@@ -167,15 +173,8 @@ fn operation_toasts_render_in_diff_and_explorer() {
     for activity in [Activity::Diff, Activity::Explorer] {
         let mut workbench = Workbench::new(RepositorySnapshot::default());
         workbench.active = activity;
-        assert_eq!(
-            workbench
-                .diff
-                .model
-                .start_repository_action(RepositoryAction::Sync),
-            Some(RepositoryAction::Sync)
-        );
         let id = workbench.commands.enqueue(RepositoryAction::Sync);
-        let _ = workbench.commands.start_next();
+        let _ = workbench.take_application_command(Instant::now());
         workbench.operation_completed(
             id,
             RepositoryAction::Sync,

@@ -35,6 +35,7 @@ mod codex_tasks;
 mod frame_trace;
 mod launcher;
 mod merge;
+mod startup;
 mod tool_tasks;
 mod update_tasks;
 mod wheel_friction;
@@ -42,6 +43,7 @@ mod wheel_friction;
 use codex_tasks::CodexTasks;
 use diffo_app::workbench::{PromptResponse, Workbench, WorkbenchEffect};
 use frame_trace::{FrameRecord, FrameTracer, input_events as trace_input_events};
+use startup::{StartupPhase, StartupReporter};
 use tool_tasks::ToolTasks;
 use update_tasks::UpdateTasks;
 use wheel_friction::{WheelFriction, filter as filter_wheel_momentum};
@@ -141,6 +143,11 @@ fn print_update_error(error: &diffo_update::UpdateError) {
 fn run_application() -> Result<()> {
     let shutdown = install_signal_handlers()?;
     let mock_path = env::var_os("DIFFO_MOCK_FILE");
+    let startup = StartupReporter::start(if mock_path.is_some() {
+        StartupPhase::LoadingMockRepository
+    } else {
+        StartupPhase::FindingGitRepository
+    });
     let (repository, watch_paths): (
         Arc<dyn Repository>,
         Option<diffo_core::RepositoryWatchPaths>,
@@ -151,19 +158,25 @@ fn run_application() -> Result<()> {
         )
     } else {
         let repository = Arc::new(GitRepositorySource::discover_with_askpass(".")?);
+        startup.phase(StartupPhase::ResolvingRepositoryPaths);
         let paths = repository.watch_paths()?;
         (repository, Some(paths))
     };
+    startup.phase(StartupPhase::ReadingRepositoryState);
     let snapshot = repository.snapshot()?;
     if let Some(path) = env::var_os("DIFFO_DUMP_PATH") {
+        startup.finish();
         return dump_snapshot(Path::new(&path), &snapshot);
     }
+    startup.phase(StartupPhase::StartingRepositoryServices);
     let repository_service =
         RepositoryService::start(Arc::clone(&repository), watch_paths.as_ref())?;
     if let Some(path) = env::var_os("DIFFO_WATCH_DUMP_PATH") {
+        startup.finish();
         return run_watch_dump(Path::new(&path), &snapshot, &repository_service, &shutdown);
     }
 
+    startup.phase(StartupPhase::PreparingInterface);
     let repository_root = match &watch_paths {
         Some(paths) => paths.worktree.clone(),
         None => env::current_dir().context("failed to resolve the repository directory")?,
@@ -178,6 +191,7 @@ fn run_application() -> Result<()> {
     };
     tasks.tools.drain(&mut workbench);
     let mut tracer = FrameTracer::from_environment();
+    startup.finish();
     let mut terminal = ratatui::init();
     execute!(
         terminal.backend_mut(),

@@ -263,6 +263,20 @@ impl GitRepositorySource {
     }
 }
 
+fn join_snapshot_work<A, B: Send>(
+    primary: impl FnOnce() -> Result<A>,
+    metadata: impl FnOnce() -> Result<B> + Send,
+) -> Result<(A, B)> {
+    thread::scope(|scope| {
+        let metadata = scope.spawn(metadata);
+        let primary = primary();
+        let metadata = metadata
+            .join()
+            .map_err(|_| anyhow!("repository snapshot metadata worker panicked"))?;
+        Ok((primary?, metadata?))
+    })
+}
+
 impl RepositorySource for GitRepositorySource {
     fn snapshot(&self) -> Result<RepositorySnapshot> {
         let status = self.git(&[
@@ -274,19 +288,38 @@ impl RepositorySource for GitRepositorySource {
             "-z",
         ])?;
         let mut parsed = parse_status(&status)?;
-        let files = self.file_states(parsed.files)?;
-        if matches!(parsed.head, HeadState::Named { .. })
-            && let Some(upstream) = &mut parsed.upstream
-        {
-            upstream.recent_local_commits = self.recent_local_commits(&upstream.name)?;
+        let upstream_name = if matches!(&parsed.head, HeadState::Named { .. }) {
+            parsed
+                .upstream
+                .as_ref()
+                .map(|upstream| upstream.name.clone())
+        } else {
+            None
+        };
+        let (files, (recent_local_commits, recent_commits, operation)) = join_snapshot_work(
+            || self.file_states(parsed.files),
+            || {
+                let recent_local_commits = upstream_name
+                    .as_deref()
+                    .map(|upstream| self.recent_local_commits(upstream))
+                    .transpose()?;
+                Ok((
+                    recent_local_commits,
+                    self.recent_commits()?,
+                    self.repository_operation_state(),
+                ))
+            },
+        )?;
+        if let (Some(upstream), Some(commits)) = (&mut parsed.upstream, recent_local_commits) {
+            upstream.recent_local_commits = commits;
         }
 
         Ok(RepositorySnapshot {
             head: parsed.head,
             files,
-            recent_commits: self.recent_commits()?,
+            recent_commits,
             upstream: parsed.upstream,
-            operation: self.repository_operation_state(),
+            operation,
         })
     }
 }
@@ -339,6 +372,8 @@ fn append_context_hunk(output: &mut String, path: &Path, bytes: &[u8]) {
 
 #[cfg(test)]
 mod tests {
+    use std::{sync::mpsc, time::Duration};
+
     use super::*;
 
     fn parsed_file(path: &str, kind: ChangeKind) -> ParsedFile {
@@ -353,6 +388,26 @@ mod tests {
             index_status: NO_CHANGE,
             worktree_status: NO_CHANGE,
         }
+    }
+
+    #[test]
+    fn file_and_metadata_reads_run_in_parallel() {
+        let (metadata_started, primary_waits) = mpsc::channel();
+
+        let result = join_snapshot_work(
+            || {
+                primary_waits
+                    .recv_timeout(Duration::from_secs(5))
+                    .map_err(|error| anyhow!(error))?;
+                Ok(1)
+            },
+            move || {
+                metadata_started.send(()).expect("signal metadata start");
+                Ok(2)
+            },
+        );
+
+        assert_eq!(result.unwrap(), (1, 2));
     }
 
     #[test]

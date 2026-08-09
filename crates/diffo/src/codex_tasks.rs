@@ -15,8 +15,8 @@ use std::{
 use std::env;
 
 use diffo_ai_config::{
-    AI_COMMIT_MODEL, AI_COMMIT_PROMPT, AI_COMMIT_SCHEMA, CODEX_EXECUTABLE, CODEX_MOCK_EXECUTABLE,
-    CODEX_SANDBOX, MAX_CODEX_OUTPUT_BYTES,
+    AI_COMMIT_MODEL, AI_COMMIT_PROMPT, AI_COMMIT_SCHEMA, CODEX_EXECUTABLE, CODEX_SANDBOX,
+    MAX_CODEX_OUTPUT_BYTES,
 };
 use diffo_app::workbench::{AiCommitOutcome, AiCommitRequest, Workbench};
 use diffo_core::{ApplicationCommandId, CancellationHandle, FailureKind, OperationFailure};
@@ -91,7 +91,7 @@ fn selected_codex_executable() -> CodexExecutable {
     }
 
     #[cfg(feature = "codex-mock")]
-    let resolved = Some(OsString::from(CODEX_MOCK_EXECUTABLE));
+    let resolved = Some(OsString::from(CODEX_EXECUTABLE));
     #[cfg(not(feature = "codex-mock"))]
     let resolved = resolve_production_codex();
 

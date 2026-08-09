@@ -55,6 +55,7 @@ vt100 = "0.15"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
+warnings = "deny"
 
 [workspace.lints.clippy]
 all = "warn"

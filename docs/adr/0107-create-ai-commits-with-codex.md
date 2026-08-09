@@ -60,12 +60,13 @@ recovery. A generation failure retains the previous draft.
 Codex is an optional runtime dependency. Resolve `codex` only when the action starts:
 first from the inherited `PATH`, then through `command -v` in the user's login shell so
 IDE and subprocess launchers see the same shell installation. Invoke the resolved
-absolute path; do not probe at startup, bundle Codex, manage authentication, add
-configuration, or change release artifacts. Reuse the user's saved Codex authentication
-and provider, but pin `gpt-5.6-luna` for its low latency and cost on this small structured
-task instead of inheriting the user's default model. Key help and the Diffo README
-disclose that the request sends the staged diff, repository and branch identity, and
-recent commit subjects
+absolute path and cache a successful resolution for the process lifetime; do not cache a
+miss, so installing Codex or repairing the shell path can be retried without restarting.
+Do not probe at startup, bundle Codex, manage authentication, add configuration, or
+change release artifacts. Reuse the user's saved Codex authentication and provider, but
+pin `gpt-5.6-luna` for its low latency and cost on this small structured task instead of
+inheriting the user's default model. Key help and the Diffo README disclose that the
+request sends the staged diff, repository and branch identity, and recent commit subjects
 through that CLI setup. The explicit AI action is consent; do not add a confirmation
 modal, telemetry, or a
 persistent preference.

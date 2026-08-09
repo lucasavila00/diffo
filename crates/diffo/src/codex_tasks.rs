@@ -3,7 +3,10 @@ use std::{
     io::{self, Read, Write as _},
     path::{Path, PathBuf},
     process::{Command, ExitStatus, Stdio},
-    sync::mpsc::{Receiver, Sender, channel},
+    sync::{
+        OnceLock,
+        mpsc::{Receiver, Sender, channel},
+    },
     thread,
     time::Duration,
 };
@@ -11,18 +14,22 @@ use std::{
 #[cfg(any(not(feature = "codex-mock"), test))]
 use std::env;
 
-#[cfg(not(feature = "codex-mock"))]
-use diffo_ai_config::CODEX_EXECUTABLE;
-#[cfg(feature = "codex-mock")]
-use diffo_ai_config::CODEX_MOCK_EXECUTABLE;
 use diffo_ai_config::{
-    AI_COMMIT_MODEL, AI_COMMIT_PROMPT, AI_COMMIT_SCHEMA, CODEX_SANDBOX, MAX_CODEX_OUTPUT_BYTES,
+    AI_COMMIT_MODEL, AI_COMMIT_PROMPT, AI_COMMIT_SCHEMA, CODEX_EXECUTABLE, CODEX_MOCK_EXECUTABLE,
+    CODEX_SANDBOX, MAX_CODEX_OUTPUT_BYTES,
 };
 use diffo_app::workbench::{AiCommitOutcome, AiCommitRequest, Workbench};
 use diffo_core::{ApplicationCommandId, CancellationHandle, FailureKind, OperationFailure};
 use diffo_repository_service::RepositoryService;
 use serde::Deserialize;
 use tempfile::NamedTempFile;
+
+static RESOLVED_CODEX_EXECUTABLE: OnceLock<OsString> = OnceLock::new();
+
+enum CodexExecutable {
+    Found(&'static OsStr),
+    Missing(String),
+}
 
 pub(crate) struct CodexTasks {
     repository_root: PathBuf,
@@ -49,10 +56,12 @@ impl CodexTasks {
         let sender = self.sender.clone();
         let repository_root = self.repository_root.clone();
         thread::spawn(move || {
-            let outcome = selected_codex_executable()
-                .map_or_else(AiCommitOutcome::Failed, |executable| {
-                    run_codex(&executable, &repository_root, &request, &cancellation)
-                });
+            let outcome = match selected_codex_executable() {
+                CodexExecutable::Found(executable) => {
+                    run_codex(executable, &repository_root, &request, &cancellation)
+                }
+                CodexExecutable::Missing(error) => AiCommitOutcome::Failed(error),
+            };
             let _ = sender.send((id, outcome));
         });
     }
@@ -76,20 +85,32 @@ impl CodexTasks {
     }
 }
 
-#[cfg(feature = "codex-mock")]
-fn selected_codex_executable() -> Result<OsString, String> {
-    Ok(OsString::from(CODEX_MOCK_EXECUTABLE))
+fn selected_codex_executable() -> CodexExecutable {
+    if let Some(executable) = RESOLVED_CODEX_EXECUTABLE.get() {
+        return CodexExecutable::Found(executable);
+    }
+
+    #[cfg(feature = "codex-mock")]
+    let resolved = Some(OsString::from(CODEX_MOCK_EXECUTABLE));
+    #[cfg(not(feature = "codex-mock"))]
+    let resolved = resolve_production_codex();
+
+    match resolved {
+        Some(executable) => {
+            let executable = RESOLVED_CODEX_EXECUTABLE.get_or_init(|| executable);
+            CodexExecutable::Found(executable)
+        }
+        None => CodexExecutable::Missing(format!(
+            "Codex CLI was not found in your shell PATH. Run `{CODEX_EXECUTABLE} --version` in the shell that starts Diffo, then press i again."
+        )),
+    }
 }
 
 #[cfg(not(feature = "codex-mock"))]
-fn selected_codex_executable() -> Result<OsString, String> {
+fn resolve_production_codex() -> Option<OsString> {
     let inherited_path = env::var_os("PATH");
     let shell = env::var_os("SHELL").unwrap_or_else(|| OsString::from("/bin/sh"));
-    resolve_executable(CODEX_EXECUTABLE, inherited_path.as_deref(), &shell).ok_or_else(|| {
-        format!(
-            "Codex CLI was not found in your shell PATH. Run `{CODEX_EXECUTABLE} --version` in the shell that starts Diffo, then press i again."
-        )
-    })
+    resolve_executable(CODEX_EXECUTABLE, inherited_path.as_deref(), &shell)
 }
 
 #[cfg(any(not(feature = "codex-mock"), test))]

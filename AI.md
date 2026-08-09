@@ -47,8 +47,11 @@ Codex must already be installed and authenticated. Diffo first resolves `codex` 
 the `PATH` it inherited. If it is absent there, Diffo asks the user's login shell from
 `SHELL` to resolve `codex`, then launches that absolute path. This covers terminals and
 IDE launchers whose inherited environment has not incorporated the user's shell setup.
-The AI commit action reports a useful error only when invoked if those prerequisites
-are missing; they do not affect startup or manual commits.
+Successful resolution is cached for the rest of the Diffo process, so later AI commits
+do not launch the shell again. Failed resolution is not cached, allowing the user to fix
+their installation and retry without restarting Diffo. The AI commit action reports a
+useful error only when invoked if those prerequisites are missing; they do not affect
+startup or manual commits.
 
 ## Data sent to Codex
 

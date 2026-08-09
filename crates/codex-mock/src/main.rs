@@ -46,31 +46,46 @@ fn run(arguments: impl IntoIterator<Item = String>) -> Result<(), String> {
             println!(r#"{{"subject":"{SUBJECT}"}}"#);
         }
         AI_REVIEW_PROMPT => {
+            let hunk_id = first_hunk_id(&context);
             if schema != AI_REVIEW_SCHEMA
                 || !context.contains("<changes total=")
-                || !context.contains("<hunk id=\"H0001\"")
+                || hunk_id.is_none()
             {
                 return Err("review request does not match the fixed AI policy".to_owned());
             }
+            let hunk_id = hunk_id.expect("checked above");
             println!(
-                r#"{{"overview":["The change updates the reviewed behavior."],"stops":[{{"title":"Inspect the main change","category":"behavior","reason":"This hunk contains the primary behavior change.","primary_hunk_id":"H0001","related_hunk_ids":[]}}]}}"#
+                r#"{{"overview":["The change updates the reviewed behavior."],"stops":[{{"title":"Inspect the main change","category":"behavior","reason":"This hunk contains the primary behavior change.","primary_hunk_id":"{hunk_id}","related_hunk_ids":[]}}]}}"#
             );
         }
         AI_REVIEW_ASK_PROMPT => {
+            let hunk_id = first_hunk_id(&context);
             if schema != AI_REVIEW_ASK_SCHEMA
                 || !context.contains("<review-map>")
                 || !context.contains("<question>")
+                || hunk_id.is_none()
             {
                 return Err("ask request does not match the fixed AI policy".to_owned());
             }
+            let hunk_id = hunk_id.expect("checked above");
             println!(
-                "{}",
-                r#"{"text":["The main behavior change is in the linked hunk."],"hunk_ids":["H0001"]}"#
+                r#"{{"text":["The main behavior change is in the linked hunk."],"hunk_ids":["{hunk_id}"]}}"#
             );
         }
         _ => return Err("prompt does not match the fixed AI policy".to_owned()),
     }
     Ok(())
+}
+
+fn first_hunk_id(context: &str) -> Option<&str> {
+    let value = context.split_once("<hunk id=\"")?.1;
+    value.split_once('"').map(|(id, _)| id).filter(|id| {
+        id.starts_with('H')
+            && id.len() > 1
+            && id[1..]
+                .chars()
+                .all(|character| character.is_ascii_hexdigit())
+    })
 }
 
 #[cfg(test)]

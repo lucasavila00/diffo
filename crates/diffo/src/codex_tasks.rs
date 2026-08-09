@@ -161,17 +161,16 @@ fn selected_codex_executable() -> CodexExecutable {
     if let Some(executable) = RESOLVED_CODEX_EXECUTABLE.get() {
         return CodexExecutable::Found(executable.to_owned());
     }
-
     let resolved = resolve_configured_codex();
-
     match resolved {
         Some(executable) => {
             let executable = RESOLVED_CODEX_EXECUTABLE.get_or_init(|| executable);
             CodexExecutable::Found(executable.to_owned())
         }
-        None => CodexExecutable::Missing(format!(
+        None => CodexExecutable::Missing(
             "Codex CLI was not found in this environment. Install Codex, sign in, and restart Diffo."
-        )),
+                .to_owned(),
+        ),
     }
 }
 
@@ -309,7 +308,6 @@ fn run_codex_raw(
             "Could not write the Codex response schema: {error}"
         ));
     }
-
     let mut child = match Command::new(executable)
         .current_dir(repository_root)
         .args(["exec", "--ephemeral", "--model", model])
@@ -332,7 +330,6 @@ fn run_codex_raw(
             return RawCodexOutcome::Failed(format!("Could not start Codex CLI: {error}"));
         }
     };
-
     let stdout = child.stdout.take().map(read_in_background);
     let stderr = child.stderr.take().map(read_in_background);
     let write_result = child
@@ -346,7 +343,6 @@ fn run_codex_raw(
         let _ = join_output(stderr);
         return RawCodexOutcome::Failed(format!("Could not send changes to Codex: {error}"));
     }
-
     let status = loop {
         if cancellation.is_cancelled() {
             let _ = child.kill();
@@ -367,7 +363,6 @@ fn run_codex_raw(
             }
         }
     };
-
     let stdout = match join_output(stdout) {
         Ok(output) => output,
         Err(error) => {
@@ -556,7 +551,6 @@ fn parse_ask_response(request: &AskRequest, bytes: &[u8]) -> ReviewCodexOutcome 
             ReviewCodexOutcome::Answered,
         )
 }
-
 #[cfg(test)]
 mod tests {
     use std::{fs, os::unix::fs::PermissionsExt as _, path::PathBuf};
@@ -564,7 +558,6 @@ mod tests {
     use diffo_core::{ChangeKind, FileDiff, FileState, RepositorySnapshot};
 
     use super::*;
-
     fn request() -> AiCommitRequest {
         let snapshot = RepositorySnapshot {
             files: vec![FileState {

@@ -34,6 +34,8 @@ fn command_palette_blocks_activity_switching_and_does_not_restore_hidden_state()
 
     screen
         .press(Key::Tab)?
+        .wait_for_text("AI Review")?
+        .press(Key::Tab)?
         .wait_for_text("Changes")?
         .wait_for_text_gone("Command Palette")?;
     Ok(())

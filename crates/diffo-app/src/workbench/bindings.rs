@@ -1,7 +1,9 @@
 use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers};
 use diffo_core::RepositoryAction;
 
-use super::{Activity, CommandIntent, Message, Modal, Tool, Workbench, WorkbenchCommand};
+use super::{
+    Activity, CommandIntent, Message, Modal, ReviewActivity, Tool, Workbench, WorkbenchCommand,
+};
 use crate::workbench::sync_remote::SyncRemotePicker;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -99,7 +101,7 @@ impl Workbench {
         let activity_rows = match self.active {
             Activity::Diff => self.diff.help_rows(),
             Activity::Explorer => self.explorer.help_rows(),
-            Activity::Review => self.review.help_rows(),
+            Activity::Review => ReviewActivity::help_rows(),
         };
         std::iter::once(("Tab".to_owned(), "Next activity"))
             .chain(help_rows())

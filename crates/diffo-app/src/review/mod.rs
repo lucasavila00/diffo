@@ -278,10 +278,10 @@ impl ReviewActivity {
                         && key.modifiers == KeyModifiers::NONE
                         && matches!(key.code, KeyCode::Char(_)) =>
                 {
-                    if let KeyCode::Char(character) = key.code {
-                        if question.chars().count() < 500 {
-                            question.push(character);
-                        }
+                    if let KeyCode::Char(character) = key.code
+                        && question.chars().count() < 500
+                    {
+                        question.push(character);
                     }
                     true
                 }
@@ -293,7 +293,7 @@ impl ReviewActivity {
                 }
                 _ => false,
             },
-            AskState::Running { .. } => false,
+            AskState::Running { .. } | AskState::Closed => false,
             AskState::Answered {
                 answer,
                 selected_link,
@@ -318,7 +318,6 @@ impl ReviewActivity {
                 }
                 false
             }
-            AskState::Closed => false,
         }
     }
 
@@ -538,7 +537,7 @@ impl ReviewActivity {
         !matches!(self.ask, AskState::Closed)
     }
 
-    pub(crate) fn help_rows(&self) -> Vec<(String, &'static str)> {
+    pub(crate) fn help_rows() -> Vec<(String, &'static str)> {
         vec![
             ("j / k".to_owned(), "Select review stop"),
             ("Enter".to_owned(), "Open or generate"),

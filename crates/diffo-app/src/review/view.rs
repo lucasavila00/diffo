@@ -14,6 +14,7 @@ pub(super) struct ReviewHitAreas {
     pub generate_area: Rect,
 }
 
+#[expect(clippy::too_many_lines, reason = "renders one compact activity panel")]
 pub(super) fn render_review(
     frame: &mut Frame,
     area: Rect,
@@ -75,7 +76,7 @@ pub(super) fn render_review(
                 "·"
             };
             let selected = index == review.selected_stop;
-            let style = if stale {
+            let row_style = if stale {
                 disabled_control_style()
             } else if selected {
                 Style::default()
@@ -86,7 +87,7 @@ pub(super) fn render_review(
             };
             lines.push(Line::styled(
                 format!("{marker} {}. {}", index + 1, stop.title),
-                style,
+                row_style,
             ));
             lines.push(Line::styled(
                 format!("   {} · {}", stop.category.label(), stop.reason),

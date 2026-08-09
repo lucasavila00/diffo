@@ -19,6 +19,7 @@ pub enum AttentionCategory {
 }
 
 impl AttentionCategory {
+    #[must_use]
     pub fn parse(value: &str) -> Option<Self> {
         match value {
             "behavior" => Some(Self::Behavior),
@@ -33,6 +34,7 @@ impl AttentionCategory {
         }
     }
 
+    #[must_use]
     pub const fn label(self) -> &'static str {
         match self {
             Self::Behavior => "behavior",
@@ -166,7 +168,7 @@ impl ReviewRequest {
                             });
                             used_ids.insert(id.clone());
                         }
-                        let hunk = ReviewHunk {
+                        ReviewHunk {
                             id,
                             file: file.clone(),
                             target: targets.get(index).copied().unwrap_or(0),
@@ -174,8 +176,7 @@ impl ReviewRequest {
                                 .get(index)
                                 .cloned()
                                 .unwrap_or_else(|| "whole change".to_owned()),
-                        };
-                        hunk
+                        }
                     })
                     .collect();
                 ReviewChange {
@@ -414,13 +415,13 @@ fn semantic_changes(
     changes
 }
 
-fn stable_hunk_id(path: &std::path::Path, patch: &str, index: usize) -> String {
+fn stable_hunk_id(file_path: &std::path::Path, diff_text: &str, index: usize) -> String {
     let mut hash = 0xcbf2_9ce4_8422_2325_u64;
-    for byte in path
+    for byte in file_path
         .to_string_lossy()
         .as_bytes()
         .iter()
-        .chain(patch.as_bytes())
+        .chain(diff_text.as_bytes())
         .chain(index.to_le_bytes().iter())
     {
         hash ^= u64::from(*byte);

@@ -35,6 +35,7 @@ fn generation_is_explicit_and_installs_only_known_hunks() {
         ReviewCodexRequest::Generate(request) => request,
         ReviewCodexRequest::Ask(_) => panic!("expected generation"),
     };
+    let first_hunk_id = request.first_hunk_id().to_owned();
     let result = request
         .validate_review(
             vec!["Overview".to_owned()],
@@ -42,7 +43,7 @@ fn generation_is_explicit_and_installs_only_known_hunks() {
                 title: "Inspect behavior".to_owned(),
                 category: AttentionCategory::Behavior,
                 reason: "The behavior changes here.".to_owned(),
-                primary_hunk_id: "H0001".to_owned(),
+                primary_hunk_id: first_hunk_id.clone(),
                 related_hunk_ids: Vec::new(),
             }],
         )
@@ -53,13 +54,17 @@ fn generation_is_explicit_and_installs_only_known_hunks() {
         outcome: ReviewCodexOutcome::Generated(result),
     }));
     assert!(review.ready().is_some());
-    assert_eq!(review.active_hunk_id.as_deref(), Some("H0001"));
+    assert_eq!(
+        review.active_hunk_id.as_deref(),
+        Some(first_hunk_id.as_str())
+    );
 }
 
 #[test]
 fn repository_change_makes_a_ready_review_stale() {
     let initial = snapshot("new");
     let request = ReviewRequest::from_snapshot(&initial).unwrap();
+    let first_hunk_id = request.first_hunk_id().to_owned();
     let result = request
         .validate_review(
             vec!["Overview".to_owned()],
@@ -67,7 +72,7 @@ fn repository_change_makes_a_ready_review_stale() {
                 title: "Inspect behavior".to_owned(),
                 category: AttentionCategory::Behavior,
                 reason: "The behavior changes here.".to_owned(),
-                primary_hunk_id: "H0001".to_owned(),
+                primary_hunk_id: first_hunk_id,
                 related_hunk_ids: Vec::new(),
             }],
         )

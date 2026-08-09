@@ -169,6 +169,10 @@ impl Renderer {
         self.map_full_screen_event(event, model, area)
     }
 
+    #[expect(
+        clippy::too_many_lines,
+        reason = "keeps one atomic buffer preparation path"
+    )]
     fn prepare_buffer(
         &mut self,
         model: &Model,

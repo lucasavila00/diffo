@@ -357,6 +357,10 @@ impl Workbench {
         effects
     }
 
+    #[expect(
+        clippy::too_many_lines,
+        reason = "keeps global input precedence explicit"
+    )]
     fn handle_event(&mut self, event: &Event, area: Rect) -> Option<WorkbenchCommand> {
         let content = workbench_areas(area).content;
         if self.cancel_clicked_command(event, content) {
@@ -464,7 +468,6 @@ impl Workbench {
                 .then_some(WorkbenchCommand::Redraw),
         }
     }
-
     fn select_activity(&mut self, event: &Event, area: Rect) -> bool {
         if let Event::Key(key) = event
             && key.kind == KeyEventKind::Press
@@ -488,7 +491,6 @@ impl Workbench {
         }
         false
     }
-
     fn dismiss_clicked_toast(&mut self, event: &Event, area: Rect) -> bool {
         let Event::Mouse(mouse) = event else {
             return false;
@@ -504,16 +506,13 @@ impl Workbench {
         self.toast_deadlines.remove(&id);
         true
     }
-
     fn handle_overlay_click(&mut self, event: &Event, area: Rect) -> bool {
         self.dismiss_clicked_toast(event, area)
     }
-
     fn sync_diff_pane_state(&mut self) {
         self.diff.model.file_pane_percent = self.pane_split.percent();
         self.diff.model.resizing_file_pane = self.pane_split.is_dragging();
     }
-
     fn dismiss_active_popover(&mut self) {
         match self.active {
             Activity::Diff => self.diff.dismiss_popover(),

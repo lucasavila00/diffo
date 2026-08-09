@@ -2,6 +2,7 @@ FROM rust:trixie
 
 RUN apt-get update \
     && env DEBIAN_FRONTEND=noninteractive apt-get install --yes --no-install-recommends \
+        cloc \
         git \
         openssh-server \
         sudo \

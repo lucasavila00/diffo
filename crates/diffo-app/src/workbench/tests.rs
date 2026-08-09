@@ -82,6 +82,8 @@ fn tab_cycles_activities_without_changing_diff_state() {
     let _ = workbench.handle_event(&tab, area);
     assert_eq!(workbench.active, Activity::Explorer);
     let _ = workbench.handle_event(&tab, area);
+    assert_eq!(workbench.active, Activity::Review);
+    let _ = workbench.handle_event(&tab, area);
     assert_eq!(workbench.active, Activity::Diff);
     assert_eq!(workbench.diff.model.diff_scroll, 17);
 }
@@ -99,7 +101,7 @@ fn every_activity_renders_the_same_repository_footer() {
     let status = tool_areas(workbench_areas(area).content).status;
     let mut footers = Vec::new();
 
-    for activity in [Activity::Diff, Activity::Explorer] {
+    for activity in [Activity::Diff, Activity::Explorer, Activity::Review] {
         let mut workbench = Workbench::new(snapshot.clone());
         workbench.active = activity;
         let backend = TestBackend::new(area.width, area.height);
@@ -280,6 +282,9 @@ fn pane_drag_is_shared_across_activities() {
     assert_eq!(workbench.active, Activity::Explorer);
     assert_eq!(workbench.pane_split.areas(pane_area).trailing.x, 62);
     let _ = workbench.handle_event(&key(KeyCode::Tab), area);
+    assert_eq!(workbench.active, Activity::Review);
+    assert_eq!(workbench.pane_split.areas(pane_area).trailing.x, 62);
+    let _ = workbench.handle_event(&key(KeyCode::Tab), area);
     assert_eq!(workbench.active, Activity::Diff);
     assert_eq!(workbench.pane_split.areas(pane_area).trailing.x, 62);
 }
@@ -348,7 +353,7 @@ fn empty_activities_keep_quit_available() {
 #[test]
 fn shared_git_commands_execute_from_every_activity() {
     let area = Rect::new(0, 0, 100, 30);
-    for activity in [Activity::Diff, Activity::Explorer] {
+    for activity in [Activity::Diff, Activity::Explorer, Activity::Review] {
         let mut workbench = Workbench::new(RepositorySnapshot::default());
         workbench.active = activity;
 

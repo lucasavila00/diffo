@@ -43,6 +43,7 @@ pub mod theme {
 pub mod icons {
     pub const ACTIVITY_EXPLORER: &str = "";
     pub const ACTIVITY_DIFF: &str = "";
+    pub const ACTIVITY_REVIEW: &str = "󰚩";
     pub const TREE_COLLAPSED: &str = " ";
     pub const TREE_EXPANDED: &str = " ";
     pub const TREE_LEAF: &str = "  ";

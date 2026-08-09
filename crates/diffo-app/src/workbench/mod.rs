@@ -20,6 +20,9 @@ use diffo_ui::{PaneSplit, tool_areas};
 use ratatui::{Frame, layout::Rect};
 
 use crate::explorer::{ExplorerActivity, ExplorerEvent, ExplorerOutcome, ExplorerRequest};
+use crate::review::{
+    CodexAvailability, ReviewActivity, ReviewCodexTask, ReviewCodexTaskResult,
+};
 mod activity_bar;
 mod ai_commit;
 mod application_update;
@@ -61,6 +64,7 @@ pub enum Activity {
     #[default]
     Diff,
     Explorer,
+    Review,
 }
 
 enum WorkbenchCommand {
@@ -100,6 +104,7 @@ pub struct Workbench {
     active: Activity,
     diff: DiffActivity,
     explorer: ExplorerActivity,
+    review: ReviewActivity,
     pane_split: PaneSplit,
     toasts: ToastQueue,
     toast_deadlines: HashMap<u64, Instant>,
@@ -205,7 +210,16 @@ trait Tool {
 impl Workbench {
     #[must_use]
     pub fn new(snapshot: RepositorySnapshot) -> Self {
+        Self::new_with_codex(snapshot, CodexAvailability::Available)
+    }
+
+    #[must_use]
+    pub fn new_with_codex(
+        snapshot: RepositorySnapshot,
+        codex_availability: CodexAvailability,
+    ) -> Self {
         let explorer = ExplorerActivity::new(&snapshot);
+        let review = ReviewActivity::new(snapshot.clone(), codex_availability);
         Self {
             active: Activity::Diff,
             diff: DiffActivity {
@@ -213,6 +227,7 @@ impl Workbench {
                 renderer: Renderer::new(),
             },
             explorer,
+            review,
             pane_split: PaneSplit::default(),
             toasts: ToastQueue::new(),
             toast_deadlines: HashMap::new(),
@@ -358,6 +373,7 @@ impl Workbench {
         let tool_captures_global_input = match self.active {
             Activity::Diff => self.diff.captures_global_input(),
             Activity::Explorer => self.explorer.captures_global_input(),
+            Activity::Review => self.review.captures_global_input(),
         };
         if self.full_screen
             && !tool_captures_global_input
@@ -444,6 +460,10 @@ impl Workbench {
             Activity::Explorer => {
                 Tool::handle_event(&mut self.explorer, event, content, self.pane_split)
             }
+            Activity::Review => self
+                .review
+                .handle_event(event, content, self.pane_split)
+                .then_some(WorkbenchCommand::Redraw),
         }
     }
 
@@ -520,6 +540,7 @@ impl Workbench {
         match self.active {
             Activity::Diff => self.diff.dismiss_popover(),
             Activity::Explorer => self.explorer.dismiss_popover(),
+            Activity::Review => {}
         }
     }
 
@@ -598,9 +619,11 @@ impl Workbench {
         match &message {
             Message::SnapshotLoaded(snapshot) => {
                 self.explorer.repository_changed(snapshot);
+                self.review.repository_changed(snapshot.clone());
             }
             Message::OperationCompleted(_, _, snapshot) => {
                 self.explorer.repository_changed(snapshot);
+                self.review.repository_changed((**snapshot).clone());
             }
             _ => {}
         }
@@ -632,6 +655,7 @@ impl Workbench {
         match self.active {
             Activity::Diff => self.diff.commands(),
             Activity::Explorer => self.explorer.commands(),
+            Activity::Review => &[],
         }
     }
 
@@ -668,6 +692,7 @@ impl Workbench {
         match self.active {
             Activity::Diff => self.diff.execute_command(command),
             Activity::Explorer => self.explorer.execute_command(command),
+            Activity::Review => false,
         };
         None
     }
@@ -688,6 +713,16 @@ impl Workbench {
             return;
         }
         self.set_modal(Modal::Error(error));
+    }
+
+    pub fn take_review_codex_task(&mut self) -> Option<ReviewCodexTask> {
+        self.review.take_task()
+    }
+
+    pub fn accept_review_codex_result(&mut self, result: ReviewCodexTaskResult) {
+        if self.review.accept(result) {
+            self.request_redraw();
+        }
     }
 }
 

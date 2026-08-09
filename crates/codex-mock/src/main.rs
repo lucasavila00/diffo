@@ -2,7 +2,10 @@
 
 use std::{env, fs, io::Read as _, path::Path};
 
-use diffo_ai_config::{AI_COMMIT_MODEL, AI_COMMIT_PROMPT, AI_COMMIT_SCHEMA, CODEX_SANDBOX};
+use diffo_ai_config::{
+    AI_COMMIT_MODEL, AI_COMMIT_PROMPT, AI_COMMIT_SCHEMA, AI_REVIEW_ASK_PROMPT,
+    AI_REVIEW_ASK_SCHEMA, AI_REVIEW_MODEL, AI_REVIEW_PROMPT, AI_REVIEW_SCHEMA, CODEX_SANDBOX,
+};
 
 const SUBJECT: &str = "test: create commit with Codex";
 
@@ -19,7 +22,7 @@ fn run(arguments: impl IntoIterator<Item = String>) -> Result<(), String> {
         || arguments[0] != "exec"
         || arguments[1] != "--ephemeral"
         || arguments[2] != "--model"
-        || arguments[3] != AI_COMMIT_MODEL
+        || ![AI_COMMIT_MODEL, AI_REVIEW_MODEL].contains(&arguments[3].as_str())
         || arguments[4] != "--sandbox"
         || arguments[5] != CODEX_SANDBOX
         || arguments[6] != "--output-schema"
@@ -28,22 +31,45 @@ fn run(arguments: impl IntoIterator<Item = String>) -> Result<(), String> {
     }
     let schema = fs::read_to_string(Path::new(&arguments[7]))
         .map_err(|error| format!("could not read output schema: {error}"))?;
-    if schema != AI_COMMIT_SCHEMA {
-        return Err("output schema does not match the fixed AI policy".to_owned());
-    }
-    if arguments[8] != AI_COMMIT_PROMPT {
-        return Err("prompt does not match the fixed AI policy".to_owned());
-    }
-
     let mut context = String::new();
     std::io::stdin()
         .read_to_string(&mut context)
         .map_err(|error| format!("could not read prompt context: {error}"))?;
-    if !context.contains("<staged-changes ") || !context.contains("<staged-diff>") {
-        return Err("staged context is missing".to_owned());
+    match arguments[8].as_str() {
+        AI_COMMIT_PROMPT => {
+            if schema != AI_COMMIT_SCHEMA
+                || !context.contains("<staged-changes ")
+                || !context.contains("<staged-diff>")
+            {
+                return Err("commit request does not match the fixed AI policy".to_owned());
+            }
+            println!(r#"{{"subject":"{SUBJECT}"}}"#);
+        }
+        AI_REVIEW_PROMPT => {
+            if schema != AI_REVIEW_SCHEMA
+                || !context.contains("<changes total=")
+                || !context.contains("<hunk id=\"H0001\"")
+            {
+                return Err("review request does not match the fixed AI policy".to_owned());
+            }
+            println!(
+                r#"{{"overview":["The change updates the reviewed behavior."],"stops":[{{"title":"Inspect the main change","category":"behavior","reason":"This hunk contains the primary behavior change.","primary_hunk_id":"H0001","related_hunk_ids":[]}}]}}"#
+            );
+        }
+        AI_REVIEW_ASK_PROMPT => {
+            if schema != AI_REVIEW_ASK_SCHEMA
+                || !context.contains("<review-map>")
+                || !context.contains("<question>")
+            {
+                return Err("ask request does not match the fixed AI policy".to_owned());
+            }
+            println!(
+                "{}",
+                r#"{"text":["The main behavior change is in the linked hunk."],"hunk_ids":["H0001"]}"#
+            );
+        }
+        _ => return Err("prompt does not match the fixed AI policy".to_owned()),
     }
-
-    println!(r#"{{"subject":"{SUBJECT}"}}"#);
     Ok(())
 }
 

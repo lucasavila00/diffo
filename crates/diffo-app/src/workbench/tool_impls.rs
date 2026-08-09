@@ -31,6 +31,7 @@ impl Workbench {
         match self.active {
             super::Activity::Diff => self.diff.is_preparing(),
             super::Activity::Explorer => self.explorer.is_preparing(),
+            super::Activity::Review => self.review.is_preparing(),
         }
     }
 

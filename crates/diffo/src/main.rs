@@ -168,10 +168,11 @@ fn run_application() -> Result<()> {
         None => env::current_dir().context("failed to resolve the repository directory")?,
     };
 
-    let mut workbench = Workbench::new(snapshot);
+    let codex = CodexTasks::new(repository_root);
+    let mut workbench = Workbench::new_with_codex(snapshot, codex.availability());
     let mut tasks = RuntimeTasks {
         tools: ToolTasks::start(repository),
-        codex: CodexTasks::new(repository_root),
+        codex,
         updates: UpdateTasks::new(),
     };
     tasks.tools.drain(&mut workbench);
@@ -463,11 +464,31 @@ fn dispatch_events(
                 }
             }
             diffo_app::workbench::ApplicationAction::AiCommit(request) => {
-                tasks.codex.start(id, request, command.cancellation);
+                if !tasks.codex.start(id, request, command.cancellation) {
+                    let _ = workbench.ai_commit_finished(
+                        id,
+                        diffo_app::workbench::AiCommitOutcome::Failed(
+                            "Codex is already handling another AI request".to_owned(),
+                        ),
+                    );
+                }
             }
             diffo_app::workbench::ApplicationAction::Update => {
                 tasks.updates.start_update(id, command.cancellation);
             }
+        }
+    }
+    while let Some(task) = workbench.take_review_codex_task() {
+        let id = task.id;
+        if !tasks.codex.start_review(task) {
+            workbench.accept_review_codex_result(
+                diffo_app::review::ReviewCodexTaskResult {
+                    id,
+                    outcome: diffo_app::review::ReviewCodexOutcome::Failed(
+                        "Codex is already handling another AI request".to_owned(),
+                    ),
+                },
+            );
         }
     }
     Ok(())

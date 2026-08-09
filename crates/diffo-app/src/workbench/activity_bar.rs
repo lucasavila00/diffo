@@ -5,7 +5,8 @@ impl Activity {
     pub const fn next(self) -> Self {
         match self {
             Self::Diff => Self::Explorer,
-            Self::Explorer => Self::Diff,
+            Self::Explorer => Self::Review,
+            Self::Review => Self::Diff,
         }
     }
 }
@@ -48,11 +49,17 @@ pub fn activity_at_position(area: Rect, column: u16, row: u16) -> Option<Activit
     match row.saturating_sub(bar.y) / design::ACTIVITY_CONTROL_HEIGHT {
         0 => Some(Activity::Explorer),
         1 => Some(Activity::Diff),
+        2 => Some(Activity::Review),
         _ => None,
     }
 }
 
-pub fn render_activity_bar(frame: &mut Frame, area: Rect, active: Activity) {
+pub fn render_activity_bar(
+    frame: &mut Frame,
+    area: Rect,
+    active: Activity,
+    review_available: bool,
+) {
     let bar = workbench_areas(area).activity_bar;
     frame.render_widget(
         Block::default()
@@ -63,6 +70,7 @@ pub fn render_activity_bar(frame: &mut Frame, area: Rect, active: Activity) {
     for (index, (activity, icon)) in [
         (Activity::Explorer, icons::ACTIVITY_EXPLORER),
         (Activity::Diff, icons::ACTIVITY_DIFF),
+        (Activity::Review, icons::ACTIVITY_REVIEW),
     ]
     .into_iter()
     .enumerate()
@@ -82,7 +90,11 @@ pub fn render_activity_bar(frame: &mut Frame, area: Rect, active: Activity) {
             design::ACTIVITY_CONTROL_HEIGHT.min(bar.bottom().saturating_sub(y)),
         );
         let selected = activity == active;
-        let style = mouse_target_style();
+        let style = if activity == Activity::Review && !review_available {
+            diffo_ui::disabled_control_style()
+        } else {
+            mouse_target_style()
+        };
         frame.render_widget(
             Paragraph::new(icon)
                 .alignment(Alignment::Center)
@@ -125,8 +137,9 @@ mod tests {
         assert_eq!(areas.content, Rect::new(7, 4, 95, 30));
         assert_eq!(activity_at_position(area, 3, 5), Some(Activity::Explorer));
         assert_eq!(activity_at_position(area, 3, 8), Some(Activity::Diff));
+        assert_eq!(activity_at_position(area, 3, 11), Some(Activity::Review));
         assert_eq!(activity_at_position(area, 6, 5), None);
-        assert_eq!(activity_at_position(area, 3, 14), None);
+        assert_eq!(activity_at_position(area, 3, 15), None);
     }
 
     #[test]
@@ -141,7 +154,9 @@ mod tests {
         let backend = TestBackend::new(20, 12);
         let mut terminal = Terminal::new(backend).unwrap();
         terminal
-            .draw(|frame| render_activity_bar(frame, frame.area(), Activity::Explorer))
+            .draw(|frame| {
+                render_activity_bar(frame, frame.area(), Activity::Explorer, true);
+            })
             .unwrap();
         insta::assert_debug_snapshot!(terminal.backend().buffer());
     }

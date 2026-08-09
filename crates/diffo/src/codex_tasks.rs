@@ -1,24 +1,30 @@
 use std::{
+    env,
     ffi::{OsStr, OsString},
     io::{self, Read, Write as _},
     path::{Path, PathBuf},
     process::{Command, ExitStatus, Stdio},
     sync::{
-        OnceLock,
+        Arc, OnceLock,
+        atomic::{AtomicBool, Ordering},
         mpsc::{Receiver, Sender, channel},
     },
     thread,
     time::Duration,
 };
 
-#[cfg(any(not(feature = "codex-mock"), test))]
-use std::env;
-
 use diffo_ai_config::{
-    AI_COMMIT_MODEL, AI_COMMIT_PROMPT, AI_COMMIT_SCHEMA, CODEX_EXECUTABLE, CODEX_SANDBOX,
-    MAX_CODEX_OUTPUT_BYTES,
+    AI_COMMIT_MODEL, AI_COMMIT_PROMPT, AI_COMMIT_SCHEMA, AI_REVIEW_ASK_PROMPT,
+    AI_REVIEW_ASK_SCHEMA, AI_REVIEW_MODEL, AI_REVIEW_PROMPT, AI_REVIEW_SCHEMA, CODEX_EXECUTABLE,
+    CODEX_SANDBOX, MAX_CODEX_OUTPUT_BYTES,
 };
-use diffo_app::workbench::{AiCommitOutcome, AiCommitRequest, Workbench};
+use diffo_app::{
+    review::{
+        AskRequest, AttentionCategory, CodexAvailability, ReviewCodexOutcome, ReviewCodexRequest,
+        ReviewCodexTask, ReviewCodexTaskResult, ReviewRequest, ReviewStop,
+    },
+    workbench::{AiCommitOutcome, AiCommitRequest, Workbench},
+};
 use diffo_core::{ApplicationCommandId, CancellationHandle, FailureKind, OperationFailure};
 use diffo_repository_service::RepositoryService;
 use serde::Deserialize;
@@ -27,23 +33,43 @@ use tempfile::NamedTempFile;
 static RESOLVED_CODEX_EXECUTABLE: OnceLock<OsString> = OnceLock::new();
 
 enum CodexExecutable {
-    Found(&'static OsStr),
+    Found(OsString),
     Missing(String),
+}
+
+enum CodexTaskResult {
+    AiCommit(ApplicationCommandId, AiCommitOutcome),
+    Review(ReviewCodexTaskResult),
 }
 
 pub(crate) struct CodexTasks {
     repository_root: PathBuf,
-    sender: Sender<(ApplicationCommandId, AiCommitOutcome)>,
-    receiver: Receiver<(ApplicationCommandId, AiCommitOutcome)>,
+    executable: Result<OsString, String>,
+    busy: Arc<AtomicBool>,
+    sender: Sender<CodexTaskResult>,
+    receiver: Receiver<CodexTaskResult>,
 }
 
 impl CodexTasks {
     pub(crate) fn new(repository_root: PathBuf) -> Self {
         let (sender, receiver) = channel();
+        let executable = match selected_codex_executable() {
+            CodexExecutable::Found(executable) => Ok(executable),
+            CodexExecutable::Missing(error) => Err(error),
+        };
         Self {
             repository_root,
+            executable,
+            busy: Arc::new(AtomicBool::new(false)),
             sender,
             receiver,
+        }
+    }
+
+    pub(crate) fn availability(&self) -> CodexAvailability {
+        match &self.executable {
+            Ok(_) => CodexAvailability::Available,
+            Err(error) => CodexAvailability::Unavailable(error.clone()),
         }
     }
 
@@ -52,34 +78,83 @@ impl CodexTasks {
         id: ApplicationCommandId,
         request: AiCommitRequest,
         cancellation: CancellationHandle,
-    ) {
+    ) -> bool {
+        let Ok(executable) = &self.executable else {
+            return false;
+        };
+        if self
+            .busy
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .is_err()
+        {
+            return false;
+        }
         let sender = self.sender.clone();
         let repository_root = self.repository_root.clone();
+        let executable = executable.clone();
+        let busy = Arc::clone(&self.busy);
         thread::spawn(move || {
-            let outcome = match selected_codex_executable() {
-                CodexExecutable::Found(executable) => {
-                    run_codex(executable, &repository_root, &request, &cancellation)
-                }
-                CodexExecutable::Missing(error) => AiCommitOutcome::Failed(error),
-            };
-            let _ = sender.send((id, outcome));
+            let outcome = run_codex(&executable, &repository_root, &request, &cancellation);
+            busy.store(false, Ordering::Release);
+            let _ = sender.send(CodexTaskResult::AiCommit(id, outcome));
         });
+        true
+    }
+
+    pub(crate) fn start_review(&self, task: ReviewCodexTask) -> bool {
+        let Ok(executable) = &self.executable else {
+            return false;
+        };
+        if self
+            .busy
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .is_err()
+        {
+            return false;
+        }
+        let sender = self.sender.clone();
+        let repository_root = self.repository_root.clone();
+        let executable = executable.clone();
+        let busy = Arc::clone(&self.busy);
+        thread::spawn(move || {
+            let outcome = run_review_codex(
+                &executable,
+                &repository_root,
+                &task.request,
+                &task.cancellation,
+            );
+            busy.store(false, Ordering::Release);
+            let _ = sender.send(CodexTaskResult::Review(ReviewCodexTaskResult {
+                id: task.id,
+                outcome,
+            }));
+        });
+        true
     }
 
     pub(crate) fn drain(&self, workbench: &mut Workbench, repository_service: &RepositoryService) {
-        while let Ok((id, outcome)) = self.receiver.try_recv() {
-            let Some(handoff) = workbench.ai_commit_finished(id, outcome) else {
-                continue;
-            };
-            if !repository_service.execute(id, handoff.action.clone(), handoff.cancellation) {
-                workbench.action_failed(
-                    id,
-                    OperationFailure {
-                        action: handoff.action,
-                        kind: FailureKind::Unknown,
-                        detail: "repository service is unavailable".to_owned(),
-                    },
-                );
+        while let Ok(result) = self.receiver.try_recv() {
+            match result {
+                CodexTaskResult::AiCommit(id, outcome) => {
+                    let Some(handoff) = workbench.ai_commit_finished(id, outcome) else {
+                        continue;
+                    };
+                    if !repository_service.execute(
+                        id,
+                        handoff.action.clone(),
+                        handoff.cancellation,
+                    ) {
+                        workbench.action_failed(
+                            id,
+                            OperationFailure {
+                                action: handoff.action,
+                                kind: FailureKind::Unknown,
+                                detail: "repository service is unavailable".to_owned(),
+                            },
+                        );
+                    }
+                }
+                CodexTaskResult::Review(result) => workbench.accept_review_codex_result(result),
             }
         }
     }
@@ -87,33 +162,28 @@ impl CodexTasks {
 
 fn selected_codex_executable() -> CodexExecutable {
     if let Some(executable) = RESOLVED_CODEX_EXECUTABLE.get() {
-        return CodexExecutable::Found(executable);
+        return CodexExecutable::Found(executable.to_owned());
     }
 
-    #[cfg(feature = "codex-mock")]
-    let resolved = Some(OsString::from(CODEX_EXECUTABLE));
-    #[cfg(not(feature = "codex-mock"))]
-    let resolved = resolve_production_codex();
+    let resolved = resolve_configured_codex();
 
     match resolved {
         Some(executable) => {
             let executable = RESOLVED_CODEX_EXECUTABLE.get_or_init(|| executable);
-            CodexExecutable::Found(executable)
+            CodexExecutable::Found(executable.to_owned())
         }
         None => CodexExecutable::Missing(format!(
-            "Codex CLI was not found in your shell PATH. Run `{CODEX_EXECUTABLE} --version` in the shell that starts Diffo, then press i again."
+            "Codex CLI was not found in this environment. Install Codex, sign in, and restart Diffo."
         )),
     }
 }
 
-#[cfg(not(feature = "codex-mock"))]
-fn resolve_production_codex() -> Option<OsString> {
+fn resolve_configured_codex() -> Option<OsString> {
     let inherited_path = env::var_os("PATH");
     let shell = env::var_os("SHELL").unwrap_or_else(|| OsString::from("/bin/sh"));
     resolve_executable(CODEX_EXECUTABLE, inherited_path.as_deref(), &shell)
 }
 
-#[cfg(any(not(feature = "codex-mock"), test))]
 fn resolve_executable(
     executable: &str,
     inherited_path: Option<&OsStr>,
@@ -129,7 +199,6 @@ fn resolve_executable(
         .or_else(|| resolve_from_login_shell(executable, shell))
 }
 
-#[cfg(any(not(feature = "codex-mock"), test))]
 fn resolve_from_login_shell(executable: &str, shell: &OsStr) -> Option<OsString> {
     let output = Command::new(shell)
         .args(["-lc", &format!("command -v -- {executable}")])
@@ -152,34 +221,104 @@ fn run_codex(
     request: &AiCommitRequest,
     cancellation: &CancellationHandle,
 ) -> AiCommitOutcome {
-    if cancellation.is_cancelled() {
-        return AiCommitOutcome::Cancelled;
-    }
     let repository_name = repository_root
         .file_name()
         .and_then(OsStr::to_str)
         .unwrap_or("repository");
     let context = request.prompt_context(repository_name);
+    match run_codex_raw(
+        executable,
+        repository_root,
+        AI_COMMIT_MODEL,
+        AI_COMMIT_SCHEMA,
+        AI_COMMIT_PROMPT,
+        &context,
+        cancellation,
+    ) {
+        RawCodexOutcome::Completed(bytes) => parse_response(&bytes),
+        RawCodexOutcome::Failed(error) => AiCommitOutcome::Failed(error),
+        RawCodexOutcome::Cancelled => AiCommitOutcome::Cancelled,
+    }
+}
+
+fn run_review_codex(
+    executable: &OsStr,
+    repository_root: &Path,
+    request: &ReviewCodexRequest,
+    cancellation: &CancellationHandle,
+) -> ReviewCodexOutcome {
+    let repository_name = repository_root
+        .file_name()
+        .and_then(OsStr::to_str)
+        .unwrap_or("repository");
+    let (schema, prompt, context) = match request {
+        ReviewCodexRequest::Generate(request) => (
+            AI_REVIEW_SCHEMA,
+            AI_REVIEW_PROMPT,
+            request.prompt_context(repository_name),
+        ),
+        ReviewCodexRequest::Ask(request) => (
+            AI_REVIEW_ASK_SCHEMA,
+            AI_REVIEW_ASK_PROMPT,
+            request.prompt_context(repository_name),
+        ),
+    };
+    match run_codex_raw(
+        executable,
+        repository_root,
+        AI_REVIEW_MODEL,
+        schema,
+        prompt,
+        &context,
+        cancellation,
+    ) {
+        RawCodexOutcome::Completed(bytes) => match request {
+            ReviewCodexRequest::Generate(request) => parse_review_response(request, &bytes),
+            ReviewCodexRequest::Ask(request) => parse_ask_response(request, &bytes),
+        },
+        RawCodexOutcome::Failed(error) => ReviewCodexOutcome::Failed(error),
+        RawCodexOutcome::Cancelled => ReviewCodexOutcome::Cancelled,
+    }
+}
+
+enum RawCodexOutcome {
+    Completed(Vec<u8>),
+    Failed(String),
+    Cancelled,
+}
+
+fn run_codex_raw(
+    executable: &OsStr,
+    repository_root: &Path,
+    model: &str,
+    schema_text: &str,
+    prompt: &str,
+    context: &str,
+    cancellation: &CancellationHandle,
+) -> RawCodexOutcome {
+    if cancellation.is_cancelled() {
+        return RawCodexOutcome::Cancelled;
+    }
     let mut schema = match NamedTempFile::new() {
         Ok(schema) => schema,
         Err(error) => {
-            return AiCommitOutcome::Failed(format!(
+            return RawCodexOutcome::Failed(format!(
                 "Could not create the Codex response schema: {error}"
             ));
         }
     };
-    if let Err(error) = schema.write_all(AI_COMMIT_SCHEMA.as_bytes()) {
-        return AiCommitOutcome::Failed(format!(
+    if let Err(error) = schema.write_all(schema_text.as_bytes()) {
+        return RawCodexOutcome::Failed(format!(
             "Could not write the Codex response schema: {error}"
         ));
     }
 
     let mut child = match Command::new(executable)
         .current_dir(repository_root)
-        .args(["exec", "--ephemeral", "--model", AI_COMMIT_MODEL])
+        .args(["exec", "--ephemeral", "--model", model])
         .args(["--sandbox", CODEX_SANDBOX, "--output-schema"])
         .arg(schema.path())
-        .arg(AI_COMMIT_PROMPT)
+        .arg(prompt)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -187,13 +326,13 @@ fn run_codex(
     {
         Ok(child) => child,
         Err(error) if error.kind() == io::ErrorKind::NotFound => {
-            return AiCommitOutcome::Failed(
-                "The Codex CLI disappeared after Diffo found it. Run `codex --version` in your shell, then press i again."
+            return RawCodexOutcome::Failed(
+                "The Codex CLI disappeared after Diffo found it. Restart Diffo to check the installation again."
                     .to_owned(),
             );
         }
         Err(error) => {
-            return AiCommitOutcome::Failed(format!("Could not start Codex CLI: {error}"));
+            return RawCodexOutcome::Failed(format!("Could not start Codex CLI: {error}"));
         }
     };
 
@@ -208,7 +347,7 @@ fn run_codex(
         let _ = child.wait();
         let _ = join_output(stdout);
         let _ = join_output(stderr);
-        return AiCommitOutcome::Failed(format!("Could not send staged changes to Codex: {error}"));
+        return RawCodexOutcome::Failed(format!("Could not send changes to Codex: {error}"));
     }
 
     let status = loop {
@@ -217,7 +356,7 @@ fn run_codex(
             let _ = child.wait();
             let _ = join_output(stdout);
             let _ = join_output(stderr);
-            return AiCommitOutcome::Cancelled;
+            return RawCodexOutcome::Cancelled;
         }
         match child.try_wait() {
             Ok(Some(status)) => break status,
@@ -227,7 +366,7 @@ fn run_codex(
                 let _ = child.wait();
                 let _ = join_output(stdout);
                 let _ = join_output(stderr);
-                return AiCommitOutcome::Failed(format!("Could not wait for Codex CLI: {error}"));
+                return RawCodexOutcome::Failed(format!("Could not wait for Codex CLI: {error}"));
             }
         }
     };
@@ -235,13 +374,13 @@ fn run_codex(
     let stdout = match join_output(stdout) {
         Ok(output) => output,
         Err(error) => {
-            return AiCommitOutcome::Failed(format!("Could not read the Codex response: {error}"));
+            return RawCodexOutcome::Failed(format!("Could not read the Codex response: {error}"));
         }
     };
     let stderr = match join_output(stderr) {
         Ok(output) => output,
         Err(error) => {
-            return AiCommitOutcome::Failed(format!("Could not read Codex progress: {error}"));
+            return RawCodexOutcome::Failed(format!("Could not read Codex progress: {error}"));
         }
     };
     finish_codex(status, &stdout, &stderr)
@@ -294,10 +433,10 @@ fn finish_codex(
     status: ExitStatus,
     stdout: &BoundedOutput,
     stderr: &BoundedOutput,
-) -> AiCommitOutcome {
+) -> RawCodexOutcome {
     if !status.success() {
         let detail = String::from_utf8_lossy(&stderr.bytes).trim().to_owned();
-        return AiCommitOutcome::Failed(if detail.is_empty() {
+        return RawCodexOutcome::Failed(if detail.is_empty() {
             format!("Codex CLI exited with {status}")
         } else if stderr.truncated {
             format!("{detail}\n…")
@@ -306,9 +445,9 @@ fn finish_codex(
         });
     }
     if stdout.truncated {
-        return AiCommitOutcome::Failed("Codex returned an oversized response".to_owned());
+        return RawCodexOutcome::Failed("Codex returned an oversized response".to_owned());
     }
-    parse_response(&stdout.bytes)
+    RawCodexOutcome::Completed(stdout.bytes.clone())
 }
 
 #[derive(Deserialize)]
@@ -338,6 +477,87 @@ fn parse_response(bytes: &[u8]) -> AiCommitOutcome {
         );
     }
     AiCommitOutcome::Generated(response.subject)
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ReviewResponse {
+    overview: Vec<String>,
+    stops: Vec<ReviewStopResponse>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ReviewStopResponse {
+    title: String,
+    category: String,
+    reason: String,
+    primary_hunk_id: String,
+    related_hunk_ids: Vec<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct AskResponse {
+    text: Vec<String>,
+    hunk_ids: Vec<String>,
+}
+
+fn parse_review_response(request: &ReviewRequest, bytes: &[u8]) -> ReviewCodexOutcome {
+    let response = match serde_json::from_slice::<ReviewResponse>(bytes) {
+        Ok(response) => response,
+        Err(error) => {
+            return ReviewCodexOutcome::Failed(format!(
+                "Codex returned an invalid review: {error}"
+            ));
+        }
+    };
+    let mut stops = Vec::with_capacity(response.stops.len());
+    for stop in response.stops {
+        let Some(category) = AttentionCategory::parse(&stop.category) else {
+            return ReviewCodexOutcome::Failed(
+                "Codex returned an unknown review category".to_owned(),
+            );
+        };
+        stops.push(ReviewStop {
+            title: stop.title,
+            category,
+            reason: stop.reason,
+            primary_hunk_id: stop.primary_hunk_id,
+            related_hunk_ids: stop.related_hunk_ids,
+        });
+    }
+    request
+        .validate_review(response.overview, stops)
+        .map_or_else(
+            || {
+                ReviewCodexOutcome::Failed(
+                    "Codex returned invalid or unknown hunk references".to_owned(),
+                )
+            },
+            ReviewCodexOutcome::Generated,
+        )
+}
+
+fn parse_ask_response(request: &AskRequest, bytes: &[u8]) -> ReviewCodexOutcome {
+    let response = match serde_json::from_slice::<AskResponse>(bytes) {
+        Ok(response) => response,
+        Err(error) => {
+            return ReviewCodexOutcome::Failed(format!(
+                "Codex returned an invalid answer: {error}"
+            ));
+        }
+    };
+    request
+        .validate_answer(response.text, response.hunk_ids)
+        .map_or_else(
+            || {
+                ReviewCodexOutcome::Failed(
+                    "Codex returned invalid or unknown hunk references".to_owned(),
+                )
+            },
+            ReviewCodexOutcome::Answered,
+        )
 }
 
 #[cfg(test)]

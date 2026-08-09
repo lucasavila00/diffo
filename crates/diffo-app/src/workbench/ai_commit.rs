@@ -301,6 +301,10 @@ fn escaped_suffix_with_budget(text: &str, budget: usize) -> String {
 
 impl Workbench {
     pub(super) fn request_ai_commit(&mut self) {
+        if let Some(reason) = self.review.unavailable_reason().map(str::to_owned) {
+            self.show_error("AI functionality is disabled", reason);
+            return;
+        }
         if self.deferred_ai_commit == DeferredAiCommit::Pending {
             self.deferred_ai_commit = DeferredAiCommit::Idle;
             self.diff.model.finish_ai_commit();

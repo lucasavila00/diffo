@@ -140,11 +140,33 @@ impl Renderer {
     pub fn prepare_frame(&mut self, model: &Model, area: Rect) -> FramePreparation {
         let panes = horizontal_panes(main_area(area), model.file_pane_percent);
         self.prepare_file_pickers(model, panes[0]);
-        self.prepare_buffer(model, panes[1], false)
+        self.prepare_buffer(model, panes[1], false, None)
     }
 
     pub fn prepare_full_screen(&mut self, model: &Model, area: Rect) -> FramePreparation {
-        self.prepare_buffer(model, area, true)
+        self.prepare_buffer(model, area, true, None)
+    }
+
+    pub(crate) fn prepare_review_buffer(
+        &mut self,
+        model: &Model,
+        area: Rect,
+        target: Option<usize>,
+    ) -> FramePreparation {
+        self.prepare_buffer(model, area, false, target)
+    }
+
+    pub(crate) fn render_review_buffer(&mut self, frame: &mut Frame, area: Rect, model: &Model) {
+        self.render_diff(frame, area, model);
+    }
+
+    pub(crate) fn map_review_buffer_event(
+        &mut self,
+        event: &Event,
+        model: &Model,
+        area: Rect,
+    ) -> Option<RendererEvent> {
+        self.map_full_screen_event(event, model, area)
     }
 
     fn prepare_buffer(
@@ -152,10 +174,22 @@ impl Renderer {
         model: &Model,
         diff_area: Rect,
         undecorated: bool,
+        initial_target: Option<usize>,
     ) -> FramePreparation {
         let requested = self.requested_key(model);
         self.requested.clone_from(&requested);
-        if self.vertical_scroll.requested().is_some() && requested.as_ref() != self.displayed_key()
+        if let Some(target) = initial_target {
+            self.vertical_scroll.clear();
+            let _ = self.vertical_scroll.request(
+                diffo_ui::text_view::ScrollCommand::Vertical(target),
+                model.diff_scroll,
+                diffo_ui::text_view::ViewportMetrics {
+                    maximum_vertical: usize::MAX,
+                    ..diffo_ui::text_view::ViewportMetrics::default()
+                },
+            );
+        } else if self.vertical_scroll.requested().is_some()
+            && requested.as_ref() != self.displayed_key()
         {
             self.vertical_scroll.clear();
         }

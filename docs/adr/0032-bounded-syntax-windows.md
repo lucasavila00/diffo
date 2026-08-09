@@ -63,13 +63,3 @@ A multiline string or comment that begins more than 256 lines before a cold
 window can receive imperfect colors. A very large line can use the deterministic
 plain-text fallback. Neither case changes content, geometry, hunk targets, or
 scroll position.
-
-## Tests
-
-- Highlighter tests bound processed lines and cover the byte-budget fallback.
-- Renderer tests prove initial work is independent of total file length and that
-  an uncached vertical target waits for its syntax window.
-- A real-Git 9,999-line PTY trace requires the committed first-change frame to
-  report syntax readiness.
-- Keep manual timing data and fixtures deterministic so future measurements
-  remain comparable.

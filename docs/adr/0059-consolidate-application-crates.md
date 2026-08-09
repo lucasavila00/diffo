@@ -144,25 +144,6 @@ diffo -> diffo-app -> diffo-ui
 No dependency may point from `diffo-core`, `diffo-git`, or
 `diffo-repository-service` into the application or UI crates.
 
-## Migration
-
-Make the change in behavior-neutral stages:
-
-1. Move command palette, file picker, and text view into `diffo-ui`. Preserve
-   their tests and public behavior. Remove the three old crates.
-2. Move the existing `diffo-app` model and `diffo-tui` implementation under
-   `diffo-app::diff`. Preserve the pure model boundary and atomic preparation
-   tests. Remove `diffo-tui`.
-3. Move Explorer and Workbench under `diffo-app`. Preserve activity ownership
-   and command routing. Remove `diffo-explorer` and `diffo-workbench`.
-4. Remove obsolete workspace dependency entries. Update `ARCH.md`, root and
-   crate READMEs, package metadata, rustdoc includes, and ADR links that name a
-   removed crate as a current owner.
-
-Run `make all` after every stage. It covers unit, real-Git, pseudo-terminal,
-formatting, and lint checks. Also run `cargo doc --workspace --no-deps` after
-the crate documentation changes required by ADR 0051.
-
 ## Consequences
 
 - The workspace has fewer manifests, crate READMEs, dependency edges, and public
@@ -190,13 +171,3 @@ the crate documentation changes required by ADR 0051.
   remain.
 - Create a generic activity framework while merging. Rejected because the merge
   is packaging work. Existing concrete activity routing is sufficient.
-
-## Acceptance
-
-- The workspace contains the ten packages listed in this ADR.
-- Removed crate names appear only in history, migration documentation, and ADRs.
-- Diff and Explorer retain separate model, input, worker or preparation, and
-  view modules.
-- Repository I/O remains outside application state and rendering modules.
-- Existing fixed controls and observable behavior do not change.
-- `make all` passes after the final merge.

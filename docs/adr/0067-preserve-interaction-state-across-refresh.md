@@ -30,11 +30,3 @@ Background refresh must not reset user state.
 
 This rule applies to every control that receives background data while the user
 can navigate, type, expand, or scroll.
-
-## Tests
-
-- Down, refresh, Enter must choose the branch selected by the user.
-- Test reorder, new payload, removal, disabled selection, and empty results.
-- Add a real-Git PTY test with keyboard input interleaved with a repository
-  refresh.
-- Every future live control needs one test that interleaves input and refresh.

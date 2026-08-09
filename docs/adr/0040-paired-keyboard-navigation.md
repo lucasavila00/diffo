@@ -41,9 +41,3 @@ and `p` form a simple next/previous pair. Chosen.
   both directions.
 - Do not make mouse controls the only way to reach an important navigation
   target.
-
-## Tests
-
-- Registry tests cover uniqueness, mapping, and generated help for `n` and `p`.
-- A real-Git PTY test moves forward with `n` and backward with `p` across
-  several changes.

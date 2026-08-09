@@ -26,12 +26,3 @@ a change near the start, enough short unchanged lines to overflow the viewport,
 and a second change near the end. This must reproduce next-only, both, and
 previous-only button states in `make diffo-mock` without mock-only application
 behavior.
-
-## Verification
-
-- Rendering tests keep the viewport, scrollbar, marker rail, markers, and hit
-  targets fixed across all three button states. Blank button rows are inert.
-- Cover inline, side-by-side, and narrow layouts.
-- A frame-traced PTY test scrolls through the mock case without sleeps or delay
-  hooks.
-- `make all` passes.

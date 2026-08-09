@@ -56,20 +56,6 @@ place; that flow is specified separately by
   cursor controls are not limited to ANSI color sequences and malformed
   sequences would remain ambiguous.
 
-## Verification
-
-- A renderer state test supplies line feed, carriage return, escape, backspace,
-  and tab characters in one error and verifies that the resulting footer
-  contains no control characters.
-- A complete Diff frame verifies that text after an embedded newline stays on
-  the footer row and that the newline is visible as `␊`.
-- Explorer and error-toast frame tests verify the same newline behavior at their
-  rendering boundaries. The toast test covers both title and detail and verifies
-  hit-test geometry.
-- The tests verify visible control pictures and fixed footer display width.
-- Existing narrow-width, Unicode-width, head-priority, and command-help tests
-  continue to pass.
-
 ## Consequences
 
 Multiline and control-bearing failures can no longer change cursor position or

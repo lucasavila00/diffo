@@ -25,11 +25,3 @@ either side.
 
 This supersedes ADR 0025's side-by-side fitted-width exception. Its
 visible-slice rules remain unchanged for inline diffs.
-
-## Verification
-
-- A visible long line enables a non-zero horizontal bound and scrollbar.
-- Trackpad scrolling and dragging to the track endpoint reveal the hidden line
-  end.
-- Returning to zero reveals the line start.
-- Gutters and the divider remain fixed throughout horizontal movement.

@@ -68,24 +68,3 @@ previous screen until the full visible range is ready.
 Pressing lowercase `f` again exits. Uppercase `F` does nothing. An open prompt,
 palette, menu, or text input keeps input priority. In text input, `f` remains
 text.
-
-## Verification
-
-- Press `f` in Explorer. The header and syntax-highlighted file text remain.
-  Workbench chrome, scrollbars, line numbers, and gutters disappear.
-- Click `` on the normal Explorer or Diff buffer. Full-screen mode opens.
-- Press `f` in Diff. The header and styled raw hunks remain. Scrollbars, inline
-  layout marks, and side-by-side layout marks disappear.
-- Press `f` again. The normal page returns with the same buffer and scroll
-  position.
-- Click `X`. The normal page returns.
-- Compare the normal and full-screen titles. Text and style are identical.
-- Copy several buffer lines. The copy contains only buffer characters.
-- Test syntax and diff styles in both modes.
-- Test arrow, page, wheel, and horizontal-pan scrolling.
-- Test that borders, gutters, marker rails, change buttons, and status text are
-  absent.
-- Test atomic entry with delayed syntax coverage.
-- Test modal and text-input priority.
-- Test that uppercase `F` is not a shortcut.
-- Run `make all` when implementing this ADR.

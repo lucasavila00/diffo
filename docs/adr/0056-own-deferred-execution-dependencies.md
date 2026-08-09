@@ -103,23 +103,6 @@ Retain the underlying operating-system error as context. Do not expose
 credentials, environment contents, or raw askpass prompts while adding that
 context.
 
-## Verification
-
-- Start Diffo, replace and unlink its original executable, then Push through an
-  askpass transport. The prompt and Push must still complete through the owned
-  image.
-- Repeat with a different executable published at the original path. The
-  replacement must never receive the askpass marker or socket path.
-- Delay Git before its first askpass invocation and prove the private image
-  remains present until Git and all helpers exit.
-- Cover preparation failures, a non-executable runtime location, cancellation,
-  and normal shutdown. Each failure must restore the terminal and report the
-  failed dependency phase.
-- Keep these as compiled-process tests. Unit tests of path strings cannot
-  establish inode, replacement, execution, or lifetime behavior.
-- For future deferred resources, add a deterministic test that invalidates or
-  replaces the original locator between acquisition and use.
-
 ## Cost
 
 Diffo copies its executable once per process and retains that private copy while

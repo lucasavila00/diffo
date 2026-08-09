@@ -60,15 +60,3 @@ rule to Diff's flat pickers.
   explicit disclosure state.
 - Explorer no longer communicates Git state in tree labels; Diff remains the
   dedicated changed-file view.
-
-## Verification
-
-- Assert Diff rows have a two-cell status column, no dot, and preserved status
-  style.
-- Assert Explorer uses `▸`, `▾`, and a two-space file disclosure column.
-- Assert one folder icon is stable across expansion and names align at every
-  depth.
-- Assert Explorer tree labels and viewer titles have no Git-status decoration.
-- Test narrow truncation, row actions, mouse selection, and expansion
-  transitions.
-- Run `make all` when implementing the ADR.

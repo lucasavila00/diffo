@@ -44,13 +44,3 @@ reduces work whose product value is negligible.
 Network-conscious terminal rendering remains a product constraint. New visual
 feedback that causes redraws must provide functional state or progress
 information; pointer location alone is not sufficient justification.
-
-## Acceptance
-
-- Moving the pointer onto, within, and away from a button does not change the
-  rendered frame.
-- Button clicks and their keyboard equivalents continue to work.
-- Renderer and input tests do not depend on hover state or passive mouse
-  movement.
-- A regression test proves that a passive mouse-movement event does not change
-  renderer state or request an application action.

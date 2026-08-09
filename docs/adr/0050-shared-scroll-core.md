@@ -31,12 +31,3 @@ changes scroll state only. It does not own rendering, hunk annotations,
 selection, syntax work, or loading.
 
 Refines ADRs 0033, 0043, 0047, and 0049.
-
-## Acceptance
-
-- One wheel step moves one row in every scrollable panel.
-- Equal content and viewport sizes produce equal bounds.
-- The last track cell maps to the last offset.
-- Empty and narrow viewports do not underflow or create targets.
-- Diff hunk markers remain visually and interactively separate.
-- PTY tests cover wheel scrolling in flat and tree file panels.

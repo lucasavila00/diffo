@@ -55,15 +55,3 @@ changes already on screen are treated as reviewed.
 Prepared diff state must keep both ends of each change region. Inline and
 side-by-side bounds can differ. Button availability may change when a region
 crosses a viewport edge even if its first row is already visible.
-
-## Tests
-
-- Multiple fully visible changes are skipped in both directions.
-- Regions crossing the top or bottom edge remain targets.
-- A region taller than the viewport makes progress in both directions.
-- First and last targets do not wrap.
-- Inline and side-by-side modes use their own bounds.
-- Every input path gets the same action target and availability.
-- A delayed PTY regression proves the target commits atomically.
-
-Run `make all` when implementing.

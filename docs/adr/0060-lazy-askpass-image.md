@@ -84,18 +84,3 @@ have stopped. No helper path or behavior becomes configurable.
   one shipped executable and one private protocol entry point.
 - Keep `fsync` during lazy publication. Rejected because crash durability is not
   a requirement for a process-owned temporary executable.
-
-## Acceptance
-
-- Constructing the real Git source opens the running executable but creates no
-  `diffo-askpass-image-*` directory.
-- A normal launch can draw or dump its first repository state without copying
-  the executable.
-- The first prompted network operation creates one private executable; later
-  operations reuse it.
-- Replacing or unlinking the launched binary before the first Push cannot
-  redirect or break askpass. The prompt and Push still use the startup image.
-- Preparation failures identify the askpass boundary and do not expose
-  credentials.
-- `make all` passes, including the compiled-process binary-replacement
-  regression.

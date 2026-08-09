@@ -60,12 +60,3 @@ error. Successful cancellation shows no result toast.
 
 Put shared types in `diffo-core`. Keep picker code out of activities and
 `diffo-ui::file_picker`. Rendering never runs Git.
-
-## Verification
-
-Test picker behavior, stale loads, worker ordering, and no discovery toast. Use
-real Git tests for checkout, conflicts, changed refs, HEAD states, cancellation,
-and dirty trees. Use an E2E-only Git proxy with explicit gates for deterministic
-PTY ordering; production code must not contain timing hooks. The proxy delegates
-to real Git, and real-Git tests cover cancellation while Git is blocked before
-mutation.

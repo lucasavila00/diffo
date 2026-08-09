@@ -64,23 +64,3 @@ Button preparation must retain enough committed projection information to derive
 the style and target atomically. Inline and side-by-side modes may render
 different styles for the same Git hunk because their visible projections differ;
 this matches their existing navigation bounds and diff presentation.
-
-## Verification
-
-- Render next and previous targets for additions, removals, replacements, and
-  conflicts in inline and side-by-side modes and assert their semantic
-  backgrounds.
-- Verify a mixed inline replacement uses the changed row nearest the viewport in
-  the direction of travel.
-- Verify a side-by-side replacement uses the removed background for previous,
-  the added background for next, and the conflict background when the relevant
-  side is a conflict.
-- Verify the full button row uses the background while its arrow and label
-  remain white and bold.
-- Verify the displayed style and navigation target always come from the same
-  committed projection across file opens, view-mode changes, and
-  viewport-spanning changes.
-- Verify passive pointer movement does not change the frame or request a redraw.
-- Verify unavailable controls remain hidden and keyboard and mouse actions
-  retain identical targets.
-- Run `make all` when implementing the decision.

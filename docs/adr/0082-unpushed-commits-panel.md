@@ -84,18 +84,3 @@ targets, and must not use bold.
 - Treat commits as a third selectable diff source. Rejected because this
   decision is about visibility of unpublished work, not browsing historical
   commit diffs.
-
-## Acceptance
-
-- Zero through three local-only commits render the correct rows newest first.
-- Four or more render three commit rows and the exact `... and N more` count.
-- The panel and footer ahead count agree for ahead-only and diverged branches.
-- Missing upstream, detached HEAD, and unborn branch render `No upstream`
-  without running a Git command from rendering.
-- Long and control-character subjects are safely truncated to one row at narrow
-  widths.
-- Repository refresh, branch checkout, and Sync replace the panel together with
-  the rest of the snapshot, and stale results cannot restore an old list.
-- Deterministic layout and rendering tests cover constrained terminal heights
-  and prove that the existing file panels keep their minimum heights.
-- The normal workspace formatting, tests, and lints pass.

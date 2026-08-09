@@ -53,12 +53,3 @@ Frame count and cumulative draw time help determine whether CPU tracks wakeups,
 rendering, input processing, or background work. A sampling profiler such as
 `perf` remains a follow-up tool after these measurements identify the workload
 that needs deeper attribution.
-
-## Acceptance
-
-- `make measure-cpu` builds and measures the release Diffo binary on Linux.
-- Idle samples contain no traced input events; active samples contain scroll
-  input.
-- Each scenario prints five runs and a median with all documented metrics.
-- Diffo exits successfully after every sample and the PTY reader terminates.
-- The normal workspace formatting, tests, and lints continue to pass.

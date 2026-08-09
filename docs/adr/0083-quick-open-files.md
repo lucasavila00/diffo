@@ -69,23 +69,3 @@ Opening a result always makes the destination and ownership visible by switching
 to Explorer.
 
 Quick Open adds the otherwise-unassigned `o` global shortcut.
-
-## Verification
-
-- Fixed-binding tests prove that lowercase unmodified `o` opens Quick Open from
-  Diff and Explorer, uppercase `O` is rejected, and help documents the new
-  binding.
-- Modal-input tests prove that typing `o` in Quick Open and other modal queries
-  does not recursively open Quick Open.
-- Search tests cover empty queries, file-name priority over path-only matches,
-  fuzzy relative-path matches, stable path-order ties, ignored and hidden files,
-  file symlinks, and exclusion of directories and Git control data.
-- Deterministic state tests cover loading, path refresh, selection
-  reconciliation, stale results, and a selected path disappearing before its
-  file read completes.
-- Opening a result expands and reveals its Explorer row and atomically commits
-  the selected path, file content, change gutter, scroll bounds, and visible
-  syntax.
-- A frame-traced PTY regression opens Quick Open from Diff and proves that no
-  frame combines the new Explorer selection with the previous viewer content.
-- `make all` passes.

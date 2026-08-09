@@ -52,9 +52,3 @@ and visible syntax are ready together. Stale background results cannot commit.
   open.
 - Render a unified diff in the viewer. Rejected. Explorer must show the real
   file.
-
-## Tests
-
-Cover tree building, status colors, unchanged colors, expansion, selection,
-gutter mapping, removal of deleted paths and deletion-only folders, binary
-files, stale results, and atomic syntax-ready opens.

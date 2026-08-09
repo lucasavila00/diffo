@@ -64,17 +64,3 @@ happened.
 The shared search picker needs optional trailing row metadata without changing
 other picker users. The branch model gains optional tip-time information, while
 checkout identity continues to use only branch kind, full ref, and object ID.
-
-## Verification
-
-- Unit-test parsing dated and undated refs, descending ordering across local and
-  remote branches, and deterministic timestamp ties.
-- Test that fuzzy relevance wins while recency breaks equal scores and that
-  selection still starts on the first enabled result.
-- Unit-test relative-age boundaries, future timestamps, and unavailable
-  timestamps with an explicit clock value.
-- Snapshot wide and narrow checkout rows to verify alignment, truncation,
-  disabled rows, and omission of ages when space is constrained.
-- Use a real Git repository to verify that branch tip committer timestamps are
-  loaded by the single discovery query.
-- Complete repository validation with `make all`.

@@ -105,24 +105,3 @@ changed committed render state, and tests must cover that contract so a missing
 dirty signal cannot leave new state undisplayed. Preparation still owns atomic
 commits; presentation suppression must never expose a partially prepared buffer
 or delay a ready commit behind unrelated input.
-
-## Verification
-
-- A deterministic event-loop test runs multiple clean idle iterations and proves
-  the terminal writer receives zero bytes and the presented-frame count does not
-  advance.
-- State-transition tests cover every dirty source: input, resize, repository
-  results, tool and update results, toast deadlines, command-progress animation,
-  and committed Diff and Explorer preparation.
-- No-op input, filtered wheel events, unchanged snapshots, stale results, and
-  pending preparation remain clean while retaining their required diagnostic
-  trace data.
-- A frame-traced PTY regression reaches a stable ready frame, observes clean
-  poll iterations without sleeps or delay hooks, and proves no further terminal
-  bytes are written until a visible transition is triggered.
-- Existing atomic buffer, syntax readiness, first-hunk navigation, scrollbar
-  marker, terminal restoration, and asynchronous preparation regressions
-  continue to pass.
-- `make measure-cpu` reports zero presented frames and zero PTY bytes during the
-  steady-state idle sample.
-- `make all` passes.

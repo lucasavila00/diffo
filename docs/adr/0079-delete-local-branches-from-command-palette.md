@@ -107,24 +107,3 @@ disabled, while delete omits it because it can never be a valid target.
 
 Remote-tracking and remote-server branches remain unchanged. Deleting a local
 branch does not delete, prune, or push anything on a remote.
-
-## Verification
-
-- Test command availability in every activity, no key binding, modal input
-  priority, local-only filtering, current-branch omission, detached `HEAD`,
-  stale loads, empty results, and cancellation.
-- Test that branch ordering, fuzzy matching, relative ages, and picker controls
-  remain shared with checkout, and that the fixed key-binding table still
-  rejects uppercase character shortcuts.
-- Use real Git tests to prove merged and upstream-merged branches delete without
-  a warning, while an unmerged branch remains until forced deletion is
-  confirmed.
-- Use real Git tests for a moved or missing selected ref, a branch that becomes
-  current, and a branch checked out in another worktree. None may delete a
-  different ref.
-- Test that only the not-fully-merged failure opens the warning; every other
-  failure is persistent and never enables force.
-- Add deterministic command-queue and PTY coverage for safe success, warning
-  cancel, forced success, cancellation, result toasts, and snapshot
-  installation. Do not use sleeps or delay environment hooks.
-- Complete repository validation with `make all`.

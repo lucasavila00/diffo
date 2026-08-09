@@ -60,19 +60,6 @@ per-side byte budget, eight-window retained coverage, worker coalescing, and
 syntax-skeleton fallback remain unchanged. These constants remain fixed product
 behavior.
 
-## Required fixes
-
-1. Replace target-to-end projection ranges with viewport-centered,
-   boundary-clamped ranges.
-2. Replace the backward special case with absolute-distance window sizing and
-   odd window sizes.
-3. Add deterministic tests for centered initial coverage and equal sizing in
-   both directions.
-4. Add a frame-traced PTY regression that crosses cold coverage boundaries in
-   both directions and proves no scroll-input frame exposes a syntax skeleton.
-5. Retire the empty `scrolling-up-has-no-pre-cache` todo when these changes
-   land.
-
 ## Consequences
 
 An initial open does the same amount of syntax work as before but divides its
@@ -85,17 +72,3 @@ Direction changes no longer cause avoidable cold misses. Retained windows still
 make previously visited regions warm. On an unavoidable first-visit miss, the
 viewport waits on prepared syntax instead of exposing an empty-looking frame,
 regardless of direction.
-
-## Tests
-
-- A renderer test checks that initial first-change coverage includes source rows
-  above the committed viewport.
-- A sizing test pairs equal upward and downward distances and requires equal odd
-  window sizes.
-- A renderer state test starts at the middle of a Rust diff, requests uncached
-  targets above and below in fresh renderers, and requires the committed
-  full-text viewport to remain unchanged until each target and its syntax commit
-  together.
-- A real-Git PTY test opens a Rust change in the middle of a file, crosses
-  retained syntax coverage in both directions, and requires every scroll-input
-  frame to remain syntax-ready.

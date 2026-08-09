@@ -86,19 +86,3 @@ Filesystem and Git results can arrive in either order. Explorer therefore treats
 the path list as filesystem-owned data and Git state as a separately replaceable
 overlay; neither result may roll back the other's newer generation or user
 interaction state.
-
-## Verification
-
-- In a temporary real repository, path discovery includes tracked, non-ignored
-  untracked, ignored, and hidden regular files while excluding Git control data,
-  empty directories, and special entries.
-- Creating, renaming, and deleting an ignored file updates Explorer even when
-  the repository snapshot is identical.
-- Editing the selected ignored file replaces its viewer atomically, and supplied
-  stale scan and file outcomes are rejected deterministically.
-- Refresh reconciliation preserves expansion, selection, and scroll when their
-  stable paths still exist.
-- A frame-traced PTY regression covers an ignored-file event without sleeps or
-  delay hooks and proves no frame combines a new selected path with old file
-  content.
-- `make all` passes.

@@ -67,19 +67,3 @@ while preserving the automatically derived patch version.
 The `release` branch is generated output. Its history is intentionally replaced,
 so it must not be used for development or protected against the workflow's force
 update.
-
-## Verification
-
-- Verify the workflow triggers for pushes to `main` and has no tag trigger or
-  release creation command.
-- Verify a full-history checkout produces a stable SemVer version from the
-  workspace release line and first-parent commit count.
-- Verify the same version is embedded in the executable and schema-1 metadata.
-- Verify the exact checked-out source commit SHA is embedded in the executable
-  and schema-1 metadata.
-- Verify the generated parentless commit contains only the three publication
-  files and is force-pushed to `refs/heads/release`.
-- Verify the updater's fixed endpoint reads from the raw `release` branch.
-- Verify the installer downloads from that branch and replaces an existing
-  destination.
-- Complete repository validation with `make all`.

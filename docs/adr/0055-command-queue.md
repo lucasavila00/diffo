@@ -48,12 +48,3 @@ replacement snapshot.
 This restores ADR 0018's border gradient as the default loading presentation for
 every queued command and replaces ADR 0052's prohibition on that transient
 progress color. Idle structural chrome remains fixed dark gray.
-
-## Verification
-
-Test FIFO execution, single-command exclusivity, cancellation acknowledgement,
-and activity switching. Test command-scoped sequential prompts, stale prompt
-rejection, and prompt-answer bypass of the worker lane. Rendering tests cover
-the animated gradient, progress toast, modal priority, masked secrets, and `×`
-hit target. End-to-end tests cancel a delayed Git command and verify that the
-next queued command starts only after process and prompt cleanup completes.

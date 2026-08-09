@@ -39,11 +39,3 @@ arrows.
 - Change tree indentation by entry kind. Rejected. Same depth must mean same
   indent.
 - Teach the shared picker about Git. Rejected. Explorer owns Git labels.
-
-## Acceptance
-
-- Sibling file and folder names start in the same column at every depth.
-- Status letters and folder arrows still work.
-- Narrow names still truncate with `...`.
-- File buffer titles still match file labels.
-- `make all` passes.

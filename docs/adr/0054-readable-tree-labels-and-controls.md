@@ -108,25 +108,3 @@ pane seams. In exchange, the mouse interaction model can be understood from a
 static frame and remains consistent across activities. Hit testing becomes
 stricter because empty layout space no longer aliases the nearest rendered
 action.
-
-## Verification
-
-- Render an Explorer tree containing unchanged files and directories and assert
-  that both label types use the primary-text foreground.
-- Verify disclosure markers and indentation still identify directories and their
-  expansion state.
-- Render enabled `[+]` and `[-]` row and panel-title actions and assert that
-  their foreground differs from the surrounding border and is bold.
-- Render other enabled navigation and dialog actions with the same control
-  contract.
-- Verify disabled controls may use chrome styling but cannot be activated.
-- Verify flat rows retain the same interaction marker after selection, while
-  tree rows add no selection caret and retain their disclosure structure.
-- Verify long flat and tree labels render `...`, and that a right-side row
-  action remains fully visible after truncation.
-- Verify the pane resize marker lies inside the seam hit target.
-- Verify every dismissible toast renders a close marker inside its hit target.
-- Verify blank command-palette rows do not execute a command.
-- Verify the edit marker remains visible in a narrow file pane.
-- Verify pointer movement does not change any control style or request a redraw.
-- Run workspace formatting, tests, and clippy when implementing the decision.

@@ -21,9 +21,3 @@ actions.
 
 The file keeps one identity and one format from picker to buffer. Label changes
 must update both together.
-
-## Verification
-
-- Open each file status and compare the picker label with the buffer title.
-- Verify async file loading never pairs content with another row's label.
-- Run `make all`.

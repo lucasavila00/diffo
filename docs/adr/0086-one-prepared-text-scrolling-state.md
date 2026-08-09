@@ -50,13 +50,3 @@ flashes an empty or partially styled target. Warm scrolling remains immediate.
 Diff and Explorer have the same target accumulation, reversal, bounds, prefetch
 placement, and readiness behavior, so a future directional change cannot be made
 in only one viewer.
-
-## Tests
-
-- Shared state tests cover bounds, repeated input, reversal, readiness, centered
-  windows, and equal upward and downward prefetch sizing.
-- Diff and Explorer state tests request cold targets on both sides of a
-  committed viewport and require full text until the target commits.
-- Frame-traced PTY tests cross cold coverage in both directions in both viewers
-  and reject every scroll-input frame that exposes a syntax skeleton or moves
-  before readiness.

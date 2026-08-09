@@ -50,13 +50,3 @@ composition from silently dropping semantic modifiers supplied by an activity.
 The picker now treats a label's line-level style as part of its public rendering
 contract. Callers that want only part of a label decorated must use explicitly
 styled spans.
-
-## Verification
-
-- Render flat picker rows for every `ChangeKind` and verify the marker and
-  filename cells retain the fixed foreground and modifiers.
-- Render a selected changed row and verify selection background and bold coexist
-  with its status foreground and modifiers.
-- Verify an explicitly styled row action retains its own foreground.
-- Render Explorer status rows to cover the same shared composition path.
-- Run the normal workspace formatting, tests, and lints.

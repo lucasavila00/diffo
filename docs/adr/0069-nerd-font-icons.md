@@ -38,12 +38,3 @@ parallel icon sets with different widths and visual behavior.
   symbols.
 - Textual arrows used to name arrow keys remain text and are not part of the
   icon set.
-
-## Verification
-
-- Assert every shared interface icon is a Nerd Font private-use glyph and
-  occupies one terminal cell; allow spaces only where a disclosure label
-  reserves its second cell.
-- Exercise activity selection, tree expansion, progress, diff navigation, and
-  narrow rendering through existing rendering and end-to-end tests.
-- Run `make all` when implementing the ADR.

@@ -23,8 +23,3 @@ Slow startup becomes understandable with very little terminal traffic. The
 alternate screen hides these lines while Diffo runs; restoring the terminal may
 show them again after exit. For slow runs, startup measurement's first output is
 now a progress line, not the ready frame.
-
-## Verification
-
-Tests cover silent fast startup, the fixed delay, latest-phase selection, and
-output. `make all` passes.

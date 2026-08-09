@@ -42,23 +42,3 @@ may still reject or report problems with Diffo-created commits.
 Diffo continues to pass the message as a typed process argument and keeps the
 existing success, failure, cancellation, draft-preservation, and atomic snapshot
 behavior.
-
-## Code change proposal
-
-- Add `--no-verify` to the `RepositoryAction::Commit` command constructed in
-  `crates/diffo-git/src/operation.rs`.
-- Replace the end-to-end regression that expects a local `pre-commit` hook to
-  reject the composer commit with a regression that installs a failing hook and
-  proves the commit succeeds without running it.
-- Add a focused Git operation test that records hook execution and verifies both
-  the resulting commit message and the absence of the hook side effect.
-
-## Verification
-
-- A failing executable `pre-commit` hook does not prevent a Commit action.
-- A failing executable `commit-msg` hook does not prevent a Commit action.
-- The requested message and staged tree are present in the created commit.
-- A subsequent ordinary `git commit` in the same repository still runs its
-  hooks.
-- Remote hook rejection classification and presentation remain covered.
-- `make all` passes.

@@ -44,12 +44,3 @@ with respect to the release endpoint, and free of an unsolicited overlay.
 The update task channel now carries only results of explicit update commands.
 The updater client continues to perform the same metadata verification and
 installation when explicitly invoked.
-
-## Verification
-
-- Black-box application tests can remain open without an update-availability
-  toast or passive release-endpoint request.
-- Command-palette tests continue to find and enqueue the explicit update command
-  in every activity.
-- Explicit update success and failure results remain persistent until dismissed.
-- `make all` passes.

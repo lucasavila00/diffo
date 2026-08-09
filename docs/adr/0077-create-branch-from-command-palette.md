@@ -105,24 +105,3 @@ Both flows leave the created branch checked out and untracked.
 The explicit-base flow deliberately shares checkout's branch presentation and
 navigation. Changes to branch sorting, aliases, metadata, or picker controls
 apply to both workflows rather than drifting between two implementations.
-
-## Verification
-
-- Test modal input priority, cursor editing, cleanup preview, empty input,
-  existing names, Git-invalid names, detached and unborn heads, cancellation,
-  and stale branch loads.
-- Test that the explicit-base command reuses checkout picker selection, enables
-  the current branch, preserves selected identity across refreshes, and carries
-  the selected object ID into the queued action.
-- Test that every activity exposes both shared commands and that the fixed
-  key-binding table still rejects uppercase character shortcuts.
-- Use real Git tests to prove both start-point forms create the branch at the
-  captured commit, make it current without an upstream, and preserve staged,
-  unstaged, and untracked changes when Git permits the checkout.
-- Use real Git tests for duplicate-name races, a changed `HEAD`, and a changed
-  selected branch; all must fail before mutation.
-- Add a deterministic frame-traced PTY regression proving that explicit base
-  selection and success install the new branch and its snapshot atomically. Use
-  an explicit Git-proxy gate before mutation for cancellation and ordering; do
-  not use sleeps or delay environment hooks.
-- Complete repository validation with `make all`.

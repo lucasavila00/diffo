@@ -24,9 +24,3 @@ trait RepositorySource {
 ```
 
 The UI does not know if state came from Git or a fixture.
-
-## Done when
-
-- Snapshot types exist.
-- Real and mock sources implement the same trait.
-- The UI only accepts snapshots.

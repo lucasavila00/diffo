@@ -54,16 +54,3 @@ Launching Diffo outside a worktree produces one stable, actionable line without
 entering terminal mode. Bare repositories are rejected because Diffo operates on
 a worktree. Unexpected Git and filesystem failures remain distinguishable and
 actionable.
-
-## Verification
-
-- A black-box launcher test runs the real Diffo binary in a temporary
-  non-repository directory and asserts failure, empty standard output, and the
-  exact message.
-- A black-box launcher test runs the real binary from a nested worktree
-  directory, dumps a repository snapshot, and verifies a root-relative nested
-  file is present.
-- Existing launcher tests continue to prove invalid arguments and `update`
-  dispatch before repository discovery.
-- Repository-backed integration tests continue to launch from valid worktrees.
-- `make all` passes.

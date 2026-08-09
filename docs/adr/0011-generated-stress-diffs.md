@@ -16,10 +16,3 @@ unique names. This makes scroll movement and anchoring visible. Do not use one
 repeated placeholder line.
 
 Keep the normal generated Rust, JSON, and long-line cases too.
-
-## Tests
-
-- Check every generated path exists.
-- Check every patch has the exact requested added-line count.
-- Check a sample has no duplicate generated lines.
-- Keep fixture files small in Git.

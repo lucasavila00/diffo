@@ -74,11 +74,3 @@ The 500-file workload starts many real Git commands and is diagnostic developer
 work, not part of `make all`. Changing its sizes, milestone definitions,
 terminal geometry, warm-up count, or sample count requires updating this ADR
 with the harness.
-
-## Verification
-
-- `make measure-startup` prints five samples and a median for all three
-  scenarios.
-- Every sample observes first output and the repository marker.
-- Every launched Diffo process exits successfully and its PTY reader terminates.
-- `make all` continues to validate the workspace independently of timing noise.

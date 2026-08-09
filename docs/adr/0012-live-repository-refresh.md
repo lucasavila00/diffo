@@ -48,38 +48,3 @@ must not wait for Git.
 
 Own stage actions and watcher refreshes may race. The newest numbered snapshot
 wins. Selection stays on the same `FileKey` when it still exists.
-
-## Regression tests
-
-Add deterministic unit tests with fake events and a fake snapshot collector:
-
-- A burst causes one collection.
-- An event during collection causes one later collection.
-- An old result cannot replace a newer result.
-- Collection failure keeps the last snapshot and reports an error.
-- Shutdown joins all worker threads.
-
-Add a real filesystem integration test with a temporary Git repository. Verify
-edits to the worktree and Git metadata both request refreshes.
-
-Add a black-box integration test to the `diffo` binary crate. Cargo provides the
-compiled no-argument binary to the test. Use developer-only
-`DIFFO_WATCH_DUMP_PATH` to run the same watcher and refresh pipeline without a
-terminal. Every accepted snapshot is written atomically as RON. The test:
-
-1. Waits for the initial clean snapshot.
-2. Modifies a tracked file and creates an untracked file.
-3. Waits until both appear as unstaged.
-4. Runs `git add` and waits until they appear as staged.
-5. Commits and waits for a clean snapshot with the new commit.
-6. Sends SIGTERM and checks clean process shutdown.
-
-Poll the dump with a deadline. Do not use fixed sleeps. Write to a temporary
-file and rename it so the test never reads partial RON.
-
-## Done when
-
-- `make diffo` updates after external file and Git commands without restart.
-- Refresh work never blocks `q`, Ctrl-C, or drawing.
-- The black-box live-update test runs in normal workspace CI.
-- Existing real Git snapshot tests still pass.

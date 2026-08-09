@@ -86,15 +86,3 @@ Repositories with many changed tracked files trade bounded extra concurrent Git
 work for shorter wall time. Output ordering and snapshot semantics remain
 stable. Large mock snapshots avoid one complete clone and retain substantially
 less steady-state memory in Explorer.
-
-## Verification
-
-- Git snapshot and real-Git end-to-end tests verify staged, unstaged, untracked,
-  conflicted, renamed, copied, binary, and ordering behavior under bounded
-  workers.
-- Explorer state tests verify status changes rebuild the tree while
-  diff-body-only changes do not.
-- `make measure-startup` reports first terminal output and repository readiness
-  for large-content and many-file workloads; the milestones remain close without
-  a disposable loading frame.
-- `make all` passes.

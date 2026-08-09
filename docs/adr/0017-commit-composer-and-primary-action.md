@@ -42,11 +42,3 @@ Keep the current label visible so the user can see which action is running.
 
 Mock errors include the received action. The mutable mock can create a local
 mock commit; remote sync still reports that no remote is configured.
-
-## Tests
-
-- Pure tests cover Commit, Push, Pull, disabled, and Push + Pull states.
-- A compiled PTY test types a message, commits, sees Push, pushes, and verifies
-  the remote HEAD.
-- A focused commit field cannot consume Ctrl+C.
-- Coordinate tests cover the input and enabled/disabled button.

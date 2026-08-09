@@ -103,17 +103,3 @@ The fixed palette deliberately does not adapt to arbitrary light terminal
 themes, matching the existing dark-background assumption in ADR 0008. Adding a
 new semantic role requires a design-system decision rather than an isolated
 renderer edit.
-
-## Verification
-
-- Assert the semantic role constants retain their accepted terminal colors.
-- Assert panel/dialog insets and responsive overlay widths retain their accepted
-  geometry.
-- Scan shared chrome production sources and reject direct raw color and layout
-  choices.
-- Render focused, selected, muted, success, warning, danger, and conflict states
-  in their existing component tests.
-- Render File Diff and Commit message together and assert both borders use the
-  one chrome gray.
-- Verify network progress changes its spinner without changing the outer border.
-- Run workspace formatting, tests, clippy, and crate documentation.

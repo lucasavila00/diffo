@@ -60,16 +60,3 @@ activity.
 - Treat the completed toast as the final network-activity frame. Rejected
   because pending feedback and result feedback have different lifetimes and
   error rules.
-
-## Verification
-
-- Complete and fail the same repository operation while Explorer and Diff are
-  active; both render the same toast text and style.
-- Switch activities while a toast is visible; the same toast remains visible and
-  keeps its original expiry deadline.
-- Click-dismiss and automatic expiry work from every activity; error toasts
-  remain until dismissed or replaced.
-- Starting and stopping network activity does not remove an existing toast, and
-  a watcher-only snapshot does not create one.
-- Existing queue ordering, duplicate replacement, maximum-size, rendering, and
-  Git operation tests continue to pass.

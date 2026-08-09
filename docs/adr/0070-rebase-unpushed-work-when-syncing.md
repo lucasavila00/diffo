@@ -188,11 +188,3 @@ Merge is still a valid Git workflow. It is not part of Diffo's sync workflow.
 
 Dirty-worktree handling and the conflict-resolution interface need separate
 decisions.
-
-## Verification
-
-Use real local and remote repositories. Test same, behind, ahead, clean
-divergence, and conflicting divergence. Test different files and different hunks
-in one file. Prove clean divergence creates no merge commit and uses no
-force-push. Prove conflict stops before push and can still be aborted. Prove the
-shown plan matches the Git operation that runs.

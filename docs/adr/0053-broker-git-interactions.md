@@ -148,24 +148,6 @@ Do not add a terminal emulator, editor, browser login, credential store, remote
 setup, or generic prompt system. Do not answer hook prompts. Do not accept
 unknown SSH hosts automatically.
 
-## Verification
-
-- Parser tests cover supported Git and OpenSSH forms. They reject unknown,
-  malformed, control-bearing, and credential-bearing display data.
-- IPC tests cover success, cancel, disconnect, duplicate IDs, stale IDs, and
-  sequential prompts.
-- Worker tests prove the answer bypasses the blocked command queue and
-  cancellation reaps the operation process group.
-- Workbench tests cover modal priority, masked input, cancel-first SSH choices,
-  all stated controls, and pending-operation state.
-- Secret sentinels never appear in frames, errors, traces, debug output, or test
-  snapshots.
-- Delayed PTY tests use a local SSH server. One accepts a new host and
-  completes. One cancels and leaves refs, the committed snapshot, and the test
-  `known_hosts` unchanged.
-- Credential and passphrase tests use local helpers, temporary homes, and no
-  public network.
-
 ## Cost
 
 This adds a small private startup path, one short-lived in-process socket bridge

@@ -34,9 +34,3 @@ as an unpushed commit.
 
 Derive all of this from one committed `RepositorySnapshot`. Completion, abort,
 and refresh must replace the merge status, files, and Unpushed panel atomically.
-
-## Verification
-
-Test unresolved, resolved, no-staged-diff, completed, aborted, failed, and
-externally started merges. Completing a ready merge must create a two-parent
-commit and remove `MERGE_HEAD`. Finish with `make all`.

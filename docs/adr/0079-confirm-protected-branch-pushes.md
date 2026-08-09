@@ -86,18 +86,3 @@ to `main` and `master` require one deliberate choice per sync.
 A repository whose primary branch uses another name receives no confirmation.
 Adding more fixed protected names or discovering a remote's primary branch
 requires a separate decision.
-
-## Verification
-
-- Pure state-transition tests cover opening, cancel-first selection,
-  confirmation, Esc, outside-click cancellation, modal input priority, and
-  stale-plan rejection.
-- Plan tests cover push and no-push rows for `main`, `master`, similarly
-  prefixed names, case variants, and local names that differ from their upstream
-  destination.
-- Real-Git tests prove cancellation may update the remote-tracking ref but
-  changes neither the local nor remote branch, and confirmation performs the
-  selected normal push exactly once.
-- A compiled PTY regression traces the fetched plan, modal frame, cancellation,
-  and confirmed push without sleeps or delay environment hooks.
-- `make all` passes.

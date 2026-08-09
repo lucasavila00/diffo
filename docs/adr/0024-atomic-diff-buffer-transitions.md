@@ -58,16 +58,3 @@ Frame traces record requested and displayed identities plus the viewport
 transition. A developer-only delay hook makes the asynchronous boundary
 deterministic in PTY tests. This decision refines the background preparation in
 ADR 0009 and the frame transaction in ADR 0014.
-
-## Tests
-
-- A replacement stays invisible until its first-change position is ready.
-- The buffer and viewport change in the same traced frame.
-- The first displayed frame reports syntax-ready coverage for its viewport.
-- Rendering cannot install a worker result.
-- Staged and unstaged buffers for one path have distinct identities.
-- Stale and out-of-order results never become displayed buffers.
-- Same-buffer refresh preserves the visible row.
-- Any future change to preparation or rendering retains a delayed PTY test that
-  proves the displayed identity and viewport transition change in the same
-  frame.

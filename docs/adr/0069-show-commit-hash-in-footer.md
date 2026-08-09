@@ -43,12 +43,3 @@ the combined branch-and-hash text with an ellipsis.
   branches unable to identify the exact checked-out revision.
 - Query `git rev-parse` while rendering. Rejected because rendering must consume
   committed state only and must not perform blocking external work.
-
-## Acceptance
-
-- A named HEAD displays its branch and seven-character commit hash in every
-  activity.
-- Detached and unborn HEAD displays remain distinct and correct.
-- Branch and hash come from one committed repository snapshot.
-- Narrow footers remain bounded and truncate the combined head label safely,
-  including branch names containing wide Unicode characters.

@@ -82,15 +82,3 @@ frames occur, but they cannot change which trace invariants must hold.
 Tests may still fail at a bounded wait when the application makes no progress.
 Such a failure reports a hang or missing observable state, not a missed timing
 window.
-
-## Verification
-
-- No diff worker delay environment variable or worker sleep exists.
-- A renderer state-transition test rejects a supplied stale outcome and accepts
-  the supplied latest outcome in a fixed order.
-- The rapid-open PTY test asserts pending and committed identities from frame
-  traces, without sampling transient previous-buffer contents.
-- Navigation and cold-open PTY tests pass without injected delays.
-- The rapid-open regression passes repeatedly under single-CPU scheduler
-  contention.
-- `make all` passes.

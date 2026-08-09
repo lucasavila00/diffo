@@ -31,11 +31,3 @@ Full-screen views keep their existing control-free behavior.
 Warnings may temporarily cover edge text, but no control permanently reduces the
 viewport. Warning clicks do nothing. Scrollbar and warning visibility cannot
 move content, vertical rails, or markers.
-
-## Verification
-
-- Warning visibility keeps content and rail geometry fixed.
-- Warning clicks are inert, labels are not bold, and `p` and `n` still navigate.
-- Inline Diff, side-by-side Diff, and Explorer keep the same viewport when the
-  horizontal scrollbar appears.
-- `make all` passes.

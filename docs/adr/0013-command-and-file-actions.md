@@ -54,12 +54,3 @@ Do not reset scroll for every watcher snapshot.
 
 Preserve vertical and horizontal scroll when the selected `FileKey` and its diff
 are unchanged. Reset scroll when selection changes or the selected diff changes.
-
-## Regression tests
-
-- Fetch and pull use a real local remote.
-- Palette Enter produces the correct repository action.
-- Mouse clicks produce stage and unstage actions for the clicked row.
-- A real watcher refresh caused by an ignored file preserves scroll.
-- Changing the selected diff resets scroll.
-- Live integration tests have one hard deadline and finish in under 10 seconds.

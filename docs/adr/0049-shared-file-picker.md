@@ -33,12 +33,3 @@ committed state only. Stale Explorer results cannot change the picker.
 Explorer, Git, or app models.
 
 Replaces picker ownership in ADRs 0033 and 0035.
-
-## Acceptance
-
-- Diff: two flat instances. Explorer: one tree instance.
-- Same state, input, rendering, menu, wheel speed, and scrollbar core.
-- Different main-buffer scrollbar rendering keeps hunk markers separate.
-- Tests cover both modes, independent offsets, menus, actions, bounds, and
-  uppercase.
-- Delayed PTY rejects stale Explorer file results.

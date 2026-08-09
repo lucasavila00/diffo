@@ -19,8 +19,3 @@ slower.
 Snapshot startup has one more fixed worker, never another unbounded pool. Fast
 and large repositories avoid serial metadata time while snapshot contents stay
 atomic.
-
-## Verification
-
-A deterministic test proves the two read groups overlap. Compare
-`make measure-startup` before and after, then run `make all`.

@@ -100,15 +100,3 @@ shared F1 palette in every activity; the palette command is the only in-TUI way
 to start the update. Run updates in a separate process through the workbench
 command queue. Show persistent success, verification, network, and permission
 results. Success tells the user to quit and relaunch.
-
-## Verification
-
-- Test launcher dispatch before TUI initialization and rejection of other
-  arguments.
-- Test schema compatibility, versions, targets, filenames, lengths, and digests.
-- Fault every filesystem stage and prove only complete verified bytes become
-  visible.
-- Test permission failures without elevation or partial replacement.
-- Test passive discovery without focus changes, F1 availability, and persistent
-  results.
-- Verify release builds derive their embedded version from the stable Git tag.

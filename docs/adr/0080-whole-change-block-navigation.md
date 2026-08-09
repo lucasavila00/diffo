@@ -63,18 +63,3 @@ The hunk-marker rail continues to represent change blocks rather than Git hunk
 headers. A large block has one marker and one directional stop. The
 navigation-control color continues to come from the destination block under
 ADR 0079.
-
-## Verification
-
-- Unit tests prove that `n` and `p` skip a partially visible change block in one
-  action, including a block taller than the viewport.
-- Unit tests cover several fully visible blocks, no block in the viewport, first
-  and last blocks, and non-wrapping behavior.
-- Projection tests prove that inline and side-by-side replacements each remain
-  one navigation block and that context separates independent blocks.
-- Rendering tests prove that keyboard and mouse controls expose identical
-  targets, availability, and destination colors.
-- A frame-traced PTY regression proves that navigation across a
-  viewport-spanning block installs its destination atomically without an
-  intermediate position inside the current block.
-- `make all` passes.

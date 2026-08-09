@@ -55,14 +55,3 @@ Crossterm, or the binary.
 Move shared viewport, scrolling, scrollbar, gutter, and text rendering code out
 of `diffo-tui` and `diffo-explorer`. Delete the old implementations after
 migration.
-
-## Tests
-
-- Run the same UX contract tests against Diff and Explorer.
-- Test exact line, wheel, and page distances.
-- Test every scroll command, bound, click target, drag endpoint, and nearby
-  inert cell in `diffo-text-view`.
-- Test fixed gutters during horizontal scrolling.
-- Keep delayed PTY tests for opens, stale results, and uncached vertical jumps.
-- Keep the strict syntax limits, atomic-frame rules, and sub-100 ms 9,999-line
-  benchmark.

@@ -31,10 +31,3 @@ second viewport position.
 
 File changes and projection-mode changes still commit atomically because they
 replace the document, not just its position.
-
-## Tests
-
-- Clicking a ready change marker draws the target content in one frame.
-- Ready keyboard and button jumps use the same path.
-- Ready jumps schedule no syntax or projection work.
-- An unready jump keeps the old viewport until one atomic target commit.

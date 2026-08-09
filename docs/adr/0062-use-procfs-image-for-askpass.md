@@ -73,13 +73,3 @@ exact launched version.
 The implementation is intentionally Linux-specific. Supporting another operating
 system would require a new decision rather than restoring a mutable-path
 fallback.
-
-## Verification
-
-- A configured real Git source uses `/proc/<diffo-pid>/exe` for askpass.
-- Start a copied Diffo binary, unlink and replace its launched pathname, then
-  complete a prompted SSH Push. The replacement must not run and the Push must
-  succeed.
-- Prompt parsing, socket protocol, cancellation, and secret-handling tests
-  continue to pass unchanged.
-- `make all` passes.

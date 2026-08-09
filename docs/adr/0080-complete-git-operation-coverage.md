@@ -222,25 +222,3 @@ explicit non-goals.
 The largest new safety surface is local data removal. Discard, Drop Stash, Undo
 Last Commit, and tracked-branch rename therefore require dedicated deterministic
 state tests and real-Git tests before implementation is complete.
-
-## Verification
-
-- Keep one coverage test that enumerates every command in the matrix and proves
-  it is available only in valid repository states.
-- Use real Git repositories to prove Discard preserves the index and ignored
-  files, while Stash preserves index state and never drops an entry during
-  Apply.
-- Prove Amend and Undo reject published, merge, moved, detached, and unborn
-  `HEAD` states and never make a force-push necessary.
-- Prove Revert creates a new commit, and a conflicting revert restores the exact
-  pre-operation branch, index, and worktree.
-- Prove Rename never overwrites a ref or changes a remote ref, and clears a
-  tracked branch's upstream only after confirmation.
-- Prove Publish uses the captured tip, rejects a non-fast-forward destination,
-  sets upstream only after success, and applies protected-branch confirmation.
-- Add deterministic state-transition and frame-traced PTY regressions for every
-  asynchronous mutation and atomic snapshot installation. Do not use sleeps or
-  delay environment hooks.
-- Keep tests that reject uppercase character entries in the fixed key-binding
-  table.
-- Complete every implementation change with `make all`.

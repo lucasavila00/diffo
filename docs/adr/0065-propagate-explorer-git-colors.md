@@ -54,16 +54,6 @@ keeping its compact disclosure layout and its ban on Explorer status letters.
 - Tree construction performs one bounded status fold over entries it already
   builds.
 
-## Verification
-
-- Test recursive propagation and mixed-status precedence.
-- Test that repository refresh removes obsolete directory status.
-- Render a collapsed changed folder and verify its caret stays neutral while its
-  icon and name are colored.
-- Verify the file-only conflict modifier.
-- Verify viewer titles remain neutral and letter-free.
-- Run `make all` when implementing the ADR.
-
 ## References
 
 - [VS Code file decoration propagation](https://github.com/microsoft/vscode/blob/main/src/vscode-dts/vscode.d.ts)

@@ -65,10 +65,3 @@ conflicted merges use the existing review, staging, and commit workflow and can
 be explicitly aborted.
 
 Sync keeps its current policy and still refuses to rebase local merge commits.
-
-## Verification
-
-Test picker contents, stale refs, changed `HEAD`, detached and unborn `HEAD`,
-clean and conflicted merges, tags, abort, cancellation, and atomic snapshot
-installation. Use real Git and deterministic frame-traced PTY tests. Complete
-validation with `make all`.

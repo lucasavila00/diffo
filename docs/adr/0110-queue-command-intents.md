@@ -48,14 +48,3 @@ command ID and cancellation handle while its phase changes.
 Use this queue for all user-started asynchronous repository, AI, and update
 commands. Keep read-only background preparation and picker queries on their
 existing schedulers.
-
-## Verification
-
-Test `a`, `i`, `9` arriving together and prove that each intent uses the
-snapshot installed by its predecessor. Cover repeated toggles, stale targets,
-preparation and execution failures, active and queued cancellation, and the rule
-that no discarded command starts.
-
-Rendering tests cover queue order, goal and phase labels, overflow, cancellation
-hit targets, small terminals, modals, and activity changes. End-to-end tests
-cover the complete AI commit workflow without sleeps.

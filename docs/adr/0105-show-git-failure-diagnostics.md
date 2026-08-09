@@ -62,18 +62,3 @@ application state, debug output, modal text, or frame traces.
 Long diagnostics are explicitly incomplete but cannot create unbounded
 application state. On small terminals, the modal shows as much of the bounded
 terminal-safe text as its fixed layout permits.
-
-## Verification
-
-- Classification tests cover the exit status and distinct stderr and stdout
-  labels.
-- A real unknown Git failure reaches `OperationFailure` with Git's diagnostic.
-- Authentication and remote-hook output containing sentinel secrets is absent
-  from the resulting failure detail.
-- Oversized multibyte diagnostics remain valid UTF-8, fit the 16 KiB limit, and
-  end with the truncation marker.
-- A compiled PTY test displays a real remote failure's summary, status, and
-  stderr in the shared acknowledgement modal.
-- Existing terminal-control, error-queuing, acknowledgement, and operation-state
-  tests continue to pass.
-- `make all` passes.

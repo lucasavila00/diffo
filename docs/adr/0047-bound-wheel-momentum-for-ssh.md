@@ -57,16 +57,6 @@ This is deliberately event decay rather than time-based scroll animation. Diffo
 schedules no passive scroll frames and performs no redraw merely because time
 passed.
 
-## Verification
-
-- A deterministic state test accepts simultaneous and 48 ms same-direction
-  events, rejects a 49 ms tail event, accepts an immediate reversal, and resets
-  after 120 ms.
-- The PTY wheel regression sends ten events in one terminal write and observes
-  one frame with a ten-line transition.
-- Existing keyboard, page, scrollbar, Diff, Explorer, asynchronous preparation,
-  and terminal restoration tests continue to pass.
-
 ## Consequences
 
 Trackpad momentum decays sooner without slowing the active part of the gesture.

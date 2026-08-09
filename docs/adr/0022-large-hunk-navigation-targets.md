@@ -52,10 +52,3 @@ button, so none of the three controls overlap.
 Click hit-testing uses only the currently rendered button rectangles and their
 non-wrapping targets. Mouse movement updates hover state without changing the
 diff scroll position.
-
-## Tests
-
-- Renderer tests cover fixed placement, hover styling, hidden start/end buttons,
-  non-wrapping clicks, and separation from the horizontal scrollbar.
-- A real-Git PTY test clicks through first, middle, and last changes and back
-  again.

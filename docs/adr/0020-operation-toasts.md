@@ -134,27 +134,3 @@ Keep the action name in every failure: `Push failed: ...`. Never show success
 before both the Git command and result-data collection succeed. If result
 metadata cannot be collected, show a generic success such as `Push complete`; do
 not report a false hash or count.
-
-## Tests
-
-- Pure tests cover queue order, duplicate replacement, maximum size, and
-  dismissal.
-- Git tests cover structured Commit, Fetch, Pull, and Push results.
-- Git tests cover non-fast-forward, hook rejection, missing remote, conflict,
-  authentication, network, and unknown failures without leaking secrets.
-- Refresh tests prove watcher snapshots cannot create action results.
-- Renderer tests cover position, wrapping, colors, and three stacked toasts.
-- Compiled PTY tests perform real local Commit, Fetch, Pull, and Push operations
-  and assert their exact visible messages.
-- A compiled PTY test waits for automatic dismissal.
-- A compiled PTY test verifies a failed action names the action and stays
-  visible.
-- Compiled PTY tests create a diverged branch and verify Push is blocked without
-  changing either ref.
-- A compiled PTY test advances the remote after the local snapshot, attempts
-  Push, and verifies the non-fast-forward rejection toast.
-- A compiled PTY test uses a rejecting local remote hook and shows its safe
-  detail.
-- Failure tests use local repositories or invalid local remotes. They never
-  depend on public network access.
-- All E2E waits keep the existing five-second timeout.

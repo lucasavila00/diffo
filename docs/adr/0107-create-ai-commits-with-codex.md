@@ -154,23 +154,6 @@ run between the phases.
 - `diffo-git` and the mock repository revalidate the expected snapshot before
   committing; Codex never mutates the repository directly.
 
-## Verification
-
-- Pure tests cover `a`, `i` deferral, direct `i`, second-`i` cancellation,
-  no-staged feedback, both phases, draft preservation, stale results, and the
-  unchanged manual workflow. The fixed binding table continues to reject
-  uppercase shortcuts.
-- Prompt tests cover deterministic staged-only context, five recent subjects,
-  style guidance, untrusted delimiters, bounded oversized-diff sampling, and
-  omission markers.
-- Runner tests verify arguments, cwd, stdin, schema parsing, malformed
-  responses, and cancellation without public network access.
-- Real and mock repository tests prove that matching staged state commits and
-  changed HEAD or index state cannot commit the generated subject.
-- A deterministic PTY regression uses `codex-mock` to exercise `a`, `i`, and
-  automatic commit without credentials or network access.
-- `make all` passes.
-
 ## Sources
 
 - [OpenAI Codex non-interactive mode](https://developers.openai.com/codex/noninteractive)

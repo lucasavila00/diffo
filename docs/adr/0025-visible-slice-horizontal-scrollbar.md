@@ -27,11 +27,3 @@ Derive horizontal overflow from the currently rendered vertical slice.
 The scrollbar may therefore appear and disappear during vertical scrolling. That
 is intentional: it describes the content the user can currently see and interact
 with.
-
-## Tests
-
-- A long off-screen row does not show or enable horizontal scrolling.
-- Scrolling the long row into view enables a non-zero horizontal maximum.
-- Scrolling it out of view hides the control and clamps the horizontal offset to
-  zero.
-- Existing drag coverage still reaches the right edge of a visible long line.

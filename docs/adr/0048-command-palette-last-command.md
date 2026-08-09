@@ -38,11 +38,3 @@ Repeating the last command in an activity requires only F1 and Enter. Search
 results remain stable and continue to reflect relevance rather than prior use.
 History is lost when Diffo exits, and a command used in one activity does not
 reorder another activity's independent palette.
-
-## Verification
-
-- Execute the second command, reopen the palette, and verify it is the selected
-  first suggestion for an empty query.
-- Type a query and verify fuzzy matching takes precedence over command history.
-- Existing keyboard, mouse, rendering, activity-isolation, and fixed-shortcut
-  tests continue to pass.

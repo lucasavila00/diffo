@@ -21,14 +21,3 @@ Keep parsing, projection, and syntax work out of the input loop for large diffs.
 - Show raw patch text when parsing fails.
 
 This keeps `q`, Ctrl-C, navigation, and resize responsive.
-
-## Tests
-
-- Small diff renders on the first call.
-- Large diff uses the worker.
-- Old content stays until new content is ready.
-- Bad patch shows raw text.
-- The syntax cutoff is covered on both sides of the strict 10,000-line boundary.
-- Syntax work is bounded by viewport size and parser look-behind, not file
-  length.
-- Keep the ignored 100k-line timing test.

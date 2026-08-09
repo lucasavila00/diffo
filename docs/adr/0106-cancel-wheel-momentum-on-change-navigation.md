@@ -68,33 +68,3 @@ navigation target calculation or inspect pending diff projections.
 Filtered tail events remain visible in frame traces, so a trace distinguishes
 input received from viewport movement applied. Suppressing them causes no redraw
 by itself, preserving the SSH cost boundary from ADR 0047.
-
-## Code change proposal
-
-- Extend `WheelFriction` with a cancelled-burst state and an explicit
-  cancellation transition.
-- Let the event loop identify only context-valid Diff `n` and `p` navigation
-  before filtering each event in order.
-- Keep the existing Diff input mapping as the sole producer of navigation
-  messages; the wheel filter only decides whether later wheel events are
-  accepted.
-
-## Verification
-
-- A deterministic `WheelFriction` test accepts an active same-direction burst,
-  cancels it, rejects same-direction events through the tail, accepts an
-  immediate reversal, and accepts a fresh same-direction burst after the 120 ms
-  reset.
-- An ordered-batch test proves wheel events before `n` or `p` remain accepted
-  and same-direction events after it are rejected.
-- Input-context tests prove modal, picker, prompt, Explorer, uppercase,
-  modified, repeat, and release events cannot cancel Diff wheel momentum.
-- A frame-traced PTY regression uses a diff with separated change blocks, sends
-  a wheel burst, `n` or `p`, and a same-direction tail without sleeps or delay
-  hooks, then proves the jump target commits atomically and remains the rendered
-  position. The trace retains the rejected raw wheel events and shows no
-  tail-only redraw.
-- Existing direction-reversal, 48 ms active interval, 120 ms reset, keyboard
-  navigation, atomic syntax readiness, and terminal restoration tests continue
-  to pass.
-- `make all` passes.

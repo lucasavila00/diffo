@@ -36,14 +36,3 @@ CommitEditor: Closed | Open { draft, cursor }
 
 Input mapping emits open, edit, submit, and close messages. The TUI only renders
 the state. Repository effects stay outside both layers.
-
-## Tests
-
-- Pure tests cover open, edit, outside-click close, Esc, submit, and draft
-  restore.
-- Input tests prove the modal captures typing but never Ctrl+C.
-- Compiled PTY tests open the modal by mouse, type, close by outside click,
-  reopen, submit, and verify the real Git commit message.
-- A compiled PTY test changes the repository while editing and verifies focus,
-  cursor, and draft stay unchanged.
-- Every E2E wait keeps the existing five-second timeout.

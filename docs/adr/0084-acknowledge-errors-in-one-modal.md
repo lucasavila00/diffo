@@ -84,23 +84,3 @@ error surface and errors cannot disappear or be overlooked behind other work.
 
 Success and informational feedback remain lightweight. Failed commits keep their
 message without forcing message editing into the recovery flow.
-
-## Verification
-
-- Pure state tests cover opening, FIFO queuing, duplicate coalescing, dismissal,
-  and showing the next pending error.
-- Input and hit-target tests prove that Enter, Esc, OK, and the close button
-  dismiss; outside clicks and unrelated input do not.
-- Renderer tests cover terminal-safe title, summary, and detail text at narrow
-  and normal terminal sizes.
-- Tests enumerate every error producer and prove it reaches the shared modal
-  rather than a toast; toast tests prove only success and informational kinds
-  remain.
-- State tests prove that system prompts defer errors and that visible errors
-  block other product modals.
-- A deterministic frame-traced PTY regression submits a commit that Git rejects
-  and proves the error modal appears, the commit editor does not reopen in any
-  frame, and the submitted draft is preserved when reopened explicitly.
-- Existing successful-commit tests continue to prove that success clears the
-  draft.
-- `make all` passes.

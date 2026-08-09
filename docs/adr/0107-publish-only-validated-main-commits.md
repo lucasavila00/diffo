@@ -35,11 +35,3 @@ when CI runs finish out of order.
 Only commits that pass both normal checks and stress tests can reach the release
 branch. Failed validation leaves the previous release unchanged. Adding another
 release-blocking check means adding it to the publish job's dependencies.
-
-## Verification
-
-- Passing `checks` and `stress` on a `main` push publishes that exact commit.
-- Any failed or cancelled dependency leaves publication skipped.
-- Pull requests and non-main pushes cannot publish.
-- Out-of-order CI completion cannot replace a newer release with an older one.
-- `make all` passes.

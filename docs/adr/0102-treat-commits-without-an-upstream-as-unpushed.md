@@ -20,7 +20,3 @@ Detached and unborn heads still show `No upstream`.
 
 A new branch shows what its first push will publish. Branches with an upstream
 keep using the upstream comparison and exact remaining count.
-
-## Verification
-
-Rendering tests cover a named branch without an upstream. `make all` passes.

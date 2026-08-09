@@ -48,11 +48,3 @@ StagingFile
 As long as unstaged files remain, a successful `StageFileAction` leaves another
 unstaged diff open. The exact key binding and target-selection bookkeeping are
 not part of this decision.
-
-## Acceptance
-
-Repeatedly run the stage action for the open file. Each success opens another
-unstaged diff until none remain. A failed action does not advance.
-
-Opening a repository with both staged and unstaged files starts on an unstaged
-diff.

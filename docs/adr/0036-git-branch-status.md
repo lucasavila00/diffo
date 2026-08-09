@@ -93,17 +93,3 @@ the pane layout.
   perception vary, and the state would be ambiguous.
 - Re-read Git during rendering. Rejected because rendering consumes committed
   state only and may not block on external commands.
-
-## Acceptance
-
-- Named, unborn, and detached HEAD render distinctly.
-- Clean, changed, staged, and conflicted snapshots render the correct priority
-  label, including snapshots that contain both staged and unstaged changes.
-- Ahead-only, behind-only, and diverged branches render the correct arrows and
-  counts.
-- Passive refresh and successful checkout replace head and repository state in
-  one frame; stale refresh results cannot restore the old branch.
-- The branch segment remains visible during network operations, errors, and
-  narrow layouts, and clicking it requests the checkout picker.
-- Renderer tests cover Unicode width, long branch truncation, the minimum
-  supported terminal width, and xterm-256 styling.

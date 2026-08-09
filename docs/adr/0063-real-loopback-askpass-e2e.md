@@ -67,17 +67,3 @@ credential.
 
 The parser remains fail-closed without depending on OpenSSH always setting its
 optional prompt-kind environment variable.
-
-## Verification
-
-- Accepting a real first-contact host prompt completes a Fetch and writes the
-  generated host key to the isolated `known_hosts` file.
-- Cancelling host approval or an encrypted-key passphrase preserves refs and
-  worktree state.
-- A correct real key passphrase completes Fetch without appearing in terminal
-  output or frame traces.
-- A real SSH password prompt opens no modal, fails the operation, and changes no
-  Git state.
-- Replacing the launched Diffo pathname before a prompted Push cannot redirect
-  askpass; the Push reaches the real bare remote through OpenSSH.
-- `make e2e` and `make all` pass.

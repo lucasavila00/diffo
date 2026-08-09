@@ -14,12 +14,3 @@ Render special Git states as useful file views.
   colors. Do not show red or green change backgrounds.
 - Read staged rename content from the Git index. Do not leak unstaged edits.
 - Binary files show a binary message. Preserve no-final-newline metadata.
-
-## Tests
-
-- Snapshot real untracked, conflicted, and renamed Git states.
-- Create a real merge conflict and verify `U` plus all conflict markers in the
-  TUI.
-- Mock an empty rename and a rename with content.
-- Select the content rename in a compiled TUI test and verify its body is
-  visible.

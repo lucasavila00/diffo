@@ -15,9 +15,3 @@ A fixture can contain:
 
 Raw `.diff` files are only for diff parser tests. They cannot hold full
 repository state.
-
-## Done when
-
-- Snapshot types support serialization.
-- At least one full fixture exists.
-- `make diffo-mock` uses the fixture source.

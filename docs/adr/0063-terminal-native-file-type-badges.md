@@ -69,16 +69,6 @@ inspect file contents, or detect fonts at runtime.
 - Other terminals may show missing glyphs.
 - The fixed table covers fewer files than a configurable icon theme.
 
-## Verification
-
-- Assert every icon has terminal width one.
-- Test file-name, compound-extension, extension, folder-state, and fallback
-  matches.
-- Test the same icons in Diff and Explorer.
-- Test file and folder alignment.
-- Test Git-status styling and narrow layouts.
-- Run `make all` when implementing the ADR.
-
 ## References
 
 - [Ghostty 1.2 built-in Nerd Font support](https://ghostty.org/docs/install/release-notes/1-2-0)

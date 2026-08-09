@@ -84,18 +84,3 @@ Explorer mouse handler, but it removes existing duplicated layout decisions
 instead of adding another one. The shared split is intentionally limited to the
 page-level horizontal layout; vertical layouts, scrollbars, and
 activity-specific panes remain local.
-
-## Acceptance
-
-- Dragging the vertical seam in Diff, Explorer, and Search changes the
-  leading-pane width with identical bounds and active styling.
-- Switching activities preserves the seam column and does not reset a
-  drag-adjusted width.
-- Press, drag, release, collapse, restore, boundary, and narrow-terminal
-  behavior have deterministic unit tests against the shared primitive.
-- Coordinate tests prove that the seam captures only its documented cells and
-  that adjacent activity controls still receive input.
-- A delayed PTY regression drags the seam, switches activities, and observes the
-  same width without a stale or intermediate frame.
-- Tests reject activity-local horizontal split percentages for the page shell.
-- The normal workspace formatting, tests, and lints pass.

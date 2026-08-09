@@ -47,11 +47,3 @@ mismatched upstream is replaced after a successful sync.
 
 The displayed plan, commit counts, protected-branch check, push refspec, and
 resulting upstream all use one destination.
-
-## Verification
-
-- Real-Git tests prove a feature branch tracking `origin/master` creates or
-  advances only its same-named remote branch.
-- Tests cover nested branch names, protected destinations, rejected pushes, and
-  stale upstream changes.
-- `make all` passes.

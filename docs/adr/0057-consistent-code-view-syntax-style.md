@@ -51,13 +51,3 @@ surface beside regular file contents.
 The foreground-only contract intentionally gives up font emphasis supplied by
 the upstream theme. Diffo already makes this tradeoff in Diff to keep rendering
 stable across local terminals, multiplexers, and SSH sessions.
-
-## Verification
-
-- Render a Rust keyword in Explorer and assert that its cells have the Monokai
-  Extended foreground, no background, and no font modifiers.
-- Render the same unchanged Rust line in Explorer and as a Diff context row and
-  assert identical token foregrounds and plain backgrounds.
-- Render added and removed Diff rows and assert that their semantic backgrounds
-  and contrast-adjusted foregrounds remain unchanged.
-- Run `make all`.

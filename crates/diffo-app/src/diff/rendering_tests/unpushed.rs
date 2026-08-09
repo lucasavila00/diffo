@@ -1,6 +1,6 @@
 use super::*;
 use crate::diff::{file_group_areas, render_unpushed_commits};
-use diffo_core::Commit;
+use diffo_core::{Commit, RepositoryOperationState};
 
 fn model_with_unpushed(ahead: usize, commits: &[(&str, &str)]) -> Model {
     Model::new(RepositorySnapshot {
@@ -112,6 +112,39 @@ fn treats_every_commit_as_unpushed_without_an_upstream() {
     assert!(text.contains("3333333 Third commit"));
     assert!(text.contains("... and more"));
     assert!(!text.contains("No upstream"));
+}
+
+#[test]
+fn replaces_unpushed_commits_with_the_current_merge_phase() {
+    let mut model = model_with_unpushed(0, &[]);
+    model.snapshot.operation = RepositoryOperationState::Merge;
+    model.snapshot.files.push(FileState {
+        path: PathBuf::from("conflicted.txt"),
+        old_path: None,
+        kind: ChangeKind::Conflicted,
+        staged: None,
+        unstaged: Some(FileDiff {
+            text: "conflict".to_owned(),
+        }),
+    });
+    let backend = TestBackend::new(50, 3);
+    let mut terminal = Terminal::new(backend).unwrap();
+
+    terminal
+        .draw(|frame| render_unpushed_commits(frame, frame.area(), &model))
+        .unwrap();
+    let text = buffer_text(terminal.backend().buffer());
+    assert!(text.contains("Merge"));
+    assert!(text.contains("Resolve and stage 1 conflicted file"));
+    assert!(!text.contains("Unpushed"));
+
+    model.snapshot.files.clear();
+    terminal
+        .draw(|frame| render_unpushed_commits(frame, frame.area(), &model))
+        .unwrap();
+    let text = buffer_text(terminal.backend().buffer());
+    assert!(text.contains("All conflicts resolved · complete the merge"));
+    assert!(!text.contains("No unpushed commits"));
 }
 
 #[test]

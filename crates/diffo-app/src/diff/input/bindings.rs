@@ -86,7 +86,7 @@ pub(super) static KEY_BINDINGS: &[KeyBinding] = &[
     KeyBinding {
         keys: &[KeyChord::plain(KeyCode::Enter)],
         message: Message::ExecuteCommit,
-        description: "Commit staged changes",
+        description: "Commit staged changes or complete merge",
     },
     KeyBinding {
         keys: &[KeyChord::plain(KeyCode::Char('n'))],

@@ -193,9 +193,13 @@ pub(crate) fn render_commit_editor(frame: &mut Frame, model: &Model, content_are
         disabled_control_style()
     };
     frame.render_widget(
-        Paragraph::new("[ Commit (Enter) ]")
-            .alignment(Alignment::Center)
-            .style(commit_style),
+        Paragraph::new(if model.merge_phase().is_some() {
+            "[ Complete merge (Enter) ]"
+        } else {
+            "[ Commit (Enter) ]"
+        })
+        .alignment(Alignment::Center)
+        .style(commit_style),
         commit,
     );
     frame.render_widget(

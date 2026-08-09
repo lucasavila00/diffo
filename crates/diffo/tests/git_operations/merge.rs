@@ -4,6 +4,8 @@ use super::support::*;
 struct MergeFrame {
     refresh_generation: u64,
     head: String,
+    repository_operation: diffo_core::RepositoryOperationState,
+    repository_files: Vec<String>,
 }
 
 #[test]
@@ -176,6 +178,91 @@ fn conflicted_merge_can_be_aborted_from_the_command_palette() -> Result<()> {
         &repository.worktree,
         &["rev-parse", "--verify", "MERGE_HEAD"],
     )?;
+    Ok(())
+}
+
+#[test]
+fn resolved_conflict_stays_visible_until_the_merge_commit_is_installed() -> Result<()> {
+    let repository = TestRepository::new()?;
+    let destination = git_output(&repository.worktree, &["branch", "--show-current"])?;
+    git(&repository.worktree, &["switch", "-c", "topic"])?;
+    fs::write(repository.worktree.join("tracked.txt"), "topic\n")?;
+    git(&repository.worktree, &["commit", "-am", "Topic"])?;
+    git(&repository.worktree, &["switch", &destination])?;
+    fs::write(repository.worktree.join("tracked.txt"), "destination\n")?;
+    git(&repository.worktree, &["commit", "-am", "Destination"])?;
+    let old_head = git_output(&repository.worktree, &["rev-parse", "HEAD"])?;
+    git_must_fail(&repository.worktree, &["merge", "--no-edit", "topic"])?;
+    let trace_path = repository.root.path().join("resolved-merge-frames.ronl");
+    let mut screen = DiffoScreen::launch_with_env(
+        diffo_binary()?,
+        &repository.worktree,
+        &[("DIFFO_TRACE_FRAMES", trace_path.as_os_str())],
+    )?;
+
+    screen
+        .wait_for_text("merge conflicts")?
+        .wait_for_text("Resolve and stage 1")?
+        .wait_for_text("[ Complete merge ]")?;
+
+    fs::write(repository.worktree.join("tracked.txt"), "resolved\n")?;
+    git(&repository.worktree, &["add", "tracked.txt"])?;
+    screen
+        .wait_for_text("merge ready")?
+        .wait_for_text("All conflicts resolve")?
+        .click(&Selector::text("[ Complete merge ]"))?
+        .wait_for_text("Committed ")?
+        .wait_for_text("Unpushed")?
+        .wait_for_text_gone("merge ready")?
+        .press(Key::Char('q'))?
+        .wait_for_exit()?;
+
+    let new_head = git_output(&repository.worktree, &["rev-parse", "HEAD"])?;
+    assert_ne!(new_head, old_head);
+    assert_eq!(
+        git_output(&repository.worktree, &["show", "-s", "--format=%s", "HEAD"])?,
+        "Complete merge"
+    );
+    assert_eq!(
+        git_output(&repository.worktree, &["show", "-s", "--format=%P", "HEAD"])?
+            .split_whitespace()
+            .count(),
+        2
+    );
+    git_must_fail(
+        &repository.worktree,
+        &["rev-parse", "--verify", "MERGE_HEAD"],
+    )?;
+
+    let trace = fs::read_to_string(&trace_path).context("read resolved merge frame trace")?;
+    let frames = trace
+        .lines()
+        .map(ron::from_str::<MergeFrame>)
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+    let old = format!("named:{destination}:{old_head}");
+    let new = format!("named:{destination}:{new_head}");
+    let ready = frames
+        .iter()
+        .find(|frame| {
+            frame.head == old
+                && frame.repository_operation == diffo_core::RepositoryOperationState::Merge
+                && frame
+                    .repository_files
+                    .iter()
+                    .any(|file| file == "tracked.txt:staged=true:unstaged=false")
+        })
+        .with_context(|| format!("trace has no merge-ready frame:\n{trace}"))?;
+    assert!(ready.refresh_generation > 0);
+    assert!(frames.iter().any(|frame| {
+        frame.head == new
+            && frame.repository_operation == diffo_core::RepositoryOperationState::None
+            && frame.repository_files.is_empty()
+    }));
+    assert!(frames.iter().all(|frame| {
+        frame.head != new
+            || (frame.repository_operation == diffo_core::RepositoryOperationState::None
+                && frame.repository_files.is_empty())
+    }));
     Ok(())
 }
 

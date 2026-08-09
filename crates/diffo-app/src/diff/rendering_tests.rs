@@ -8,7 +8,10 @@ use crate::diff::{ChangeArea, DiffViewMode, Message, Model, ToastKind, ToastQueu
 use crossterm::event::{
     Event, KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
 };
-use diffo_core::{ChangeKind, FileDiff, FileState, HeadState, RepositorySnapshot, UpstreamState};
+use diffo_core::{
+    ChangeKind, FileDiff, FileState, HeadState, RepositoryOperationState, RepositorySnapshot,
+    UpstreamState,
+};
 use diffo_diff::RowKind;
 use diffo_highlight::Rgb;
 use ratatui::{
@@ -25,6 +28,13 @@ use super::{
     horizontal_panes, main_area, overview_position, picker_document, row_style,
     scrollbar_position_count, should_syntax_highlight, status_line,
 };
+
+fn line_text(line: &ratatui::text::Line<'_>) -> String {
+    line.spans
+        .iter()
+        .map(|span| span.content.as_ref())
+        .collect()
+}
 
 #[test]
 fn file_picker_renders_every_git_change_kind_with_its_status_color() {
@@ -311,6 +321,27 @@ fn status_line_shows_named_head_state_and_divergence() {
 
     model.snapshot.files[0].kind = ChangeKind::Conflicted;
     insta::assert_debug_snapshot!("conflicts", status_line(&model, 0, 80));
+}
+
+#[test]
+fn status_line_keeps_both_merge_phases_visible() {
+    let mut model = Model::new(RepositorySnapshot {
+        operation: RepositoryOperationState::Merge,
+        files: vec![FileState {
+            path: PathBuf::from("conflicted.txt"),
+            old_path: None,
+            kind: ChangeKind::Conflicted,
+            staged: None,
+            unstaged: Some(FileDiff {
+                text: "conflict".to_owned(),
+            }),
+        }],
+        ..RepositorySnapshot::default()
+    });
+
+    assert!(line_text(&status_line(&model, 0, 120)).contains("merge conflicts"));
+    model.snapshot.files.clear();
+    assert!(line_text(&status_line(&model, 0, 120)).contains("merge ready"));
 }
 
 #[test]

@@ -2,6 +2,7 @@
 
 pub mod model;
 
+pub(crate) use model::MergePhase;
 pub use model::{
     ChangeArea, DiffViewMode, Effect, FileKey, Message, Model, NetworkOperation, Toast, ToastKind,
     ToastQueue, update,

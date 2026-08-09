@@ -1,7 +1,7 @@
 use crate::diff::{
     Alignment, Block, Borders, ChangeArea, ChangeKind, Constraint, Direction, FileKey, FileState,
-    Frame, HeadState, Layout, Line, Model, Paragraph, Rect, RepositorySnapshot, Span, Style,
-    change_kind_style, horizontal_panes, main_area, terminal_safe_text,
+    Frame, HeadState, Layout, Line, MergePhase, Model, Paragraph, Rect, RepositorySnapshot, Span,
+    Style, change_kind_style, horizontal_panes, main_area, terminal_safe_text,
 };
 use diffo_ui::file_picker::{Document, Row as PickerRow};
 use diffo_ui::{design, disabled_control_style, file_icons, icons, mouse_target_style, theme};
@@ -56,9 +56,13 @@ pub(in crate::diff) fn render_commit_composer(frame: &mut Frame, area: Rect, mod
         disabled_control_style()
     };
     frame.render_widget(
-        Paragraph::new("[ Commit (Enter) ]")
-            .alignment(Alignment::Center)
-            .style(style),
+        Paragraph::new(if model.merge_phase().is_some() {
+            "[ Complete merge ]"
+        } else {
+            "[ Commit (Enter) ]"
+        })
+        .alignment(Alignment::Center)
+        .style(style),
         sections[1],
     );
 }
@@ -87,15 +91,18 @@ pub(in crate::diff) fn file_group_areas(
 ) -> std::rc::Rc<[ratatui::layout::Rect]> {
     let file_groups_height = design::MIN_FILE_GROUP_HEIGHT.saturating_mul(2);
     let available_unpushed_height = area.height.saturating_sub(file_groups_height);
-    let unpushed_rows = match (&model.snapshot.head, &model.snapshot.upstream) {
-        (HeadState::Named { .. }, Some(upstream)) => {
-            summary_row_count(upstream.recent_local_commits.len(), upstream.ahead > 3)
-        }
-        (HeadState::Named { .. }, None) => {
-            let commit_count = model.snapshot.recent_commits.len();
-            summary_row_count(commit_count, commit_count > 3)
-        }
-        _ => 1,
+    let unpushed_rows = match model.merge_phase() {
+        Some(_) => 1,
+        None => match (&model.snapshot.head, &model.snapshot.upstream) {
+            (HeadState::Named { .. }, Some(upstream)) => {
+                summary_row_count(upstream.recent_local_commits.len(), upstream.ahead > 3)
+            }
+            (HeadState::Named { .. }, None) => {
+                let commit_count = model.snapshot.recent_commits.len();
+                summary_row_count(commit_count, commit_count > 3)
+            }
+            _ => 1,
+        },
     };
     let desired_unpushed_height = u16::try_from(unpushed_rows)
         .unwrap_or(u16::MAX)
@@ -117,25 +124,47 @@ pub(in crate::diff) fn render_unpushed_commits(frame: &mut Frame, area: Rect, mo
         return;
     }
     let inner_width = usize::from(area.width.saturating_sub(design::PANEL_BORDER_OVERHEAD));
-    let rows = match (&model.snapshot.head, &model.snapshot.upstream) {
-        (HeadState::Named { .. }, Some(upstream)) => commit_summary_rows(
-            &upstream.recent_local_commits,
-            (upstream.ahead > 3).then(|| format!("... and {} more", upstream.ahead - 3)),
-            inner_width,
+    let (title, rows) = match model.merge_phase() {
+        Some(MergePhase::Conflicts(conflicts)) => (
+            "Merge",
+            vec![Line::raw(truncate_width(
+                &format!(
+                    "Resolve and stage {conflicts} conflicted {}",
+                    if conflicts == 1 { "file" } else { "files" }
+                ),
+                inner_width,
+            ))],
         ),
-        (HeadState::Named { .. }, None) => commit_summary_rows(
-            &model.snapshot.recent_commits,
-            (model.snapshot.recent_commits.len() > 3).then(|| "... and more".to_owned()),
-            inner_width,
+        Some(MergePhase::Ready) => (
+            "Merge",
+            vec![Line::raw(truncate_width(
+                "All conflicts resolved · complete the merge",
+                inner_width,
+            ))],
         ),
-        _ => vec![Line::raw(truncate_width("No upstream", inner_width))],
+        None => (
+            "Unpushed",
+            match (&model.snapshot.head, &model.snapshot.upstream) {
+                (HeadState::Named { .. }, Some(upstream)) => commit_summary_rows(
+                    &upstream.recent_local_commits,
+                    (upstream.ahead > 3).then(|| format!("... and {} more", upstream.ahead - 3)),
+                    inner_width,
+                ),
+                (HeadState::Named { .. }, None) => commit_summary_rows(
+                    &model.snapshot.recent_commits,
+                    (model.snapshot.recent_commits.len() > 3).then(|| "... and more".to_owned()),
+                    inner_width,
+                ),
+                _ => vec![Line::raw(truncate_width("No upstream", inner_width))],
+            },
+        ),
     };
     frame.render_widget(
         Paragraph::new(rows).block(
             Block::default()
                 .borders(Borders::ALL)
                 .border_style(resize_border_style(model))
-                .title("Unpushed"),
+                .title(title),
         ),
         area,
     );
@@ -385,6 +414,8 @@ fn transient_status(model: &Model, _animation_tick: usize) -> Option<Span<'stati
 
 #[derive(Clone, Copy)]
 enum RepositoryStatus {
+    MergeConflicts,
+    MergeReady,
     Conflicts,
     Staged,
     Changes,
@@ -394,6 +425,8 @@ enum RepositoryStatus {
 impl RepositoryStatus {
     const fn label(self) -> &'static str {
         match self {
+            Self::MergeConflicts => "merge conflicts",
+            Self::MergeReady => "merge ready",
             Self::Conflicts => "conflicts",
             Self::Staged => "staged",
             Self::Changes => "changes",
@@ -403,8 +436,8 @@ impl RepositoryStatus {
 
     fn style(self) -> Style {
         match self {
-            Self::Conflicts => Style::default().fg(theme::DANGER),
-            Self::Staged => Style::default().fg(theme::SUCCESS),
+            Self::MergeConflicts | Self::Conflicts => Style::default().fg(theme::DANGER),
+            Self::MergeReady | Self::Staged => Style::default().fg(theme::SUCCESS),
             Self::Changes => Style::default().fg(theme::WARNING),
             Self::Clean => Style::default().fg(theme::CHROME),
         }
@@ -412,11 +445,16 @@ impl RepositoryStatus {
 }
 
 fn repository_status(snapshot: &RepositorySnapshot) -> RepositoryStatus {
-    if snapshot
+    let conflicts = snapshot
         .files
         .iter()
-        .any(|file| file.kind == ChangeKind::Conflicted)
-    {
+        .any(|file| file.kind == ChangeKind::Conflicted);
+    if let Some(phase) = MergePhase::from_snapshot(snapshot) {
+        match phase {
+            MergePhase::Conflicts(_) => RepositoryStatus::MergeConflicts,
+            MergePhase::Ready => RepositoryStatus::MergeReady,
+        }
+    } else if conflicts {
         RepositoryStatus::Conflicts
     } else if snapshot.files.iter().any(|file| file.staged.is_some()) {
         RepositoryStatus::Staged

@@ -38,6 +38,7 @@ pub struct FrameRecord {
     visible_modal: Option<&'static str>,
     refresh_generation: u64,
     head: String,
+    repository_operation: diffo_core::RepositoryOperationState,
     repository_files: Vec<String>,
     selected_file: Option<String>,
     requested_diff: Option<String>,
@@ -119,6 +120,7 @@ impl FrameRecord {
                 diffo_core::HeadState::Unborn { name } => format!("unborn:{name}"),
                 diffo_core::HeadState::Detached { commit } => format!("detached:{commit}"),
             },
+            repository_operation: model.snapshot.operation,
             repository_files: model
                 .snapshot
                 .files

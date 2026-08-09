@@ -184,7 +184,7 @@ fn ignores_non_press_unknown_and_non_file_clicks() {
 }
 
 #[test]
-fn maps_commit_input_and_the_fixed_commit_button() {
+fn commit_input_opens_with_m_but_not_a_click_and_commit_button_stays_clickable() {
     let mut model = model();
     let area = Rect::new(0, 0, 100, 30);
     let click = |column, row| {
@@ -197,9 +197,14 @@ fn maps_commit_input_and_the_fixed_commit_button() {
     };
 
     assert_eq!(
-        map_event(&click(2, 1), &model, area),
+        map_event(
+            &Event::Key(KeyEvent::new(KeyCode::Char('m'), KeyModifiers::NONE)),
+            &model,
+            area,
+        ),
         Some(Message::FocusCommitInput)
     );
+    assert_eq!(map_event(&click(2, 1), &model, area), None);
     assert_eq!(map_event(&click(2, 3), &model, area), None);
     model.snapshot.files[0].staged = Some(FileDiff {
         text: String::new(),

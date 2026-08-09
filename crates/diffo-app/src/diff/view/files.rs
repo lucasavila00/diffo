@@ -28,7 +28,7 @@ pub(in crate::diff) fn render_commit_composer(frame: &mut Frame, area: Rect, mod
     let message = if empty {
         model
             .suggested_commit_message()
-            .unwrap_or_else(|| "Type a message…".to_owned())
+            .unwrap_or_else(|| "Type a message… (m)".to_owned())
     } else {
         model.commit_message.clone()
     };
@@ -43,10 +43,7 @@ pub(in crate::diff) fn render_commit_composer(frame: &mut Frame, area: Rect, mod
                 Block::default()
                     .borders(Borders::ALL)
                     .border_style(resize_border_style(model))
-                    .title(Line::from(vec![
-                        Span::raw("Commit message "),
-                        Span::styled("(m)", mouse_target_style()),
-                    ])),
+                    .title("Commit message"),
             ),
         sections[0],
     );
@@ -76,9 +73,6 @@ pub(crate) fn commit_action_at_position(
     let columns = horizontal_panes(main_area(area), model.file_pane_percent);
     let file_areas = file_panel_areas(columns[0]);
     let sections = commit_composer_areas(file_areas[0]);
-    if sections[0].contains((column, row).into()) {
-        return Some(crate::diff::Message::FocusCommitInput);
-    }
     if sections[1].contains((column, row).into()) && model.commit_enabled() {
         return Some(crate::diff::Message::ExecuteCommit);
     }

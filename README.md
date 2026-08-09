@@ -26,10 +26,9 @@ from inside a Git repository.
 ## AI
 
 Diffo uses Codex for commit generation and guided diff review. See
-[AI.md](AI.md) for the supported provider and model, then the separate
-[AI commit](docs/architecture/ai-commits.md) and
+[AI commits](docs/architecture/ai-commits.md) and
 [AI Review](docs/architecture/ai-review.md) architecture pages for their data
-boundaries and safety contracts.
+boundaries, supported model, safety checks, and offline testing contracts.
 
 ## Architecture
 

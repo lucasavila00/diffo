@@ -58,18 +58,19 @@ clears it and reports `Committed <hash> — <subject>`. A Git failure retains th
 generated subject for manual recovery. A generation failure retains the previous
 draft.
 
-Codex is an optional runtime dependency. Resolve it at startup: first from the
-inherited `PATH`, then through `command -v` in the user's login shell so IDE and
-subprocess launchers see the same shell installation. Store the result for the
-process lifetime and launch the resolved absolute path. When Codex is missing,
-disable AI controls and explain that it must be installed before restarting
-Diffo. Do not bundle Codex, manage authentication, add configuration, or change
-release artifacts. Reuse the user's saved Codex authentication and provider, but
-pin `gpt-5.6-luna` for its low latency and cost on this small structured task
-instead of inheriting the user's default model. Key help and the Diffo README
-disclose that the request sends the staged diff, repository and branch identity,
-and recent commit subjects through that CLI setup. The explicit AI action is
-consent; do not add a confirmation modal, telemetry, or a persistent preference.
+Codex is an optional runtime dependency. Resolve `codex` only when the action
+starts: first from the inherited `PATH`, then through `command -v` in the user's
+login shell so IDE and subprocess launchers see the same shell installation.
+Invoke the resolved absolute path and cache a successful resolution for the
+process lifetime; do not cache a miss, so installing Codex or repairing the
+shell path can be retried without restarting. Do not probe at startup, bundle
+Codex, manage authentication, add configuration, or change release artifacts.
+Reuse the user's saved Codex authentication and provider, but pin `gpt-5.6-luna`
+for its low latency and cost on this small structured task instead of inheriting
+the user's default model. Key help and the Diffo README disclose that the
+request sends the staged diff, repository and branch identity, and recent commit
+subjects through that CLI setup. The explicit AI action is consent; do not add a
+confirmation modal, telemetry, or a persistent preference.
 
 Keep the provider, model, executable names, request limits, fixed prompt, and
 response schema together in the compile-time `diffo-ai-config` crate. Production
@@ -127,19 +128,11 @@ a full pipe. Parse stdout as JSON, then independently reject surrounding
 whitespace, control characters, newlines, empty text, or more than 72
 characters.
 
-The runner owns the child process group, concurrent stdin and bounded output
-workers, temporary-schema guard, a 120-second deadline, cancellation, and
-reaping. It reports missing or non-executable CLI files, worker and I/O
-failures, timeouts, signal crashes, nonzero exits, empty or oversized output,
-malformed JSON, and invalid subjects.
-
-Classify known authentication, access, model, usage-limit, network, service,
-configuration, and incompatible-CLI stderr conservatively into actionable
-messages. Unknown failures may include one bounded terminal-safe stderr line.
-Never expose stderr that contains credential markers, or expose the prompt
-context, diff, environment, or authentication material. Parsing improves
-diagnostics only; every nonzero exit remains a failure even when its wording is
-unknown.
+The runner owns the child, stdin, bounded output readers, temporary-schema
+guard, cancellation, and process reaping. Missing CLI, authentication, nonzero
+exit, malformed JSON, and invalid subjects use the shared terminal-safe error
+modal. Diagnostics may contain bounded stderr but never the prompt context,
+diff, environment, or authentication material.
 
 Carry the expected HEAD and staged projection into the Git phase. Revalidate
 both at the repository boundary immediately before `git commit`; if either
@@ -164,7 +157,6 @@ run between the phases.
 ## Sources
 
 - [OpenAI Codex non-interactive mode](https://developers.openai.com/codex/noninteractive)
-- [OpenAI Codex authentication](https://developers.openai.com/codex/auth)
 - [VS Code source-control AI commit-message behavior](https://code.visualstudio.com/docs/sourcecontrol/overview)
 - [VS Code commit-message service](https://github.com/microsoft/vscode/blob/main/extensions/copilot/src/extension/prompt/vscode-node/gitCommitMessageServiceImpl.ts)
 - [VS Code commit-message prompt](https://github.com/microsoft/vscode/blob/main/extensions/copilot/src/extension/prompts/node/git/gitCommitMessagePrompt.tsx)

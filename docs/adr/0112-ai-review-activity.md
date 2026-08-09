@@ -1,4 +1,4 @@
-# ADR 0111: Add an AI review activity
+# ADR 0112: Add an AI review activity
 
 Refines [ADR 0034](0034-stage-and-continue-review.md),
 [ADR 0039](0039-independent-app-modes.md), and

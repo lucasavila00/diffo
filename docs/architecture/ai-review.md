@@ -63,4 +63,4 @@ time. The mock validates the exact CLI arguments, schema, prompt, and stdin
 shape before returning deterministic JSON, so tests never invoke Codex or the
 network.
 
-See [ADR 0111](../adr/0111-ai-review-activity.md).
+See [ADR 0112](../adr/0112-ai-review-activity.md).

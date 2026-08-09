@@ -195,7 +195,7 @@ fn q_and_control_c_exit_cleanly() -> Result<()> {
         .wait_for_exit()?;
     repository
         .screen()?
-        .click(&Selector::text("Type a message"))?
+        .press(Key::Char('m'))?
         .press(Key::Ctrl('c'))?
         .wait_for_exit()?;
     Ok(())

@@ -11,7 +11,7 @@ fn commit_modal_commits_then_global_sync_publishes() -> Result<()> {
     let mut screen = repository.screen()?;
 
     screen
-        .click(&Selector::text("Update 1 file"))?
+        .press(Key::Char('m'))?
         .type_text("Commit from composer")?
         .click(&Selector::dialog_action("Commit message", "Commit"))?;
     wait_for("composer commit", || {
@@ -124,14 +124,14 @@ fn commit_modal_closes_on_outside_click_and_restores_its_draft() -> Result<()> {
     let mut screen = repository.screen()?;
 
     screen
-        .click(&Selector::text("Update 1 file"))?
+        .press(Key::Char('m'))?
         .wait_for_text("Cancel (Esc)")?
         .type_text("Draft stas")?
         .press(Key::Left)?
         .type_text("y")?
         .click(&Selector::text("Staged"))?
         .wait_for_text_gone("Cancel (Esc)")?
-        .click(&Selector::text("Draft stays"))?
+        .press(Key::Char('m'))?
         .wait_for_text("Cancel (Esc)")?
         .press(Key::Enter)?;
 
@@ -195,7 +195,7 @@ fn disabled_commit_button_does_not_commit_without_staged_changes() -> Result<()>
     let mut screen = repository.screen()?;
 
     screen
-        .click(&Selector::text("Type a message"))?
+        .press(Key::Char('m'))?
         .type_text("Must stay uncommitted")?
         .click(&Selector::dialog_action("Commit message", "Commit"))?;
     thread::sleep(Duration::from_millis(150));

@@ -3,8 +3,8 @@
 Diffo uses AI for commit-message generation and guided diff review. Pressing `i`
 generates a commit subject from the staged changes and, if the repository still matches,
 creates the commit. The Review activity builds an overview, a guided hunk path, and
-short answers linked to known hunks. The manual `m` commit-message workflow does not use
-AI.
+attention markers linked to known hunks. The manual `m` commit-message workflow does
+not use AI.
 
 ## Supported provider and model
 
@@ -101,7 +101,7 @@ committing a message for stale content.
 End-to-end and stress builds enable the `codex-mock` Cargo feature. That compile-time
 switch changes the executable from `codex` to `codex-mock`; there is no runtime override.
 The mock parses and validates the complete CLI argument contract, schema, and stdin
-shape before returning deterministic commit, Review, or Ask JSON. Tests therefore never
+shape before returning deterministic commit or Review JSON. Tests therefore never
 invoke the real Codex CLI, use credentials, or access an AI service. Runtime failure
 tests use local fake subprocesses rather than a real Codex installation.
 

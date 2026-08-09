@@ -12,6 +12,7 @@ use crate::diff::{
     CommandProgress, CommandProgressRow, CommandProgressState as CommandRowState, FileKey, Message,
     command_at_position,
 };
+use crate::review::{ReviewEvent, ReviewEvent::ToggleStage};
 
 use super::{AiCommitRequest, CommandProgressState as WorkbenchProgressState, Workbench};
 
@@ -33,6 +34,17 @@ pub(crate) enum CommandIntent {
     Commit(String),
     AiCommit,
     Update,
+}
+
+pub(super) fn enqueue_review_event(
+    commands: &mut CommandQueue,
+    event: Option<ReviewEvent>,
+) -> bool {
+    let Some(event) = event else { return false };
+    if let ToggleStage(file) = event {
+        commands.enqueue_intent(CommandIntent::ToggleStage(file));
+    }
+    true
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

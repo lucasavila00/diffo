@@ -2,119 +2,62 @@
 
 Status: Accepted
 
-Refines [ADR 0039](0039-independent-app-modes.md) and
+Refines [ADR 0034](0034-stage-and-continue-review.md),
+[ADR 0039](0039-independent-app-modes.md), and
 [ADR 0107](0107-create-ai-commits-with-codex.md).
 
 ## Context
 
-Diff shows every change, but large changes still leave the reviewer to find the
-important hunks and choose a useful reading order.
-
-Diffo will add one activity that combines an overview, a guided review path, attention
-markers, and questions about the diff. Keeping this separate from Diff avoids mixing AI
-generation, stale results, and question state into the normal review workflow.
+Diff shows every change, but it does not tell the reviewer where to start or which
+hunks deserve attention.
 
 ## Decision
 
 ### UX and developer experience
 
-Add **Review** as the third workbench activity. `Tab` cycles:
+Add **Review** after Diff and Explorer in the `Tab` cycle. Opening it does not call
+Codex. `Enter` generates a review only when the user asks.
 
-```text
-Diff -> Explorer -> Review -> Diff
-```
+Review has two panes. The left pane shows a short overview and an ordered list of up to
+eight stops. Each stop has a title, a neutral attention category, and one sentence
+explaining why to inspect it. The right pane reuses Diffo's diff renderer and opens the
+selected stop without changing Diff activity state.
 
-Opening Review does not call Codex. The empty view explains what will be sent and shows
-`Generate review`. `Enter` starts a cancellable background request.
+Use `j` and `k` to select a stop, `Enter` to open it, and `Space` to stage or unstage
+the reviewed file through the existing command queue. A staging-only change keeps the
+review when its patch can be rebound unchanged to the new staged or unstaged projection.
+Any content or HEAD change makes the review stale and requires regeneration.
 
-The completed view has two panes:
-
-- The left pane has a short overview and an ordered map of up to eight review stops.
-  Each stop has a title, a staged or unstaged label, one attention category, and a
-  one-sentence reason.
-- The right pane shows the existing Diffo diff at the selected hunk. Review reuses the
-  diff renderer and its atomic preparation rules; it does not mutate Diff activity
-  state.
-
-`j` and `k` select a stop, and `Enter` opens it. Diffo marks a stop visited once its hunk
-is visible and shows progress through the map. `n` and `p` move between attention
-markers.
-
-`/` opens **Ask the diff**. An answer is at most three short sentences with up to five
-navigable hunk links. A new question replaces the previous one; there is no chat
-history.
-
-Use neutral attention categories: behavior, correctness, security, concurrency,
-error-path, public-api, performance, and test-coverage. Do not show severity,
-confidence, bug counts, or approval language. Review never edits, stages, or commits.
-
-Analyze staged and unstaged changes together and label them clearly. Cache a review in
-memory for the exact HEAD and diff snapshot. Repository changes make it stale; keep the
-old text visible, but disable its navigation and questions until regeneration.
+If Codex is unavailable at startup, disable Review and explain that installation and a
+Diffo restart are required. Generation runs in the background and `Enter` cancels it.
 
 ### Prompt and response handling
 
-Use only the Codex CLI and pin `gpt-5.6-luna`. Keep the model, prompts, schemas,
-categories, executable name, and limits in `diffo-ai-config`.
+Use the shared Codex runner with `gpt-5.6-luna`, a read-only sandbox, structured output,
+the fixed 120-second deadline, and the existing failure handling. Resolve Codex from
+the inherited `PATH` or login shell once at startup and keep that result for the process
+lifetime.
 
-Resolve Codex from the inherited `PATH`, then through the user's login shell. Cache the
-resolved path for the process lifetime, but do not cache a miss. Run it as:
+Send staged and unstaged changes through stdin as untrusted data. Give each hunk a stable
+opaque ID. The response contains one to three overview lines and one to eight ordered
+stops. Each stop contains a title, a fixed attention category, a reason, and one hunk ID.
+Reject malformed output, invalid bounds or categories, and unknown or repeated IDs.
 
-```text
-codex exec --ephemeral --model gpt-5.6-luna \
-  --sandbox read-only \
-  --output-schema <private-schema> <fixed-prompt>
-```
+Limit input to 256 KiB. Share the budget across files in stable order and mark omitted
+content instead of rejecting a large change.
 
-Pass repository data through stdin and mark it as untrusted. The prompt tells Codex not
-to follow instructions in patches, run tools, invent missing code, invent hunk IDs, or
-approve the change.
-
-Before sending the diff, give every staged and unstaged hunk an opaque ID. The review
-schema returns a short overview and one to eight ordered stops. Each stop contains a
-title, a fixed attention category, a reason, one primary hunk ID, and optional related
-hunk IDs. Reject the whole response if its JSON, bounds, category, or any ID is invalid.
-
-Use a 256 KiB input budget. Share it fairly across staged and unstaged files in stable
-order. Keep deterministic prefix and suffix samples from oversized patches and include
-clear omission markers. Large changes lose detail instead of failing only because they
-exceed the budget.
-
-Ask the diff uses a separate structured request containing the same snapshot, the review
-map, the selected hunk, and the new question. Its schema returns the short answer and up
-to five supplied hunk IDs. Do not send previous questions or answers.
-
-Use one Codex worker for AI commits and Review. Only one Codex request runs at a time.
-Install results during frame preparation only when the request ID and snapshot still
-match. Cancel or discard results when the repository changes.
-
-Use the shared bounded Codex process runner and its 120-second deadline. Authentication,
-access, rate-limit, network, service, configuration, incompatible-CLI, timeout, crash,
-I/O, and response-validation failures keep the current repository and review state
-intact and show an actionable error without exposing credentials.
+One worker serves AI commits and Review, with one request active at a time. Results are
+accepted only for the matching request and repository snapshot. Tests use `codex-mock`;
+they never invoke Codex or the network.
 
 ## Ownership
 
-- `diffo-ai-config` owns the fixed AI policy and CLI contracts.
-- `diffo-app` owns Review state, input, hunk IDs, validation, and presentation.
-- The `diffo` runtime owns the Codex subprocess worker.
-- `diffo-core` supplies staged and unstaged diff projections. AI behavior does not enter
-  the real Git path.
+- `diffo-ai-config` owns the model, prompt, schema, executable, and limits.
+- `diffo-app` owns Review state, navigation, staging intent, hunk IDs, and validation.
+- `diffo` owns the Codex process.
 
 ## Verification
 
-Test activity switching, generation and cancellation, navigation, cache invalidation,
-stale results, strict response parsing, invented IDs, prompt injection, and oversized
-diff sampling. Add frame tests for every Review state and a frame-traced PTY flow for
-generation, navigation, questions, and staleness.
-
-End-to-end and stress tests use `codex-mock`. The mock validates all CLI arguments and
-returns deterministic Review and Ask responses. Tests never invoke real Codex or the
-network. `make all` must pass.
-
-## Sources
-
-- [GitHub Copilot: Explore pull requests](https://docs.github.com/en/enterprise-cloud%40latest/copilot/tutorials/explore-pull-requests)
-- [GitHub Copilot code review in VS Code](https://docs.github.com/en/copilot/how-tos/use-copilot-agents/request-a-code-review/use-code-review?tool=vscode)
-- [VS Code source-control quickstart](https://code.visualstudio.com/docs/sourcecontrol/quickstart)
-- [OpenAI Codex non-interactive mode](https://developers.openai.com/codex/noninteractive)
+Test explicit generation, response validation, stale and staging-only repository
+changes, oversized input, activity switching, and the mock CLI contract. `make all`
+must pass.

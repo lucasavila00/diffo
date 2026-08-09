@@ -78,27 +78,12 @@ pub struct ReviewStop {
     pub category: AttentionCategory,
     pub reason: String,
     pub primary_hunk_id: String,
-    pub related_hunk_ids: Vec<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ReviewResult {
     pub overview: Vec<String>,
     pub stops: Vec<ReviewStop>,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct AskRequest {
-    pub review_request: ReviewRequest,
-    pub review: ReviewResult,
-    pub selected_hunk_id: Option<String>,
-    pub question: String,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct AskResult {
-    pub text: Vec<String>,
-    pub hunk_ids: Vec<String>,
 }
 
 impl ReviewRequest {
@@ -216,7 +201,7 @@ impl ReviewRequest {
     }
 
     #[must_use]
-    pub fn contains_hunk(&self, id: &str) -> bool {
+    fn contains_hunk(&self, id: &str) -> bool {
         self.hunk(id).is_some()
     }
 
@@ -308,66 +293,11 @@ impl ReviewRequest {
                 || !valid_text(&stop.reason, 240)
                 || !self.contains_hunk(&stop.primary_hunk_id)
                 || !primary.insert(&stop.primary_hunk_id)
-                || stop.related_hunk_ids.len() > 4
-                || stop
-                    .related_hunk_ids
-                    .iter()
-                    .any(|id| !self.contains_hunk(id))
             {
                 return None;
             }
         }
         Some(ReviewResult { overview, stops })
-    }
-}
-
-impl AskRequest {
-    #[must_use]
-    pub fn prompt_context(&self, repository: &str) -> String {
-        let mut suffix = String::new();
-        suffix.push_str("<review-map>\n");
-        for stop in &self.review.stops {
-            writeln!(
-                suffix,
-                "<stop hunk=\"{}\" category=\"{}\">{}: {}</stop>",
-                stop.primary_hunk_id,
-                stop.category.label(),
-                escaped(&stop.title),
-                escaped(&stop.reason)
-            )
-            .expect("writing to a String cannot fail");
-        }
-        suffix.push_str("</review-map>\n");
-        if let Some(selected) = &self.selected_hunk_id {
-            writeln!(
-                suffix,
-                "<selected-hunk>{}</selected-hunk>",
-                escaped(selected)
-            )
-            .expect("writing to a String cannot fail");
-        }
-        writeln!(suffix, "<question>{}</question>", escaped(&self.question))
-            .expect("writing to a String cannot fail");
-        let snapshot_budget = MAX_AI_REVIEW_CONTEXT_BYTES.saturating_sub(suffix.len());
-        let mut context = self
-            .review_request
-            .prompt_context_with_budget(repository, snapshot_budget);
-        context.push_str(&suffix);
-        context
-    }
-
-    #[must_use]
-    pub fn validate_answer(&self, text: Vec<String>, hunk_ids: Vec<String>) -> Option<AskResult> {
-        if !(1..=3).contains(&text.len())
-            || text.iter().any(|line| !valid_text(line, 240))
-            || hunk_ids.len() > 5
-            || hunk_ids
-                .iter()
-                .any(|id| !self.review_request.contains_hunk(id))
-        {
-            return None;
-        }
-        Some(AskResult { text, hunk_ids })
     }
 }
 
@@ -555,7 +485,6 @@ mod tests {
                         category: AttentionCategory::Behavior,
                         reason: "Reason".to_owned(),
                         primary_hunk_id: "H9999".to_owned(),
-                        related_hunk_ids: Vec::new(),
                     }],
                 )
                 .is_none()

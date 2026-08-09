@@ -3,11 +3,11 @@ use ratatui::{
     Frame,
     layout::Rect,
     style::{Modifier, Style},
-    text::{Line, Span},
+    text::Line,
     widgets::{Block, Borders, Paragraph, Wrap},
 };
 
-use super::{AskState, ReviewActivity};
+use super::ReviewActivity;
 
 pub(super) struct ReviewHitAreas {
     pub stop_areas: Vec<(Rect, usize)>,
@@ -40,8 +40,6 @@ pub(super) fn render_review(
     } else if let Some(active) = &review.active_request {
         let label = if active.cancellation.is_cancelled() {
             "Cancelling…"
-        } else if active.kind == super::ActiveRequestKind::Ask {
-            "Answering…  Enter: cancel"
         } else {
             "Generating review…  Enter: cancel"
         };
@@ -55,26 +53,24 @@ pub(super) fn render_review(
             ));
             lines.push(Line::raw(""));
         }
+        if let Some(error) = &review.failure {
+            lines.push(Line::styled(
+                error.clone(),
+                Style::default().fg(theme::DANGER),
+            ));
+            lines.push(Line::raw(""));
+        }
         for overview in &cached.result.overview {
             lines.push(Line::raw(overview.clone()));
         }
         lines.push(Line::raw(""));
         lines.push(Line::styled(
-            format!(
-                "Review map  {}/{}",
-                review.visited.len(),
-                cached.result.stops.len()
-            ),
+            "Review map",
             Style::default().add_modifier(Modifier::BOLD),
         ));
         for (index, stop) in cached.result.stops.iter().enumerate() {
             let row = lines.len();
             stop_rows.push((row, index));
-            let marker = if review.visited.contains(&stop.primary_hunk_id) {
-                "✓"
-            } else {
-                "·"
-            };
             let selected = index == review.selected_stop;
             let row_style = if stale {
                 disabled_control_style()
@@ -86,7 +82,7 @@ pub(super) fn render_review(
                 Style::default().fg(theme::TEXT)
             };
             lines.push(Line::styled(
-                format!("{marker} {}. {}", index + 1, stop.title),
+                format!("{}. {}", index + 1, stop.title),
                 row_style,
             ));
             lines.push(Line::styled(
@@ -97,10 +93,6 @@ pub(super) fn render_review(
                     Style::default().fg(theme::CHROME)
                 },
             ));
-        }
-        if !stale {
-            lines.push(Line::raw(""));
-            lines.push(Line::styled("/: Ask the diff", mouse_target_style()));
         }
     } else {
         lines.push(Line::raw(
@@ -117,58 +109,6 @@ pub(super) fn render_review(
         generate_row = Some(lines.len());
         lines.push(Line::styled("[ Generate review ]", mouse_target_style()));
         lines.push(Line::raw("Sends the current diff through your Codex CLI."));
-    }
-
-    match &review.ask {
-        AskState::Closed => {}
-        AskState::Editing { question } => {
-            lines.push(Line::raw(""));
-            lines.push(Line::styled("Ask the diff", mouse_target_style()));
-            lines.push(Line::from(vec![
-                Span::raw("> "),
-                Span::raw(question.clone()),
-                Span::styled("▏", mouse_target_style()),
-            ]));
-            lines.push(Line::styled(
-                "Enter: ask · Esc: close",
-                Style::default().fg(theme::CHROME),
-            ));
-        }
-        AskState::Running { question } => {
-            lines.push(Line::raw(""));
-            lines.push(Line::styled(
-                format!("Asking: {question}"),
-                Style::default().fg(theme::CHROME),
-            ));
-        }
-        AskState::Answered {
-            question,
-            answer,
-            selected_link,
-        } => {
-            lines.push(Line::raw(""));
-            lines.push(Line::styled(
-                format!("Q: {question}"),
-                Style::default().add_modifier(Modifier::BOLD),
-            ));
-            for line in &answer.text {
-                lines.push(Line::raw(line.clone()));
-            }
-            for (index, id) in answer.hunk_ids.iter().enumerate() {
-                lines.push(Line::styled(
-                    format!("  {id}"),
-                    if index == *selected_link {
-                        mouse_target_style()
-                    } else {
-                        Style::default().fg(theme::TEXT)
-                    },
-                ));
-            }
-            lines.push(Line::styled(
-                "j/k: link · Enter: open · Esc: close",
-                Style::default().fg(theme::CHROME),
-            ));
-        }
     }
 
     frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), inner);

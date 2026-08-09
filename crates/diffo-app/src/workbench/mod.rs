@@ -69,7 +69,6 @@ enum WorkbenchCommand {
     Effect(WorkbenchEffect),
     Redraw,
 }
-
 #[derive(Debug, Eq, PartialEq)]
 pub enum WorkbenchEffect {
     CopyPath {
@@ -375,7 +374,7 @@ impl Workbench {
         let tool_captures_global_input = match self.active {
             Activity::Diff => self.diff.captures_global_input(),
             Activity::Explorer => self.explorer.captures_global_input(),
-            Activity::Review => self.review.captures_global_input(),
+            Activity::Review => false,
         };
         if self.full_screen
             && !tool_captures_global_input
@@ -462,10 +461,11 @@ impl Workbench {
             Activity::Explorer => {
                 Tool::handle_event(&mut self.explorer, event, content, self.pane_split)
             }
-            Activity::Review => self
-                .review
-                .handle_event(event, content, self.pane_split)
-                .then_some(WorkbenchCommand::Redraw),
+            Activity::Review => command_queue::enqueue_review_event(
+                &mut self.commands,
+                self.review.handle_event(event, content, self.pane_split),
+            )
+            .then_some(WorkbenchCommand::Redraw),
         }
     }
     fn select_activity(&mut self, event: &Event, area: Rect) -> bool {

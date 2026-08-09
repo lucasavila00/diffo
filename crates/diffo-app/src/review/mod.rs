@@ -3,8 +3,6 @@
 mod request;
 mod view;
 
-use std::collections::HashSet;
-
 use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind};
 use diffo_core::{CancellationHandle, RepositorySnapshot};
 use diffo_ui::{PaneSplit, tool_areas};
@@ -12,9 +10,7 @@ use ratatui::{Frame, layout::Rect};
 
 use crate::diff::{FramePreparation, Message, Model, Renderer, RendererEvent, update};
 
-pub use request::{
-    AskRequest, AskResult, AttentionCategory, ReviewRequest, ReviewResult, ReviewStop,
-};
+pub use request::{AttentionCategory, ReviewRequest, ReviewResult, ReviewStop};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum CodexAvailability {
@@ -32,14 +28,8 @@ impl CodexAvailability {
 #[derive(Clone, Debug)]
 pub struct ReviewCodexTask {
     pub id: u64,
-    pub request: ReviewCodexRequest,
+    pub request: ReviewRequest,
     pub cancellation: CancellationHandle,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum ReviewCodexRequest {
-    Generate(ReviewRequest),
-    Ask(AskRequest),
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -51,9 +41,13 @@ pub struct ReviewCodexTaskResult {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ReviewCodexOutcome {
     Generated(ReviewResult),
-    Answered(AskResult),
     Failed(String),
     Cancelled,
+}
+
+pub(crate) enum ReviewEvent {
+    Redraw,
+    ToggleStage(crate::diff::FileKey),
 }
 
 struct CachedReview {
@@ -64,30 +58,6 @@ struct CachedReview {
 struct ActiveRequest {
     id: u64,
     cancellation: CancellationHandle,
-    kind: ActiveRequestKind,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum ActiveRequestKind {
-    Generate,
-    Ask,
-}
-
-#[derive(Default)]
-enum AskState {
-    #[default]
-    Closed,
-    Editing {
-        question: String,
-    },
-    Running {
-        question: String,
-    },
-    Answered {
-        question: String,
-        answer: AskResult,
-        selected_link: usize,
-    },
 }
 
 pub(crate) struct ReviewActivity {
@@ -100,10 +70,8 @@ pub(crate) struct ReviewActivity {
     next_request_id: u64,
     failure: Option<String>,
     selected_stop: usize,
-    visited: HashSet<String>,
     active_hunk_id: Option<String>,
     pending_hunk_id: Option<String>,
-    ask: AskState,
     stop_areas: Vec<(Rect, usize)>,
     generate_area: Rect,
 }
@@ -121,10 +89,8 @@ impl ReviewActivity {
             next_request_id: 1,
             failure: None,
             selected_stop: 0,
-            visited: HashSet::new(),
             active_hunk_id: None,
             pending_hunk_id: None,
-            ask: AskState::Closed,
             stop_areas: Vec::new(),
             generate_area: Rect::default(),
         }
@@ -147,14 +113,25 @@ impl ReviewActivity {
         if self.model.snapshot == snapshot {
             return;
         }
+        let rebound = self
+            .cached
+            .as_ref()
+            .and_then(|cached| cached.request.rebind_staging(&snapshot));
         let _ = update(&mut self.model, Message::SnapshotLoaded(snapshot));
+        if let (Some(cached), Some(request)) = (&mut self.cached, rebound) {
+            cached.request = request;
+            if let Some(id) = self.active_hunk_id.clone() {
+                self.open_hunk(id.clone());
+                self.pending_hunk_id = Some(id);
+            }
+            return;
+        }
         if let Some(active) = self.active_request.take() {
             active.cancellation.cancel();
         }
         self.pending_task = None;
         self.pending_hunk_id = None;
         self.active_hunk_id = None;
-        self.ask = AskState::Closed;
         self.failure = None;
     }
 
@@ -172,55 +149,46 @@ impl ReviewActivity {
             .is_some_and(|cached| !cached.request.still_matches(&self.model.snapshot))
     }
 
-    pub(crate) fn handle_event(&mut self, event: &Event, area: Rect, split: PaneSplit) -> bool {
+    pub(crate) fn handle_event(
+        &mut self,
+        event: &Event,
+        area: Rect,
+        split: PaneSplit,
+    ) -> Option<ReviewEvent> {
         if !self.available() {
-            return false;
-        }
-        if !matches!(self.ask, AskState::Closed) {
-            return self.handle_ask_event(event);
+            return None;
         }
         if self.active_request.is_some() {
             if plain_key(event, KeyCode::Enter) {
                 self.cancel_active();
-                return true;
+                return Some(ReviewEvent::Redraw);
             }
-            return false;
+            return None;
         }
         if self.ready().is_none() {
             if plain_key(event, KeyCode::Enter) || clicked(event, self.generate_area) {
                 self.start_generation();
-                return true;
+                return Some(ReviewEvent::Redraw);
             }
-            return false;
+            return None;
         }
 
         if plain_key(event, KeyCode::Char('j')) {
             self.select_next();
-            return true;
+            return Some(ReviewEvent::Redraw);
         }
         if plain_key(event, KeyCode::Char('k')) {
             self.select_previous();
-            return true;
+            return Some(ReviewEvent::Redraw);
         }
         if plain_key(event, KeyCode::Enter) {
             self.open_selected_stop();
-            return true;
+            return Some(ReviewEvent::Redraw);
         }
-        if plain_key(event, KeyCode::Char('n')) {
-            self.select_next();
-            self.open_selected_stop();
-            return true;
-        }
-        if plain_key(event, KeyCode::Char('p')) {
-            self.select_previous();
-            self.open_selected_stop();
-            return true;
-        }
-        if plain_key(event, KeyCode::Char('/')) {
-            self.ask = AskState::Editing {
-                question: String::new(),
-            };
-            return true;
+        if plain_key(event, KeyCode::Char(' '))
+            && let Some(file) = self.active_file()
+        {
+            return Some(ReviewEvent::ToggleStage(file));
         }
         if let Event::Mouse(mouse) = event
             && mouse.kind == MouseEventKind::Down(MouseButton::Left)
@@ -231,93 +199,20 @@ impl ReviewActivity {
         {
             self.selected_stop = *index;
             self.open_selected_stop();
-            return true;
+            return Some(ReviewEvent::Redraw);
         }
 
         let trailing = split.areas(tool_areas(area).content).trailing;
-        let Some(renderer_event) =
-            self.renderer
-                .map_review_buffer_event(event, &self.model, trailing)
-        else {
-            return false;
-        };
+        let renderer_event = self
+            .renderer
+            .map_review_buffer_event(event, &self.model, trailing)?;
         match renderer_event {
-            RendererEvent::Message(Message::Quit) | RendererEvent::CopyPath { .. } => false,
+            RendererEvent::Message(Message::Quit) | RendererEvent::CopyPath { .. } => None,
             RendererEvent::Message(message) => {
                 let _ = update(&mut self.model, message);
-                true
+                Some(ReviewEvent::Redraw)
             }
-            RendererEvent::Consumed => true,
-        }
-    }
-
-    fn handle_ask_event(&mut self, event: &Event) -> bool {
-        if plain_key(event, KeyCode::Esc) {
-            if self
-                .active_request
-                .as_ref()
-                .is_some_and(|active| active.kind == ActiveRequestKind::Ask)
-            {
-                self.cancel_active();
-            }
-            self.ask = AskState::Closed;
-            return true;
-        }
-        match &mut self.ask {
-            AskState::Editing { question } => match event {
-                Event::Key(key)
-                    if key.kind == KeyEventKind::Press
-                        && key.modifiers == KeyModifiers::NONE
-                        && key.code == KeyCode::Backspace =>
-                {
-                    question.pop();
-                    true
-                }
-                Event::Key(key)
-                    if key.kind == KeyEventKind::Press
-                        && key.modifiers == KeyModifiers::NONE
-                        && matches!(key.code, KeyCode::Char(_)) =>
-                {
-                    if let KeyCode::Char(character) = key.code
-                        && question.chars().count() < 500
-                    {
-                        question.push(character);
-                    }
-                    true
-                }
-                Event::Key(key)
-                    if key.kind == KeyEventKind::Press && key.code == KeyCode::Enter =>
-                {
-                    self.start_question();
-                    true
-                }
-                _ => false,
-            },
-            AskState::Running { .. } | AskState::Closed => false,
-            AskState::Answered {
-                answer,
-                selected_link,
-                ..
-            } => {
-                if plain_key(event, KeyCode::Char('j')) {
-                    *selected_link = selected_link
-                        .saturating_add(1)
-                        .min(answer.hunk_ids.len().saturating_sub(1));
-                    return true;
-                }
-                if plain_key(event, KeyCode::Char('k')) {
-                    *selected_link = selected_link.saturating_sub(1);
-                    return true;
-                }
-                if plain_key(event, KeyCode::Enter)
-                    && let Some(id) = answer.hunk_ids.get(*selected_link).cloned()
-                {
-                    self.ask = AskState::Closed;
-                    self.open_hunk(id);
-                    return true;
-                }
-                false
-            }
+            RendererEvent::Consumed => Some(ReviewEvent::Redraw),
         }
     }
 
@@ -331,47 +226,13 @@ impl ReviewActivity {
         self.active_request = Some(ActiveRequest {
             id,
             cancellation: cancellation.clone(),
-            kind: ActiveRequestKind::Generate,
         });
         self.pending_task = Some(ReviewCodexTask {
             id,
-            request: ReviewCodexRequest::Generate(request),
+            request,
             cancellation,
         });
         self.failure = None;
-    }
-
-    fn start_question(&mut self) {
-        let AskState::Editing { question } = &self.ask else {
-            return;
-        };
-        let question = question.trim().to_owned();
-        if question.is_empty() {
-            return;
-        }
-        let Some(cached) = self.ready() else {
-            self.ask = AskState::Closed;
-            return;
-        };
-        let request = AskRequest {
-            review_request: cached.request.clone(),
-            review: cached.result.clone(),
-            selected_hunk_id: self.active_hunk_id.clone(),
-            question: question.clone(),
-        };
-        let id = self.next_id();
-        let cancellation = CancellationHandle::default();
-        self.active_request = Some(ActiveRequest {
-            id,
-            cancellation: cancellation.clone(),
-            kind: ActiveRequestKind::Ask,
-        });
-        self.pending_task = Some(ReviewCodexTask {
-            id,
-            request: ReviewCodexRequest::Ask(request),
-            cancellation,
-        });
-        self.ask = AskState::Running { question };
     }
 
     fn next_id(&mut self) -> u64 {
@@ -424,6 +285,13 @@ impl ReviewActivity {
         self.active_hunk_id = Some(id);
     }
 
+    fn active_file(&self) -> Option<crate::diff::FileKey> {
+        self.active_hunk_id
+            .as_ref()
+            .and_then(|id| self.ready()?.request.hunk(id))
+            .map(|hunk| hunk.file.clone())
+    }
+
     pub(crate) fn take_task(&mut self) -> Option<ReviewCodexTask> {
         self.pending_task.take()
     }
@@ -437,13 +305,10 @@ impl ReviewActivity {
             return false;
         };
         if active.cancellation.is_cancelled() {
-            if active.kind == ActiveRequestKind::Ask {
-                self.ask = AskState::Closed;
-            }
             return true;
         }
         match result.outcome {
-            ReviewCodexOutcome::Generated(review) if active.kind == ActiveRequestKind::Generate => {
+            ReviewCodexOutcome::Generated(review) => {
                 let Some(request) = ReviewRequest::from_snapshot(&self.model.snapshot) else {
                     return true;
                 };
@@ -453,32 +318,12 @@ impl ReviewActivity {
                 });
                 self.failure = None;
                 self.selected_stop = 0;
-                self.visited.clear();
                 self.open_selected_stop();
             }
-            ReviewCodexOutcome::Answered(answer) if active.kind == ActiveRequestKind::Ask => {
-                let question = match std::mem::take(&mut self.ask) {
-                    AskState::Running { question } => question,
-                    _ => String::new(),
-                };
-                self.ask = AskState::Answered {
-                    question,
-                    answer,
-                    selected_link: 0,
-                };
-            }
             ReviewCodexOutcome::Failed(error) => {
-                if active.kind == ActiveRequestKind::Ask {
-                    self.ask = AskState::Closed;
-                }
                 self.failure = Some(error);
             }
-            ReviewCodexOutcome::Cancelled => {
-                if active.kind == ActiveRequestKind::Ask {
-                    self.ask = AskState::Closed;
-                }
-            }
-            ReviewCodexOutcome::Generated(_) | ReviewCodexOutcome::Answered(_) => {}
+            ReviewCodexOutcome::Cancelled => {}
         }
         true
     }
@@ -507,9 +352,8 @@ impl ReviewActivity {
         if !preparation.preparing
             && preparation.syntax_ready
             && target.is_some_and(|target| target == self.model.diff_scroll)
-            && let Some(id) = self.pending_hunk_id.take()
         {
-            self.visited.insert(id);
+            self.pending_hunk_id = None;
         }
         preparation
     }
@@ -532,17 +376,11 @@ impl ReviewActivity {
         self.active_request.is_some() || self.renderer.is_preparing()
     }
 
-    #[must_use]
-    pub(crate) fn captures_global_input(&self) -> bool {
-        !matches!(self.ask, AskState::Closed)
-    }
-
     pub(crate) fn help_rows() -> Vec<(String, &'static str)> {
         vec![
             ("j / k".to_owned(), "Select review stop"),
             ("Enter".to_owned(), "Open or generate"),
-            ("n / p".to_owned(), "Next / previous attention stop"),
-            ("/".to_owned(), "Ask the diff"),
+            ("Space".to_owned(), "Stage / unstage reviewed file"),
         ]
     }
 }

@@ -3,8 +3,8 @@
 use std::{env, fs, io::Read as _, path::Path};
 
 use diffo_ai_config::{
-    AI_COMMIT_MODEL, AI_COMMIT_PROMPT, AI_COMMIT_SCHEMA, AI_REVIEW_ASK_PROMPT,
-    AI_REVIEW_ASK_SCHEMA, AI_REVIEW_MODEL, AI_REVIEW_PROMPT, AI_REVIEW_SCHEMA, CODEX_SANDBOX,
+    AI_COMMIT_MODEL, AI_COMMIT_PROMPT, AI_COMMIT_SCHEMA, AI_REVIEW_MODEL, AI_REVIEW_PROMPT,
+    AI_REVIEW_SCHEMA, CODEX_SANDBOX,
 };
 
 const SUBJECT: &str = "test: create commit with Codex";
@@ -55,21 +55,7 @@ fn run(arguments: impl IntoIterator<Item = String>) -> Result<(), String> {
             }
             let hunk_id = hunk_id.expect("checked above");
             println!(
-                r#"{{"overview":["The change updates the reviewed behavior."],"stops":[{{"title":"Inspect the main change","category":"behavior","reason":"This hunk contains the primary behavior change.","primary_hunk_id":"{hunk_id}","related_hunk_ids":[]}}]}}"#
-            );
-        }
-        AI_REVIEW_ASK_PROMPT => {
-            let hunk_id = first_hunk_id(&context);
-            if schema != AI_REVIEW_ASK_SCHEMA
-                || !context.contains("<review-map>")
-                || !context.contains("<question>")
-                || hunk_id.is_none()
-            {
-                return Err("ask request does not match the fixed AI policy".to_owned());
-            }
-            let hunk_id = hunk_id.expect("checked above");
-            println!(
-                r#"{{"text":["The main behavior change is in the linked hunk."],"hunk_ids":["{hunk_id}"]}}"#
+                r#"{{"overview":["The change updates the reviewed behavior."],"stops":[{{"title":"Inspect the main change","category":"behavior","reason":"This hunk contains the primary behavior change.","primary_hunk_id":"{hunk_id}"}}]}}"#
             );
         }
         _ => return Err("prompt does not match the fixed AI policy".to_owned()),

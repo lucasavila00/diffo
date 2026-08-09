@@ -14,14 +14,14 @@ use std::{
 };
 
 use diffo_ai_config::{
-    AI_COMMIT_MODEL, AI_COMMIT_PROMPT, AI_COMMIT_SCHEMA, AI_REVIEW_ASK_PROMPT,
-    AI_REVIEW_ASK_SCHEMA, AI_REVIEW_MODEL, AI_REVIEW_PROMPT, AI_REVIEW_SCHEMA, CODEX_EXECUTABLE,
-    CODEX_SANDBOX, MAX_CODEX_OUTPUT_BYTES, MAX_CODEX_RUNTIME_SECONDS,
+    AI_COMMIT_MODEL, AI_COMMIT_PROMPT, AI_COMMIT_SCHEMA, AI_REVIEW_MODEL, AI_REVIEW_PROMPT,
+    AI_REVIEW_SCHEMA, CODEX_EXECUTABLE, CODEX_SANDBOX, MAX_CODEX_OUTPUT_BYTES,
+    MAX_CODEX_RUNTIME_SECONDS,
 };
 use diffo_app::{
     review::{
-        AskRequest, AttentionCategory, CodexAvailability, ReviewCodexOutcome, ReviewCodexRequest,
-        ReviewCodexTask, ReviewCodexTaskResult, ReviewRequest, ReviewStop,
+        AttentionCategory, CodexAvailability, ReviewCodexOutcome, ReviewCodexTask,
+        ReviewCodexTaskResult, ReviewRequest, ReviewStop,
     },
     workbench::{AiCommitOutcome, AiCommitRequest, Workbench},
 };
@@ -258,38 +258,24 @@ fn run_codex(
 fn run_review_codex(
     executable: &OsStr,
     repository_root: &Path,
-    request: &ReviewCodexRequest,
+    request: &ReviewRequest,
     cancellation: &CancellationHandle,
 ) -> ReviewCodexOutcome {
     let repository_name = repository_root
         .file_name()
         .and_then(OsStr::to_str)
         .unwrap_or("repository");
-    let (schema, prompt, context) = match request {
-        ReviewCodexRequest::Generate(request) => (
-            AI_REVIEW_SCHEMA,
-            AI_REVIEW_PROMPT,
-            request.prompt_context(repository_name),
-        ),
-        ReviewCodexRequest::Ask(request) => (
-            AI_REVIEW_ASK_SCHEMA,
-            AI_REVIEW_ASK_PROMPT,
-            request.prompt_context(repository_name),
-        ),
-    };
+    let context = request.prompt_context(repository_name);
     match run_codex_raw(
         executable,
         repository_root,
         AI_REVIEW_MODEL,
-        schema,
-        prompt,
+        AI_REVIEW_SCHEMA,
+        AI_REVIEW_PROMPT,
         &context,
         cancellation,
     ) {
-        RawCodexOutcome::Completed(bytes) => match request {
-            ReviewCodexRequest::Generate(request) => parse_review_response(request, &bytes),
-            ReviewCodexRequest::Ask(request) => parse_ask_response(request, &bytes),
-        },
+        RawCodexOutcome::Completed(bytes) => parse_review_response(request, &bytes),
         RawCodexOutcome::Failed(error) => ReviewCodexOutcome::Failed(error),
         RawCodexOutcome::Cancelled => ReviewCodexOutcome::Cancelled,
     }
@@ -617,14 +603,6 @@ struct ReviewStopResponse {
     category: String,
     reason: String,
     primary_hunk_id: String,
-    related_hunk_ids: Vec<String>,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct AskResponse {
-    text: Vec<String>,
-    hunk_ids: Vec<String>,
 }
 
 fn parse_review_response(request: &ReviewRequest, bytes: &[u8]) -> ReviewCodexOutcome {
@@ -651,7 +629,6 @@ fn parse_review_response(request: &ReviewRequest, bytes: &[u8]) -> ReviewCodexOu
             category,
             reason: stop.reason,
             primary_hunk_id: stop.primary_hunk_id,
-            related_hunk_ids: stop.related_hunk_ids,
         });
     }
     request
@@ -663,30 +640,6 @@ fn parse_review_response(request: &ReviewRequest, bytes: &[u8]) -> ReviewCodexOu
                 )
             },
             ReviewCodexOutcome::Generated,
-        )
-}
-
-fn parse_ask_response(request: &AskRequest, bytes: &[u8]) -> ReviewCodexOutcome {
-    if response_is_empty(bytes) {
-        return ReviewCodexOutcome::Failed("Codex returned no answer".to_owned());
-    }
-    let response = match serde_json::from_slice::<AskResponse>(bytes) {
-        Ok(response) => response,
-        Err(error) => {
-            return ReviewCodexOutcome::Failed(format!(
-                "Codex returned an invalid answer: {error}"
-            ));
-        }
-    };
-    request
-        .validate_answer(response.text, response.hunk_ids)
-        .map_or_else(
-            || {
-                ReviewCodexOutcome::Failed(
-                    "Codex returned invalid or unknown hunk references".to_owned(),
-                )
-            },
-            ReviewCodexOutcome::Answered,
         )
 }
 

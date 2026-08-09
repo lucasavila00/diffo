@@ -41,6 +41,31 @@ fn command_palette_blocks_activity_switching_and_does_not_restore_hidden_state()
     Ok(())
 }
 
+#[cfg(feature = "codex-mock")]
+#[test]
+fn guided_review_opens_a_hunk_and_stages_it_without_losing_the_map() -> Result<()> {
+    let repository = TestRepository::new()?;
+    std::fs::write(repository.worktree.join("tracked.txt"), "reviewed change\n")?;
+    let mut screen = repository.screen()?;
+
+    screen
+        .press(Key::Tab)?
+        .press(Key::Tab)?
+        .wait_for_text("AI Review")?
+        .press(Key::Enter)?
+        .wait_for_text("Review map")?
+        .wait_for_text("reviewed change")?
+        .press(Key::Char(' '))?;
+
+    wait_for("reviewed file to be staged", || {
+        Ok(cached_paths(&repository.worktree)?.contains("tracked.txt"))
+    })?;
+    screen
+        .wait_for_text("Review map")?
+        .wait_for_text("reviewed change")?;
+    Ok(())
+}
+
 #[test]
 fn activity_palettes_share_git_commands_and_keep_specific_catalogs_separate() -> Result<()> {
     let repository = changed_repository()?;

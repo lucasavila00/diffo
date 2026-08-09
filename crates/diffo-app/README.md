@@ -5,7 +5,9 @@ them.
 
 The Diff activity owns its pure model, terminal input mapping, background buffer
 preparation, and rendering. Explorer owns its tree, file viewer, and file-loading
-worker. The workbench owns activity selection, global command lifecycle (including
+worker. Review owns explicit AI generation, its ordered hunk map, and navigation while
+reusing the Diff renderer and the shared staging command path. The workbench owns
+activity selection, global command lifecycle (including
 serialized application updates), the shared repository footer, persistent update
 results, and the single active modal slot. Searchable checkout and merge,
 missing-upstream remote selection, protected-branch push confirmation, and activity

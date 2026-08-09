@@ -22,7 +22,6 @@ pub enum ApplicationAction {
     Update,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum CommandIntent {
     Repository(RepositoryAction),
     ToggleStage(FileKey),
@@ -62,7 +61,6 @@ pub struct ApplicationCommand {
     pub state: CommandState,
 }
 
-#[derive(Clone, Debug)]
 pub(crate) struct QueuedCommand {
     pub id: ApplicationCommandId,
     pub intent: CommandIntent,
@@ -127,7 +125,7 @@ impl CommandQueue {
             .or_else(|| {
                 self.queued
                     .iter()
-                    .find(|command| command.intent == CommandIntent::AiCommit)
+                    .find(|command| matches!(command.intent, CommandIntent::AiCommit))
                     .map(|command| command.id)
             })
     }
@@ -232,11 +230,13 @@ impl CommandQueue {
         &mut self,
         id: ApplicationCommandId,
         result: CommandResult,
-    ) -> Option<ApplicationCommand> {
+    ) -> bool {
         if !self.active.as_ref().is_some_and(|command| command.id == id) {
-            return None;
+            return false;
         }
-        let command = self.active.take()?;
+        let Some(command) = self.active.take() else {
+            return false;
+        };
         let explicitly_cancelled = command.state == CommandState::Cancelling;
         // cancel() already removed the old tail. Anything queued now was entered after
         // cancellation started and belongs to the next queue.
@@ -245,7 +245,7 @@ impl CommandQueue {
         {
             self.queued.clear();
         }
-        Some(command)
+        true
     }
 }
 
@@ -502,7 +502,7 @@ mod tests {
         );
         assert!(queue.take_next().is_none());
         assert_eq!(queue.queued_len(), 1);
-        assert!(queue.acknowledge(fetch, CommandResult::Succeeded).is_some());
+        assert!(queue.acknowledge(fetch, CommandResult::Succeeded));
         assert_eq!(queue.take_next().map(|command| command.id), Some(sync));
     }
 
@@ -538,9 +538,7 @@ mod tests {
         assert!(queue.take_next().is_none());
         assert_eq!(queue.queued_len(), 0);
 
-        queue
-            .acknowledge(fetch, CommandResult::Cancelled)
-            .expect("cancellation acknowledged");
+        assert!(queue.acknowledge(fetch, CommandResult::Cancelled));
         assert!(queue.take_next().is_none());
         assert!(!queue.entries().any(|(id, _, _)| id == sync));
     }
@@ -557,7 +555,7 @@ mod tests {
             queued,
             ApplicationAction::Repository(RepositoryAction::Fetch),
         );
-        queue.acknowledge(fetch, CommandResult::Succeeded).unwrap();
+        assert!(queue.acknowledge(fetch, CommandResult::Succeeded));
         let queued = queue.take_next().unwrap();
         assert_eq!(queued.id, update);
         let command = queue.activate(queued, ApplicationAction::Update);
@@ -576,7 +574,7 @@ mod tests {
             ApplicationAction::Repository(RepositoryAction::Fetch),
         );
 
-        queue.acknowledge(fetch, CommandResult::Failed).unwrap();
+        assert!(queue.acknowledge(fetch, CommandResult::Failed));
 
         assert!(!queue.has_work());
     }

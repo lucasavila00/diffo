@@ -343,14 +343,18 @@ impl Workbench {
 
         match outcome {
             AiCommitOutcome::Cancelled => {
-                self.commands.acknowledge(id, CommandResult::Cancelled)?;
+                if !self.commands.acknowledge(id, CommandResult::Cancelled) {
+                    return None;
+                }
                 self.finish_command_progress(id);
                 self.diff.model.finish_ai_commit();
                 self.request_redraw();
                 None
             }
             AiCommitOutcome::Failed(detail) => {
-                self.commands.acknowledge(id, CommandResult::Failed)?;
+                if !self.commands.acknowledge(id, CommandResult::Failed) {
+                    return None;
+                }
                 self.finish_command_progress(id);
                 self.diff.model.finish_ai_commit();
                 self.show_error("AI commit failed", detail);
@@ -358,7 +362,9 @@ impl Workbench {
             }
             AiCommitOutcome::Generated(subject) => {
                 if !request.still_matches(&self.diff.model.snapshot) {
-                    self.commands.acknowledge(id, CommandResult::Failed)?;
+                    if !self.commands.acknowledge(id, CommandResult::Failed) {
+                        return None;
+                    }
                     self.finish_command_progress(id);
                     self.diff.model.finish_ai_commit();
                     self.show_error(

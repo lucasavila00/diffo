@@ -15,7 +15,7 @@ impl Workbench {
         } else {
             CommandResult::Failed
         };
-        if self.commands.acknowledge(id, result).is_none() {
+        if !self.commands.acknowledge(id, result) {
             return;
         }
         if result != CommandResult::Succeeded {

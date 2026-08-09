@@ -90,11 +90,7 @@ impl Workbench {
         result: OperationResult,
         snapshot: RepositorySnapshot,
     ) {
-        if self
-            .commands
-            .acknowledge(id, CommandResult::Succeeded)
-            .is_none()
-        {
+        if !self.commands.acknowledge(id, CommandResult::Succeeded) {
             return;
         }
         self.close_prompt(id);
@@ -119,11 +115,7 @@ impl Workbench {
         if self.handle_delete_branch_failure(id, &failure) {
             return;
         }
-        if self
-            .commands
-            .acknowledge(id, CommandResult::Failed)
-            .is_none()
-        {
+        if !self.commands.acknowledge(id, CommandResult::Failed) {
             return;
         }
         self.close_prompt(id);
@@ -141,11 +133,7 @@ impl Workbench {
         action: RepositoryAction,
         snapshot: RepositorySnapshot,
     ) {
-        if self
-            .commands
-            .acknowledge(id, CommandResult::Cancelled)
-            .is_none()
-        {
+        if !self.commands.acknowledge(id, CommandResult::Cancelled) {
             return;
         }
         self.close_prompt(id);

@@ -133,11 +133,7 @@ impl Workbench {
         if failure.kind != FailureKind::BranchNotFullyMerged || target.force {
             return false;
         }
-        if self
-            .commands
-            .acknowledge(id, CommandResult::Failed)
-            .is_none()
-        {
+        if !self.commands.acknowledge(id, CommandResult::Failed) {
             return false;
         }
         self.close_prompt(id);

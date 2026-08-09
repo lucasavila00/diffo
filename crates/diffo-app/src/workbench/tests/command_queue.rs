@@ -278,13 +278,13 @@ fn queue_controls_truncate_waiting_work_and_cancel_the_active_command() {
     assert!(!workbench.commands.entries().any(|(id, _, _)| id == sync));
 
     workbench.commands.enqueue(RepositoryAction::Sync);
-    let cancel_all = Event::Mouse(MouseEvent {
+    let cancel_active = Event::Mouse(MouseEvent {
         kind: MouseEventKind::Down(MouseButton::Left),
-        column: content.right().saturating_sub(5),
-        row: content.y.saturating_add(4),
+        column: content.right().saturating_sub(3),
+        row: content.y.saturating_add(2),
         modifiers: KeyModifiers::NONE,
     });
-    let _ = workbench.handle_event(&cancel_all, area);
+    let _ = workbench.handle_event(&cancel_active, area);
 
     assert!(running.cancellation.is_cancelled());
     assert_eq!(workbench.commands.queued_len(), 0);
@@ -360,4 +360,29 @@ fn queue_cancel_controls_stay_available_above_a_modal() {
 
     assert!(running.cancellation.is_cancelled());
     assert!(matches!(workbench.modal, Some(Modal::Help)));
+}
+
+#[test]
+fn queue_cancel_control_wins_when_a_toast_overlaps_it() {
+    let mut workbench = Workbench::new(RepositorySnapshot::default());
+    workbench.commands.enqueue(RepositoryAction::Fetch);
+    let _ = workbench
+        .take_application_command(Instant::now())
+        .expect("fetch starts");
+    workbench.commands.enqueue(RepositoryAction::Sync);
+    workbench.commands.enqueue_update();
+    workbench.show_toast(ToastKind::Info, "Overlapping toast");
+    let area = Rect::new(0, 0, 100, 8);
+    let content = workbench_areas(area).content;
+    let click = Event::Mouse(MouseEvent {
+        kind: MouseEventKind::Down(MouseButton::Left),
+        column: content.right().saturating_sub(3),
+        row: content.y.saturating_add(4),
+        modifiers: KeyModifiers::NONE,
+    });
+
+    let _ = workbench.handle_event(&click, area);
+
+    assert_eq!(workbench.commands.queued_len(), 1);
+    assert_eq!(workbench.toasts.as_slice().len(), 1);
 }

@@ -403,7 +403,7 @@ fn command_progress_survives_activity_switching_and_animates_the_app_border() {
     assert_eq!(workbench.active, Activity::Explorer);
     insta::assert_debug_snapshot!(buffer_region(
         terminal.backend().buffer(),
-        Rect::new(55, 1, 44, 4),
+        Rect::new(55, 1, 44, 6),
     ));
     assert_ne!(terminal.backend().buffer()[(0, 0)].fg, first_border);
 }

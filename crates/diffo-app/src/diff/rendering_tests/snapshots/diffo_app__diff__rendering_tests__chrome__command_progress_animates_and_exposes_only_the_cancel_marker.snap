@@ -1,13 +1,15 @@
 ---
 source: crates/diffo-app/src/diff/rendering_tests/chrome.rs
-expression: "buffer_region(terminal.backend().buffer(), Rect::new(35, 1, 44, 4),)"
+expression: "buffer_region(terminal.backend().buffer(), Rect::new(35, 1, 44, 6),)"
 ---
 Buffer {
-    area: Rect { x: 0, y: 0, width: 44, height: 4 },
+    area: Rect { x: 0, y: 0, width: 44, height: 6 },
     content: [
         "┌ Commands ────────────────────────────────┐",
         "│ Pushing…                               │",
-        "│                              × Cancel all│",
+        "│                                          │",
+        "│                                          │",
+        "│                                          │",
         "└──────────────────────────────────────────┘",
     ],
     styles: [
@@ -17,7 +19,10 @@ Buffer {
         x: 42, y: 1, fg: White, bg: Reset, underline: Reset, modifier: BOLD,
         x: 43, y: 1, fg: DarkGray, bg: Reset, underline: Reset, modifier: NONE,
         x: 1, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
-        x: 31, y: 2, fg: White, bg: Reset, underline: Reset, modifier: BOLD,
         x: 43, y: 2, fg: DarkGray, bg: Reset, underline: Reset, modifier: NONE,
+        x: 1, y: 3, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 43, y: 3, fg: DarkGray, bg: Reset, underline: Reset, modifier: NONE,
+        x: 1, y: 4, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 43, y: 4, fg: DarkGray, bg: Reset, underline: Reset, modifier: NONE,
     ]
 }

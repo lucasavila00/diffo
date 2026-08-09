@@ -233,16 +233,6 @@ impl CommandQueue {
         true
     }
 
-    pub fn cancel_all(&mut self) -> bool {
-        let changed = self.has_work();
-        self.queued.clear();
-        if let Some(command) = self.active.as_mut() {
-            command.cancellation.cancel();
-            command.state = CommandState::Cancelling;
-        }
-        changed
-    }
-
     pub(crate) fn fail_preparation(&mut self) {
         self.queued.clear();
     }
@@ -258,6 +248,8 @@ impl CommandQueue {
         let mut command = self.active.take()?;
         let explicitly_cancelled = command.state == CommandState::Cancelling;
         command.state = CommandState::Finished(result);
+        // cancel() already removed the old tail. Anything queued now was entered after
+        // cancellation started and belongs to the next queue.
         if result != CommandResult::Succeeded
             && !(result == CommandResult::Cancelled && explicitly_cancelled)
         {
@@ -307,7 +299,7 @@ fn command_goal(action: &ApplicationAction) -> String {
         ApplicationAction::Repository(
             RepositoryAction::Sync | RepositoryAction::SyncToRemote(_),
         ) => "Sync".to_owned(),
-        ApplicationAction::Repository(RepositoryAction::Fetch) => "Fetch".to_owned(),
+        ApplicationAction::Repository(RepositoryAction::Fetch) => "Fetching".to_owned(),
         ApplicationAction::Repository(RepositoryAction::Commit(_)) => "Committing".to_owned(),
         ApplicationAction::Repository(RepositoryAction::GuardedCommit(_)) => {
             "Committing".to_owned()
@@ -383,7 +375,6 @@ impl Workbench {
         };
         let changed = match action {
             CommandProgressAction::Cancel(id) => self.commands.cancel(id),
-            CommandProgressAction::CancelAll => self.commands.cancel_all(),
         };
         if changed && self.commands.ai_commit_id().is_none() {
             self.diff.model.finish_ai_commit();
@@ -392,11 +383,7 @@ impl Workbench {
     }
 
     pub(super) fn command_progress_rows(&self) -> (Vec<CommandProgressRow>, usize) {
-        let visible_commands = if self.commands.active().is_some() {
-            4
-        } else {
-            3
-        };
+        let visible_commands = diffo_ui::design::COMMAND_QUEUE_VISIBLE_ROWS;
         let total = self.commands.entries().count();
         let rows = self
             .commands

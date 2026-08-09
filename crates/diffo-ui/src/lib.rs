@@ -141,7 +141,10 @@ pub mod design {
     pub const TOAST_MIN_WIDTH: u16 = 4;
     pub const TOAST_MIN_HEIGHT: u16 = 3;
     pub const TOAST_MAX_HEIGHT: u16 = 6;
-    pub const COMMAND_PROGRESS_MIN_WIDTH: u16 = 24;
+    pub const COMMAND_QUEUE_MAX_WIDTH: u16 = 44;
+    pub const COMMAND_QUEUE_MIN_WIDTH: u16 = 24;
+    pub const COMMAND_QUEUE_HEIGHT: u16 = 6;
+    pub const COMMAND_QUEUE_VISIBLE_ROWS: usize = 4;
     pub const PATH_MENU_WIDTH: u16 = 24;
     pub const PATH_MENU_HEIGHT: u16 = 5;
     pub const PATH_MENU_DESTRUCTIVE_HEIGHT: u16 = 7;

@@ -95,7 +95,7 @@ fn command_progress_animates_and_exposes_only_the_cancel_marker() {
         .unwrap();
     insta::assert_debug_snapshot!(buffer_region(
         terminal.backend().buffer(),
-        Rect::new(35, 1, 44, 4),
+        Rect::new(35, 1, 44, 6),
     ));
     let progress = crate::diff::CommandProgress {
         rows: &rows,
@@ -152,10 +152,9 @@ fn command_progress_shows_order_overflow_and_every_cancel_target() {
             .concat()
     };
     assert!(line(2).contains("Sync — Fetching"));
-    assert!(line(3).contains("2. AI commit"));
-    assert!(line(4).contains("3. Sync"));
-    assert!(line(5).contains("+2 more"));
-    assert!(line(5).contains("Cancel all"));
+    assert!(line(1).contains("Commands (+2 more)"));
+    assert!(line(3).contains("1. AI commit"));
+    assert!(line(4).contains("2. Sync"));
 
     let progress = crate::diff::CommandProgress {
         rows: &rows,
@@ -169,17 +168,8 @@ fn command_progress_shows_order_overflow_and_every_cancel_target() {
         ))
     );
     assert_eq!(
-        crate::diff::command_action_at_position(
-            crate::diff::CommandProgress {
-                rows: &rows,
-                hidden: 2,
-                animation_tick: 0,
-            },
-            Rect::new(0, 0, 80, 24),
-            70,
-            5,
-        ),
-        Some(crate::diff::CommandProgressAction::CancelAll)
+        crate::diff::command_action_at_position(progress, Rect::new(0, 0, 80, 24), 77, 5),
+        None
     );
 }
 
@@ -211,7 +201,7 @@ fn command_progress_does_not_draw_clipped_controls_on_tiny_areas() {
             .buffer()
             .content
             .iter()
-            .map(|cell| cell.symbol())
+            .map(ratatui::buffer::Cell::symbol)
             .collect::<String>();
         assert!(!rendered.contains("Commands"));
         assert_eq!(

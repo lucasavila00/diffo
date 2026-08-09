@@ -28,10 +28,13 @@ Wait for a running cancellation to finish and install its final snapshot before
 starting again. Commands entered after cancellation starts form a fresh queue and wait
 for that snapshot; they must not disappear when cancellation finishes.
 
-Show the queue immediately in a compact overlay. Show the active command, up to three
-waiting commands, their order and state, `+N more` when needed, a cancel target on each
-row, and `Cancel all`. Keep it above activities, full-screen views, and modals so the
-controls match what people see. Do not add hover behavior.
+Show the queue immediately in its own fixed-size panel. Reserve four command rows so
+the panel does not jump as work starts and finishes. Show the active command, up to
+three waiting commands, their order and state, and `+N more` in the title when needed.
+Each visible row has one cancel target. There is no separate `Cancel all`: cancelling
+the active row already clears its tail, and cancelling a waiting row removes it and
+everything behind it. Keep the panel above activities, full-screen views, and modals
+so the controls match what people see. Do not add hover behavior.
 
 Every row has a stable goal and, when useful, a changing phase. Never name a command
 after only its first step. Show `Sync — Fetching`, then `Sync — Pushing`; show
@@ -48,7 +51,7 @@ Keep read-only background preparation and picker queries on their existing sched
 
 Test `a`, `i`, `9` arriving together and prove that each intent uses the snapshot
 installed by its predecessor. Cover repeated toggles, stale targets, preparation and
-execution failures, active and queued cancellation, cancel-all, and the rule that no
+execution failures, active and queued cancellation, and the rule that no
 discarded command starts.
 
 Rendering tests cover queue order, goal and phase labels, overflow, cancellation hit

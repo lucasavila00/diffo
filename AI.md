@@ -92,4 +92,6 @@ shape before returning deterministic JSON. Tests therefore never invoke the real
 CLI, use credentials, or access an AI service.
 
 The detailed product and implementation decision is recorded in
-[ADR 0107](docs/adr/0107-create-ai-commits-with-codex.md).
+[ADR 0107](docs/adr/0107-create-ai-commits-with-codex.md). The living prompt structure,
+context contract, and maintenance workflow are documented in
+[AI commit prompt architecture](docs/arch/ai-commit-prompt.md).

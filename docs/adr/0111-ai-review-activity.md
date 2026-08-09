@@ -14,7 +14,8 @@ which hunks deserve attention.
 ### UX and developer experience
 
 Add **Review** after Diff and Explorer in the `Tab` cycle. Opening it does not
-call Codex. `Enter` generates a review only when the user asks.
+call Codex. The `[ Generate review (Enter) ]` control and its exact hit area
+start generation only when the user asks; surrounding explanatory text is inert.
 
 Review teaches the complete flow before generation: `Enter` starts, `j` and `k`
 move between review steps, `Space` stages or unstages the current file, and `i`

@@ -68,12 +68,17 @@ fn render_state(frame: &mut Frame, area: Rect, review: &ReviewActivity) -> Rect 
         lines.push(Line::raw(""));
         lines.push(Line::styled(reason.clone(), disabled_control_style()));
     } else if let Some(active) = &review.active_request {
-        let label = if active.cancelling {
-            "Cancelling review…"
+        let (label, style) = if active.cancelling {
+            ("Cancelling review…", Style::default().fg(theme::WARNING))
         } else {
-            "Building your review…"
+            (
+                "Building your review…",
+                Style::default()
+                    .fg(theme::INFORMATION)
+                    .add_modifier(Modifier::BOLD),
+            )
         };
-        lines.push(Line::styled(label, mouse_target_style()));
+        lines.push(Line::styled(label, style));
         lines.push(Line::raw(""));
         lines.push(Line::raw(active.progress.as_ref().map_or_else(
             || "Preparing changes and starting Codex…".to_owned(),
@@ -98,7 +103,7 @@ fn render_state(frame: &mut Frame, area: Rect, review: &ReviewActivity) -> Rect 
             ));
             lines.push(Line::raw(""));
         }
-        action = Some("[ Refresh review ]  Enter");
+        action = Some("[ Regenerate review (Enter) ]");
     } else if !review.has_changes() {
         lines.push(Line::styled(
             "Nothing to review.",
@@ -119,9 +124,9 @@ fn render_state(frame: &mut Frame, area: Rect, review: &ReviewActivity) -> Rect 
                 Style::default().fg(theme::DANGER),
             ));
             lines.push(Line::raw(""));
-            action = Some("[ Try again ]  Enter");
+            action = Some("[ Retry review (Enter) ]");
         } else {
-            action = Some("[ Start review ]  Enter");
+            action = Some("[ Generate review (Enter) ]");
         }
     }
     frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), area);
@@ -131,7 +136,9 @@ fn render_state(frame: &mut Frame, area: Rect, review: &ReviewActivity) -> Rect 
     let action_area = Rect::new(
         area.x,
         area.bottom().saturating_sub(1),
-        area.width,
+        u16::try_from(label.len())
+            .unwrap_or(u16::MAX)
+            .min(area.width),
         u16::from(area.height > 0),
     );
     frame.render_widget(

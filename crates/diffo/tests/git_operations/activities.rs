@@ -52,7 +52,7 @@ fn guided_review_stages_and_ai_commits_without_leaving_review() -> Result<()> {
         .press(Key::Tab)?
         .press(Key::Tab)?
         .wait_for_text("AI Review")?
-        .wait_for_text("Start review")?
+        .wait_for_text("Generate review")?
         .wait_for_text("Stage / unstage")?
         .wait_for_text("the whole file")?
         .press(Key::Enter)?

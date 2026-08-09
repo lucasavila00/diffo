@@ -3,7 +3,8 @@
 Review is a normal Diffo activity after Diff and Explorer in the `Tab` cycle. It
 uses Codex to summarize staged and unstaged changes and build an ordered path
 through the changes worth inspecting. Opening the activity does not contact
-Codex; `Enter` starts generation.
+Codex. The explicit `[ Generate review (Enter) ]` control starts generation;
+surrounding explanatory text is inert.
 
 ## Review flow
 

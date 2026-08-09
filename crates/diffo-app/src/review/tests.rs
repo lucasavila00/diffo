@@ -1,4 +1,6 @@
-use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
+use crossterm::event::{
+    Event, KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
+};
 use diffo_core::{ChangeKind, FileDiff, FileState, RepositorySnapshot};
 use diffo_ui::PaneSplit;
 use ratatui::{Terminal, backend::TestBackend, layout::Rect};
@@ -46,11 +48,21 @@ fn key(character: char) -> Event {
     Event::Key(KeyEvent::new(KeyCode::Char(character), KeyModifiers::NONE))
 }
 
-fn render_text(review: &ReviewActivity) -> String {
+fn left_click(column: u16, row: u16) -> Event {
+    Event::Mouse(MouseEvent {
+        kind: MouseEventKind::Down(MouseButton::Left),
+        column,
+        row,
+        modifiers: KeyModifiers::NONE,
+    })
+}
+
+fn render(review: &ReviewActivity) -> (String, view::ReviewHitAreas) {
+    let mut hits = None;
     let mut terminal = Terminal::new(TestBackend::new(45, 30)).unwrap();
     terminal
         .draw(|frame| {
-            let _ = view::render_review(frame, frame.area(), review);
+            hits = Some(view::render_review(frame, frame.area(), review));
         })
         .unwrap();
     let buffer = terminal.backend().buffer();
@@ -61,7 +73,11 @@ fn render_text(review: &ReviewActivity) -> String {
         }
         text.push('\n');
     }
-    text
+    (text, hits.expect("review hit areas"))
+}
+
+fn render_text(review: &ReviewActivity) -> String {
+    render(review).0
 }
 
 #[test]
@@ -250,7 +266,7 @@ fn a_later_batch_failure_does_not_present_a_partial_review_as_complete() {
     }));
     assert!(review.cached.is_none());
     assert!(render_text(&review).contains("Codex crashed"));
-    assert!(render_text(&review).contains("Try again"));
+    assert!(render_text(&review).contains("Retry review"));
 }
 
 #[test]
@@ -455,7 +471,7 @@ fn initial_screen_teaches_the_complete_workflow_without_internal_terms() {
     let review = ReviewActivity::new(snapshot("new"), CodexAvailability::Available);
     let text = render_text(&review);
 
-    assert!(text.contains("Start review"));
+    assert!(text.contains("[ Generate review (Enter) ]"));
     assert!(text.contains("How it works"));
     assert!(text.contains("Previous / next"));
     assert!(text.contains("Stage / unstage"));
@@ -465,6 +481,36 @@ fn initial_screen_teaches_the_complete_workflow_without_internal_terms() {
     assert!(!lower.contains("hunk"));
     assert!(!lower.contains("review stop"));
     assert!(!lower.contains("review map"));
+}
+
+#[test]
+fn only_the_visible_generate_button_starts_a_review() {
+    let mut review = ReviewActivity::new(snapshot("new"), CodexAvailability::Available);
+    let (_, hits) = render(&review);
+    let button = hits.generate_area;
+    review.generate_area = button;
+
+    assert_eq!(
+        button.width,
+        u16::try_from("[ Generate review (Enter) ]".len()).unwrap()
+    );
+    assert!(
+        review
+            .handle_event(
+                &left_click(button.right(), button.y),
+                Rect::new(0, 0, 100, 30),
+                PaneSplit::default(),
+            )
+            .is_none()
+    );
+    assert!(matches!(
+        review.handle_event(
+            &left_click(button.x, button.y),
+            Rect::new(0, 0, 100, 30),
+            PaneSplit::default(),
+        ),
+        Some(ReviewEvent::Generate(_))
+    ));
 }
 
 #[test]
@@ -535,11 +581,11 @@ fn clean_generating_stale_failed_and_unavailable_states_explain_the_next_action(
     let mut stale = ReviewActivity::new(initial, CodexAvailability::Available);
     stale.cached = Some(CachedReview { request, result });
     stale.repository_changed(snapshot("newer"));
-    assert!(render_text(&stale).contains("Refresh review"));
+    assert!(render_text(&stale).contains("Regenerate review"));
 
     let mut failed = ReviewActivity::new(snapshot("new"), CodexAvailability::Available);
     failed.failure = Some("Codex could not build this review.".to_owned());
-    assert!(render_text(&failed).contains("Try again"));
+    assert!(render_text(&failed).contains("Retry review"));
 
     let unavailable = ReviewActivity::new(
         snapshot("new"),

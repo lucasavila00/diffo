@@ -55,7 +55,7 @@ fn run(arguments: impl IntoIterator<Item = String>) -> Result<(), String> {
             }
             let hunk_id = hunk_id.expect("checked above");
             println!(
-                r#"{{"overview":["The change updates the reviewed behavior."],"stops":[{{"title":"Inspect the main change","category":"behavior","reason":"This hunk contains the primary behavior change.","primary_hunk_id":"{hunk_id}"}}]}}"#
+                r#"{{"overview":["The change updates the reviewed behavior."],"stops":[{{"title":"Inspect the main change","category":"behavior","reason":"This change contains the primary behavior update.","primary_hunk_id":"{hunk_id}"}}]}}"#
             );
         }
         _ => return Err("prompt does not match the fixed AI policy".to_owned()),

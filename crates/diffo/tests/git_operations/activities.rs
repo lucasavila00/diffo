@@ -52,8 +52,12 @@ fn guided_review_stages_and_ai_commits_without_leaving_review() -> Result<()> {
         .press(Key::Tab)?
         .press(Key::Tab)?
         .wait_for_text("AI Review")?
+        .wait_for_text("Start review")?
+        .wait_for_text("Stage / unstage")?
+        .wait_for_text("the whole file")?
         .press(Key::Enter)?
-        .wait_for_text("Review map")?
+        .wait_for_text("Review order")?
+        .wait_for_text("Why this matters")?
         .wait_for_text("reviewed change")?
         .press(Key::Char(' '))?;
 
@@ -61,7 +65,7 @@ fn guided_review_stages_and_ai_commits_without_leaving_review() -> Result<()> {
         Ok(cached_paths(&repository.worktree)?.contains("tracked.txt"))
     })?;
     screen
-        .wait_for_text("Review map")?
+        .wait_for_text("Review order")?
         .wait_for_text("reviewed change")?
         .press(Key::Char('i'))?;
     wait_for("reviewed change to be AI committed", || {

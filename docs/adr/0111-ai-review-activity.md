@@ -18,16 +18,20 @@ hunks deserve attention.
 Add **Review** after Diff and Explorer in the `Tab` cycle. Opening it does not call
 Codex. `Enter` generates a review only when the user asks.
 
-Review has two panes. The left pane shows a short overview and an ordered list of up to
-eight stops. Each stop has a title, a neutral attention category, and one sentence
-explaining why to inspect it. The right pane reuses Diffo's diff renderer and opens the
-selected stop without changing Diff activity state.
+Review teaches the complete flow before generation: `Enter` starts, `j` and `k` move
+between review steps, `Space` stages or unstages the current file, and `i` commits staged
+changes. User-facing text says change, file, and review step; protocol terms never appear.
 
-Use `j` and `k` to select a stop and `Enter` to open it. `Space` stages or unstages the
-reviewed file through the existing command queue. After staging succeeds, move to the
-next stop whose file is still unstaged. A failure keeps the current stop. Keep the review
+The left pane shows a short overview, an ordered list of up to eight steps, the selected
+file and staging state, why the step matters, and persistent controls. The right pane
+reuses Diffo's diff renderer. Starting a review opens the first step. `j`, `k`, and mouse
+selection immediately open their step; `Enter` recenters it after scrolling.
+
+`Space` stages or unstages the whole selected file through the existing command queue.
+Successful staging advances one step in review order, including when the next step is in
+the same now-staged file. Unstaging and failures stay on the current step. Keep the review
 when its patch can be rebound unchanged to the new projection; other content or HEAD
-changes make it stale.
+changes require a fresh review.
 
 `i` uses the existing guarded AI-commit command. It commits only staged changes and keeps
 the same progress, cancellation, error, and stale-index behavior as Diff. Review does not

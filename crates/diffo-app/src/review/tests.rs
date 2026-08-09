@@ -1,7 +1,7 @@
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
 use diffo_core::{ChangeKind, FileDiff, FileState, RepositorySnapshot};
 use diffo_ui::PaneSplit;
-use ratatui::layout::Rect;
+use ratatui::{Terminal, backend::TestBackend, layout::Rect};
 
 use super::*;
 
@@ -40,6 +40,28 @@ fn two_file_snapshot() -> RepositorySnapshot {
 
 fn enter() -> Event {
     Event::Key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
+}
+
+fn key(character: char) -> Event {
+    Event::Key(KeyEvent::new(KeyCode::Char(character), KeyModifiers::NONE))
+}
+
+fn render_text(review: &ReviewActivity) -> String {
+    let mut terminal = Terminal::new(TestBackend::new(45, 30)).unwrap();
+    terminal
+        .draw(|frame| {
+            let _ = view::render_review(frame, frame.area(), review);
+        })
+        .unwrap();
+    let buffer = terminal.backend().buffer();
+    let mut text = String::new();
+    for y in 0..buffer.area.height {
+        for x in 0..buffer.area.width {
+            text.push_str(buffer[(x, y)].symbol());
+        }
+        text.push('\n');
+    }
+    text
 }
 
 #[test]
@@ -145,7 +167,7 @@ fn staging_from_review_keeps_the_map_and_rebinds_the_hunk() {
 }
 
 #[test]
-fn successful_staging_advances_to_the_next_unstaged_stop() {
+fn successful_staging_advances_to_the_next_review_step() {
     let initial = two_file_snapshot();
     let request = ReviewRequest::from_snapshot(&initial).unwrap();
     let ids = request.hunk_ids();
@@ -177,6 +199,179 @@ fn successful_staging_advances_to_the_next_unstaged_stop() {
         review.active_file().map(|file| file.area),
         Some(crate::diff::ChangeArea::Unstaged)
     );
+}
+
+#[test]
+fn staging_advances_to_the_next_step_in_the_same_now_staged_file() {
+    let initial = RepositorySnapshot {
+        files: vec![FileState {
+            path: "src/lib.rs".into(),
+            old_path: None,
+            kind: ChangeKind::Modified,
+            staged: None,
+            unstaged: Some(FileDiff {
+                text: "@@ -1 +1 @@\n-old\n+first\n@@ -4 +4 @@\n-before\n+second\n".to_owned(),
+            }),
+        }],
+        ..RepositorySnapshot::default()
+    };
+    let request = ReviewRequest::from_snapshot(&initial).unwrap();
+    let ids = request.hunk_ids();
+    let result = request
+        .validate_review(
+            vec!["Overview".to_owned()],
+            ids.iter()
+                .enumerate()
+                .map(|(index, id)| ReviewStop {
+                    title: format!("Step {index}"),
+                    category: AttentionCategory::Behavior,
+                    reason: "Review this change.".to_owned(),
+                    primary_hunk_id: id.clone(),
+                })
+                .collect(),
+        )
+        .unwrap();
+    let mut review = ReviewActivity::new(initial.clone(), CodexAvailability::Available);
+    review.cached = Some(CachedReview { request, result });
+    review.active_hunk_id = Some(ids[0].clone());
+
+    let mut staged = initial;
+    staged.files[0].staged = staged.files[0].unstaged.take();
+    review.repository_changed(staged);
+
+    assert_eq!(review.selected_stop, 1);
+    assert_eq!(review.active_hunk_id.as_deref(), Some(ids[1].as_str()));
+    assert_eq!(
+        review.active_file().map(|file| file.area),
+        Some(crate::diff::ChangeArea::Staged)
+    );
+}
+
+#[test]
+fn keyboard_selection_immediately_opens_the_selected_step() {
+    let initial = two_file_snapshot();
+    let request = ReviewRequest::from_snapshot(&initial).unwrap();
+    let ids = request.hunk_ids();
+    let result = request
+        .validate_review(
+            vec!["Overview".to_owned()],
+            ids.iter()
+                .enumerate()
+                .map(|(index, id)| ReviewStop {
+                    title: format!("Step {index}"),
+                    category: AttentionCategory::Behavior,
+                    reason: "Review this change.".to_owned(),
+                    primary_hunk_id: id.clone(),
+                })
+                .collect(),
+        )
+        .unwrap();
+    let mut review = ReviewActivity::new(initial, CodexAvailability::Available);
+    review.cached = Some(CachedReview { request, result });
+    review.open_selected_stop();
+
+    assert!(matches!(
+        review.handle_event(&key('j'), Rect::new(0, 0, 100, 30), PaneSplit::default()),
+        Some(ReviewEvent::Redraw)
+    ));
+    assert_eq!(review.selected_stop, 1);
+    assert_eq!(review.active_hunk_id.as_deref(), Some(ids[1].as_str()));
+
+    let _ = review.handle_event(&key('k'), Rect::new(0, 0, 100, 30), PaneSplit::default());
+    assert_eq!(review.selected_stop, 0);
+    assert_eq!(review.active_hunk_id.as_deref(), Some(ids[0].as_str()));
+}
+
+#[test]
+fn initial_screen_teaches_the_complete_workflow_without_internal_terms() {
+    let review = ReviewActivity::new(snapshot("new"), CodexAvailability::Available);
+    let text = render_text(&review);
+
+    assert!(text.contains("Start review"));
+    assert!(text.contains("How it works"));
+    assert!(text.contains("Previous / next"));
+    assert!(text.contains("Stage / unstage"));
+    assert!(text.contains("the whole file"));
+    assert!(text.contains("Commit staged work"));
+    let lower = text.to_lowercase();
+    assert!(!lower.contains("hunk"));
+    assert!(!lower.contains("review stop"));
+    assert!(!lower.contains("review map"));
+}
+
+#[test]
+fn ready_screen_connects_the_review_step_to_staging_and_commit_actions() {
+    let initial = two_file_snapshot();
+    let request = ReviewRequest::from_snapshot(&initial).unwrap();
+    let ids = request.hunk_ids();
+    let result = request
+        .validate_review(
+            vec!["Two files change the reviewed behavior.".to_owned()],
+            ids.iter()
+                .enumerate()
+                .map(|(index, id)| ReviewStop {
+                    title: format!("Inspect change {}", index + 1),
+                    category: AttentionCategory::Behavior,
+                    reason: "This change affects visible behavior.".to_owned(),
+                    primary_hunk_id: id.clone(),
+                })
+                .collect(),
+        )
+        .unwrap();
+    let mut review = ReviewActivity::new(initial, CodexAvailability::Available);
+    review.cached = Some(CachedReview { request, result });
+    review.open_selected_stop();
+
+    let text = render_text(&review);
+    assert!(text.contains("Summary"));
+    assert!(text.contains("Review step 1 of 2"));
+    assert!(text.contains("a.rs"));
+    assert!(text.contains("behavior · Unstaged"));
+    assert!(text.contains("Why this matters"));
+    assert!(text.contains("Review order"));
+    assert!(text.contains("Stage file"));
+    assert!(text.contains("Commit staged work"));
+}
+
+#[test]
+fn clean_generating_stale_failed_and_unavailable_states_explain_the_next_action() {
+    let clean = ReviewActivity::new(RepositorySnapshot::default(), CodexAvailability::Available);
+    assert!(render_text(&clean).contains("Nothing to review"));
+
+    let mut generating = ReviewActivity::new(snapshot("new"), CodexAvailability::Available);
+    let _ = generating.handle_event(&enter(), Rect::new(0, 0, 100, 30), PaneSplit::default());
+    assert!(render_text(&generating).contains("Building your review"));
+    assert!(render_text(&generating).contains("Enter  Cancel review"));
+
+    let initial = snapshot("new");
+    let request = ReviewRequest::from_snapshot(&initial).unwrap();
+    let result = request
+        .validate_review(
+            vec!["Overview".to_owned()],
+            vec![ReviewStop {
+                title: "Inspect behavior".to_owned(),
+                category: AttentionCategory::Behavior,
+                reason: "The behavior changes here.".to_owned(),
+                primary_hunk_id: request.first_hunk_id().to_owned(),
+            }],
+        )
+        .unwrap();
+    let mut stale = ReviewActivity::new(initial, CodexAvailability::Available);
+    stale.cached = Some(CachedReview { request, result });
+    stale.repository_changed(snapshot("newer"));
+    assert!(render_text(&stale).contains("Refresh review"));
+
+    let mut failed = ReviewActivity::new(snapshot("new"), CodexAvailability::Available);
+    failed.failure = Some("Codex could not build this review.".to_owned());
+    assert!(render_text(&failed).contains("Try again"));
+
+    let unavailable = ReviewActivity::new(
+        snapshot("new"),
+        CodexAvailability::Unavailable("Install Codex, then restart Diffo.".to_owned()),
+    );
+    let text = render_text(&unavailable);
+    assert!(text.contains("AI Review is unavailable"));
+    assert!(text.contains("restart Diffo"));
 }
 
 #[test]

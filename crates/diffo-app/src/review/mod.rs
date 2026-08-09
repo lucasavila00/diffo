@@ -132,7 +132,7 @@ impl ReviewActivity {
                         .active_file()
                         .is_some_and(|current| current.area == crate::diff::ChangeArea::Staged)
             }) {
-                self.open_next_unstaged_stop();
+                self.open_next_stop();
             }
             return;
         }
@@ -157,6 +157,15 @@ impl ReviewActivity {
         self.cached
             .as_ref()
             .is_some_and(|cached| !cached.request.still_matches(&self.model.snapshot))
+    }
+
+    #[must_use]
+    fn has_changes(&self) -> bool {
+        self.model
+            .snapshot
+            .files
+            .iter()
+            .any(|file| file.staged.is_some() || file.unstaged.is_some())
     }
 
     pub(crate) fn handle_event(
@@ -262,14 +271,22 @@ impl ReviewActivity {
 
     fn select_next(&mut self) {
         let count = self.ready().map_or(0, |cached| cached.result.stops.len());
-        self.selected_stop = self
+        let selected = self
             .selected_stop
             .saturating_add(1)
             .min(count.saturating_sub(1));
+        if selected != self.selected_stop {
+            self.selected_stop = selected;
+            self.open_selected_stop();
+        }
     }
 
     fn select_previous(&mut self) {
-        self.selected_stop = self.selected_stop.saturating_sub(1);
+        let selected = self.selected_stop.saturating_sub(1);
+        if selected != self.selected_stop {
+            self.selected_stop = selected;
+            self.open_selected_stop();
+        }
     }
 
     fn open_selected_stop(&mut self) {
@@ -285,20 +302,10 @@ impl ReviewActivity {
         }
     }
 
-    fn open_next_unstaged_stop(&mut self) {
-        let Some(cached) = self.ready() else { return };
-        let count = cached.result.stops.len();
-        let next = (1..count)
-            .map(|offset| (self.selected_stop + offset) % count)
-            .find(|index| {
-                cached
-                    .result
-                    .stops
-                    .get(*index)
-                    .and_then(|stop| cached.request.hunk(&stop.primary_hunk_id))
-                    .is_some_and(|hunk| hunk.file.area == crate::diff::ChangeArea::Unstaged)
-            });
-        if let Some(next) = next {
+    fn open_next_stop(&mut self) {
+        let count = self.ready().map_or(0, |cached| cached.result.stops.len());
+        let next = self.selected_stop.saturating_add(1);
+        if next < count {
             self.selected_stop = next;
             self.open_selected_stop();
         }
@@ -399,7 +406,7 @@ impl ReviewActivity {
             self.renderer
                 .render_review_buffer(frame, panes.trailing, &self.model);
         } else {
-            view::render_empty_diff(frame, panes.trailing);
+            view::render_empty_diff(frame, panes.trailing, self);
         }
     }
 
@@ -410,9 +417,9 @@ impl ReviewActivity {
 
     pub(crate) fn help_rows() -> Vec<(String, &'static str)> {
         vec![
-            ("j / k".to_owned(), "Select review stop"),
-            ("Enter".to_owned(), "Open or generate"),
-            ("Space".to_owned(), "Stage / unstage reviewed file"),
+            ("j / k".to_owned(), "Previous / next review step"),
+            ("Enter".to_owned(), "Start or recenter review"),
+            ("Space".to_owned(), "Stage / unstage current file"),
             ("i".to_owned(), "AI commit staged changes"),
         ]
     }

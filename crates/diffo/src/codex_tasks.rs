@@ -636,7 +636,8 @@ fn parse_review_response(request: &ReviewRequest, bytes: &[u8]) -> ReviewCodexOu
         .map_or_else(
             || {
                 ReviewCodexOutcome::Failed(
-                    "Codex returned invalid or unknown hunk references".to_owned(),
+                    "Codex returned a review that could not be matched to the current changes"
+                        .to_owned(),
                 )
             },
             ReviewCodexOutcome::Generated,

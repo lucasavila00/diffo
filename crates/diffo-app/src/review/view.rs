@@ -1,20 +1,23 @@
-use diffo_ui::{disabled_control_style, modal_block, mouse_target_style, theme};
+use diffo_ui::{
+    disabled_control_style, modal_block, mouse_target_style, terminal_safe_text, theme,
+};
 use ratatui::{
     Frame,
-    layout::Rect,
+    layout::{Constraint, Layout, Rect},
     style::{Modifier, Style},
     text::Line,
     widgets::{Block, Borders, Paragraph, Wrap},
 };
 
-use super::ReviewActivity;
+use crate::diff::ChangeArea;
+
+use super::{CachedReview, CodexAvailability, ReviewActivity};
 
 pub(super) struct ReviewHitAreas {
     pub stop_areas: Vec<(Rect, usize)>,
     pub generate_area: Rect,
 }
 
-#[expect(clippy::too_many_lines, reason = "renders one compact activity panel")]
 pub(super) fn render_review(
     frame: &mut Frame,
     area: Rect,
@@ -26,114 +29,321 @@ pub(super) fn render_review(
         .title(" AI Review ");
     let inner = block.inner(area);
     frame.render_widget(block, area);
-    let mut lines = Vec::new();
-    let mut stop_rows = Vec::new();
-    let mut generate_row = None;
 
-    if let super::CodexAvailability::Unavailable(reason) = &review.availability {
-        lines.push(Line::styled(
-            "AI functionality is disabled.",
-            disabled_control_style(),
-        ));
-        lines.push(Line::raw(""));
-        lines.push(Line::styled(reason, disabled_control_style()));
-    } else if let Some(active) = &review.active_request {
-        let label = if active.cancellation.is_cancelled() {
-            "Cancelling…"
-        } else {
-            "Generating review…  Enter: cancel"
-        };
-        lines.push(Line::styled(label, mouse_target_style()));
-    } else if let Some(cached) = review.cached.as_ref() {
-        let stale = review.stale();
-        if stale {
-            lines.push(Line::styled(
-                "Stale review — Enter to regenerate",
-                Style::default().fg(theme::WARNING),
-            ));
-            lines.push(Line::raw(""));
-        }
-        if let Some(error) = &review.failure {
-            lines.push(Line::styled(
-                error.clone(),
-                Style::default().fg(theme::DANGER),
-            ));
-            lines.push(Line::raw(""));
-        }
-        for overview in &cached.result.overview {
-            lines.push(Line::raw(overview.clone()));
-        }
-        lines.push(Line::raw(""));
-        lines.push(Line::styled(
-            "Review map",
-            Style::default().add_modifier(Modifier::BOLD),
-        ));
-        for (index, stop) in cached.result.stops.iter().enumerate() {
-            let row = lines.len();
-            stop_rows.push((row, index));
-            let selected = index == review.selected_stop;
-            let row_style = if stale {
-                disabled_control_style()
-            } else if selected {
-                Style::default()
-                    .fg(theme::TEXT)
-                    .bg(theme::SELECTION_BACKGROUND)
-            } else {
-                Style::default().fg(theme::TEXT)
-            };
-            lines.push(Line::styled(
-                format!("{}. {}", index + 1, stop.title),
-                row_style,
-            ));
-            lines.push(Line::styled(
-                format!("   {} · {}", stop.category.label(), stop.reason),
-                if stale {
-                    disabled_control_style()
-                } else {
-                    Style::default().fg(theme::CHROME)
-                },
-            ));
-        }
+    let footer = footer_lines(review);
+    let footer_height = u16::try_from(footer.len())
+        .unwrap_or(u16::MAX)
+        .min(inner.height);
+    let sections =
+        Layout::vertical([Constraint::Min(0), Constraint::Length(footer_height)]).split(inner);
+    let body_area = sections[0];
+    let footer_area = sections[1];
+
+    let (stop_areas, generate_area) = if let Some(cached) = review.ready() {
+        (
+            render_ready(frame, body_area, review, cached),
+            Rect::default(),
+        )
     } else {
-        lines.push(Line::raw(
-            "Build an overview and a guided path through staged and unstaged changes.",
-        ));
-        lines.push(Line::raw(""));
-        if let Some(error) = &review.failure {
-            lines.push(Line::styled(
-                error.clone(),
-                Style::default().fg(theme::DANGER),
-            ));
-            lines.push(Line::raw(""));
-        }
-        generate_row = Some(lines.len());
-        lines.push(Line::styled("[ Generate review ]", mouse_target_style()));
-        lines.push(Line::raw("Sends the current diff through your Codex CLI."));
+        (Vec::new(), render_state(frame, body_area, review))
+    };
+    if !footer.is_empty() {
+        frame.render_widget(Paragraph::new(footer), footer_area);
     }
 
-    frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), inner);
-    let stop_areas = stop_rows
-        .into_iter()
-        .filter_map(|(row, index)| {
-            let y = inner.y.saturating_add(u16::try_from(row).ok()?);
-            (y < inner.bottom()).then_some((Rect::new(inner.x, y, inner.width, 2), index))
-        })
-        .collect();
-    let generate_area = generate_row
-        .and_then(|row| {
-            let y = inner.y.saturating_add(u16::try_from(row).ok()?);
-            (y < inner.bottom()).then_some(Rect::new(inner.x, y, inner.width, 1))
-        })
-        .unwrap_or_default();
     ReviewHitAreas {
         stop_areas,
         generate_area,
     }
 }
 
-pub(super) fn render_empty_diff(frame: &mut Frame, area: Rect) {
+fn render_state(frame: &mut Frame, area: Rect, review: &ReviewActivity) -> Rect {
+    let mut lines = Vec::new();
+    let mut action = None;
+    if let CodexAvailability::Unavailable(reason) = &review.availability {
+        lines.push(Line::styled(
+            "AI Review is unavailable.",
+            disabled_control_style(),
+        ));
+        lines.push(Line::raw(""));
+        lines.push(Line::styled(reason.clone(), disabled_control_style()));
+    } else if let Some(active) = &review.active_request {
+        let label = if active.cancellation.is_cancelled() {
+            "Cancelling review…"
+        } else {
+            "Building your review…"
+        };
+        lines.push(Line::styled(label, mouse_target_style()));
+        lines.push(Line::raw(""));
+        lines.push(Line::raw(
+            "Codex is summarizing the work and choosing where to start.",
+        ));
+    } else if review.stale() {
+        lines.push(Line::styled(
+            "Your changes changed after this review.",
+            Style::default().fg(theme::WARNING),
+        ));
+        lines.push(Line::raw("Build a fresh review before continuing."));
+        lines.push(Line::raw(""));
+        if let Some(error) = &review.failure {
+            lines.push(Line::styled(
+                error.clone(),
+                Style::default().fg(theme::DANGER),
+            ));
+            lines.push(Line::raw(""));
+        }
+        action = Some("[ Refresh review ]  Enter");
+    } else if !review.has_changes() {
+        lines.push(Line::styled(
+            "Nothing to review.",
+            Style::default().add_modifier(Modifier::BOLD),
+        ));
+        lines.push(Line::raw(""));
+        lines.push(Line::raw("Make a change, then come back."));
+    } else {
+        lines.push(Line::raw("Review your changes in a suggested order."));
+        lines.push(Line::raw(""));
+        lines.push(Line::raw(
+            "Codex will summarize the work and open the first change worth inspecting.",
+        ));
+        lines.push(Line::raw(""));
+        if let Some(error) = &review.failure {
+            lines.push(Line::styled(
+                error.clone(),
+                Style::default().fg(theme::DANGER),
+            ));
+            lines.push(Line::raw(""));
+            action = Some("[ Try again ]  Enter");
+        } else {
+            action = Some("[ Start review ]  Enter");
+        }
+    }
+    frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), area);
+    let Some(label) = action else {
+        return Rect::default();
+    };
+    let action_area = Rect::new(
+        area.x,
+        area.bottom().saturating_sub(1),
+        area.width,
+        u16::from(area.height > 0),
+    );
     frame.render_widget(
-        Paragraph::new("Choose a review stop to open its hunk.")
+        Paragraph::new(Line::styled(label, mouse_target_style())),
+        action_area,
+    );
+    action_area
+}
+
+#[expect(clippy::too_many_lines, reason = "renders one guided review panel")]
+fn render_ready(
+    frame: &mut Frame,
+    area: Rect,
+    review: &ReviewActivity,
+    cached: &CachedReview,
+) -> Vec<(Rect, usize)> {
+    let Some(stop) = cached.result.stops.get(review.selected_stop) else {
+        return Vec::new();
+    };
+    let Some(target) = cached.request.hunk(&stop.primary_hunk_id) else {
+        return Vec::new();
+    };
+    let mut y = area.y;
+    render_row(
+        frame,
+        area,
+        &mut y,
+        Line::styled("Summary", Style::default().add_modifier(Modifier::BOLD)),
+    );
+    let overview_height = 3.min(area.bottom().saturating_sub(y));
+    if overview_height > 0 {
+        frame.render_widget(
+            Paragraph::new(
+                cached
+                    .result
+                    .overview
+                    .iter()
+                    .map(|line| Line::raw(line.clone()))
+                    .collect::<Vec<_>>(),
+            )
+            .wrap(Wrap { trim: false }),
+            Rect::new(area.x, y, area.width, overview_height),
+        );
+        y = y.saturating_add(overview_height);
+    }
+    y = y.saturating_add(1).min(area.bottom());
+
+    let count = cached.result.stops.len();
+    let final_step = review.selected_stop + 1 == count;
+    let progress = format!("Review step {} of {count}", review.selected_stop + 1);
+    render_row(
+        frame,
+        area,
+        &mut y,
+        Line::styled(progress, Style::default().add_modifier(Modifier::BOLD)),
+    );
+    let state = match target.file.area {
+        ChangeArea::Staged => "Staged",
+        ChangeArea::Unstaged => "Unstaged",
+    };
+    render_row(
+        frame,
+        area,
+        &mut y,
+        Line::styled(
+            terminal_safe_text(&target.file.path.to_string_lossy()),
+            Style::default().fg(theme::CHROME),
+        ),
+    );
+    render_row(
+        frame,
+        area,
+        &mut y,
+        Line::styled(
+            format!("{} · {state}", stop.category.label()),
+            Style::default().fg(theme::CHROME),
+        ),
+    );
+    if final_step {
+        render_row(
+            frame,
+            area,
+            &mut y,
+            Line::styled("End of guided review", Style::default().fg(theme::SUCCESS)),
+        );
+    }
+    y = y.saturating_add(1).min(area.bottom());
+    render_row(
+        frame,
+        area,
+        &mut y,
+        Line::styled(
+            "Why this matters",
+            Style::default().add_modifier(Modifier::BOLD),
+        ),
+    );
+    let reason_height = 3.min(area.bottom().saturating_sub(y));
+    if reason_height > 0 {
+        frame.render_widget(
+            Paragraph::new(stop.reason.clone()).wrap(Wrap { trim: false }),
+            Rect::new(area.x, y, area.width, reason_height),
+        );
+        y = y.saturating_add(reason_height);
+    }
+    y = y.saturating_add(1).min(area.bottom());
+    render_row(
+        frame,
+        area,
+        &mut y,
+        Line::styled(
+            "Review order",
+            Style::default().add_modifier(Modifier::BOLD),
+        ),
+    );
+
+    let capacity = usize::from(area.bottom().saturating_sub(y));
+    let start = review
+        .selected_stop
+        .saturating_sub(capacity.saturating_sub(1) / 2)
+        .min(count.saturating_sub(capacity));
+    cached
+        .result
+        .stops
+        .iter()
+        .enumerate()
+        .skip(start)
+        .take(capacity)
+        .filter_map(|(index, stop)| {
+            let row = next_row(area, &mut y)?;
+            let selected = index == review.selected_stop;
+            let style = if selected {
+                Style::default()
+                    .fg(theme::TEXT)
+                    .bg(theme::SELECTION_BACKGROUND)
+            } else {
+                Style::default().fg(theme::TEXT)
+            };
+            let marker = if selected { ">" } else { " " };
+            frame.render_widget(
+                Paragraph::new(Line::styled(
+                    format!("{marker} {}. {}", index + 1, stop.title),
+                    style,
+                )),
+                row,
+            );
+            Some((row, index))
+        })
+        .collect()
+}
+
+fn render_row(frame: &mut Frame, area: Rect, y: &mut u16, line: Line<'static>) {
+    if let Some(row) = next_row(area, y) {
+        frame.render_widget(Paragraph::new(line), row);
+    }
+}
+
+fn next_row(area: Rect, y: &mut u16) -> Option<Rect> {
+    if *y >= area.bottom() {
+        return None;
+    }
+    let row = Rect::new(area.x, *y, area.width, 1);
+    *y = y.saturating_add(1);
+    Some(row)
+}
+
+fn footer_lines(review: &ReviewActivity) -> Vec<Line<'static>> {
+    if !review.available() || !review.has_changes() {
+        return Vec::new();
+    }
+    if review.active_request.is_some() {
+        return vec![Line::styled("Enter  Cancel review", mouse_target_style())];
+    }
+    if review.ready().is_some() {
+        let mut lines = vec![Line::styled(
+            "j / k  Previous / next",
+            Style::default().fg(theme::CHROME),
+        )];
+        if let Some(file) = review.active_file() {
+            let staging = match file.area {
+                ChangeArea::Staged => "Space  Unstage file",
+                ChangeArea::Unstaged => "Space  Stage file",
+            };
+            lines.push(Line::styled(staging, Style::default().fg(theme::CHROME)));
+        }
+        lines.push(Line::styled(
+            "i  Commit staged work",
+            Style::default().fg(theme::CHROME),
+        ));
+        return lines;
+    }
+    vec![
+        Line::styled(
+            "How it works",
+            Style::default().add_modifier(Modifier::BOLD),
+        ),
+        Line::styled("j / k  Previous / next", Style::default().fg(theme::CHROME)),
+        Line::styled("Space  Stage / unstage", Style::default().fg(theme::CHROME)),
+        Line::styled("       the whole file", Style::default().fg(theme::CHROME)),
+        Line::styled("i  Commit staged work", Style::default().fg(theme::CHROME)),
+    ]
+}
+
+pub(super) fn render_empty_diff(frame: &mut Frame, area: Rect, review: &ReviewActivity) {
+    let message = if let CodexAvailability::Unavailable(reason) = &review.availability {
+        format!("AI Review is unavailable.\n\n{reason}")
+    } else if review.active_request.is_some() {
+        "Building your review…\n\nThe first suggested change will open here.".to_owned()
+    } else if review.stale() {
+        "Your changes changed after this review.\n\nPress Enter to refresh it.".to_owned()
+    } else if !review.has_changes() {
+        "Nothing to review.\n\nMake a change, then come back.".to_owned()
+    } else if review.failure.is_some() {
+        "The review could not be built.\n\nPress Enter to try again.".to_owned()
+    } else {
+        "Press Enter to start.\n\nThe first suggested change will open here.".to_owned()
+    };
+    frame.render_widget(
+        Paragraph::new(message)
             .block(modal_block("Diff"))
             .wrap(Wrap { trim: false }),
         area,

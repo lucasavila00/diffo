@@ -43,6 +43,46 @@ fn command_palette_blocks_activity_switching_and_does_not_restore_hidden_state()
 
 #[cfg(feature = "codex-mock")]
 #[test]
+fn guided_review_click_and_keys_open_the_selected_change() -> Result<()> {
+    let repository = TestRepository::new()?;
+    let mut original = String::new();
+    for line in 0..40 {
+        writeln!(original, "original line {line:02}").context("build review fixture")?;
+    }
+    std::fs::write(repository.worktree.join("tracked.txt"), &original)?;
+    git(&repository.worktree, &["add", "tracked.txt"])?;
+    git(
+        &repository.worktree,
+        &["commit", "-m", "Expand review fixture"],
+    )?;
+    let changed = original
+        .replace("original line 02", "FIRST_REVIEW_CHANGE")
+        .replace("original line 35", "SECOND_REVIEW_CHANGE");
+    std::fs::write(repository.worktree.join("tracked.txt"), changed)?;
+    let mut screen = repository.screen()?;
+
+    screen
+        .press(Key::Tab)?
+        .press(Key::Tab)?
+        .wait_for_text("AI Review")?
+        .press(Key::Enter)?
+        .wait_for_text("Inspect change 1")?
+        .wait_for_text("Inspect change 2")?
+        .wait_for_text("FIRST_REVIEW_CHANGE")?
+        .click(&Selector::text("Inspect change 2"))?
+        .wait_for_text("SECOND_REVIEW_CHANGE")?
+        .wait_for_text_gone("FIRST_REVIEW_CHANGE")?
+        .press(Key::Char('p'))?
+        .wait_for_text("FIRST_REVIEW_CHANGE")?
+        .wait_for_text_gone("SECOND_REVIEW_CHANGE")?
+        .press(Key::Char('n'))?
+        .wait_for_text("SECOND_REVIEW_CHANGE")?
+        .wait_for_text_gone("FIRST_REVIEW_CHANGE")?;
+    Ok(())
+}
+
+#[cfg(feature = "codex-mock")]
+#[test]
 fn guided_review_stages_and_ai_commits_without_leaving_review() -> Result<()> {
     let repository = TestRepository::new()?;
     std::fs::write(repository.worktree.join("tracked.txt"), "reviewed change\n")?;

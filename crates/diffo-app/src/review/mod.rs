@@ -248,11 +248,11 @@ impl ReviewActivity {
             return self.generation_request().map(ReviewEvent::Generate);
         }
 
-        if plain_key(event, KeyCode::Char('j')) {
+        if plain_key(event, KeyCode::Char('n')) {
             self.select_next();
             return Some(ReviewEvent::Redraw);
         }
-        if plain_key(event, KeyCode::Char('k')) {
+        if plain_key(event, KeyCode::Char('p')) {
             self.select_previous();
             return Some(ReviewEvent::Redraw);
         }
@@ -590,7 +590,7 @@ impl ReviewActivity {
 
     pub(crate) fn help_rows() -> Vec<(String, &'static str)> {
         vec![
-            ("j / k".to_owned(), "Previous / next review step"),
+            ("n / p".to_owned(), "Next / previous review step"),
             ("Enter".to_owned(), "Start or recenter review"),
             ("Esc".to_owned(), "Cancel review generation"),
             ("Space".to_owned(), "Stage / unstage current file"),

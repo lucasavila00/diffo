@@ -2,7 +2,7 @@ use std::{collections::HashSet, fmt::Write as _, path::PathBuf};
 
 use diffo_ai_config::MAX_AI_REVIEW_CONTEXT_BYTES;
 use diffo_core::{ChangeKind, HeadState, RepositorySnapshot};
-use diffo_diff::{RowKind, inline_rows, parse_unified_patch};
+use diffo_diff::{inline_change_regions, inline_rows, parse_unified_patch};
 
 use crate::diff::{ChangeArea, FileKey};
 
@@ -124,24 +124,23 @@ impl ReviewRequest {
             .into_iter()
             .map(|(file, old_path, kind, patch)| {
                 let parsed = parse_unified_patch(&patch).ok();
-                let targets = parsed
-                    .as_ref()
-                    .map(inline_rows)
-                    .unwrap_or_default()
-                    .into_iter()
-                    .enumerate()
-                    .filter_map(|(index, row)| (row.kind == RowKind::Header).then_some(index))
+                let rows = parsed.as_ref().map(inline_rows).unwrap_or_default();
+                let regions = inline_change_regions(&rows);
+                let targets = regions
+                    .iter()
+                    .map(|region| region.first)
                     .collect::<Vec<_>>();
-                let headers = parsed
-                    .as_ref()
-                    .map(|document| {
-                        document
-                            .hunks
-                            .iter()
-                            .map(|hunk| hunk.header.clone())
-                            .collect::<Vec<_>>()
+                let headers = regions
+                    .iter()
+                    .map(|region| {
+                        rows.get(region.first)
+                            .and_then(|row| row.number)
+                            .map_or_else(
+                                || format!("change at diff row {}", region.first + 1),
+                                |line| format!("change near line {line}"),
+                            )
                     })
-                    .unwrap_or_default();
+                    .collect::<Vec<_>>();
                 let count = targets.len().max(1);
                 let hunks = (0..count)
                     .map(|index| {
@@ -494,6 +493,30 @@ mod tests {
         assert_eq!(context.matches("<hunk id=").count(), 4);
         assert!(context.contains("origin=\"staged\""));
         assert!(context.contains("origin=\"unstaged\""));
+    }
+
+    #[test]
+    fn whole_file_patches_target_each_changed_region() {
+        let patch = concat!(
+            "@@ -1,9 +1,9 @@\n",
+            " one\n",
+            "-old first\n",
+            "+new first\n",
+            " three\n",
+            " four\n",
+            " five\n",
+            " six\n",
+            " seven\n",
+            "-old last\n",
+            "+new last\n",
+            " nine\n",
+        );
+        let request = ReviewRequest::from_snapshot(&snapshot(patch.to_owned())).unwrap();
+
+        assert_eq!(request.changes[0].hunks.len(), 2);
+        assert!(request.changes[0].hunks[0].target < request.changes[0].hunks[1].target);
+        assert_eq!(request.changes[0].hunks[0].header, "change near line 2");
+        assert_eq!(request.changes[0].hunks[1].header, "change near line 8");
     }
 
     #[test]

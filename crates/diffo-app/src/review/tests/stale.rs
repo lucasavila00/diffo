@@ -63,7 +63,7 @@ fn stale_review_remains_navigable_but_cannot_stage() {
     review.repository_changed(snapshot("newer"));
 
     assert!(matches!(
-        review.handle_event(&key('j'), Rect::new(0, 0, 100, 30), PaneSplit::default()),
+        review.handle_event(&key('n'), Rect::new(0, 0, 100, 30), PaneSplit::default()),
         Some(ReviewEvent::Redraw)
     ));
     assert_eq!(review.selected_stop, 1);

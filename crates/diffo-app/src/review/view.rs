@@ -377,9 +377,9 @@ fn footer_lines(review: &ReviewActivity) -> Vec<Line<'static>> {
                 ));
             }
             let ready = if review.stale() {
-                format!("{count} new review {steps} ready · j / k  Previous / next change")
+                format!("{count} new review {steps} ready · n / p  Next / previous step")
             } else {
-                format!("{count} review {steps} ready · j / k  Previous / next change")
+                format!("{count} review {steps} ready · n / p  Next / previous step")
             };
             lines.push(Line::styled(ready, Style::default().fg(theme::CHROME)));
             if active.cancelling {
@@ -396,7 +396,7 @@ fn footer_lines(review: &ReviewActivity) -> Vec<Line<'static>> {
             return lines;
         }
         lines.push(Line::styled(
-            "j / k  Previous / next change",
+            "n / p  Next / previous review step",
             Style::default().fg(theme::CHROME),
         ));
         if review.stale() {
@@ -439,7 +439,7 @@ fn footer_lines(review: &ReviewActivity) -> Vec<Line<'static>> {
             Style::default().add_modifier(Modifier::BOLD),
         ),
         Line::styled(
-            "j / k  Previous / next change",
+            "n / p  Next / previous review step",
             Style::default().fg(theme::CHROME),
         ),
         Line::styled("Space  Stage / unstage", Style::default().fg(theme::CHROME)),

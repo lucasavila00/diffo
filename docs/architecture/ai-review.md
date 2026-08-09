@@ -20,18 +20,18 @@ explanation may connect related work, but the selection is never a whole-file or
 multi-file group. The right pane uses Diffo's normal diff renderer and centers
 the selected change.
 
-`j` and `k` move between changes. `Space` stages or unstages the entire selected
-file through the shared command queue, then advances through the review when
-staging succeeds. `i` uses the existing guarded AI-commit flow for staged work.
-Review does not own separate staging or commit implementations.
+`n` and `p` move between changes, matching Diff. `Space` stages or unstages the
+entire selected file through the shared command queue, then advances through the
+review when staging succeeds. `i` uses the existing guarded AI-commit flow for
+staged work. Review does not own separate staging or commit implementations.
 
 ## Codex request
 
 Review uses the shared `gpt-5.6-luna` Codex runner in an ephemeral, read-only
 sandbox. The request contains staged and unstaged patches with stable opaque
-change identifiers. Repository content is untrusted and is written through
-stdin. The fixed `AI_REVIEW_PROMPT`, schema, model, executable policy, and
-limits live in `diffo-ai-config`.
+identifiers for each contiguous changed region. Repository content is untrusted
+and is written through stdin. The fixed `AI_REVIEW_PROMPT`, schema, model,
+executable policy, and limits live in `diffo-ai-config`.
 
 Diffo sends at most two changed file projections per Codex call. Each batch is
 bounded at 256 KiB and records omitted content instead of rejecting a large

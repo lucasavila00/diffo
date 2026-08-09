@@ -46,16 +46,26 @@ fn run(arguments: impl IntoIterator<Item = String>) -> Result<(), String> {
             println!(r#"{{"subject":"{SUBJECT}"}}"#);
         }
         AI_REVIEW_PROMPT => {
-            let hunk_id = first_hunk_id(&context);
+            let hunk_ids = hunk_ids(&context);
             if schema != AI_REVIEW_SCHEMA
                 || !context.contains("<changes total=")
-                || hunk_id.is_none()
+                || hunk_ids.is_empty()
             {
                 return Err("review request does not match the fixed AI policy".to_owned());
             }
-            let hunk_id = hunk_id.expect("checked above");
+            let stops = hunk_ids
+                .iter()
+                .enumerate()
+                .map(|(index, hunk_id)| {
+                    format!(
+                        r#"{{"title":"Inspect change {}","category":"behavior","reason":"This change contains an important behavior update.","primary_hunk_id":"{hunk_id}"}}"#,
+                        index + 1
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join(",");
             println!(
-                r#"{{"overview":["The change updates the reviewed behavior."],"stops":[{{"title":"Inspect the main change","category":"behavior","reason":"This change contains the primary behavior update.","primary_hunk_id":"{hunk_id}"}}]}}"#
+                r#"{{"overview":["The changes update the reviewed behavior."],"stops":[{stops}]}}"#
             );
         }
         _ => return Err("prompt does not match the fixed AI policy".to_owned()),
@@ -63,15 +73,20 @@ fn run(arguments: impl IntoIterator<Item = String>) -> Result<(), String> {
     Ok(())
 }
 
-fn first_hunk_id(context: &str) -> Option<&str> {
-    let value = context.split_once("<hunk id=\"")?.1;
-    value.split_once('"').map(|(id, _)| id).filter(|id| {
-        id.starts_with('H')
-            && id.len() > 1
-            && id[1..]
-                .chars()
-                .all(|character| character.is_ascii_hexdigit())
-    })
+fn hunk_ids(context: &str) -> Vec<&str> {
+    context
+        .split("<hunk id=\"")
+        .skip(1)
+        .filter_map(|value| value.split_once('"').map(|(id, _)| id))
+        .filter(|id| {
+            id.starts_with('H')
+                && id.len() > 1
+                && id[1..]
+                    .chars()
+                    .all(|character| character.is_ascii_hexdigit())
+        })
+        .take(8)
+        .collect()
 }
 
 #[cfg(test)]

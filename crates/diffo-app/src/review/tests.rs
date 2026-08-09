@@ -201,7 +201,7 @@ fn partial_results_open_immediately_and_merge_while_generation_continues() {
 
     assert!(review.active_request.is_none());
     assert_eq!(review.ready().unwrap().result.stops.len(), 2);
-    let _ = review.handle_event(&key('j'), Rect::new(0, 0, 100, 30), PaneSplit::default());
+    let _ = review.handle_event(&key('n'), Rect::new(0, 0, 100, 30), PaneSplit::default());
     assert_eq!(review.active_hunk_id.as_deref(), Some(ids[1].as_str()));
 }
 
@@ -418,7 +418,7 @@ fn keyboard_selection_immediately_opens_the_selected_step() {
     let before = render_text(&review);
 
     assert!(matches!(
-        review.handle_event(&key('j'), Rect::new(0, 0, 100, 30), PaneSplit::default()),
+        review.handle_event(&key('n'), Rect::new(0, 0, 100, 30), PaneSplit::default()),
         Some(ReviewEvent::Redraw)
     ));
     assert_eq!(review.selected_stop, 1);
@@ -438,7 +438,7 @@ fn keyboard_selection_immediately_opens_the_selected_step() {
     }
     assert!(row(&after, "Review order") < row(&after, "Selected change 2 of 2"));
 
-    let _ = review.handle_event(&key('k'), Rect::new(0, 0, 100, 30), PaneSplit::default());
+    let _ = review.handle_event(&key('p'), Rect::new(0, 0, 100, 30), PaneSplit::default());
     assert_eq!(review.selected_stop, 0);
     assert_eq!(review.active_hunk_id.as_deref(), Some(ids[0].as_str()));
 }
@@ -450,7 +450,7 @@ fn initial_screen_teaches_the_complete_workflow_without_internal_terms() {
 
     assert!(text.contains("[ Generate review (Enter) ]"));
     assert!(text.contains("How it works"));
-    assert!(text.contains("Previous / next"));
+    assert!(text.contains("Next / previous"));
     assert!(text.contains("Stage / unstage"));
     assert!(text.contains("the whole file"));
     assert!(text.contains("Commit staged work"));

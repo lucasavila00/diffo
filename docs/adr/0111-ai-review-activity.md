@@ -18,7 +18,7 @@ call Codex. The `[ Generate review (Enter) ]` control and its exact hit area
 start generation only when the user asks; surrounding explanatory text is inert.
 
 Review teaches the complete flow before generation: `Enter` starts, `Esc`
-cancels generation, `j` and `k` move between review steps, `Space` stages or
+cancels generation, `n` and `p` move between review steps, `Space` stages or
 unstages the current file, and `i` commits staged changes. User-facing text says
 change, file, and review step; protocol terms never appear.
 
@@ -28,7 +28,7 @@ controls. Each step focuses on one concrete change in one file. Its explanation
 may connect related work, but the selection is never a file-wide or multi-file
 group. Keep the order above the selected-step details so selection changes never
 move its rows. The right pane reuses Diffo's diff renderer. Starting a review
-opens the first step. `j`, `k`, and mouse selection immediately open their step;
+opens the first step. `n`, `p`, and mouse selection immediately open their step;
 `Enter` recenters it after scrolling.
 
 `Space` stages or unstages the whole selected file through the existing command
@@ -60,12 +60,13 @@ output, the fixed 120-second deadline, and the existing failure handling.
 Resolve Codex from the inherited `PATH` or login shell once at startup and keep
 that result for the process lifetime.
 
-Send staged and unstaged changes through stdin as untrusted data. Give each hunk
-a stable opaque ID. The response contains one to three overview lines and one to
-eight ordered stops. Each stop focuses on one hunk in one file and contains a
-title, a fixed attention category, a reason, and that hunk ID. Other changes may
-inform the reason but cannot form a grouped selection. Reject malformed output,
-invalid bounds or categories, and unknown or repeated IDs.
+Send staged and unstaged changes through stdin as untrusted data. Give each
+contiguous changed region a stable opaque ID and its actual diff-row target. The
+response contains one to three overview lines and one to eight ordered stops.
+Each stop focuses on one region in one file and contains a title, a fixed
+attention category, a reason, and that region ID. Other changes may inform the
+reason but cannot form a grouped selection. Reject malformed output, invalid
+bounds or categories, and unknown or repeated IDs.
 
 Process at most two changed file projections per Codex call, in stable order,
 within one 120-second queued command. Install each validated batch immediately
@@ -82,6 +83,6 @@ Tests use `codex-mock`; they never invoke Codex or the network.
 ## Ownership
 
 - `diffo-ai-config` owns the model, prompt, schema, executable, and limits.
-- `diffo-app` owns Review state, navigation, staging intent, hunk IDs, and
+- `diffo-app` owns Review state, navigation, staging intent, change IDs, and
   validation.
 - `diffo` owns the Codex process.

@@ -226,11 +226,7 @@ impl CommandQueue {
         self.queued.clear();
     }
 
-    pub fn acknowledge(
-        &mut self,
-        id: ApplicationCommandId,
-        result: CommandResult,
-    ) -> bool {
+    pub fn acknowledge(&mut self, id: ApplicationCommandId, result: CommandResult) -> bool {
         if !self.active.as_ref().is_some_and(|command| command.id == id) {
             return false;
         }

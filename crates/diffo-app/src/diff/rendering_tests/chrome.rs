@@ -103,10 +103,8 @@ fn command_progress_animates_and_exposes_only_the_cancel_marker() {
         animation_tick: 0,
     };
     assert_eq!(
-        crate::diff::command_action_at_position(progress, Rect::new(0, 0, 80, 24), 77, 2),
-        Some(crate::diff::CommandProgressAction::Cancel(
-            diffo_core::ApplicationCommandId(1)
-        ))
+        crate::diff::command_at_position(progress, Rect::new(0, 0, 80, 24), 77, 2),
+        Some(diffo_core::ApplicationCommandId(1))
     );
 }
 
@@ -162,13 +160,11 @@ fn command_progress_shows_order_overflow_and_every_cancel_target() {
         animation_tick: 0,
     };
     assert_eq!(
-        crate::diff::command_action_at_position(progress, Rect::new(0, 0, 80, 24), 77, 3),
-        Some(crate::diff::CommandProgressAction::Cancel(
-            diffo_core::ApplicationCommandId(2)
-        ))
+        crate::diff::command_at_position(progress, Rect::new(0, 0, 80, 24), 77, 3),
+        Some(diffo_core::ApplicationCommandId(2))
     );
     assert_eq!(
-        crate::diff::command_action_at_position(progress, Rect::new(0, 0, 80, 24), 77, 5),
+        crate::diff::command_at_position(progress, Rect::new(0, 0, 80, 24), 77, 5),
         None
     );
 }
@@ -205,7 +201,7 @@ fn command_progress_does_not_draw_clipped_controls_on_tiny_areas() {
             .collect::<String>();
         assert!(!rendered.contains("Commands"));
         assert_eq!(
-            crate::diff::command_action_at_position(
+            crate::diff::command_at_position(
                 crate::diff::CommandProgress {
                     rows: &rows,
                     hidden: 0,

@@ -178,7 +178,9 @@ fn manual_commit_can_be_queued_before_staging_finishes() {
 fn generation_failure_cancels_every_command_behind_it() {
     let mut workbench = Workbench::new(queue_snapshot("STAGED"));
     workbench.request_ai_commit();
-    workbench.commands.enqueue_intent(CommandIntent::Sync);
+    workbench
+        .commands
+        .enqueue_intent(CommandIntent::Repository(RepositoryAction::Sync));
     let command = workbench
         .take_application_command(Instant::now())
         .expect("AI command");

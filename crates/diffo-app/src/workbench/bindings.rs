@@ -85,7 +85,9 @@ impl Workbench {
             return None;
         }
         if self.commands.has_work() {
-            self.commands.enqueue_intent(CommandIntent::Sync);
+            self.commands.enqueue_intent(CommandIntent::Repository(
+                diffo_core::RepositoryAction::Sync,
+            ));
             self.request_redraw();
             return None;
         }

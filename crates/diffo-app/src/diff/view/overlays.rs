@@ -21,11 +21,6 @@ pub struct CommandProgressRow {
     pub state: CommandProgressState,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum CommandProgressAction {
-    Cancel(ApplicationCommandId),
-}
-
 #[derive(Clone, Copy)]
 pub struct CommandProgress<'a> {
     pub rows: &'a [CommandProgressRow],
@@ -109,12 +104,12 @@ pub fn render_command_progress(
 }
 
 #[must_use]
-pub fn command_action_at_position(
+pub fn command_at_position(
     progress: CommandProgress<'_>,
     area: Rect,
     column: u16,
     row: u16,
-) -> Option<CommandProgressAction> {
+) -> Option<ApplicationCommandId> {
     let progress_area = command_progress_area(area, progress.rows.is_empty())?;
     let inner = progress_area.inner(design::PANEL_INSET);
     if !inner.contains((column, row).into()) {
@@ -124,7 +119,7 @@ pub fn command_action_at_position(
     (column == inner.right().saturating_sub(design::SINGLE_LINE_HEIGHT))
         .then(|| progress.rows.get(index))
         .flatten()
-        .map(|command| CommandProgressAction::Cancel(command.id))
+        .map(|command| command.id)
 }
 
 fn command_progress_area(area: Rect, empty: bool) -> Option<Rect> {

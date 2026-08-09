@@ -9,8 +9,8 @@ use diffo_core::{ApplicationCommandId, CancellationHandle, RepositoryAction};
 use ratatui::layout::Rect;
 
 use crate::diff::{
-    CommandProgress, CommandProgressAction, CommandProgressRow,
-    CommandProgressState as CommandRowState, FileKey, Message, command_action_at_position,
+    CommandProgress, CommandProgressRow, CommandProgressState as CommandRowState, FileKey, Message,
+    command_at_position,
 };
 
 use super::{AiCommitRequest, CommandProgressState as WorkbenchProgressState, Workbench};
@@ -33,8 +33,6 @@ pub(crate) enum CommandIntent {
     UnstageFile(PathBuf),
     Commit(String),
     AiCommit,
-    Sync,
-    SyncToRemote(String),
     Update,
 }
 
@@ -43,7 +41,6 @@ pub enum CommandState {
     Queued,
     Running,
     Cancelling,
-    Finished(CommandResult),
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -69,8 +66,6 @@ pub struct ApplicationCommand {
 pub(crate) struct QueuedCommand {
     pub id: ApplicationCommandId,
     pub intent: CommandIntent,
-    pub label: String,
-    pub cancellation: CancellationHandle,
 }
 
 #[derive(Default)]
@@ -104,12 +99,7 @@ impl CommandQueue {
     pub(crate) fn enqueue_intent(&mut self, intent: CommandIntent) -> ApplicationCommandId {
         let id = ApplicationCommandId(self.next_id);
         self.next_id = self.next_id.saturating_add(1);
-        self.queued.push_back(QueuedCommand {
-            id,
-            label: intent_label(&intent),
-            intent,
-            cancellation: CancellationHandle::default(),
-        });
+        self.queued.push_back(QueuedCommand { id, intent });
         id
     }
 
@@ -154,11 +144,9 @@ impl CommandQueue {
         }) || self.queued.iter().any(|command| {
             matches!(
                 command.intent,
-                CommandIntent::Sync
-                    | CommandIntent::SyncToRemote(_)
-                    | CommandIntent::Repository(
-                        RepositoryAction::Sync | RepositoryAction::SyncToRemote(_)
-                    )
+                CommandIntent::Repository(
+                    RepositoryAction::Sync | RepositoryAction::SyncToRemote(_)
+                )
             )
         })
     }
@@ -187,11 +175,13 @@ impl CommandQueue {
                 };
                 (command.id, label, command.state)
             })
-            .chain(
-                self.queued
-                    .iter()
-                    .map(|command| (command.id, command.label.clone(), CommandState::Queued)),
-            )
+            .chain(self.queued.iter().map(|command| {
+                (
+                    command.id,
+                    intent_label(&command.intent),
+                    CommandState::Queued,
+                )
+            }))
     }
 
     pub(crate) fn take_next(&mut self) -> Option<QueuedCommand> {
@@ -207,12 +197,13 @@ impl CommandQueue {
         action: ApplicationAction,
     ) -> ApplicationCommand {
         debug_assert!(self.active.is_none());
+        let label = intent_label(&queued.intent);
         let command = ApplicationCommand {
             id: queued.id,
-            label: queued.label,
+            label,
             phase: command_phase(&action),
             action,
-            cancellation: queued.cancellation,
+            cancellation: CancellationHandle::default(),
             state: CommandState::Running,
         };
         self.active = Some(command.clone());
@@ -245,9 +236,8 @@ impl CommandQueue {
         if !self.active.as_ref().is_some_and(|command| command.id == id) {
             return None;
         }
-        let mut command = self.active.take()?;
+        let command = self.active.take()?;
         let explicitly_cancelled = command.state == CommandState::Cancelling;
-        command.state = CommandState::Finished(result);
         // cancel() already removed the old tail. Anything queued now was entered after
         // cancellation started and belongs to the next queue.
         if result != CommandResult::Succeeded
@@ -272,7 +262,6 @@ fn intent_label(intent: &CommandIntent) -> String {
         CommandIntent::UnstageFile(_) => "Unstage file".to_owned(),
         CommandIntent::Commit(_) => "Commit".to_owned(),
         CommandIntent::AiCommit => "AI commit".to_owned(),
-        CommandIntent::Sync | CommandIntent::SyncToRemote(_) => "Sync".to_owned(),
         CommandIntent::Update => "Update Diffo".to_owned(),
     }
 }
@@ -361,7 +350,7 @@ impl Workbench {
             return false;
         }
         let (rows, hidden) = self.command_progress_rows();
-        let Some(action) = command_action_at_position(
+        let Some(id) = command_at_position(
             CommandProgress {
                 rows: &rows,
                 hidden,
@@ -373,9 +362,7 @@ impl Workbench {
         ) else {
             return false;
         };
-        let changed = match action {
-            CommandProgressAction::Cancel(id) => self.commands.cancel(id),
-        };
+        let changed = self.commands.cancel(id);
         if changed && self.commands.ai_commit_id().is_none() {
             self.diff.model.finish_ai_commit();
         }
@@ -395,7 +382,7 @@ impl Workbench {
                 state: match state {
                     CommandState::Queued => CommandRowState::Queued,
                     CommandState::Cancelling => CommandRowState::Cancelling,
-                    CommandState::Running | CommandState::Finished(_) => CommandRowState::Active,
+                    CommandState::Running => CommandRowState::Active,
                 },
             })
             .collect();
@@ -452,10 +439,6 @@ impl Workbench {
             CommandIntent::StageFile(path) => self.diff.model.prepare_stage_file(path.clone()),
             CommandIntent::UnstageFile(path) => self.diff.model.prepare_unstage_file(path.clone()),
             CommandIntent::Commit(draft) => self.diff.model.prepare_commit(draft),
-            CommandIntent::Sync => Some(RepositoryAction::Sync),
-            CommandIntent::SyncToRemote(remote) => {
-                Some(RepositoryAction::SyncToRemote(remote.clone()))
-            }
             CommandIntent::AiCommit => {
                 return AiCommitRequest::from_snapshot(&self.diff.model.snapshot)
                     .map(ApplicationAction::AiCommit)
@@ -481,11 +464,13 @@ impl Workbench {
             Message::UnstageAll => Some(CommandIntent::UnstageAll),
             Message::StageFile(path) => Some(CommandIntent::StageFile(path.clone())),
             Message::UnstageFile(path) => Some(CommandIntent::UnstageFile(path.clone())),
-            Message::ExecuteCommit => Some(CommandIntent::Commit(self.diff.model.commit_draft())),
-            Message::ExecuteSync => Some(CommandIntent::Sync),
-            Message::ExecuteSyncToRemote(remote) => {
-                Some(CommandIntent::SyncToRemote(remote.clone()))
-            }
+            Message::ExecuteCommit => Some(CommandIntent::Commit(
+                self.diff.model.commit_message.clone(),
+            )),
+            Message::ExecuteSync => Some(CommandIntent::Repository(RepositoryAction::Sync)),
+            Message::ExecuteSyncToRemote(remote) => Some(CommandIntent::Repository(
+                RepositoryAction::SyncToRemote(remote.clone()),
+            )),
             _ => return false,
         };
         if let Some(intent) = intent {
@@ -517,12 +502,7 @@ mod tests {
         );
         assert!(queue.take_next().is_none());
         assert_eq!(queue.queued_len(), 1);
-        assert_eq!(
-            queue
-                .acknowledge(fetch, CommandResult::Succeeded)
-                .map(|command| command.state),
-            Some(CommandState::Finished(CommandResult::Succeeded))
-        );
+        assert!(queue.acknowledge(fetch, CommandResult::Succeeded).is_some());
         assert_eq!(queue.take_next().map(|command| command.id), Some(sync));
     }
 

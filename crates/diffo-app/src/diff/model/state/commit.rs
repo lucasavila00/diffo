@@ -101,11 +101,6 @@ impl Model {
         self.commit_message = message;
     }
 
-    #[must_use]
-    pub(crate) fn commit_draft(&self) -> String {
-        self.commit_message.clone()
-    }
-
     pub(crate) fn prepare_commit(&self, draft: &str) -> Option<RepositoryAction> {
         if matches!(self.merge_phase(), Some(MergePhase::Conflicts(_))) {
             return None;

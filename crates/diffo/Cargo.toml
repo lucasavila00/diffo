@@ -7,7 +7,7 @@ readme = "README.md"
 version.workspace = true
 
 [features]
-codex-mock = []
+codex-mock = ["diffo-ai-config/codex-mock"]
 
 [dependencies]
 anyhow.workspace = true

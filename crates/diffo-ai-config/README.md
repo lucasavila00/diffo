@@ -4,6 +4,9 @@
 policy. It defines the supported provider, Codex executable names, selected
 model, request limits, prompt, and response schema.
 
+Its `codex-mock` feature selects the fixed offline test executable; production
+builds select the real Codex executable.
+
 The crate contains policy constants only. It does not invoke Codex, parse
 responses, expose runtime configuration, or own application behavior. Change
 the model in `src/lib.rs`; production, unit tests, and `codex-mock` consume the

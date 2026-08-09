@@ -6,5 +6,8 @@ license.workspace = true
 readme = "README.md"
 version.workspace = true
 
+[features]
+codex-mock = []
+
 [lints]
 workspace = true

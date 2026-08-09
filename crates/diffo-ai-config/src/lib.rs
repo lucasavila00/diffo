@@ -3,11 +3,13 @@
 /// The only AI provider supported by Diffo.
 pub const AI_PROVIDER: &str = "OpenAI Codex";
 
-/// Executable used in production builds.
+/// Executable selected for this build.
+#[cfg(not(feature = "codex-mock"))]
 pub const CODEX_EXECUTABLE: &str = "codex";
 
-/// Executable used by offline end-to-end and stress builds.
-pub const CODEX_MOCK_EXECUTABLE: &str = "codex-mock";
+/// Executable selected for this build.
+#[cfg(feature = "codex-mock")]
+pub const CODEX_EXECUTABLE: &str = "codex-mock";
 
 /// Model used to generate commit subjects.
 pub const AI_COMMIT_MODEL: &str = "gpt-5.6-luna";
@@ -44,10 +46,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn production_and_mock_executables_are_distinct() {
+    fn executable_matches_build() {
+        #[cfg(not(feature = "codex-mock"))]
         assert_eq!(CODEX_EXECUTABLE, "codex");
-        assert_eq!(CODEX_MOCK_EXECUTABLE, "codex-mock");
-        assert_ne!(CODEX_EXECUTABLE, CODEX_MOCK_EXECUTABLE);
+        #[cfg(feature = "codex-mock")]
+        assert_eq!(CODEX_EXECUTABLE, "codex-mock");
     }
 
     #[test]

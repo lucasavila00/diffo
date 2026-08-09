@@ -33,6 +33,46 @@ pub struct ReviewCodexTaskResult {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ReviewProgress {
+    pub batch: usize,
+    pub batches: usize,
+    pub change_start: usize,
+    pub change_end: usize,
+    pub changes: usize,
+    pub files: Vec<std::path::PathBuf>,
+}
+
+impl ReviewProgress {
+    pub(crate) fn command_phase(&self) -> String {
+        if self.change_start == self.change_end {
+            format!(
+                "Change {}/{} · part {}/{}",
+                self.change_start, self.changes, self.batch, self.batches
+            )
+        } else {
+            format!(
+                "Changes {}-{}/{} · part {}/{}",
+                self.change_start, self.change_end, self.changes, self.batch, self.batches
+            )
+        }
+    }
+
+    pub(crate) fn description(&self) -> String {
+        if self.change_start == self.change_end {
+            format!(
+                "Reviewing change {} of {} · part {} of {}",
+                self.change_start, self.changes, self.batch, self.batches
+            )
+        } else {
+            format!(
+                "Reviewing changes {}-{} of {} · part {} of {}",
+                self.change_start, self.change_end, self.changes, self.batch, self.batches
+            )
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ReviewCodexOutcome {
     Generated(ReviewResult),
     Failed(String),
@@ -57,6 +97,7 @@ struct ActiveRequest {
     request: ReviewRequest,
     cancellation: Option<CancellationHandle>,
     cancelling: bool,
+    progress: Option<ReviewProgress>,
 }
 
 pub(crate) struct ReviewActivity {
@@ -261,6 +302,7 @@ impl ReviewActivity {
             request,
             cancellation: None,
             cancelling: false,
+            progress: None,
         });
         self.failure = None;
         self.selected_stop = 0;
@@ -290,6 +332,22 @@ impl ReviewActivity {
         {
             active.cancelling = true;
         }
+    }
+
+    pub(crate) fn generation_progress(
+        &mut self,
+        id: ApplicationCommandId,
+        progress: ReviewProgress,
+    ) -> bool {
+        let Some(active) = self
+            .active_request
+            .as_mut()
+            .filter(|active| active.id == id && !active.cancelling)
+        else {
+            return false;
+        };
+        active.progress = Some(progress);
+        true
     }
 
     pub(crate) fn generation_cancelled_before_start(&mut self, id: ApplicationCommandId) {

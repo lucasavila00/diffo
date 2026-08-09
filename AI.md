@@ -76,7 +76,9 @@ A Review request includes staged and unstaged patches with stable change identif
 Diffo sends at most two changed file projections per Codex call and installs each valid
 result as soon as it arrives. The user can begin navigating those review steps while the
 same queued command builds later batches. The complete Review command still has one
-120-second deadline and remains cancellable throughout.
+120-second deadline and remains cancellable throughout. Progress reports the current
+part, change range, file paths, and number of ready review steps. Diffo does not show a
+fabricated completion percentage because Codex does not expose one.
 
 ## Response and commit safety
 

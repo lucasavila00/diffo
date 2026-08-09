@@ -204,6 +204,22 @@ impl ReviewRequest {
     }
 
     #[must_use]
+    pub fn change_count(&self) -> usize {
+        self.changes.len()
+    }
+
+    #[must_use]
+    pub fn file_paths(&self) -> Vec<PathBuf> {
+        let mut paths = Vec::new();
+        for change in &self.changes {
+            if !paths.contains(&change.file.path) {
+                paths.push(change.file.path.clone());
+            }
+        }
+        paths
+    }
+
+    #[must_use]
     pub(crate) fn hunk(&self, id: &str) -> Option<&ReviewHunk> {
         self.changes
             .iter()
@@ -528,6 +544,10 @@ mod tests {
 
         assert_eq!(batches.len(), 2);
         assert!(batches.iter().all(|batch| batch.changes.len() <= 2));
+        assert_eq!(
+            request.file_paths(),
+            vec![PathBuf::from("src/lib.rs"), PathBuf::from("src/second.rs")]
+        );
         assert_eq!(
             batches
                 .iter()

@@ -57,8 +57,9 @@ Reject malformed output, invalid bounds or categories, and unknown or repeated I
 Process at most two changed file projections per Codex call, in stable order, within one
 120-second queued command. Install each validated batch immediately so the user can
 navigate ready steps while later batches continue. Keep staging and committing disabled
-until generation finishes. Limit each batch to 256 KiB and mark omitted content instead
-of rejecting a large change.
+until generation finishes. Show the active part, change range, current files, and ready
+step count; do not invent a percentage that Codex does not report. Limit each batch to
+256 KiB and mark omitted content instead of rejecting a large change.
 
 One worker serves AI commits and Review, with one request active at a time. Results are
 accepted only for the matching request and repository snapshot. Tests use `codex-mock`;

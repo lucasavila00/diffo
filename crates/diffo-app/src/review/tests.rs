@@ -111,6 +111,17 @@ fn partial_results_open_immediately_and_merge_while_generation_continues() {
     let mut review = ReviewActivity::new(initial, CodexAvailability::Available);
     review.generation_queued(id, request.clone());
     review.generation_started(id, CancellationHandle::default());
+    assert!(review.generation_progress(
+        id,
+        ReviewProgress {
+            batch: 1,
+            batches: 2,
+            change_start: 1,
+            change_end: 1,
+            changes: 2,
+            files: vec!["a.rs".into()],
+        },
+    ));
 
     let first = request
         .validate_review(
@@ -128,11 +139,24 @@ fn partial_results_open_immediately_and_merge_while_generation_continues() {
         outcome: ReviewCodexOutcome::Generated(first),
         complete: false,
     }));
+    assert!(review.generation_progress(
+        id,
+        ReviewProgress {
+            batch: 2,
+            batches: 2,
+            change_start: 2,
+            change_end: 2,
+            changes: 2,
+            files: vec!["b.rs".into()],
+        },
+    ));
 
     assert!(review.active_request.is_some());
     assert_eq!(review.active_hunk_id.as_deref(), Some(ids[0].as_str()));
     let text = render_text(&review);
-    assert!(text.contains("Building more steps"));
+    assert!(text.contains("Reviewing change 2 of 2 · part 2 of 2"));
+    assert!(text.contains("Files now: b.rs"));
+    assert!(text.contains("1 review step ready"));
     assert!(!text.contains("End of guided review"));
     assert!(
         review
@@ -475,6 +499,8 @@ fn clean_generating_stale_failed_and_unavailable_states_explain_the_next_action(
     };
     generating.generation_queued(ApplicationCommandId(1), request);
     assert!(render_text(&generating).contains("Building your review"));
+    assert!(render_text(&generating).contains("Preparing changes and starting Codex"));
+    assert!(render_text(&generating).contains("0 review steps ready"));
     assert!(render_text(&generating).contains("Enter  Cancel review"));
 
     let initial = snapshot("new");

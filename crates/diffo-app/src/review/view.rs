@@ -75,9 +75,15 @@ fn render_state(frame: &mut Frame, area: Rect, review: &ReviewActivity) -> Rect 
         };
         lines.push(Line::styled(label, mouse_target_style()));
         lines.push(Line::raw(""));
-        lines.push(Line::raw(
-            "Codex is summarizing the work and choosing where to start.",
-        ));
+        lines.push(Line::raw(active.progress.as_ref().map_or_else(
+            || "Preparing changes and starting Codex…".to_owned(),
+            super::ReviewProgress::description,
+        )));
+        if let Some(progress) = &active.progress {
+            lines.push(Line::raw(progress_files(progress)));
+        }
+        lines.push(Line::raw("0 review steps ready"));
+        lines.push(Line::raw("Results appear here as each part finishes."));
     } else if review.stale() {
         lines.push(Line::styled(
             "Your changes changed after this review.",
@@ -296,18 +302,41 @@ fn footer_lines(review: &ReviewActivity) -> Vec<Line<'static>> {
         return Vec::new();
     }
     if review.ready().is_some() {
-        let mut lines = vec![Line::styled(
-            "j / k  Previous / next",
-            Style::default().fg(theme::CHROME),
-        )];
-        if review.active_request.is_some() {
+        let mut lines = Vec::new();
+        if let Some(active) = &review.active_request {
+            let count = review.ready().map_or(0, |cached| cached.result.stops.len());
+            let steps = if count == 1 { "step" } else { "steps" };
             lines.push(Line::styled(
-                "Building more steps",
+                active.progress.as_ref().map_or_else(
+                    || "Preparing the next part…".to_owned(),
+                    super::ReviewProgress::description,
+                ),
                 Style::default().fg(theme::INFORMATION),
             ));
-            lines.push(Line::styled("Enter  Cancel review", mouse_target_style()));
+            if let Some(progress) = &active.progress {
+                lines.push(Line::styled(
+                    progress_files(progress),
+                    Style::default().fg(theme::CHROME),
+                ));
+            }
+            lines.push(Line::styled(
+                format!("{count} review {steps} ready · j / k  Previous / next"),
+                Style::default().fg(theme::CHROME),
+            ));
+            if active.cancelling {
+                lines.push(Line::styled(
+                    "Cancelling review…",
+                    Style::default().fg(theme::WARNING),
+                ));
+            } else {
+                lines.push(Line::styled("Enter  Cancel review", mouse_target_style()));
+            }
             return lines;
         }
+        lines.push(Line::styled(
+            "j / k  Previous / next",
+            Style::default().fg(theme::CHROME),
+        ));
         if let Some(file) = review.active_file() {
             let staging = match file.area {
                 ChangeArea::Staged => "Space  Unstage file",
@@ -339,8 +368,17 @@ fn footer_lines(review: &ReviewActivity) -> Vec<Line<'static>> {
 pub(super) fn render_empty_diff(frame: &mut Frame, area: Rect, review: &ReviewActivity) {
     let message = if let CodexAvailability::Unavailable(reason) = &review.availability {
         format!("AI Review is unavailable.\n\n{reason}")
-    } else if review.active_request.is_some() {
-        "Building your review…\n\nThe first suggested change will open here.".to_owned()
+    } else if let Some(active) = &review.active_request {
+        let progress = active.progress.as_ref().map_or_else(
+            || "Preparing changes and starting Codex…".to_owned(),
+            super::ReviewProgress::description,
+        );
+        let files = active
+            .progress
+            .as_ref()
+            .map(progress_files)
+            .unwrap_or_default();
+        format!("{progress}\n{files}\n\nThe first suggested change will open here.")
     } else if review.stale() {
         "Your changes changed after this review.\n\nPress Enter to refresh it.".to_owned()
     } else if !review.has_changes() {
@@ -356,4 +394,14 @@ pub(super) fn render_empty_diff(frame: &mut Frame, area: Rect, review: &ReviewAc
             .wrap(Wrap { trim: false }),
         area,
     );
+}
+
+fn progress_files(progress: &super::ReviewProgress) -> String {
+    let files = progress
+        .files
+        .iter()
+        .map(|path| terminal_safe_text(&path.to_string_lossy()))
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!("Files now: {files}")
 }

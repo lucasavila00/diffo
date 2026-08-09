@@ -14,14 +14,14 @@ use std::{
 };
 
 use diffo_ai_config::{
-    AI_COMMIT_MODEL, AI_COMMIT_PROMPT, AI_COMMIT_SCHEMA, AI_REVIEW_BATCH_CHANGES, AI_REVIEW_MODEL,
-    AI_REVIEW_PROMPT, AI_REVIEW_SCHEMA, CODEX_EXECUTABLE, CODEX_SANDBOX, MAX_CODEX_OUTPUT_BYTES,
+    AI_COMMIT_MODEL, AI_COMMIT_PROMPT, AI_COMMIT_SCHEMA, AI_REVIEW_MODEL, AI_REVIEW_PROMPT,
+    AI_REVIEW_SCHEMA, CODEX_EXECUTABLE, CODEX_SANDBOX, MAX_CODEX_OUTPUT_BYTES,
     MAX_CODEX_RUNTIME_SECONDS,
 };
 use diffo_app::{
     review::{
         AttentionCategory, CodexAvailability, ReviewCodexOutcome, ReviewCodexTaskResult,
-        ReviewRequest, ReviewStop,
+        ReviewProgress, ReviewRequest, ReviewStop,
     },
     workbench::{AiCommitOutcome, AiCommitRequest, Workbench},
 };
@@ -31,6 +31,9 @@ use serde::Deserialize;
 use tempfile::NamedTempFile;
 
 use crate::codex_failure;
+
+mod review;
+use review::run_review_worker;
 
 static RESOLVED_CODEX_EXECUTABLE: OnceLock<OsString> = OnceLock::new();
 
@@ -42,6 +45,7 @@ enum CodexExecutable {
 enum CodexTaskResult {
     AiCommit(ApplicationCommandId, AiCommitOutcome),
     Review(ReviewCodexTaskResult),
+    ReviewProgress(ApplicationCommandId, ReviewProgress),
 }
 
 struct BusyGuard(Arc<AtomicBool>);
@@ -137,41 +141,14 @@ impl CodexTasks {
             .name("codex-ai".to_owned())
             .spawn(move || {
                 let _busy = BusyGuard(busy);
-                let batches = request.batches(AI_REVIEW_BATCH_CHANGES);
-                let started = Instant::now();
-                let mut stops = 0_usize;
-                for (index, batch) in batches.iter().enumerate() {
-                    let timeout = Duration::from_secs(MAX_CODEX_RUNTIME_SECONDS)
-                        .saturating_sub(started.elapsed());
-                    let outcome = if timeout.is_zero() {
-                        ReviewCodexOutcome::Failed(timeout_message())
-                    } else {
-                        run_review_codex(
-                            &executable,
-                            &repository_root,
-                            batch,
-                            &cancellation,
-                            timeout,
-                        )
-                    };
-                    if let ReviewCodexOutcome::Generated(review) = &outcome {
-                        stops = stops.saturating_add(review.stops.len());
-                    }
-                    let complete = index + 1 == batches.len()
-                        || stops >= 8
-                        || !matches!(outcome, ReviewCodexOutcome::Generated(_));
-                    if sender
-                        .send(CodexTaskResult::Review(ReviewCodexTaskResult {
-                            id,
-                            outcome,
-                            complete,
-                        }))
-                        .is_err()
-                        || complete
-                    {
-                        break;
-                    }
-                }
+                run_review_worker(
+                    id,
+                    &request,
+                    &executable,
+                    &repository_root,
+                    &cancellation,
+                    &sender,
+                );
             });
         if let Err(error) = spawn {
             self.busy.store(false, Ordering::Release);
@@ -200,6 +177,9 @@ impl CodexTasks {
                     }
                 }
                 CodexTaskResult::Review(result) => workbench.accept_review_codex_result(result),
+                CodexTaskResult::ReviewProgress(id, progress) => {
+                    workbench.accept_review_progress(id, progress);
+                }
             }
         }
     }

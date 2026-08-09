@@ -218,6 +218,26 @@ fn ai_review_uses_shared_progress_and_cancellation() {
         Some("AI review — Building review".to_owned())
     );
 
+    workbench.accept_review_progress(
+        command.id,
+        crate::review::ReviewProgress {
+            batch: 1,
+            batches: 3,
+            change_start: 1,
+            change_end: 2,
+            changes: 5,
+            files: vec!["src/main.rs".into(), "src/lib.rs".into()],
+        },
+    );
+    assert_eq!(
+        workbench
+            .commands
+            .entries()
+            .next()
+            .map(|(_, label, _)| label),
+        Some("AI review — Changes 1-2/5 · part 1/3".to_owned())
+    );
+
     workbench.tick(started + Duration::from_millis(150));
     assert!(workbench.command_progress.is_visible());
     let partial = request

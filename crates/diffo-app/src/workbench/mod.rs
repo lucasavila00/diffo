@@ -37,6 +37,7 @@ mod presentation;
 mod prompt;
 mod quick_open;
 mod repository_update;
+mod review_queue;
 mod sync_remote;
 
 use bindings::GlobalAction;

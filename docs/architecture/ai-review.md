@@ -49,7 +49,9 @@ Validated batches become available immediately, so the user can start reviewing
 while later batches continue. The interface reports the active part, change
 range, file paths, and number of ready steps. It does not invent a completion
 percentage. The shared command progress border and cancel control remain active
-until the complete Review command finishes.
+until the complete Review command finishes. `Esc` cancels the active Review
+command and its remaining batches. `Enter` only starts, refreshes, or recenters
+a review.
 
 ## Availability and failure handling
 

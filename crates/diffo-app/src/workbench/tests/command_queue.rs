@@ -261,7 +261,16 @@ fn ai_review_uses_shared_progress_and_cancellation() {
 
     let _ = workbench.handle_events(&[key(KeyCode::Enter)], area);
 
+    assert!(!command.cancellation.is_cancelled());
+    assert_eq!(
+        workbench.commands.active().map(|active| active.state),
+        Some(CommandState::Running)
+    );
+
+    let _ = workbench.handle_events(&[key(KeyCode::Esc)], area);
+
     assert!(command.cancellation.is_cancelled());
+    assert!(!workbench.should_quit);
     assert_eq!(
         workbench.commands.active().map(|active| active.state),
         Some(CommandState::Cancelling)

@@ -442,8 +442,11 @@ impl Workbench {
             }
             return Some(WorkbenchCommand::Redraw);
         }
+        let review_captures_escape =
+            self.active == Activity::Review && self.review.captures_escape(event);
         if self.active != Activity::Diff
             && !tool_captures_global_input
+            && !review_captures_escape
             && let Event::Key(key) = event
             && key.kind == KeyEventKind::Press
             && (matches!(key.code, KeyCode::Char('q') | KeyCode::Esc)

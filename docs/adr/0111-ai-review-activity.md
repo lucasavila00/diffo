@@ -17,10 +17,10 @@ Add **Review** after Diff and Explorer in the `Tab` cycle. Opening it does not
 call Codex. The `[ Generate review (Enter) ]` control and its exact hit area
 start generation only when the user asks; surrounding explanatory text is inert.
 
-Review teaches the complete flow before generation: `Enter` starts, `j` and `k`
-move between review steps, `Space` stages or unstages the current file, and `i`
-commits staged changes. User-facing text says change, file, and review step;
-protocol terms never appear.
+Review teaches the complete flow before generation: `Enter` starts, `Esc`
+cancels generation, `j` and `k` move between review steps, `Space` stages or
+unstages the current file, and `i` commits staged changes. User-facing text says
+change, file, and review step; protocol terms never appear.
 
 The left pane shows a short overview, a stable ordered list of up to eight
 steps, the selected file and staging state, why the step matters, and persistent
@@ -50,7 +50,8 @@ Diff. Review does not own another staging or commit implementation.
 If Codex is unavailable at startup, disable Review and explain that installation
 and a Diffo restart are required. Generation is a normal command-queue item.
 After the shared delay it uses the pulsating application border, progress panel,
-and cancel control. `Enter` also cancels it.
+and cancel control. `Esc` cancels every remaining batch in the Review command;
+`Enter` never cancels work.
 
 ### Prompt and response handling
 

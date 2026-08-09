@@ -388,7 +388,10 @@ fn footer_lines(review: &ReviewActivity) -> Vec<Line<'static>> {
                     Style::default().fg(theme::WARNING),
                 ));
             } else {
-                lines.push(Line::styled("Enter  Cancel review", mouse_target_style()));
+                lines.push(Line::styled(
+                    "Esc  Cancel review",
+                    Style::default().fg(theme::WARNING),
+                ));
             }
             return lines;
         }
@@ -425,7 +428,10 @@ fn footer_lines(review: &ReviewActivity) -> Vec<Line<'static>> {
         return lines;
     }
     if review.active_request.is_some() {
-        return vec![Line::styled("Enter  Cancel review", mouse_target_style())];
+        return vec![Line::styled(
+            "Esc  Cancel review",
+            Style::default().fg(theme::WARNING),
+        )];
     }
     vec![
         Line::styled(

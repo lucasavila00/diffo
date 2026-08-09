@@ -224,7 +224,7 @@ impl ReviewActivity {
             return None;
         }
         let generating = self.active_request.is_some();
-        if generating && plain_key(event, KeyCode::Enter) {
+        if generating && plain_key(event, KeyCode::Esc) {
             return self
                 .active_request
                 .as_ref()
@@ -584,10 +584,15 @@ impl ReviewActivity {
         self.active_request.is_some() || self.renderer.is_preparing()
     }
 
+    pub(crate) fn captures_escape(&self, event: &Event) -> bool {
+        self.active_request.is_some() && plain_key(event, KeyCode::Esc)
+    }
+
     pub(crate) fn help_rows() -> Vec<(String, &'static str)> {
         vec![
             ("j / k".to_owned(), "Previous / next review step"),
             ("Enter".to_owned(), "Start or recenter review"),
+            ("Esc".to_owned(), "Cancel review generation"),
             ("Space".to_owned(), "Stage / unstage current file"),
             ("i".to_owned(), "AI commit staged changes"),
         ]

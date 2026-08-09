@@ -542,7 +542,20 @@ fn clean_generating_stale_failed_and_unavailable_states_explain_the_next_action(
     assert!(render_text(&generating).contains("Building your review"));
     assert!(render_text(&generating).contains("Preparing changes and starting Codex"));
     assert!(render_text(&generating).contains("0 review steps ready"));
-    assert!(render_text(&generating).contains("Enter  Cancel review"));
+    assert!(render_text(&generating).contains("Esc  Cancel review"));
+    assert!(
+        generating
+            .handle_event(&enter(), Rect::new(0, 0, 100, 30), PaneSplit::default())
+            .is_none()
+    );
+    assert!(matches!(
+        generating.handle_event(
+            &Event::Key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE)),
+            Rect::new(0, 0, 100, 30),
+            PaneSplit::default(),
+        ),
+        Some(ReviewEvent::Cancel(ApplicationCommandId(1)))
+    ));
 
     let initial = snapshot("new");
     let request = ReviewRequest::from_snapshot(&initial).unwrap();

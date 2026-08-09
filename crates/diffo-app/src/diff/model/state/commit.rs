@@ -2,7 +2,7 @@ use super::{MergePhase, Model, NetworkOperation, RepositoryAction};
 
 impl Model {
     pub fn commit_message_input(&mut self, character: char) {
-        if !character.is_control() {
+        if !self.ai_commit_pending && !character.is_control() {
             let byte = byte_index_at_char(&self.commit_message, self.commit_message_cursor);
             self.commit_message.insert(byte, character);
             self.commit_message_cursor = self.commit_message_cursor.saturating_add(1);
@@ -10,7 +10,7 @@ impl Model {
     }
 
     pub fn commit_message_backspace(&mut self) {
-        if self.commit_message_cursor > 0 {
+        if !self.ai_commit_pending && self.commit_message_cursor > 0 {
             let start = byte_index_at_char(
                 &self.commit_message,
                 self.commit_message_cursor.saturating_sub(1),
@@ -22,10 +22,16 @@ impl Model {
     }
 
     pub fn commit_message_cursor_left(&mut self) {
+        if self.ai_commit_pending {
+            return;
+        }
         self.commit_message_cursor = self.commit_message_cursor.saturating_sub(1);
     }
 
     pub fn commit_message_cursor_right(&mut self) {
+        if self.ai_commit_pending {
+            return;
+        }
         self.commit_message_cursor = self
             .commit_message_cursor
             .saturating_add(1)
@@ -66,14 +72,33 @@ impl Model {
 
     #[must_use]
     pub fn commit_enabled(&self) -> bool {
-        self.pending_operation.is_none()
+        !self.ai_commit_pending
+            && self.pending_operation.is_none()
             && !matches!(self.merge_phase(), Some(MergePhase::Conflicts(_)))
             && self.effective_commit_message().is_some()
     }
 
     #[must_use]
     pub fn sync_enabled(&self) -> bool {
-        self.pending_operation.is_none()
+        !self.ai_commit_pending && self.pending_operation.is_none()
+    }
+
+    #[must_use]
+    pub const fn ai_commit_pending(&self) -> bool {
+        self.ai_commit_pending
+    }
+
+    pub fn begin_ai_commit(&mut self) {
+        self.ai_commit_pending = true;
+    }
+
+    pub fn finish_ai_commit(&mut self) {
+        self.ai_commit_pending = false;
+    }
+
+    pub fn install_generated_commit_message(&mut self, message: String) {
+        self.commit_message_cursor = message.chars().count();
+        self.commit_message = message;
     }
 
     pub fn execute_commit(&mut self) -> Option<RepositoryAction> {

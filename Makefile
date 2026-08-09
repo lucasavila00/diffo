@@ -4,7 +4,8 @@
 # diffo-e2e package and the diffo integration tests.
 all:
 	cargo fmt --all --check
-	cargo test --workspace
+	cargo build --package codex-mock
+	PATH="$(CURDIR)/target/debug:$$PATH" cargo test --workspace --all-features
 	cargo clippy --workspace --all-targets --all-features -- -D warnings
 	cargo doc --workspace --no-deps
 	$(MAKE) check-e2e-binary
@@ -35,12 +36,14 @@ install:
 
 # Run the viewer with a mutable deterministic repository-state fixture.
 diffo-mock:
-	DIFFO_MOCK_FILE=crates/diffo-core/fixtures/repository-state.ron cargo run --package diffo
+	cargo build --package codex-mock
+	PATH="$(CURDIR)/target/debug:$$PATH" DIFFO_MOCK_FILE=crates/diffo-core/fixtures/repository-state.ron cargo run --package diffo --features codex-mock
 
 # Run only the compiled-binary black-box suites during focused E2E development.
 e2e:
+	cargo build --package codex-mock
 	cargo test --package diffo-e2e
-	cargo test --package diffo --test git_operations
+	PATH="$(CURDIR)/target/debug:$$PATH" cargo test --package diffo --test git_operations --features codex-mock
 
 e2e-review:
 	cargo insta test --package diffo-e2e

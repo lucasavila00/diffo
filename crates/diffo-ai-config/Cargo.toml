@@ -1,0 +1,10 @@
+[package]
+name = "diffo-ai-config"
+description = "Compile-time AI provider and model policy for Diffo"
+edition.workspace = true
+license.workspace = true
+readme = "README.md"
+version.workspace = true
+
+[lints]
+workspace = true

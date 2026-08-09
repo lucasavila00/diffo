@@ -119,6 +119,35 @@ impl MutableFixtureRepository {
         }
         Ok(())
     }
+
+    fn commit(&self, message: &str) -> OperationResult {
+        let mut snapshot = self.snapshot.lock().expect("mock snapshot mutex poisoned");
+        snapshot.files.retain_mut(|file| {
+            file.staged = None;
+            file.unstaged.is_some()
+        });
+        snapshot.recent_commits.insert(
+            0,
+            crate::Commit {
+                id: "mock-commit".to_owned(),
+                summary: message.to_owned(),
+            },
+        );
+        if let Some(upstream) = snapshot.upstream.as_mut() {
+            upstream.ahead = upstream.ahead.saturating_add(1);
+            upstream.recent_local_commits.insert(
+                0,
+                crate::Commit {
+                    id: "mock-commit".to_owned(),
+                    summary: message.to_owned(),
+                },
+            );
+            upstream.recent_local_commits.truncate(3);
+        }
+        OperationResult::Commit {
+            hash: "mock-commit".to_owned(),
+        }
+    }
 }
 
 fn append_large_files(
@@ -264,6 +293,19 @@ impl Repository for MutableFixtureRepository {
         &self,
         action: &RepositoryAction,
     ) -> std::result::Result<OperationResult, OperationFailure> {
+        if let RepositoryAction::GuardedCommit(target) = action {
+            let snapshot = self.snapshot.lock().expect("mock snapshot mutex poisoned");
+            if snapshot.head != target.expected_head
+                || snapshot.staged_files() != target.expected_staged
+            {
+                return Err(OperationFailure {
+                    action: action.clone(),
+                    kind: FailureKind::RefChanged,
+                    detail: "staged changes changed; press i to generate a new commit message"
+                        .to_owned(),
+                });
+            }
+        }
         let result = (|| -> Result<OperationResult> {
             match action {
                 RepositoryAction::Stage(path) => self.stage(path).map(|()| OperationResult::Stage),
@@ -300,34 +342,8 @@ impl Repository for MutableFixtureRepository {
                     }
                     Ok(OperationResult::Unstage)
                 }
-                RepositoryAction::Commit(message) => {
-                    let mut snapshot = self.snapshot.lock().expect("mock snapshot mutex poisoned");
-                    snapshot.files.retain_mut(|file| {
-                        file.staged = None;
-                        file.unstaged.is_some()
-                    });
-                    snapshot.recent_commits.insert(
-                        0,
-                        crate::Commit {
-                            id: "mock-commit".to_owned(),
-                            summary: message.clone(),
-                        },
-                    );
-                    if let Some(upstream) = snapshot.upstream.as_mut() {
-                        upstream.ahead = upstream.ahead.saturating_add(1);
-                        upstream.recent_local_commits.insert(
-                            0,
-                            crate::Commit {
-                                id: "mock-commit".to_owned(),
-                                summary: message.clone(),
-                            },
-                        );
-                        upstream.recent_local_commits.truncate(3);
-                    }
-                    Ok(OperationResult::Commit {
-                        hash: "mock-commit".to_owned(),
-                    })
-                }
+                RepositoryAction::Commit(message) => Ok(self.commit(message)),
+                RepositoryAction::GuardedCommit(target) => Ok(self.commit(&target.message)),
                 RepositoryAction::Fetch
                 | RepositoryAction::Sync
                 | RepositoryAction::SyncToRemote(_)
@@ -370,7 +386,10 @@ impl Repository for MutableFixtureRepository {
 mod tests {
     use std::{collections::HashSet, path::Path};
 
-    use crate::{ChangeKind, Repository, RepositoryAction, RepositorySource};
+    use crate::{
+        ChangeKind, GuardedCommitTarget, HeadState, OperationResult, Repository, RepositoryAction,
+        RepositorySource,
+    };
 
     use super::{FixtureRepositorySource, MutableFixtureRepository};
 
@@ -436,6 +455,42 @@ mod tests {
             assert!(message.contains(&action_name), "{message}");
             assert!(message.contains("no remote configured"), "{message}");
         }
+    }
+
+    #[test]
+    fn mutable_fixture_enforces_guarded_commit_state() {
+        let fixture = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("fixtures")
+            .join("repository-state.ron");
+        let repository = MutableFixtureRepository::new(&fixture).expect("fixture should load");
+        let path = Path::new("examples/new_tool.rs");
+        repository
+            .apply(&RepositoryAction::Stage(path.to_path_buf()))
+            .expect("mock stage should work");
+        let snapshot = repository.snapshot().expect("snapshot after stage");
+        let target = GuardedCommitTarget {
+            message: "feat: fixture commit".to_owned(),
+            expected_head: snapshot.head.clone(),
+            expected_staged: snapshot.staged_files(),
+        };
+
+        assert!(matches!(
+            repository.apply(&RepositoryAction::GuardedCommit(Box::new(target))),
+            Ok(OperationResult::Commit { .. })
+        ));
+
+        let stale = GuardedCommitTarget {
+            message: "must not commit".to_owned(),
+            expected_head: HeadState::Unborn {
+                name: "stale".to_owned(),
+            },
+            expected_staged: Vec::new(),
+        };
+        assert!(
+            repository
+                .apply(&RepositoryAction::GuardedCommit(Box::new(stale)))
+                .is_err()
+        );
     }
 
     #[test]

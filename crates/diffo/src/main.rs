@@ -30,6 +30,7 @@ use diffo_git::{GitRepositorySource, NotRepository, run_askpass_if_requested};
 use diffo_repository_service::{RepositoryEvent, RepositoryService};
 use ratatui::{Terminal, backend::CrosstermBackend};
 
+mod codex_tasks;
 mod frame_trace;
 mod launcher;
 mod merge;
@@ -37,11 +38,18 @@ mod tool_tasks;
 mod update_tasks;
 mod wheel_friction;
 
+use codex_tasks::CodexTasks;
 use diffo_app::workbench::{PromptResponse, Workbench, WorkbenchEffect};
 use frame_trace::{FrameRecord, FrameTracer, input_events as trace_input_events};
 use tool_tasks::ToolTasks;
 use update_tasks::UpdateTasks;
 use wheel_friction::{WheelFriction, filter as filter_wheel_momentum};
+
+struct RuntimeTasks {
+    tools: ToolTasks,
+    codex: CodexTasks,
+    updates: UpdateTasks,
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct EnableActionMouseCapture;
@@ -155,10 +163,18 @@ fn run_application() -> Result<()> {
         return run_watch_dump(Path::new(&path), &snapshot, &repository_service, &shutdown);
     }
 
+    let repository_root = match &watch_paths {
+        Some(paths) => paths.worktree.clone(),
+        None => env::current_dir().context("failed to resolve the repository directory")?,
+    };
+
     let mut workbench = Workbench::new(snapshot);
-    let tool_tasks = ToolTasks::start(repository);
-    let mut update_tasks = UpdateTasks::new();
-    tool_tasks.drain(&mut workbench);
+    let mut tasks = RuntimeTasks {
+        tools: ToolTasks::start(repository),
+        codex: CodexTasks::new(repository_root),
+        updates: UpdateTasks::new(),
+    };
+    tasks.tools.drain(&mut workbench);
     let mut tracer = FrameTracer::from_environment();
     let mut terminal = ratatui::init();
     execute!(
@@ -172,8 +188,7 @@ fn run_application() -> Result<()> {
         &mut workbench,
         &shutdown,
         &repository_service,
-        &tool_tasks,
-        &mut update_tasks,
+        &mut tasks,
         &mut tracer,
     );
     drop(repository_service);
@@ -253,8 +268,7 @@ fn run(
     workbench: &mut Workbench,
     shutdown: &AtomicBool,
     repository_service: &RepositoryService,
-    tool_tasks: &ToolTasks,
-    update_tasks: &mut UpdateTasks,
+    tasks: &mut RuntimeTasks,
     tracer: &mut FrameTracer,
 ) -> Result<()> {
     let mut wheel_friction = WheelFriction::default();
@@ -309,15 +323,8 @@ fn run(
         );
         let update_start_us = tracer.elapsed_us();
         drain_repository_events(repository_service, workbench);
-        tool_tasks.drain(workbench);
-        update_tasks.drain(workbench);
-        dispatch_events(
-            &events,
-            terminal,
-            workbench,
-            repository_service,
-            update_tasks,
-        )?;
+        drain_tasks(tasks, workbench, repository_service);
+        dispatch_events(&events, terminal, workbench, repository_service, tasks)?;
         let preparation = prepare_frame(terminal, workbench)?;
         let resized = events
             .iter()
@@ -354,6 +361,7 @@ fn run(
     }
 
     if let Some(command_id) = workbench.active_command_id() {
+        let _ = workbench.cancel_application_command(command_id);
         let _ = repository_service.cancel_command(command_id);
     }
 
@@ -405,12 +413,22 @@ fn prepare_frame(
     Ok(workbench.prepare_frame(area))
 }
 
+fn drain_tasks(
+    tasks: &mut RuntimeTasks,
+    workbench: &mut Workbench,
+    repository_service: &RepositoryService,
+) {
+    tasks.tools.drain(workbench);
+    tasks.codex.drain(workbench, repository_service);
+    tasks.updates.drain(workbench);
+}
+
 fn dispatch_events(
     events: &[crossterm::event::Event],
     terminal: &Terminal<CrosstermBackend<io::Stdout>>,
     workbench: &mut Workbench,
     repository_service: &RepositoryService,
-    update_tasks: &UpdateTasks,
+    tasks: &RuntimeTasks,
 ) -> Result<()> {
     let size = terminal.size()?;
     let area = ratatui::layout::Rect::new(0, 0, size.width, size.height);
@@ -444,8 +462,11 @@ fn dispatch_events(
                     );
                 }
             }
+            diffo_app::workbench::ApplicationAction::AiCommit(request) => {
+                tasks.codex.start(id, request, command.cancellation);
+            }
             diffo_app::workbench::ApplicationAction::Update => {
-                update_tasks.start_update(id, command.cancellation);
+                tasks.updates.start_update(id, command.cancellation);
             }
         }
     }

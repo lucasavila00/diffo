@@ -36,6 +36,7 @@ fn maps_fixed_key_bindings() {
         KeyCode::Right,
         KeyCode::Char('r'),
         KeyCode::Char('m'),
+        KeyCode::Char('i'),
         KeyCode::Enter,
         KeyCode::Char('n'),
         KeyCode::Char('p'),

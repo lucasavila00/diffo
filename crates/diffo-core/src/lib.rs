@@ -23,6 +23,26 @@ pub struct RepositorySnapshot {
     pub operation: RepositoryOperationState,
 }
 
+impl RepositorySnapshot {
+    #[must_use]
+    pub fn staged_files(&self) -> Vec<StagedFile> {
+        let mut files = self
+            .files
+            .iter()
+            .filter_map(|file| {
+                file.staged.clone().map(|diff| StagedFile {
+                    path: file.path.clone(),
+                    old_path: file.old_path.clone(),
+                    kind: file.kind,
+                    diff,
+                })
+            })
+            .collect::<Vec<_>>();
+        files.sort_by(|left, right| left.path.cmp(&right.path));
+        files
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 pub enum RepositoryOperationState {
     #[default]
@@ -69,6 +89,14 @@ pub enum ChangeKind {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct FileDiff {
     pub text: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct StagedFile {
+    pub path: PathBuf,
+    pub old_path: Option<PathBuf>,
+    pub kind: ChangeKind,
+    pub diff: FileDiff,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -205,6 +233,13 @@ pub struct RenameBranchTarget {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct GuardedCommitTarget {
+    pub message: String,
+    pub expected_head: HeadState,
+    pub expected_staged: Vec<StagedFile>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum CreateBranchStartPoint {
     Head(HeadState),
     Branch(CheckoutTarget),
@@ -229,6 +264,7 @@ pub enum RepositoryAction {
     Sync,
     SyncToRemote(String),
     Commit(String),
+    GuardedCommit(Box<GuardedCommitTarget>),
     Checkout(Box<CheckoutTarget>),
     CreateBranch(Box<CreateBranchTarget>),
     DeleteBranch(Box<DeleteBranchTarget>),

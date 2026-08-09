@@ -1,0 +1,13 @@
+[package]
+name = "codex-mock"
+description = "Deterministic Codex CLI stand-in for Diffo end-to-end tests"
+edition.workspace = true
+license.workspace = true
+readme = "README.md"
+version.workspace = true
+
+[dependencies]
+diffo-ai-config.workspace = true
+
+[lints]
+workspace = true

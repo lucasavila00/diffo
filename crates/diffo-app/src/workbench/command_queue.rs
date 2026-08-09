@@ -2,9 +2,12 @@ use std::collections::VecDeque;
 
 use diffo_core::{ApplicationCommandId, CancellationHandle, RepositoryAction};
 
+use super::AiCommitRequest;
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ApplicationAction {
     Repository(RepositoryAction),
+    AiCommit(AiCommitRequest),
     Update,
 }
 
@@ -56,6 +59,10 @@ impl CommandQueue {
         self.enqueue_action(ApplicationAction::Update)
     }
 
+    pub fn enqueue_ai_commit(&mut self, request: AiCommitRequest) -> ApplicationCommandId {
+        self.enqueue_action(ApplicationAction::AiCommit(request))
+    }
+
     fn enqueue_action(&mut self, action: ApplicationAction) -> ApplicationCommandId {
         let id = ApplicationCommandId(self.next_id);
         self.next_id = self.next_id.saturating_add(1);
@@ -76,6 +83,31 @@ impl CommandQueue {
 
     pub fn active_mut(&mut self) -> Option<&mut ApplicationCommand> {
         self.active.as_mut()
+    }
+
+    #[must_use]
+    pub fn ai_commit_id(&self) -> Option<ApplicationCommandId> {
+        self.active
+            .iter()
+            .chain(self.queued.iter())
+            .find(|command| {
+                matches!(
+                    command.action,
+                    ApplicationAction::AiCommit(_)
+                        | ApplicationAction::Repository(RepositoryAction::GuardedCommit(_))
+                )
+            })
+            .map(|command| command.id)
+    }
+
+    #[must_use]
+    pub fn has_stage_all(&self) -> bool {
+        self.active.iter().chain(self.queued.iter()).any(|command| {
+            matches!(
+                command.action,
+                ApplicationAction::Repository(RepositoryAction::StageAll)
+            )
+        })
     }
 
     #[must_use]
@@ -130,6 +162,9 @@ fn command_label(action: &ApplicationAction) -> String {
             RepositoryAction::Fetch | RepositoryAction::Sync | RepositoryAction::SyncToRemote(_),
         ) => "Fetching".to_owned(),
         ApplicationAction::Repository(RepositoryAction::Commit(_)) => "Committing".to_owned(),
+        ApplicationAction::Repository(RepositoryAction::GuardedCommit(_)) => {
+            "Committing".to_owned()
+        }
         ApplicationAction::Repository(RepositoryAction::Checkout(target)) => format!(
             "Checking out {}",
             target
@@ -173,6 +208,7 @@ fn command_label(action: &ApplicationAction) -> String {
         ApplicationAction::Repository(RepositoryAction::RenameBranch(target)) => {
             format!("Renaming branch to {}", target.new_name)
         }
+        ApplicationAction::AiCommit(_) => "Writing commit message".to_owned(),
         ApplicationAction::Update => "Updating Diffo".to_owned(),
     }
 }

@@ -54,6 +54,36 @@ fn generated_commit_message_commits_staged_changes() -> Result<()> {
     Ok(())
 }
 
+#[cfg(feature = "codex-mock")]
+#[test]
+fn stage_all_then_ai_commit_uses_the_offline_codex_mock() -> Result<()> {
+    let repository = TestRepository::new()?;
+    fs::write(
+        repository.worktree.join("tracked.txt"),
+        "AI committed change\n",
+    )?;
+    let mut screen = repository.screen()?;
+
+    screen
+        .wait_for_text("tracked.txt")?
+        .press(Key::Char('a'))?
+        .press(Key::Char('i'))?
+        .wait_for_text("Committed ")?;
+
+    wait_for("AI-generated commit", || {
+        Ok(
+            git_output(&repository.worktree, &["log", "-1", "--format=%s"])?
+                == "test: create commit with Codex",
+        )
+    })?;
+    assert_eq!(
+        git_output(&repository.worktree, &["show", "HEAD:tracked.txt"])?,
+        "AI committed change"
+    );
+
+    Ok(())
+}
+
 #[test]
 fn commit_input_keeps_focus_across_live_repository_refresh() -> Result<()> {
     let repository = TestRepository::new()?;

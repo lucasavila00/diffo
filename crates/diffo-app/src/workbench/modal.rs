@@ -581,6 +581,7 @@ mod tests {
             OperationFailure {
                 action: match command.action {
                     ApplicationAction::Repository(action) => action,
+                    ApplicationAction::AiCommit(_) => panic!("commit queued an AI commit"),
                     ApplicationAction::Update => panic!("commit queued an update"),
                 },
                 kind: FailureKind::Network,

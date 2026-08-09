@@ -84,6 +84,11 @@ pub(super) static KEY_BINDINGS: &[KeyBinding] = &[
         description: "Edit commit message",
     },
     KeyBinding {
+        keys: &[KeyChord::plain(KeyCode::Char('i'))],
+        message: Message::ExecuteAiCommit,
+        description: "AI commit staged changes",
+    },
+    KeyBinding {
         keys: &[KeyChord::plain(KeyCode::Enter)],
         message: Message::ExecuteCommit,
         description: "Commit staged changes or complete merge",
@@ -112,15 +117,23 @@ pub(super) static KEY_BINDINGS: &[KeyBinding] = &[
 
 pub(crate) fn help_rows() -> Vec<(String, &'static str)> {
     std::iter::once(("f".to_owned(), "Toggle full-screen buffer"))
-        .chain(KEY_BINDINGS.iter().map(|binding| {
-            let keys = binding
-                .keys
+        .chain(
+            KEY_BINDINGS
                 .iter()
-                .map(|key| key.label())
-                .collect::<Vec<_>>()
-                .join(" / ");
-            (keys, binding.description)
-        }))
+                .filter(|binding| binding.message != Message::JumpToPreviousChange)
+                .map(|binding| {
+                    if binding.message == Message::JumpToNextChange {
+                        return ("n / p".to_owned(), "Next / previous change");
+                    }
+                    let keys = binding
+                        .keys
+                        .iter()
+                        .map(|key| key.label())
+                        .collect::<Vec<_>>()
+                        .join(" / ");
+                    (keys, binding.description)
+                }),
+        )
         .collect()
 }
 

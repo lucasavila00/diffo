@@ -22,3 +22,9 @@ The [installer](install.sh) verifies the latest release against its published
 SHA-256 checksum and installs it as `/usr/local/bin/diffo`. Rerun the same command
 to replace an existing installation with the latest release. Run `diffo` from inside
 a Git repository.
+
+## AI commits
+
+Diffo can generate and create a commit from staged changes with Codex. See
+[AI.md](AI.md) for the supported provider and model, data boundaries, safety checks,
+and offline testing contract.

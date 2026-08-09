@@ -7,6 +7,8 @@ use ratatui::{Terminal, backend::TestBackend, layout::Rect};
 
 use super::*;
 
+mod stale;
+
 fn snapshot(text: &str) -> RepositorySnapshot {
     RepositorySnapshot {
         files: vec![FileState {
@@ -270,31 +272,6 @@ fn a_later_batch_failure_does_not_present_a_partial_review_as_complete() {
 }
 
 #[test]
-fn repository_change_makes_a_ready_review_stale() {
-    let initial = snapshot("new");
-    let request = ReviewRequest::from_snapshot(&initial).unwrap();
-    let first_hunk_id = request.first_hunk_id().to_owned();
-    let result = request
-        .validate_review(
-            vec!["Overview".to_owned()],
-            vec![ReviewStop {
-                title: "Inspect behavior".to_owned(),
-                category: AttentionCategory::Behavior,
-                reason: "The behavior changes here.".to_owned(),
-                primary_hunk_id: first_hunk_id,
-            }],
-        )
-        .unwrap();
-    let mut review = ReviewActivity::new(initial, CodexAvailability::Available);
-    review.cached = Some(CachedReview { request, result });
-
-    review.repository_changed(snapshot("newer"));
-
-    assert!(review.stale());
-    assert!(review.ready().is_none());
-}
-
-#[test]
 fn staging_from_review_keeps_the_map_and_rebinds_the_hunk() {
     let initial = snapshot("new");
     let request = ReviewRequest::from_snapshot(&initial).unwrap();
@@ -477,6 +454,8 @@ fn initial_screen_teaches_the_complete_workflow_without_internal_terms() {
     assert!(text.contains("Stage / unstage"));
     assert!(text.contains("the whole file"));
     assert!(text.contains("Commit staged work"));
+    assert!(text.contains("changes as they are now"));
+    assert!(text.contains("out-of-date label"));
     let lower = text.to_lowercase();
     assert!(!lower.contains("hunk"));
     assert!(!lower.contains("review stop"));

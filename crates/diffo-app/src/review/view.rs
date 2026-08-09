@@ -39,7 +39,7 @@ pub(super) fn render_review(
     let body_area = sections[0];
     let footer_area = sections[1];
 
-    let (stop_areas, generate_area) = if let Some(cached) = review.ready() {
+    let (stop_areas, mut generate_area) = if let Some(cached) = review.cached.as_ref() {
         (
             render_ready(frame, body_area, review, cached),
             Rect::default(),
@@ -49,6 +49,17 @@ pub(super) fn render_review(
     };
     if !footer.is_empty() {
         frame.render_widget(Paragraph::new(footer), footer_area);
+    }
+    if review.stale() && review.active_request.is_none() && footer_area.height > 0 {
+        let label = "[ Regenerate review (Enter) ]";
+        generate_area = Rect::new(
+            footer_area.x,
+            footer_area.bottom().saturating_sub(1),
+            u16::try_from(label.len())
+                .unwrap_or(u16::MAX)
+                .min(footer_area.width),
+            1,
+        );
     }
 
     ReviewHitAreas {
@@ -89,21 +100,6 @@ fn render_state(frame: &mut Frame, area: Rect, review: &ReviewActivity) -> Rect 
         }
         lines.push(Line::raw("0 review steps ready"));
         lines.push(Line::raw("Results appear here as each part finishes."));
-    } else if review.stale() {
-        lines.push(Line::styled(
-            "Your changes changed after this review.",
-            Style::default().fg(theme::WARNING),
-        ));
-        lines.push(Line::raw("Build a fresh review before continuing."));
-        lines.push(Line::raw(""));
-        if let Some(error) = &review.failure {
-            lines.push(Line::styled(
-                error.clone(),
-                Style::default().fg(theme::DANGER),
-            ));
-            lines.push(Line::raw(""));
-        }
-        action = Some("[ Regenerate review (Enter) ]");
     } else if !review.has_changes() {
         lines.push(Line::styled(
             "Nothing to review.",
@@ -117,6 +113,9 @@ fn render_state(frame: &mut Frame, area: Rect, review: &ReviewActivity) -> Rect 
         lines.push(Line::raw(
             "Codex summarizes the work, then opens one change in one file at a time.",
         ));
+        lines.push(Line::raw("Review covers the changes as they are now."));
+        lines.push(Line::raw("Later edits keep it visible."));
+        lines.push(Line::raw("An out-of-date label tells you to refresh it."));
         lines.push(Line::raw(""));
         if let Some(error) = &review.failure {
             lines.push(Line::styled(
@@ -162,6 +161,34 @@ fn render_ready(
         return Vec::new();
     };
     let mut y = area.y;
+    if review.stale() {
+        render_row(
+            frame,
+            area,
+            &mut y,
+            Line::styled(
+                "Review out of date",
+                Style::default()
+                    .fg(theme::WARNING)
+                    .add_modifier(Modifier::BOLD),
+            ),
+        );
+        render_row(
+            frame,
+            area,
+            &mut y,
+            Line::raw("The code changed after this review. Keep reading or regenerate."),
+        );
+        if let Some(error) = &review.failure {
+            render_row(
+                frame,
+                area,
+                &mut y,
+                Line::styled(error.clone(), Style::default().fg(theme::DANGER)),
+            );
+        }
+        y = y.saturating_add(1).min(area.bottom());
+    }
     render_row(
         frame,
         area,
@@ -331,7 +358,7 @@ fn footer_lines(review: &ReviewActivity) -> Vec<Line<'static>> {
     if !review.available() || !review.has_changes() {
         return Vec::new();
     }
-    if review.ready().is_some() {
+    if review.cached.is_some() {
         let mut lines = Vec::new();
         if let Some(active) = &review.active_request {
             let count = review.ready().map_or(0, |cached| cached.result.stops.len());
@@ -349,10 +376,12 @@ fn footer_lines(review: &ReviewActivity) -> Vec<Line<'static>> {
                     Style::default().fg(theme::CHROME),
                 ));
             }
-            lines.push(Line::styled(
-                format!("{count} review {steps} ready · j / k  Previous / next change"),
-                Style::default().fg(theme::CHROME),
-            ));
+            let ready = if review.stale() {
+                format!("{count} new review {steps} ready · j / k  Previous / next change")
+            } else {
+                format!("{count} review {steps} ready · j / k  Previous / next change")
+            };
+            lines.push(Line::styled(ready, Style::default().fg(theme::CHROME)));
             if active.cancelling {
                 lines.push(Line::styled(
                     "Cancelling review…",
@@ -367,6 +396,21 @@ fn footer_lines(review: &ReviewActivity) -> Vec<Line<'static>> {
             "j / k  Previous / next change",
             Style::default().fg(theme::CHROME),
         ));
+        if review.stale() {
+            lines.push(Line::styled(
+                "Space  Refresh the review before staging",
+                Style::default().fg(theme::WARNING),
+            ));
+            lines.push(Line::styled(
+                "i  Commit current staged work",
+                Style::default().fg(theme::CHROME),
+            ));
+            lines.push(Line::styled(
+                "[ Regenerate review (Enter) ]",
+                mouse_target_style(),
+            ));
+            return lines;
+        }
         if let Some(file) = review.active_file() {
             let staging = match file.area {
                 ChangeArea::Staged => "Space  Unstage file",
@@ -413,7 +457,7 @@ pub(super) fn render_empty_diff(frame: &mut Frame, area: Rect, review: &ReviewAc
             .unwrap_or_default();
         format!("{progress}\n{files}\n\nThe first suggested change will open here.")
     } else if review.stale() {
-        "Your changes changed after this review.\n\nPress Enter to refresh it.".to_owned()
+        "Review out of date.\n\nSelect a review step or regenerate.".to_owned()
     } else if !review.has_changes() {
         "Nothing to review.\n\nMake a change, then come back.".to_owned()
     } else if review.failure.is_some() {

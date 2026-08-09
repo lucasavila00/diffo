@@ -6,6 +6,12 @@ through the changes worth inspecting. Opening the activity does not contact
 Codex. The explicit `[ Generate review (Enter) ]` control starts generation;
 surrounding explanatory text is inert.
 
+The initial screen explains that a review covers the changes as they are when
+generation starts. If those changes are edited later, Diffo keeps the review and
+current diff visible and labels the review **Review out of date**. The user can
+still navigate it or commit current staged work. Staging from stale guidance is
+paused until `[ Regenerate review (Enter) ]` refreshes the review.
+
 ## Review flow
 
 The left pane shows a short summary, a stable review order, and details for the
@@ -55,8 +61,11 @@ required.
 The shared runner handles cancellation, timeouts, process crashes, bounded
 stdout and stderr, authentication and usage failures, malformed responses, and
 terminal-safe diagnostics. Results are accepted only for the matching request
-and repository snapshot. Content or HEAD changes make the review stale; a pure
-staging projection change can retain it when the patch still matches.
+and repository snapshot. Content or HEAD changes mark the review out of date; a
+pure staging projection change can retain it when the patch still matches. An
+out-of-date review remains readable while regeneration runs. The first validated
+new batch replaces it; cancellation or failure before that point leaves the old
+review visible.
 
 ## Offline testing
 

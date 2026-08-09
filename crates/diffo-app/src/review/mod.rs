@@ -158,8 +158,9 @@ impl ReviewActivity {
             }
             active.cancelling = true;
             let id = active.id;
+            let request = active.request.clone();
             let _ = update(&mut self.model, Message::SnapshotLoaded(snapshot));
-            self.clear_partial_review();
+            self.clear_review_for_request(&request);
             self.failure = None;
             return Some(id);
         }
@@ -186,7 +187,6 @@ impl ReviewActivity {
             return None;
         }
         self.pending_hunk_id = None;
-        self.active_hunk_id = None;
         self.failure = None;
         None
     }
@@ -233,13 +233,19 @@ impl ReviewActivity {
         if !generating && plain_key(event, KeyCode::Char('i')) {
             return Some(ReviewEvent::AiCommit);
         }
-        if self.ready().is_none() {
+        if self.cached.is_none() {
             if !generating
                 && (plain_key(event, KeyCode::Enter) || clicked(event, self.generate_area))
             {
                 return self.generation_request().map(ReviewEvent::Generate);
             }
             return None;
+        }
+        if self.stale()
+            && !generating
+            && (plain_key(event, KeyCode::Enter) || clicked(event, self.generate_area))
+        {
+            return self.generation_request().map(ReviewEvent::Generate);
         }
 
         if plain_key(event, KeyCode::Char('j')) {
@@ -250,7 +256,7 @@ impl ReviewActivity {
             self.select_previous();
             return Some(ReviewEvent::Redraw);
         }
-        if !generating && plain_key(event, KeyCode::Enter) {
+        if !generating && !self.stale() && plain_key(event, KeyCode::Enter) {
             self.open_selected_stop();
             return Some(ReviewEvent::Redraw);
         }
@@ -296,7 +302,10 @@ impl ReviewActivity {
     }
 
     pub(crate) fn generation_queued(&mut self, id: ApplicationCommandId, request: ReviewRequest) {
-        self.cached = None;
+        let replacing_stale_review = self.stale();
+        if !replacing_stale_review {
+            self.clear_partial_review();
+        }
         self.active_request = Some(ActiveRequest {
             id,
             request,
@@ -305,8 +314,6 @@ impl ReviewActivity {
             progress: None,
         });
         self.failure = None;
-        self.selected_stop = 0;
-        self.active_hunk_id = None;
         self.pending_hunk_id = None;
     }
 
@@ -365,7 +372,10 @@ impl ReviewActivity {
     }
 
     fn select_next(&mut self) {
-        let count = self.ready().map_or(0, |cached| cached.result.stops.len());
+        let count = self
+            .cached
+            .as_ref()
+            .map_or(0, |cached| cached.result.stops.len());
         let selected = self
             .selected_stop
             .saturating_add(1)
@@ -385,7 +395,7 @@ impl ReviewActivity {
     }
 
     fn open_selected_stop(&mut self) {
-        let id = self.ready().and_then(|cached| {
+        let id = self.cached.as_ref().and_then(|cached| {
             cached
                 .result
                 .stops
@@ -398,7 +408,10 @@ impl ReviewActivity {
     }
 
     fn open_next_stop(&mut self) {
-        let count = self.ready().map_or(0, |cached| cached.result.stops.len());
+        let count = self
+            .cached
+            .as_ref()
+            .map_or(0, |cached| cached.result.stops.len());
         let next = self.selected_stop.saturating_add(1);
         if next < count {
             self.selected_stop = next;
@@ -408,14 +421,15 @@ impl ReviewActivity {
 
     fn open_hunk(&mut self, id: String) {
         let hunk = self
-            .ready()
+            .cached
+            .as_ref()
             .and_then(|cached| cached.request.hunk(&id))
             .cloned();
         let Some(hunk) = hunk else {
             return;
         };
         self.model.select_file(&hunk.file);
-        self.pending_hunk_id = Some(id.clone());
+        self.pending_hunk_id = (!self.stale()).then(|| id.clone());
         self.active_hunk_id = Some(id);
     }
 
@@ -441,14 +455,20 @@ impl ReviewActivity {
             .is_some_and(CancellationHandle::is_cancelled);
         if cancelled {
             if result.complete {
-                self.clear_partial_review();
+                self.clear_review_for_request(&request);
                 self.active_request = None;
             }
             return true;
         }
         match result.outcome {
             ReviewCodexOutcome::Generated(review) => {
-                let first = self.cached.is_none();
+                let first = self
+                    .cached
+                    .as_ref()
+                    .is_none_or(|cached| cached.request != request);
+                if first {
+                    self.clear_partial_review();
+                }
                 self.merge_review(request, review);
                 self.failure = None;
                 if first {
@@ -457,10 +477,10 @@ impl ReviewActivity {
                 }
             }
             ReviewCodexOutcome::Failed(error) => {
-                self.clear_partial_review();
+                self.clear_review_for_request(&request);
                 self.failure = Some(error);
             }
-            ReviewCodexOutcome::Cancelled => self.clear_partial_review(),
+            ReviewCodexOutcome::Cancelled => self.clear_review_for_request(&request),
         }
         if result.complete {
             self.active_request = None;
@@ -473,6 +493,16 @@ impl ReviewActivity {
         self.selected_stop = 0;
         self.active_hunk_id = None;
         self.pending_hunk_id = None;
+    }
+
+    fn clear_review_for_request(&mut self, request: &ReviewRequest) {
+        if self
+            .cached
+            .as_ref()
+            .is_some_and(|cached| cached.request == *request)
+        {
+            self.clear_partial_review();
+        }
     }
 
     fn merge_review(&mut self, request: ReviewRequest, review: ReviewResult) {
@@ -513,7 +543,7 @@ impl ReviewActivity {
                 .and_then(|cached| cached.request.hunk(id))
                 .map(|hunk| hunk.target)
         });
-        if self.active_hunk_id.is_none() || self.ready().is_none() {
+        if self.active_hunk_id.is_none() || self.cached.is_none() {
             return FramePreparation::default();
         }
         let preparation = self
@@ -541,7 +571,7 @@ impl ReviewActivity {
         let hits = view::render_review(frame, panes.leading, self);
         self.stop_areas = hits.stop_areas;
         self.generate_area = hits.generate_area;
-        if self.active_hunk_id.is_some() && self.ready().is_some() {
+        if self.active_hunk_id.is_some() && self.cached.is_some() {
             self.renderer
                 .render_review_buffer(frame, panes.trailing, &self.model);
         } else {

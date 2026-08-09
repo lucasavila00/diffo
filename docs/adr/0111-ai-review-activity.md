@@ -35,7 +35,13 @@ opens the first step. `j`, `k`, and mouse selection immediately open their step;
 queue. Successful staging advances one step in review order, including when the
 next step is in the same now-staged file. Unstaging and failures stay on the
 current step. Keep the review when its patch can be rebound unchanged to the new
-projection; other content or HEAD changes require a fresh review.
+projection. A review describes the changes at generation time, and the initial
+screen says so. If content or HEAD later changes, keep the review and current
+diff visible with a **Review out of date** warning. Navigation and committing
+current staged work remain available, but staging from the old review is paused.
+`[ Regenerate review (Enter) ]` refreshes it. Keep the old review readable while
+regeneration runs and replace it only when the first validated new result
+arrives.
 
 `i` uses the existing guarded AI-commit command. It commits only staged changes
 and keeps the same progress, cancellation, error, and stale-index behavior as

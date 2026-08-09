@@ -107,7 +107,10 @@ pub(super) fn render_review(
         ));
         lines.push(Line::raw(""));
         if let Some(error) = &review.failure {
-            lines.push(Line::styled(error.clone(), Style::default().fg(theme::DANGER)));
+            lines.push(Line::styled(
+                error.clone(),
+                Style::default().fg(theme::DANGER),
+            ));
             lines.push(Line::raw(""));
         }
         generate_row = Some(lines.len());

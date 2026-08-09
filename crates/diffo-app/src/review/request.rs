@@ -132,7 +132,7 @@ impl ReviewRequest {
             return None;
         }
 
-        let mut next_hunk = 1_usize;
+        let mut used_ids = HashSet::new();
         let changes = entries
             .into_iter()
             .map(|(file, old_path, kind, patch)| {
@@ -158,8 +158,16 @@ impl ReviewRequest {
                 let count = targets.len().max(1);
                 let hunks = (0..count)
                     .map(|index| {
+                        let mut id = stable_hunk_id(&file.path, &patch, index);
+                        if !used_ids.insert(id.clone()) {
+                            id.push(match file.area {
+                                ChangeArea::Staged => 's',
+                                ChangeArea::Unstaged => 'u',
+                            });
+                            used_ids.insert(id.clone());
+                        }
                         let hunk = ReviewHunk {
-                            id: format!("H{next_hunk:04}"),
+                            id,
                             file: file.clone(),
                             target: targets.get(index).copied().unwrap_or(0),
                             header: headers
@@ -167,7 +175,6 @@ impl ReviewRequest {
                                 .cloned()
                                 .unwrap_or_else(|| "whole change".to_owned()),
                         };
-                        next_hunk = next_hunk.saturating_add(1);
                         hunk
                     })
                     .collect();
@@ -192,7 +199,15 @@ impl ReviewRequest {
     }
 
     #[must_use]
-    pub fn hunk(&self, id: &str) -> Option<&ReviewHunk> {
+    pub fn rebind_staging(&self, snapshot: &RepositorySnapshot) -> Option<Self> {
+        let current = Self::from_snapshot(snapshot)?;
+        (self.expected_head == current.expected_head
+            && semantic_changes(&self.changes) == semantic_changes(&current.changes))
+        .then_some(current)
+    }
+
+    #[must_use]
+    pub(crate) fn hunk(&self, id: &str) -> Option<&ReviewHunk> {
         self.changes
             .iter()
             .flat_map(|change| &change.hunks)
@@ -202,6 +217,11 @@ impl ReviewRequest {
     #[must_use]
     pub fn contains_hunk(&self, id: &str) -> bool {
         self.hunk(id).is_some()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn first_hunk_id(&self) -> &str {
+        &self.changes[0].hunks[0].id
     }
 
     #[must_use]
@@ -243,7 +263,11 @@ impl ReviewRequest {
             .zip(footers)
             .zip(allocations)
         {
-            if context.len().saturating_add(header.len() + footer.len() + ending.len()) > budget {
+            if context
+                .len()
+                .saturating_add(header.len() + footer.len() + ending.len())
+                > budget
+            {
                 break;
             }
             context.push_str(&header);
@@ -314,15 +338,15 @@ impl AskRequest {
         }
         suffix.push_str("</review-map>\n");
         if let Some(selected) = &self.selected_hunk_id {
-            writeln!(suffix, "<selected-hunk>{}</selected-hunk>", escaped(selected))
-                .expect("writing to a String cannot fail");
+            writeln!(
+                suffix,
+                "<selected-hunk>{}</selected-hunk>",
+                escaped(selected)
+            )
+            .expect("writing to a String cannot fail");
         }
-        writeln!(
-            suffix,
-            "<question>{}</question>",
-            escaped(&self.question)
-        )
-        .expect("writing to a String cannot fail");
+        writeln!(suffix, "<question>{}</question>", escaped(&self.question))
+            .expect("writing to a String cannot fail");
         let snapshot_budget = MAX_AI_REVIEW_CONTEXT_BYTES.saturating_sub(suffix.len());
         let mut context = self
             .review_request
@@ -370,6 +394,39 @@ fn change_header(change: &ReviewChange) -> String {
     }
     header.push_str("</hunks>\n<patch>\n");
     header
+}
+
+fn semantic_changes(
+    changes: &[ReviewChange],
+) -> Vec<(PathBuf, Option<PathBuf>, ChangeKind, String)> {
+    let mut changes = changes
+        .iter()
+        .map(|change| {
+            (
+                change.file.path.clone(),
+                change.old_path.clone(),
+                change.kind,
+                change.patch.clone(),
+            )
+        })
+        .collect::<Vec<_>>();
+    changes.sort_by(|left, right| left.0.cmp(&right.0).then(left.3.cmp(&right.3)));
+    changes
+}
+
+fn stable_hunk_id(path: &std::path::Path, patch: &str, index: usize) -> String {
+    let mut hash = 0xcbf2_9ce4_8422_2325_u64;
+    for byte in path
+        .to_string_lossy()
+        .as_bytes()
+        .iter()
+        .chain(patch.as_bytes())
+        .chain(index.to_le_bytes().iter())
+    {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    format!("H{hash:016x}")
 }
 
 const OMISSION: &str = "\n[... oversized diff omitted ...]\n";
@@ -467,9 +524,7 @@ mod tests {
         ))
         .unwrap();
         let context = request.prompt_context("repo");
-        for id in ["H0001", "H0002", "H0003", "H0004"] {
-            assert!(context.contains(id));
-        }
+        assert_eq!(context.matches("<hunk id=").count(), 4);
         assert!(context.contains("origin=\"staged\""));
         assert!(context.contains("origin=\"unstaged\""));
     }
@@ -487,10 +542,9 @@ mod tests {
 
     #[test]
     fn rejects_an_invented_hunk_id() {
-        let request = ReviewRequest::from_snapshot(&snapshot(
-            "@@ -1 +1 @@\n-old\n+new\n".to_owned(),
-        ))
-        .unwrap();
+        let request =
+            ReviewRequest::from_snapshot(&snapshot("@@ -1 +1 @@\n-old\n+new\n".to_owned()))
+                .unwrap();
         assert!(
             request
                 .validate_review(

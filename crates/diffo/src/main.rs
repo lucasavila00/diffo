@@ -481,14 +481,12 @@ fn dispatch_events(
     while let Some(task) = workbench.take_review_codex_task() {
         let id = task.id;
         if !tasks.codex.start_review(task) {
-            workbench.accept_review_codex_result(
-                diffo_app::review::ReviewCodexTaskResult {
-                    id,
-                    outcome: diffo_app::review::ReviewCodexOutcome::Failed(
-                        "Codex is already handling another AI request".to_owned(),
-                    ),
-                },
-            );
+            workbench.accept_review_codex_result(diffo_app::review::ReviewCodexTaskResult {
+                id,
+                outcome: diffo_app::review::ReviewCodexOutcome::Failed(
+                    "Codex is already handling another AI request".to_owned(),
+                ),
+            });
         }
     }
     Ok(())

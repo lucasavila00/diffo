@@ -235,9 +235,9 @@ impl ReviewActivity {
         }
 
         let trailing = split.areas(tool_areas(area).content).trailing;
-        let Some(renderer_event) = self
-            .renderer
-            .map_review_buffer_event(event, &self.model, trailing)
+        let Some(renderer_event) =
+            self.renderer
+                .map_review_buffer_event(event, &self.model, trailing)
         else {
             return false;
         };
@@ -448,7 +448,10 @@ impl ReviewActivity {
                 let Some(request) = ReviewRequest::from_snapshot(&self.model.snapshot) else {
                     return true;
                 };
-                self.cached = Some(CachedReview { request, result: review });
+                self.cached = Some(CachedReview {
+                    request,
+                    result: review,
+                });
                 self.failure = None;
                 self.selected_stop = 0;
                 self.visited.clear();

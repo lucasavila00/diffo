@@ -139,11 +139,8 @@ impl CodexTasks {
                     let Some(handoff) = workbench.ai_commit_finished(id, outcome) else {
                         continue;
                     };
-                    if !repository_service.execute(
-                        id,
-                        handoff.action.clone(),
-                        handoff.cancellation,
-                    ) {
+                    if !repository_service.execute(id, handoff.action.clone(), handoff.cancellation)
+                    {
                         workbench.action_failed(
                             id,
                             OperationFailure {

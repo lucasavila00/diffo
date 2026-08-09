@@ -18,9 +18,7 @@ use diffo_ui::{PaneSplit, tool_areas};
 use ratatui::{Frame, layout::Rect};
 
 use crate::explorer::{ExplorerActivity, ExplorerEvent, ExplorerOutcome, ExplorerRequest};
-use crate::review::{
-    CodexAvailability, ReviewActivity, ReviewCodexTask, ReviewCodexTaskResult,
-};
+use crate::review::{CodexAvailability, ReviewActivity, ReviewCodexTask, ReviewCodexTaskResult};
 mod activity_bar;
 mod ai_commit;
 mod application_update;

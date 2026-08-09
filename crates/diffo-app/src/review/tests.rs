@@ -29,11 +29,7 @@ fn generation_is_explicit_and_installs_only_known_hunks() {
     let mut review = ReviewActivity::new(snapshot("new"), CodexAvailability::Available);
     assert!(review.take_task().is_none());
 
-    assert!(review.handle_event(
-        &enter(),
-        Rect::new(0, 0, 100, 30),
-        PaneSplit::default()
-    ));
+    assert!(review.handle_event(&enter(), Rect::new(0, 0, 100, 30), PaneSplit::default()));
     let task = review.take_task().expect("generation task");
     let request = match &task.request {
         ReviewCodexRequest::Generate(request) => request,
@@ -92,10 +88,6 @@ fn unavailable_codex_never_creates_a_task() {
         CodexAvailability::Unavailable("Codex is missing".to_owned()),
     );
 
-    assert!(!review.handle_event(
-        &enter(),
-        Rect::new(0, 0, 100, 30),
-        PaneSplit::default()
-    ));
+    assert!(!review.handle_event(&enter(), Rect::new(0, 0, 100, 30), PaneSplit::default()));
     assert!(review.take_task().is_none());
 }

@@ -2,7 +2,8 @@
 
 `diffo-ai-config` is the single source of truth for Diffo's compile-time AI
 policy. It defines the supported provider, Codex executable names, selected
-model, request limits, prompts, and response schemas for AI commits and Review.
+model, request and Review batch limits, prompts, and response schemas for AI
+commits and Review.
 
 Its `codex-mock` feature selects the fixed offline test executable; production
 builds select the real Codex executable.

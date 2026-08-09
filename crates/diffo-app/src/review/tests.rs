@@ -103,6 +103,133 @@ fn generation_is_explicit_and_installs_only_known_hunks() {
 }
 
 #[test]
+fn partial_results_open_immediately_and_merge_while_generation_continues() {
+    let initial = two_file_snapshot();
+    let request = ReviewRequest::from_snapshot(&initial).unwrap();
+    let ids = request.hunk_ids();
+    let id = ApplicationCommandId(1);
+    let mut review = ReviewActivity::new(initial, CodexAvailability::Available);
+    review.generation_queued(id, request.clone());
+    review.generation_started(id, CancellationHandle::default());
+
+    let first = request
+        .validate_review(
+            vec!["First part is ready.".to_owned()],
+            vec![ReviewStop {
+                title: "Review the first file".to_owned(),
+                category: AttentionCategory::Behavior,
+                reason: "This is available before the remaining work finishes.".to_owned(),
+                primary_hunk_id: ids[0].clone(),
+            }],
+        )
+        .unwrap();
+    assert!(review.accept(ReviewCodexTaskResult {
+        id,
+        outcome: ReviewCodexOutcome::Generated(first),
+        complete: false,
+    }));
+
+    assert!(review.active_request.is_some());
+    assert_eq!(review.active_hunk_id.as_deref(), Some(ids[0].as_str()));
+    let text = render_text(&review);
+    assert!(text.contains("Building more steps"));
+    assert!(!text.contains("End of guided review"));
+    assert!(
+        review
+            .handle_event(&key(' '), Rect::new(0, 0, 100, 30), PaneSplit::default())
+            .is_none()
+    );
+
+    let second = request
+        .validate_review(
+            vec!["Second part is ready.".to_owned()],
+            vec![ReviewStop {
+                title: "Review the second file".to_owned(),
+                category: AttentionCategory::Correctness,
+                reason: "This completes the suggested review path.".to_owned(),
+                primary_hunk_id: ids[1].clone(),
+            }],
+        )
+        .unwrap();
+    assert!(review.accept(ReviewCodexTaskResult {
+        id,
+        outcome: ReviewCodexOutcome::Generated(second),
+        complete: true,
+    }));
+
+    assert!(review.active_request.is_none());
+    assert_eq!(review.ready().unwrap().result.stops.len(), 2);
+    let _ = review.handle_event(&key('j'), Rect::new(0, 0, 100, 30), PaneSplit::default());
+    assert_eq!(review.active_hunk_id.as_deref(), Some(ids[1].as_str()));
+}
+
+#[test]
+fn cancellation_discards_late_partial_results() {
+    let initial = snapshot("new");
+    let request = ReviewRequest::from_snapshot(&initial).unwrap();
+    let id = ApplicationCommandId(1);
+    let cancellation = CancellationHandle::default();
+    let result = request
+        .validate_review(
+            vec!["Late overview".to_owned()],
+            vec![ReviewStop {
+                title: "Late step".to_owned(),
+                category: AttentionCategory::Behavior,
+                reason: "This arrived after cancellation.".to_owned(),
+                primary_hunk_id: request.first_hunk_id().to_owned(),
+            }],
+        )
+        .unwrap();
+    let mut review = ReviewActivity::new(initial, CodexAvailability::Available);
+    review.generation_queued(id, request);
+    review.generation_started(id, cancellation.clone());
+    cancellation.cancel();
+
+    assert!(review.accept(ReviewCodexTaskResult {
+        id,
+        outcome: ReviewCodexOutcome::Generated(result),
+        complete: true,
+    }));
+    assert!(review.cached.is_none());
+    assert!(review.active_request.is_none());
+}
+
+#[test]
+fn a_later_batch_failure_does_not_present_a_partial_review_as_complete() {
+    let initial = snapshot("new");
+    let request = ReviewRequest::from_snapshot(&initial).unwrap();
+    let id = ApplicationCommandId(1);
+    let partial = request
+        .validate_review(
+            vec!["Partial overview".to_owned()],
+            vec![ReviewStop {
+                title: "Partial step".to_owned(),
+                category: AttentionCategory::Behavior,
+                reason: "Only part of the review completed.".to_owned(),
+                primary_hunk_id: request.first_hunk_id().to_owned(),
+            }],
+        )
+        .unwrap();
+    let mut review = ReviewActivity::new(initial, CodexAvailability::Available);
+    review.generation_queued(id, request);
+    review.generation_started(id, CancellationHandle::default());
+    assert!(review.accept(ReviewCodexTaskResult {
+        id,
+        outcome: ReviewCodexOutcome::Generated(partial),
+        complete: false,
+    }));
+
+    assert!(review.accept(ReviewCodexTaskResult {
+        id,
+        outcome: ReviewCodexOutcome::Failed("Codex crashed".to_owned()),
+        complete: true,
+    }));
+    assert!(review.cached.is_none());
+    assert!(render_text(&review).contains("Codex crashed"));
+    assert!(render_text(&review).contains("Try again"));
+}
+
+#[test]
 fn repository_change_makes_a_ready_review_stale() {
     let initial = snapshot("new");
     let request = ReviewRequest::from_snapshot(&initial).unwrap();

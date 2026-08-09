@@ -174,7 +174,7 @@ fn render_ready(
     y = y.saturating_add(1).min(area.bottom());
 
     let count = cached.result.stops.len();
-    let final_step = review.selected_stop + 1 == count;
+    let final_step = review.active_request.is_none() && review.selected_stop + 1 == count;
     let progress = format!("Review step {} of {count}", review.selected_stop + 1);
     render_row(
         frame,

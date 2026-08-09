@@ -111,6 +111,17 @@ impl ReviewActivity {
         if self.model.snapshot == snapshot {
             return None;
         }
+        if let Some(active) = self.active_request.as_mut() {
+            if let Some(cancellation) = &active.cancellation {
+                cancellation.cancel();
+            }
+            active.cancelling = true;
+            let id = active.id;
+            let _ = update(&mut self.model, Message::SnapshotLoaded(snapshot));
+            self.clear_partial_review();
+            self.failure = None;
+            return Some(id);
+        }
         let active_before = self.active_file();
         let rebound = self
             .cached
@@ -133,17 +144,10 @@ impl ReviewActivity {
             }
             return None;
         }
-        let cancelled = self.active_request.as_mut().map(|active| {
-            if let Some(cancellation) = &active.cancellation {
-                cancellation.cancel();
-            }
-            active.cancelling = true;
-            active.id
-        });
         self.pending_hunk_id = None;
         self.active_hunk_id = None;
         self.failure = None;
-        cancelled
+        None
     }
 
     #[must_use]
@@ -251,6 +255,7 @@ impl ReviewActivity {
     }
 
     pub(crate) fn generation_queued(&mut self, id: ApplicationCommandId, request: ReviewRequest) {
+        self.cached = None;
         self.active_request = Some(ActiveRequest {
             id,
             request,
@@ -258,6 +263,9 @@ impl ReviewActivity {
             cancelling: false,
         });
         self.failure = None;
+        self.selected_stop = 0;
+        self.active_hunk_id = None;
+        self.pending_hunk_id = None;
     }
 
     pub(crate) fn generation_started(
@@ -375,6 +383,7 @@ impl ReviewActivity {
             .is_some_and(CancellationHandle::is_cancelled);
         if cancelled {
             if result.complete {
+                self.clear_partial_review();
                 self.active_request = None;
             }
             return true;
@@ -390,14 +399,22 @@ impl ReviewActivity {
                 }
             }
             ReviewCodexOutcome::Failed(error) => {
+                self.clear_partial_review();
                 self.failure = Some(error);
             }
-            ReviewCodexOutcome::Cancelled => {}
+            ReviewCodexOutcome::Cancelled => self.clear_partial_review(),
         }
         if result.complete {
             self.active_request = None;
         }
         true
+    }
+
+    fn clear_partial_review(&mut self) {
+        self.cached = None;
+        self.selected_stop = 0;
+        self.active_hunk_id = None;
+        self.pending_hunk_id = None;
     }
 
     fn merge_review(&mut self, request: ReviewRequest, review: ReviewResult) {

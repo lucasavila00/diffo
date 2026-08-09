@@ -18,7 +18,7 @@ use diffo_ui::{PaneSplit, tool_areas};
 use ratatui::{Frame, layout::Rect};
 
 use crate::explorer::{ExplorerActivity, ExplorerEvent, ExplorerOutcome, ExplorerRequest};
-use crate::review::{CodexAvailability, ReviewActivity, ReviewCodexOutcome, ReviewCodexTaskResult};
+use crate::review::{CodexAvailability, ReviewActivity};
 mod activity_bar;
 mod ai_commit;
 mod application_update;
@@ -316,22 +316,6 @@ impl Workbench {
     #[must_use]
     pub fn active_command_id(&self) -> Option<ApplicationCommandId> {
         self.commands.active().map(|command| command.id)
-    }
-
-    pub fn cancel_application_command(&mut self, id: ApplicationCommandId) -> bool {
-        let running = self
-            .commands
-            .active()
-            .is_some_and(|command| command.id == id);
-        let changed = self.commands.cancel(id);
-        if changed {
-            if running {
-                self.review.generation_cancelling(id);
-            } else {
-                self.review.generation_cancelled_before_start(id);
-            }
-        }
-        changed
     }
 
     #[must_use]
@@ -694,36 +678,6 @@ impl Workbench {
             return;
         }
         self.set_modal(Modal::Error(error));
-    }
-
-    pub fn accept_review_codex_result(&mut self, result: ReviewCodexTaskResult) {
-        let id = result.id;
-        let complete = result.complete;
-        let cancelling = self
-            .commands
-            .active()
-            .is_some_and(|command| command.id == id && command.state == CommandState::Cancelling);
-        let result = if cancelling {
-            ReviewCodexTaskResult {
-                outcome: ReviewCodexOutcome::Cancelled,
-                ..result
-            }
-        } else {
-            result
-        };
-        let command_result = match &result.outcome {
-            ReviewCodexOutcome::Generated(_) => CommandResult::Succeeded,
-            ReviewCodexOutcome::Failed(_) => CommandResult::Failed,
-            ReviewCodexOutcome::Cancelled => CommandResult::Cancelled,
-        };
-        if !self.review.accept(result) {
-            return;
-        }
-        if complete {
-            let _ = self.commands.acknowledge(id, command_result);
-            self.finish_command_progress(id);
-        }
-        self.request_redraw();
     }
 }
 

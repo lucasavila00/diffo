@@ -14,8 +14,8 @@ use std::{
 };
 
 use diffo_ai_config::{
-    AI_COMMIT_MODEL, AI_COMMIT_PROMPT, AI_COMMIT_SCHEMA, AI_REVIEW_MODEL, AI_REVIEW_PROMPT,
-    AI_REVIEW_SCHEMA, CODEX_EXECUTABLE, CODEX_SANDBOX, MAX_CODEX_OUTPUT_BYTES,
+    AI_COMMIT_MODEL, AI_COMMIT_PROMPT, AI_COMMIT_SCHEMA, AI_REVIEW_BATCH_CHANGES, AI_REVIEW_MODEL,
+    AI_REVIEW_PROMPT, AI_REVIEW_SCHEMA, CODEX_EXECUTABLE, CODEX_SANDBOX, MAX_CODEX_OUTPUT_BYTES,
     MAX_CODEX_RUNTIME_SECONDS,
 };
 use diffo_app::{
@@ -137,13 +137,41 @@ impl CodexTasks {
             .name("codex-ai".to_owned())
             .spawn(move || {
                 let _busy = BusyGuard(busy);
-                let outcome =
-                    run_review_codex(&executable, &repository_root, &request, &cancellation);
-                let _ = sender.send(CodexTaskResult::Review(ReviewCodexTaskResult {
-                    id,
-                    outcome,
-                    complete: true,
-                }));
+                let batches = request.batches(AI_REVIEW_BATCH_CHANGES);
+                let started = Instant::now();
+                let mut stops = 0_usize;
+                for (index, batch) in batches.iter().enumerate() {
+                    let timeout = Duration::from_secs(MAX_CODEX_RUNTIME_SECONDS)
+                        .saturating_sub(started.elapsed());
+                    let outcome = if timeout.is_zero() {
+                        ReviewCodexOutcome::Failed(timeout_message())
+                    } else {
+                        run_review_codex(
+                            &executable,
+                            &repository_root,
+                            batch,
+                            &cancellation,
+                            timeout,
+                        )
+                    };
+                    if let ReviewCodexOutcome::Generated(review) = &outcome {
+                        stops = stops.saturating_add(review.stops.len());
+                    }
+                    let complete = index + 1 == batches.len()
+                        || stops >= 8
+                        || !matches!(outcome, ReviewCodexOutcome::Generated(_));
+                    if sender
+                        .send(CodexTaskResult::Review(ReviewCodexTaskResult {
+                            id,
+                            outcome,
+                            complete,
+                        }))
+                        .is_err()
+                        || complete
+                    {
+                        break;
+                    }
+                }
             });
         if let Err(error) = spawn {
             self.busy.store(false, Ordering::Release);
@@ -245,11 +273,14 @@ fn run_codex(
     match run_codex_raw(
         executable,
         repository_root,
-        AI_COMMIT_MODEL,
-        AI_COMMIT_SCHEMA,
-        AI_COMMIT_PROMPT,
-        &context,
+        CodexRequest {
+            model: AI_COMMIT_MODEL,
+            schema: AI_COMMIT_SCHEMA,
+            prompt: AI_COMMIT_PROMPT,
+            context: &context,
+        },
         cancellation,
+        Duration::from_secs(MAX_CODEX_RUNTIME_SECONDS),
     ) {
         RawCodexOutcome::Completed(bytes) => parse_response(&bytes),
         RawCodexOutcome::Failed(error) => AiCommitOutcome::Failed(error),
@@ -262,6 +293,7 @@ fn run_review_codex(
     repository_root: &Path,
     request: &ReviewRequest,
     cancellation: &CancellationHandle,
+    timeout: Duration,
 ) -> ReviewCodexOutcome {
     let repository_name = repository_root
         .file_name()
@@ -271,11 +303,14 @@ fn run_review_codex(
     match run_codex_raw(
         executable,
         repository_root,
-        AI_REVIEW_MODEL,
-        AI_REVIEW_SCHEMA,
-        AI_REVIEW_PROMPT,
-        &context,
+        CodexRequest {
+            model: AI_REVIEW_MODEL,
+            schema: AI_REVIEW_SCHEMA,
+            prompt: AI_REVIEW_PROMPT,
+            context: &context,
+        },
         cancellation,
+        timeout,
     ) {
         RawCodexOutcome::Completed(bytes) => parse_review_response(request, &bytes),
         RawCodexOutcome::Failed(error) => ReviewCodexOutcome::Failed(error),
@@ -296,23 +331,34 @@ enum WaitOutcome {
     Failed(io::Error),
 }
 
+#[derive(Clone, Copy)]
+struct CodexRequest<'a> {
+    model: &'a str,
+    schema: &'a str,
+    prompt: &'a str,
+    context: &'a str,
+}
+
 fn run_codex_raw(
     executable: &OsStr,
     repository_root: &Path,
-    model: &str,
-    schema_text: &str,
-    prompt: &str,
-    context: &str,
+    request: CodexRequest<'_>,
     cancellation: &CancellationHandle,
+    timeout: Duration,
 ) -> RawCodexOutcome {
     if cancellation.is_cancelled() {
         return RawCodexOutcome::Cancelled;
     }
-    let (_schema, mut child) =
-        match spawn_codex(executable, repository_root, model, schema_text, prompt) {
-            Ok(process) => process,
-            Err(error) => return RawCodexOutcome::Failed(error),
-        };
+    let (_schema, mut child) = match spawn_codex(
+        executable,
+        repository_root,
+        request.model,
+        request.schema,
+        request.prompt,
+    ) {
+        Ok(process) => process,
+        Err(error) => return RawCodexOutcome::Failed(error),
+    };
     let stdout = child
         .stdout
         .take()
@@ -324,12 +370,8 @@ fn run_codex_raw(
     let input = child
         .stdin
         .take()
-        .map(|input| write_in_background(input, context.as_bytes().to_vec()));
-    let status = match wait_for_child(
-        &mut child,
-        cancellation,
-        Duration::from_secs(MAX_CODEX_RUNTIME_SECONDS),
-    ) {
+        .map(|input| write_in_background(input, request.context.as_bytes().to_vec()));
+    let status = match wait_for_child(&mut child, cancellation, timeout) {
         WaitOutcome::Completed(status) => status,
         WaitOutcome::Cancelled => {
             terminate_child(&mut child);
@@ -435,9 +477,11 @@ fn spawn_codex(
 }
 
 fn timeout_failure() -> RawCodexOutcome {
-    RawCodexOutcome::Failed(format!(
-        "Codex did not finish within {MAX_CODEX_RUNTIME_SECONDS} seconds. Try again."
-    ))
+    RawCodexOutcome::Failed(timeout_message())
+}
+
+fn timeout_message() -> String {
+    format!("Codex did not finish within {MAX_CODEX_RUNTIME_SECONDS} seconds. Try again.")
 }
 
 fn wait_for_child(

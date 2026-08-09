@@ -4,7 +4,8 @@ Diffo uses AI for commit-message generation and guided diff review. Pressing `i`
 generates a commit subject from the staged changes and, if the repository still matches,
 creates the commit. The Review activity builds an overview and an ordered set of review
 steps linked to the relevant changes. Review uses the same `Space` staging and `i` AI
-commit commands as Diff. The manual `m` commit-message workflow does not use AI.
+commit commands as Diff. Review generation uses the shared command queue, including its
+progress border and cancellation. The manual `m` commit-message workflow does not use AI.
 
 ## Supported provider and model
 
@@ -70,6 +71,12 @@ the recent-subject examples, then fairly samples the beginning and end of every 
 patch while preserving file metadata and explicit omission markers. If even the file
 manifest does not fit, it includes the path-ordered entries that fit and an omitted-file
 count.
+
+A Review request includes staged and unstaged patches with stable change identifiers.
+Diffo sends at most two changed file projections per Codex call and installs each valid
+result as soon as it arrives. The user can begin navigating those review steps while the
+same queued command builds later batches. The complete Review command still has one
+120-second deadline and remains cancellable throughout.
 
 ## Response and commit safety
 

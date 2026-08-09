@@ -29,6 +29,9 @@ pub const MAX_AI_COMMIT_CONTEXT_BYTES: usize = 256 * 1024;
 /// Maximum repository context sent for one review request.
 pub const MAX_AI_REVIEW_CONTEXT_BYTES: usize = 256 * 1024;
 
+/// Maximum changed file projections sent in one review batch.
+pub const AI_REVIEW_BATCH_CHANGES: usize = 2;
+
 /// Maximum retained bytes from each Codex output stream.
 pub const MAX_CODEX_OUTPUT_BYTES: usize = 16 * 1024;
 
@@ -109,6 +112,7 @@ mod tests {
         assert_eq!(AI_REVIEW_MODEL, AI_MODEL);
         assert_eq!(CODEX_SANDBOX, "read-only");
         assert_eq!(MAX_CODEX_RUNTIME_SECONDS, 120);
+        assert_eq!(AI_REVIEW_BATCH_CHANGES, 2);
         assert!(AI_COMMIT_SCHEMA.contains(r#""additionalProperties": false"#));
         assert!(AI_REVIEW_SCHEMA.contains(r#""maxItems": 8"#));
     }

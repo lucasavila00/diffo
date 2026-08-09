@@ -2,6 +2,8 @@ use std::path::PathBuf;
 
 use diffo_core::{ChangeKind, FileDiff, FileState, HeadState};
 
+use crate::review::{ReviewCodexOutcome, ReviewCodexTaskResult};
+
 use super::*;
 
 fn queue_snapshot(diff: &str) -> RepositorySnapshot {
@@ -204,7 +206,9 @@ fn ai_review_uses_shared_progress_and_cancellation() {
         .take_application_command(started)
         .expect("AI review starts");
 
-    assert!(matches!(command.action, ApplicationAction::AiReview(_)));
+    let ApplicationAction::AiReview(request) = &command.action else {
+        panic!("AI review action");
+    };
     assert_eq!(
         workbench
             .commands
@@ -216,6 +220,25 @@ fn ai_review_uses_shared_progress_and_cancellation() {
 
     workbench.tick(started + Duration::from_millis(150));
     assert!(workbench.command_progress.is_visible());
+    let partial = request
+        .validate_review(
+            vec!["The first review batch is ready.".to_owned()],
+            vec![crate::review::ReviewStop {
+                title: "Inspect the first change".to_owned(),
+                category: crate::review::AttentionCategory::Behavior,
+                reason: "This step can be reviewed while more work continues.".to_owned(),
+                primary_hunk_id: request.first_hunk_id().to_owned(),
+            }],
+        )
+        .expect("valid partial review");
+    workbench.accept_review_codex_result(ReviewCodexTaskResult {
+        id: command.id,
+        outcome: ReviewCodexOutcome::Generated(partial),
+        complete: false,
+    });
+    assert!(workbench.command_progress.is_visible());
+    assert_eq!(workbench.active_command_id(), Some(command.id));
+
     let _ = workbench.handle_events(&[key(KeyCode::Enter)], area);
 
     assert!(command.cancellation.is_cancelled());

@@ -38,7 +38,9 @@ the same progress, cancellation, error, and stale-index behavior as Diff. Review
 own another staging or commit implementation.
 
 If Codex is unavailable at startup, disable Review and explain that installation and a
-Diffo restart are required. Generation runs in the background and `Enter` cancels it.
+Diffo restart are required. Generation is a normal command-queue item. After the shared
+delay it uses the pulsating application border, progress panel, and cancel control.
+`Enter` also cancels it.
 
 ### Prompt and response handling
 
@@ -52,8 +54,11 @@ opaque ID. The response contains one to three overview lines and one to eight or
 stops. Each stop contains a title, a fixed attention category, a reason, and one hunk ID.
 Reject malformed output, invalid bounds or categories, and unknown or repeated IDs.
 
-Limit input to 256 KiB. Share the budget across files in stable order and mark omitted
-content instead of rejecting a large change.
+Process at most two changed file projections per Codex call, in stable order, within one
+120-second queued command. Install each validated batch immediately so the user can
+navigate ready steps while later batches continue. Keep staging and committing disabled
+until generation finishes. Limit each batch to 256 KiB and mark omitted content instead
+of rejecting a large change.
 
 One worker serves AI commits and Review, with one request active at a time. Results are
 accepted only for the matching request and repository snapshot. Tests use `codex-mock`;

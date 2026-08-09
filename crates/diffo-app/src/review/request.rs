@@ -193,6 +193,17 @@ impl ReviewRequest {
     }
 
     #[must_use]
+    pub fn batches(&self, maximum_changes: usize) -> Vec<Self> {
+        self.changes
+            .chunks(maximum_changes.max(1))
+            .map(|changes| Self {
+                expected_head: self.expected_head.clone(),
+                changes: changes.to_vec(),
+            })
+            .collect()
+    }
+
+    #[must_use]
     pub(crate) fn hunk(&self, id: &str) -> Option<&ReviewHunk> {
         self.changes
             .iter()
@@ -497,6 +508,33 @@ mod tests {
                     }],
                 )
                 .is_none()
+        );
+    }
+
+    #[test]
+    fn batches_keep_every_change_in_stable_order() {
+        let mut snapshot = snapshot("@@ -1 +1 @@\n-old\n+new\n".to_owned());
+        snapshot.files.push(FileState {
+            path: "src/second.rs".into(),
+            old_path: None,
+            kind: ChangeKind::Added,
+            staged: Some(FileDiff {
+                text: "@@ -0,0 +1 @@\n+second\n".to_owned(),
+            }),
+            unstaged: None,
+        });
+        let request = ReviewRequest::from_snapshot(&snapshot).unwrap();
+        let batches = request.batches(2);
+
+        assert_eq!(batches.len(), 2);
+        assert!(batches.iter().all(|batch| batch.changes.len() <= 2));
+        assert_eq!(
+            batches
+                .iter()
+                .flat_map(|batch| &batch.changes)
+                .cloned()
+                .collect::<Vec<_>>(),
+            request.changes
         );
     }
 }

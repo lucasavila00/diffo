@@ -36,17 +36,6 @@ pub(crate) enum CommandIntent {
     Update,
 }
 
-pub(super) fn enqueue_review_event(
-    commands: &mut CommandQueue,
-    event: Option<ReviewEvent>,
-) -> bool {
-    let Some(event) = event else { return false };
-    if let ToggleStage(file) = event {
-        commands.enqueue_intent(CommandIntent::ToggleStage(file));
-    }
-    true
-}
-
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CommandState {
     Queued,
@@ -351,6 +340,19 @@ fn command_goal(action: &ApplicationAction) -> String {
 }
 
 impl Workbench {
+    pub(super) fn handle_review_event(&mut self, event: Option<ReviewEvent>) -> bool {
+        let Some(event) = event else { return false };
+        match event {
+            ToggleStage(file) => {
+                self.commands
+                    .enqueue_intent(CommandIntent::ToggleStage(file));
+            }
+            ReviewEvent::AiCommit => self.request_ai_commit(),
+            ReviewEvent::Redraw => {}
+        }
+        true
+    }
+
     pub(super) fn cancel_clicked_command(&mut self, event: &Event, area: Rect) -> bool {
         let Event::Mouse(mouse) = event else {
             return false;

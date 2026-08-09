@@ -461,11 +461,11 @@ impl Workbench {
             Activity::Explorer => {
                 Tool::handle_event(&mut self.explorer, event, content, self.pane_split)
             }
-            Activity::Review => command_queue::enqueue_review_event(
-                &mut self.commands,
-                self.review.handle_event(event, content, self.pane_split),
-            )
-            .then_some(WorkbenchCommand::Redraw),
+            Activity::Review => {
+                let event = self.review.handle_event(event, content, self.pane_split);
+                self.handle_review_event(event)
+                    .then_some(WorkbenchCommand::Redraw)
+            }
         }
     }
     fn select_activity(&mut self, event: &Event, area: Rect) -> bool {

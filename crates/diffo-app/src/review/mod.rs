@@ -48,6 +48,7 @@ pub enum ReviewCodexOutcome {
 pub(crate) enum ReviewEvent {
     Redraw,
     ToggleStage(crate::diff::FileKey),
+    AiCommit,
 }
 
 struct CachedReview {
@@ -113,6 +114,7 @@ impl ReviewActivity {
         if self.model.snapshot == snapshot {
             return;
         }
+        let active_before = self.active_file();
         let rebound = self
             .cached
             .as_ref()
@@ -123,6 +125,14 @@ impl ReviewActivity {
             if let Some(id) = self.active_hunk_id.clone() {
                 self.open_hunk(id.clone());
                 self.pending_hunk_id = Some(id);
+            }
+            if active_before.is_some_and(|file| {
+                file.area == crate::diff::ChangeArea::Unstaged
+                    && self
+                        .active_file()
+                        .is_some_and(|current| current.area == crate::diff::ChangeArea::Staged)
+            }) {
+                self.open_next_unstaged_stop();
             }
             return;
         }
@@ -164,6 +174,9 @@ impl ReviewActivity {
                 return Some(ReviewEvent::Redraw);
             }
             return None;
+        }
+        if plain_key(event, KeyCode::Char('i')) {
+            return Some(ReviewEvent::AiCommit);
         }
         if self.ready().is_none() {
             if plain_key(event, KeyCode::Enter) || clicked(event, self.generate_area) {
@@ -269,6 +282,25 @@ impl ReviewActivity {
         });
         if let Some(id) = id {
             self.open_hunk(id);
+        }
+    }
+
+    fn open_next_unstaged_stop(&mut self) {
+        let Some(cached) = self.ready() else { return };
+        let count = cached.result.stops.len();
+        let next = (1..count)
+            .map(|offset| (self.selected_stop + offset) % count)
+            .find(|index| {
+                cached
+                    .result
+                    .stops
+                    .get(*index)
+                    .and_then(|stop| cached.request.hunk(&stop.primary_hunk_id))
+                    .is_some_and(|hunk| hunk.file.area == crate::diff::ChangeArea::Unstaged)
+            });
+        if let Some(next) = next {
+            self.selected_stop = next;
+            self.open_selected_stop();
         }
     }
 
@@ -381,6 +413,7 @@ impl ReviewActivity {
             ("j / k".to_owned(), "Select review stop"),
             ("Enter".to_owned(), "Open or generate"),
             ("Space".to_owned(), "Stage / unstage reviewed file"),
+            ("i".to_owned(), "AI commit staged changes"),
         ]
     }
 }

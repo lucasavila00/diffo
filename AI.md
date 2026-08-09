@@ -3,8 +3,8 @@
 Diffo uses AI for commit-message generation and guided diff review. Pressing `i`
 generates a commit subject from the staged changes and, if the repository still matches,
 creates the commit. The Review activity builds an overview, a guided hunk path, and
-attention markers linked to known hunks. The manual `m` commit-message workflow does
-not use AI.
+attention markers linked to known hunks. Review uses the same `Space` staging and `i` AI
+commit commands as Diff. The manual `m` commit-message workflow does not use AI.
 
 ## Supported provider and model
 

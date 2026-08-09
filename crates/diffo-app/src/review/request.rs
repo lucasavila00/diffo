@@ -210,6 +210,15 @@ impl ReviewRequest {
         &self.changes[0].hunks[0].id
     }
 
+    #[cfg(test)]
+    pub(crate) fn hunk_ids(&self) -> Vec<String> {
+        self.changes
+            .iter()
+            .flat_map(|change| &change.hunks)
+            .map(|hunk| hunk.id.clone())
+            .collect()
+    }
+
     #[must_use]
     pub fn prompt_context(&self, repository: &str) -> String {
         self.prompt_context_with_budget(repository, MAX_AI_REVIEW_CONTEXT_BYTES)

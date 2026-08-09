@@ -43,7 +43,7 @@ fn command_palette_blocks_activity_switching_and_does_not_restore_hidden_state()
 
 #[cfg(feature = "codex-mock")]
 #[test]
-fn guided_review_opens_a_hunk_and_stages_it_without_losing_the_map() -> Result<()> {
+fn guided_review_stages_and_ai_commits_without_leaving_review() -> Result<()> {
     let repository = TestRepository::new()?;
     std::fs::write(repository.worktree.join("tracked.txt"), "reviewed change\n")?;
     let mut screen = repository.screen()?;
@@ -62,7 +62,15 @@ fn guided_review_opens_a_hunk_and_stages_it_without_losing_the_map() -> Result<(
     })?;
     screen
         .wait_for_text("Review map")?
-        .wait_for_text("reviewed change")?;
+        .wait_for_text("reviewed change")?
+        .press(Key::Char('i'))?;
+    wait_for("reviewed change to be AI committed", || {
+        Ok(
+            git_output(&repository.worktree, &["log", "-1", "--format=%s"])?
+                == "test: create commit with Codex",
+        )
+    })?;
+    screen.wait_for_text("Committed")?;
     Ok(())
 }
 

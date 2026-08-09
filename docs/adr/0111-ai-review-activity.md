@@ -23,10 +23,15 @@ eight stops. Each stop has a title, a neutral attention category, and one senten
 explaining why to inspect it. The right pane reuses Diffo's diff renderer and opens the
 selected stop without changing Diff activity state.
 
-Use `j` and `k` to select a stop, `Enter` to open it, and `Space` to stage or unstage
-the reviewed file through the existing command queue. A staging-only change keeps the
-review when its patch can be rebound unchanged to the new staged or unstaged projection.
-Any content or HEAD change makes the review stale and requires regeneration.
+Use `j` and `k` to select a stop and `Enter` to open it. `Space` stages or unstages the
+reviewed file through the existing command queue. After staging succeeds, move to the
+next stop whose file is still unstaged. A failure keeps the current stop. Keep the review
+when its patch can be rebound unchanged to the new projection; other content or HEAD
+changes make it stale.
+
+`i` uses the existing guarded AI-commit command. It commits only staged changes and keeps
+the same progress, cancellation, error, and stale-index behavior as Diff. Review does not
+own another staging or commit implementation.
 
 If Codex is unavailable at startup, disable Review and explain that installation and a
 Diffo restart are required. Generation runs in the background and `Enter` cancels it.
@@ -59,5 +64,6 @@ they never invoke Codex or the network.
 ## Verification
 
 Test explicit generation, response validation, stale and staging-only repository
-changes, oversized input, activity switching, and the mock CLI contract. `make all`
-must pass.
+changes, stage-and-continue selection, oversized input, activity switching, and the mock
+CLI contract. The E2E path generates a review, stages with `Space`, and commits with `i`.
+`make all` must pass.

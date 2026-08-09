@@ -46,8 +46,8 @@ fn command_palette_blocks_activity_switching_and_does_not_restore_hidden_state()
 fn guided_review_click_and_keys_open_the_selected_change() -> Result<()> {
     let repository = TestRepository::new()?;
     let mut original = String::new();
-    for line in 0..40 {
-        writeln!(original, "original line {line:02}").context("build review fixture")?;
+    for line in 0..700 {
+        writeln!(original, "original line {line:03}").context("build review fixture")?;
     }
     std::fs::write(repository.worktree.join("tracked.txt"), &original)?;
     git(&repository.worktree, &["add", "tracked.txt"])?;
@@ -56,10 +56,15 @@ fn guided_review_click_and_keys_open_the_selected_change() -> Result<()> {
         &["commit", "-m", "Expand review fixture"],
     )?;
     let changed = original
-        .replace("original line 02", "FIRST_REVIEW_CHANGE")
-        .replace("original line 35", "SECOND_REVIEW_CHANGE");
+        .replace("original line 020", "FIRST_REVIEW_CHANGE")
+        .replace("original line 650", "SECOND_REVIEW_CHANGE");
     std::fs::write(repository.worktree.join("tracked.txt"), changed)?;
-    let mut screen = repository.screen()?;
+    let trace_path = repository.root.path().join("review-navigation-frames.ronl");
+    let mut screen = DiffoScreen::launch_with_env(
+        diffo_binary()?,
+        &repository.worktree,
+        &[("DIFFO_TRACE_FRAMES", trace_path.as_os_str())],
+    )?;
 
     screen
         .press(Key::Tab)?
@@ -77,7 +82,56 @@ fn guided_review_click_and_keys_open_the_selected_change() -> Result<()> {
         .wait_for_text_gone("SECOND_REVIEW_CHANGE")?
         .press(Key::Char('n'))?
         .wait_for_text("SECOND_REVIEW_CHANGE")?
-        .wait_for_text_gone("FIRST_REVIEW_CHANGE")?;
+        .wait_for_text_gone("FIRST_REVIEW_CHANGE")?
+        .press(Key::Char('q'))?
+        .wait_for_exit()?;
+    drop(screen);
+
+    let trace = fs::read_to_string(&trace_path).context("read review navigation frame trace")?;
+    let frames = trace
+        .lines()
+        .map(ron::from_str::<BufferFrame>)
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+    let suggestion_click = frames
+        .iter()
+        .enumerate()
+        .filter(|(_, frame)| {
+            frame
+                .input_events
+                .iter()
+                .any(|event| event.contains("Down(Left)"))
+        })
+        .nth(1)
+        .map(|(index, _)| index)
+        .with_context(|| format!("trace has no suggestion click:\n{trace}"))?;
+    let click_commit = frames[suggestion_click..]
+        .iter()
+        .find(|frame| frame.viewport_transition.is_some())
+        .with_context(|| format!("trace has no viewport commit after click:\n{trace}"))?;
+    let click_target = click_commit
+        .viewport_transition
+        .context("clicked review target")?
+        .0;
+    assert!(click_target > 500, "click opened row {click_target}");
+    assert!(click_commit.syntax_ready);
+    assert_eq!(click_commit.first_rendered_row, click_target);
+    assert_eq!(click_commit.scroll_after.0, click_target);
+
+    for (key, late) in [("Char('p')", false), ("Char('n')", true)] {
+        let input = frames
+            .iter()
+            .position(|frame| frame.input_events.iter().any(|event| event.contains(key)))
+            .with_context(|| format!("trace has no {key} review input:\n{trace}"))?;
+        let committed = frames[input..]
+            .iter()
+            .find(|frame| frame.viewport_transition.is_some())
+            .with_context(|| format!("trace has no viewport commit after {key}:\n{trace}"))?;
+        let target = committed.viewport_transition.context("review target")?.0;
+        assert_eq!(target > 500, late, "{key} opened row {target}");
+        assert!(committed.syntax_ready);
+        assert_eq!(committed.first_rendered_row, target);
+        assert_eq!(committed.scroll_after.0, target);
+    }
     Ok(())
 }
 

@@ -15,6 +15,10 @@ fn repository_change_keeps_the_review_visible_and_marks_it_out_of_date() {
             }],
         )
         .unwrap();
+    let mut changed = initial.clone();
+    changed.files[0].unstaged = Some(FileDiff {
+        text: "@@ -1 +1 @@\n-old\n+newer\n".to_owned(),
+    });
     let mut review = ReviewActivity::new(initial, CodexAvailability::Available);
     review.cached = Some(CachedReview {
         request,
@@ -24,7 +28,7 @@ fn repository_change_keeps_the_review_visible_and_marks_it_out_of_date() {
     review.open_selected_stop();
     let selected_target = review.selected_target().map(|target| target.id.clone());
 
-    review.repository_changed(snapshot("newer"));
+    review.repository_changed(changed);
 
     assert!(review.stale());
     assert!(review.ready().is_none());
@@ -64,6 +68,10 @@ fn stale_review_remains_navigable_but_cannot_stage() {
                 .collect(),
         )
         .unwrap();
+    let mut changed = initial.clone();
+    changed.files[0].unstaged = Some(FileDiff {
+        text: "@@ -1 +1 @@\n-old\n+newer\n".to_owned(),
+    });
     let mut review = ReviewActivity::new(initial, CodexAvailability::Available);
     review.cached = Some(CachedReview {
         request,
@@ -71,7 +79,7 @@ fn stale_review_remains_navigable_but_cannot_stage() {
         stale: false,
     });
     review.open_selected_stop();
-    review.repository_changed(snapshot("newer"));
+    review.repository_changed(changed);
 
     assert!(matches!(
         review.handle_event(&key('n'), Rect::new(0, 0, 100, 30), PaneSplit::default()),
@@ -82,6 +90,7 @@ fn stale_review_remains_navigable_but_cannot_stage() {
         review.selected_target().map(|target| target.id.as_str()),
         Some(ids[1].as_str())
     );
+    assert!(review.pending_recenter);
     assert!(
         review
             .handle_event(&key(' '), Rect::new(0, 0, 100, 30), PaneSplit::default())

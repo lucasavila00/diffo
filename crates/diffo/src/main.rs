@@ -289,8 +289,8 @@ fn run(
 ) -> Result<()> {
     let mut wheel_friction = WheelFriction::default();
     let scroll = (
-        workbench.diff_model().diff_scroll,
-        workbench.diff_model().diff_horizontal_scroll,
+        workbench.frame_trace_model().diff_scroll,
+        workbench.frame_trace_model().diff_horizontal_scroll,
     );
     let update_start_us = tracer.elapsed_us();
     let preparation = prepare_frame(terminal, workbench)?;
@@ -301,7 +301,7 @@ fn run(
         workbench.protected_push_prompt_open(),
         workbench.modal_trace_label(),
         workbench.repository_generation(),
-        workbench.diff_model(),
+        workbench.frame_trace_model(),
         &preparation,
         scroll,
         update_start_us,
@@ -334,8 +334,8 @@ fn run(
         let input_time = Instant::now();
         filter_wheel_momentum(&mut events, workbench, &mut wheel_friction, input_time);
         let scroll_before = (
-            workbench.diff_model().diff_scroll,
-            workbench.diff_model().diff_horizontal_scroll,
+            workbench.frame_trace_model().diff_scroll,
+            workbench.frame_trace_model().diff_horizontal_scroll,
         );
         let update_start_us = tracer.elapsed_us();
         drain_repository_events(repository_service, workbench);
@@ -366,7 +366,7 @@ fn run(
             workbench.protected_push_prompt_open(),
             workbench.modal_trace_label(),
             workbench.repository_generation(),
-            workbench.diff_model(),
+            workbench.frame_trace_model(),
             &preparation,
             scroll_before,
             update_start_us,
@@ -400,7 +400,7 @@ fn record_suppressed_input(
         workbench.protected_push_prompt_open(),
         workbench.modal_trace_label(),
         workbench.repository_generation(),
-        workbench.diff_model(),
+        workbench.frame_trace_model(),
         preparation,
         scroll_before,
         update_start_us,

@@ -357,8 +357,12 @@ impl ReviewActivity {
         let target = self.selected_target().cloned();
         if let Some(target) = target {
             self.model.select_file(&target.file);
-            self.pending_recenter = !self.stale();
+            self.pending_recenter = self.model.selected.as_ref() == Some(&target.file);
         }
+    }
+
+    pub(crate) const fn model(&self) -> &Model {
+        &self.model
     }
 
     fn open_next_stop(&mut self) {

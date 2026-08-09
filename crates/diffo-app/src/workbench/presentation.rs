@@ -91,6 +91,16 @@ impl PreparedPresentation {
 }
 
 impl Workbench {
+    #[doc(hidden)]
+    #[must_use]
+    pub const fn frame_trace_model(&self) -> &crate::diff::Model {
+        if matches!(self.active, Activity::Review) {
+            self.review.model()
+        } else {
+            &self.diff.model
+        }
+    }
+
     pub fn take_redraw_request(&mut self) -> bool {
         self.presentation.take_request()
     }

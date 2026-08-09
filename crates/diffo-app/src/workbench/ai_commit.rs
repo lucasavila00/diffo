@@ -28,13 +28,6 @@ pub struct AiCommitHandoff {
     pub cancellation: CancellationHandle,
 }
 
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub(super) enum DeferredAiCommit {
-    #[default]
-    Idle,
-    Pending,
-}
-
 impl AiCommitRequest {
     #[must_use]
     pub fn from_snapshot(snapshot: &RepositorySnapshot) -> Option<Self> {
@@ -301,12 +294,6 @@ fn escaped_suffix_with_budget(text: &str, budget: usize) -> String {
 
 impl Workbench {
     pub(super) fn request_ai_commit(&mut self) {
-        if self.deferred_ai_commit == DeferredAiCommit::Pending {
-            self.deferred_ai_commit = DeferredAiCommit::Idle;
-            self.diff.model.finish_ai_commit();
-            self.request_redraw();
-            return;
-        }
         if let Some(id) = self.commands.ai_commit_id() {
             let running = self
                 .commands
@@ -318,43 +305,18 @@ impl Workbench {
             self.request_redraw();
             return;
         }
-        if let Some(request) = AiCommitRequest::from_snapshot(&self.diff.model.snapshot) {
-            self.diff.model.begin_ai_commit();
-            self.commands.enqueue_ai_commit(request);
-            self.request_redraw();
+        if !self.commands.has_work()
+            && AiCommitRequest::from_snapshot(&self.diff.model.snapshot).is_none()
+        {
+            self.show_toast(
+                ToastKind::Info,
+                "Stage changes before creating an AI commit",
+            );
             return;
         }
-        if self.commands.has_stage_all() {
-            self.deferred_ai_commit = DeferredAiCommit::Pending;
-            self.diff.model.begin_ai_commit();
-            self.request_redraw();
-            return;
-        }
-        self.show_toast(
-            ToastKind::Info,
-            "Stage changes before creating an AI commit",
-        );
-    }
-
-    pub(super) fn start_deferred_ai_commit(&mut self) {
-        if self.deferred_ai_commit != DeferredAiCommit::Pending {
-            return;
-        }
-        self.deferred_ai_commit = DeferredAiCommit::Idle;
-        let Some(request) = AiCommitRequest::from_snapshot(&self.diff.model.snapshot) else {
-            self.diff.model.finish_ai_commit();
-            self.show_toast(ToastKind::Info, "No staged changes to commit");
-            return;
-        };
-        self.commands.enqueue_ai_commit(request);
+        self.diff.model.begin_ai_commit();
+        self.commands.enqueue_ai_commit();
         self.request_redraw();
-    }
-
-    pub(super) fn cancel_deferred_ai_commit(&mut self) {
-        if self.deferred_ai_commit == DeferredAiCommit::Pending {
-            self.deferred_ai_commit = DeferredAiCommit::Idle;
-            self.diff.model.finish_ai_commit();
-        }
     }
 
     #[must_use]
@@ -381,14 +343,18 @@ impl Workbench {
 
         match outcome {
             AiCommitOutcome::Cancelled => {
-                self.commands.acknowledge(id, CommandResult::Cancelled)?;
+                if !self.commands.acknowledge(id, CommandResult::Cancelled) {
+                    return None;
+                }
                 self.finish_command_progress(id);
                 self.diff.model.finish_ai_commit();
                 self.request_redraw();
                 None
             }
             AiCommitOutcome::Failed(detail) => {
-                self.commands.acknowledge(id, CommandResult::Failed)?;
+                if !self.commands.acknowledge(id, CommandResult::Failed) {
+                    return None;
+                }
                 self.finish_command_progress(id);
                 self.diff.model.finish_ai_commit();
                 self.show_error("AI commit failed", detail);
@@ -396,7 +362,9 @@ impl Workbench {
             }
             AiCommitOutcome::Generated(subject) => {
                 if !request.still_matches(&self.diff.model.snapshot) {
-                    self.commands.acknowledge(id, CommandResult::Failed)?;
+                    if !self.commands.acknowledge(id, CommandResult::Failed) {
+                        return None;
+                    }
                     self.finish_command_progress(id);
                     self.diff.model.finish_ai_commit();
                     self.show_error(
@@ -415,7 +383,7 @@ impl Workbench {
                 }));
                 let command = self.commands.active_mut()?;
                 command.action = ApplicationAction::Repository(action.clone());
-                "Committing".clone_into(&mut command.label);
+                command.phase = Some("Committing".to_owned());
                 let cancellation = command.cancellation.clone();
                 let _ = self.diff.model.start_repository_action(action.clone());
                 self.request_redraw();
@@ -560,14 +528,14 @@ mod tests {
     }
 
     #[test]
-    fn stage_all_then_ai_commit_defers_until_the_staged_snapshot_arrives() {
+    fn stage_all_then_ai_commit_resolves_from_the_staged_snapshot() {
         let mut unstaged = snapshot("UNSTAGED".to_owned());
         unstaged.files[0].unstaged = unstaged.files[0].staged.take();
         let mut workbench = Workbench::new(unstaged);
 
         let _ = workbench.update_diff(Message::StageAll);
         workbench.request_ai_commit();
-        assert_eq!(workbench.deferred_ai_commit, DeferredAiCommit::Pending);
+        assert_eq!(workbench.commands.queued_len(), 2);
         assert!(workbench.diff.model.ai_commit_pending());
 
         let stage = workbench
@@ -586,13 +554,12 @@ mod tests {
 
         let generated = workbench
             .take_application_command(Instant::now())
-            .expect("deferred AI command");
+            .expect("queued AI command");
         assert!(matches!(generated.action, ApplicationAction::AiCommit(_)));
-        assert_eq!(workbench.deferred_ai_commit, DeferredAiCommit::Idle);
     }
 
     #[test]
-    fn second_ai_shortcut_cancels_a_deferred_request_but_not_stage_all() {
+    fn second_ai_shortcut_cancels_the_queued_request_but_not_stage_all() {
         let mut unstaged = snapshot("UNSTAGED".to_owned());
         unstaged.files[0].unstaged = unstaged.files[0].staged.take();
         let mut workbench = Workbench::new(unstaged);
@@ -601,9 +568,15 @@ mod tests {
         workbench.request_ai_commit();
         workbench.request_ai_commit();
 
-        assert_eq!(workbench.deferred_ai_commit, DeferredAiCommit::Idle);
         assert!(!workbench.diff.model.ai_commit_pending());
-        assert!(workbench.commands.has_stage_all());
+        assert_eq!(workbench.commands.queued_len(), 1);
+        let stage = workbench
+            .take_application_command(Instant::now())
+            .expect("stage all remains queued");
+        assert_eq!(
+            stage.action,
+            ApplicationAction::Repository(RepositoryAction::StageAll)
+        );
     }
 
     #[test]

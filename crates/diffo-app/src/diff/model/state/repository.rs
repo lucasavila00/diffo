@@ -15,6 +15,15 @@ impl Model {
         Some(action)
     }
 
+    pub(crate) fn activate_repository_action(&mut self, action: RepositoryAction) -> bool {
+        if let Some(pending) = self.pending_operation.as_ref() {
+            pending == &action
+        } else {
+            self.pending_operation = Some(action);
+            true
+        }
+    }
+
     pub fn repository_changed(&mut self, snapshot: RepositorySnapshot) {
         self.install_snapshot(snapshot, None);
     }

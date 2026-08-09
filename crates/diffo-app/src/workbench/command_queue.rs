@@ -57,7 +57,9 @@ pub enum CommandResult {
 pub struct ApplicationCommand {
     pub id: ApplicationCommandId,
     pub action: ApplicationAction,
+    /// The complete user goal. Keep this stable while the command runs.
     pub label: String,
+    /// The current step within the goal, when the command has multiple steps.
     pub phase: Option<String>,
     pub cancellation: CancellationHandle,
     pub state: CommandState,
@@ -254,8 +256,11 @@ impl CommandQueue {
             return None;
         }
         let mut command = self.active.take()?;
+        let explicitly_cancelled = command.state == CommandState::Cancelling;
         command.state = CommandState::Finished(result);
-        if result != CommandResult::Succeeded {
+        if result != CommandResult::Succeeded
+            && !(result == CommandResult::Cancelled && explicitly_cancelled)
+        {
             self.queued.clear();
         }
         Some(command)
@@ -264,11 +269,8 @@ impl CommandQueue {
 
 fn intent_label(intent: &CommandIntent) -> String {
     match intent {
-        CommandIntent::Repository(RepositoryAction::Sync | RepositoryAction::SyncToRemote(_)) => {
-            "Sync".to_owned()
-        }
         CommandIntent::Repository(action) => {
-            command_label(&ApplicationAction::Repository(action.clone()))
+            command_goal(&ApplicationAction::Repository(action.clone()))
         }
         CommandIntent::ToggleStage(_) => "Stage / unstage file".to_owned(),
         CommandIntent::ToggleStageAll => "Stage / unstage all".to_owned(),
@@ -293,7 +295,8 @@ fn command_phase(action: &ApplicationAction) -> Option<String> {
     }
 }
 
-fn command_label(action: &ApplicationAction) -> String {
+// This is the whole action the user asked for, never just its first phase. See ADR 0110.
+fn command_goal(action: &ApplicationAction) -> String {
     match action {
         ApplicationAction::Repository(RepositoryAction::Stage(_) | RepositoryAction::StageAll) => {
             "Staging".to_owned()
@@ -302,8 +305,9 @@ fn command_label(action: &ApplicationAction) -> String {
             RepositoryAction::Unstage(_) | RepositoryAction::UnstageAll,
         ) => "Unstaging".to_owned(),
         ApplicationAction::Repository(
-            RepositoryAction::Fetch | RepositoryAction::Sync | RepositoryAction::SyncToRemote(_),
-        ) => "Fetching".to_owned(),
+            RepositoryAction::Sync | RepositoryAction::SyncToRemote(_),
+        ) => "Sync".to_owned(),
+        ApplicationAction::Repository(RepositoryAction::Fetch) => "Fetch".to_owned(),
         ApplicationAction::Repository(RepositoryAction::Commit(_)) => "Committing".to_owned(),
         ApplicationAction::Repository(RepositoryAction::GuardedCommit(_)) => {
             "Committing".to_owned()
@@ -351,8 +355,8 @@ fn command_label(action: &ApplicationAction) -> String {
         ApplicationAction::Repository(RepositoryAction::RenameBranch(target)) => {
             format!("Renaming branch to {}", target.new_name)
         }
-        ApplicationAction::AiCommit(_) => "Writing commit message".to_owned(),
-        ApplicationAction::Update => "Updating Diffo".to_owned(),
+        ApplicationAction::AiCommit(_) => "AI commit".to_owned(),
+        ApplicationAction::Update => "Update Diffo".to_owned(),
     }
 }
 

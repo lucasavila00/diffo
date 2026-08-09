@@ -1,4 +1,4 @@
-# ADR 0109: Queue command intents
+# ADR 0110: Queue command intents
 
 Status: Accepted
 
@@ -24,13 +24,14 @@ probably depend on the failed one, so continuing would be surprising and unsafe.
 the same when the active command is cancelled. Cancelling a waiting command removes
 that command and everything behind it. There is no pause, resume, or retry state.
 
-Wait for a running cancellation to finish and install its final snapshot before the
-queue becomes idle. Never start another command while cancellation is still in progress.
+Wait for a running cancellation to finish and install its final snapshot before
+starting again. Commands entered after cancellation starts form a fresh queue and wait
+for that snapshot; they must not disappear when cancellation finishes.
 
 Show the queue immediately in a compact overlay. Show the active command, up to three
 waiting commands, their order and state, `+N more` when needed, a cancel target on each
-row, and `Cancel all`. Keep it visible when changing activities. Do not add hover
-behavior.
+row, and `Cancel all`. Keep it above activities, full-screen views, and modals so the
+controls match what people see. Do not add hover behavior.
 
 Every row has a stable goal and, when useful, a changing phase. Never name a command
 after only its first step. Show `Sync — Fetching`, then `Sync — Pushing`; show

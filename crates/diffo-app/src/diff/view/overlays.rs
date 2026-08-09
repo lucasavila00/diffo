@@ -138,7 +138,10 @@ fn command_progress_area(area: Rect, rows: usize) -> Option<Rect> {
     let height = u16::try_from(rows)
         .unwrap_or(u16::MAX)
         .saturating_add(design::TOAST_MIN_HEIGHT);
-    if rows == 0 || width < design::TOAST_MIN_WIDTH || area.height < height {
+    if rows == 0
+        || width < design::COMMAND_PROGRESS_MIN_WIDTH
+        || area.height < height.saturating_add(design::BORDER_WIDTH)
+    {
         return None;
     }
     Some(Rect::new(

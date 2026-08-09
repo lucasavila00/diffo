@@ -345,13 +345,16 @@ impl Workbench {
     }
 
     fn handle_event(&mut self, event: &Event, area: Rect) -> Option<WorkbenchCommand> {
+        let content = workbench_areas(area).content;
+        if self.cancel_clicked_command(event, content) {
+            return Some(WorkbenchCommand::Redraw);
+        }
         if self.modal.is_some() {
             return self.handle_modal_event(event, area);
         }
         if !self.full_screen && self.select_activity(event, area) {
             return Some(WorkbenchCommand::Redraw);
         }
-        let content = workbench_areas(area).content;
         let tool_captures_global_input = match self.active {
             Activity::Diff => self.diff.captures_global_input(),
             Activity::Explorer => self.explorer.captures_global_input(),
@@ -485,7 +488,7 @@ impl Workbench {
     }
 
     fn handle_overlay_click(&mut self, event: &Event, area: Rect) -> bool {
-        self.dismiss_clicked_toast(event, area) || self.cancel_clicked_command(event, area)
+        self.dismiss_clicked_toast(event, area)
     }
 
     fn sync_diff_pane_state(&mut self) {

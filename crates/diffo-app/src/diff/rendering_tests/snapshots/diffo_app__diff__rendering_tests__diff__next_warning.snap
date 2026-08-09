@@ -1,0 +1,13 @@
+---
+source: crates/diffo-app/src/diff/rendering_tests/diff.rs
+expression: "buffer_region(terminal.backend().buffer(), next_area)"
+---
+Buffer {
+    area: Rect { x: 0, y: 0, width: 71, height: 1 },
+    content: [
+        "                            Next change (n)                           ",
+    ],
+    styles: [
+        x: 0, y: 0, fg: White, bg: Indexed(52), underline: Reset, modifier: NONE,
+    ]
+}

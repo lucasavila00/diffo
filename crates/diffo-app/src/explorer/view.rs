@@ -463,6 +463,34 @@ mod tests {
     }
 
     #[test]
+    fn horizontal_scrollbar_visibility_does_not_move_explorer_content() {
+        let mut model = ExplorerModel::new(&diffo_core::RepositorySnapshot::default());
+        let viewer = super::super::model::Viewer {
+            document_id: super::super::model::ExplorerDocumentId(1),
+            path: "wide.txt".into(),
+            title: Box::new(Line::raw("wide.txt")),
+            lines: vec!["x".repeat(80), "short".to_owned(), "short".to_owned()].into(),
+            markers: HashMap::new(),
+            highlighted: BTreeMap::new(),
+            coverage: Vec::new().into(),
+            syntax_eligible: false,
+            message: None,
+        };
+        let area = Rect::new(2, 3, 30, 2);
+
+        let wide = viewer_metrics(area, &model, &viewer);
+        model.viewer_scroll = 1;
+        let fitting = viewer_metrics(area, &model, &viewer);
+
+        assert!(wide.maximum_horizontal > 0);
+        assert_eq!(fitting.maximum_horizontal, 0);
+        assert_eq!(wide.area, fitting.area);
+        assert_eq!(wide.viewport_rows, fitting.viewport_rows);
+        assert!(!wide.horizontal_scrollbar.is_empty());
+        assert!(fitting.horizontal_scrollbar.is_empty());
+    }
+
+    #[test]
     fn rust_keywords_use_the_diff_foreground_without_background_or_modifiers() {
         let source = "fn main() {}";
         let document =

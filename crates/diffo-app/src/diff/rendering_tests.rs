@@ -21,9 +21,9 @@ use ratatui::{
 
 use super::{
     Renderer, RendererEvent, contrast_ratio, contrasting_foreground, diff_background,
-    diff_background_rgb, diff_file_lines, file_label, footer_control_at_position, horizontal_panes,
-    main_area, overview_position, picker_document, row_style, scrollbar_position_count,
-    should_syntax_highlight, status_line,
+    diff_background_rgb, diff_file_lines, diff_panel_inner, file_label, footer_control_at_position,
+    horizontal_panes, main_area, overview_position, picker_document, row_style,
+    scrollbar_position_count, should_syntax_highlight, status_line,
 };
 
 #[test]
@@ -265,13 +265,6 @@ fn assert_jump_event(
         renderer.map_event(event, model, area),
         Some(RendererEvent::Message(Message::JumpDiffToPosition(target)))
     );
-}
-
-fn viewport_control_bottom(viewport: crate::diff::DiffViewportMetrics) -> u16 {
-    viewport
-        .content_area
-        .bottom()
-        .saturating_add(viewport.horizontal_area.height)
 }
 
 fn buffer_region(buffer: &Buffer, area: Rect) -> Buffer {

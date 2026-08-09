@@ -1,6 +1,6 @@
 use super::{
-    Arc, ChangeRegion, DiffBlock, DiffDocument, DiffKey, DiffViewMode, HIGHLIGHT_LOOKBEHIND_LINES,
-    HighlightCache, HighlightedDiff, HunkButtonMetrics, MAX_HIGHLIGHT_BYTES_PER_SIDE,
+    Arc, ChangeRegion, ChangeWarningAreas, DiffBlock, DiffDocument, DiffKey, DiffViewMode,
+    HIGHLIGHT_LOOKBEHIND_LINES, HighlightCache, HighlightedDiff, MAX_HIGHLIGHT_BYTES_PER_SIDE,
     MAX_HIGHLIGHT_FILE_LINES, MAX_SYNC_BYTES, MAX_SYNC_LINES, Model, PREPARED_BUFFER_CACHE_SIZE,
     PrepareCommit, PrepareOutcome, PrepareRequest, ProjectionOptions, RenderLine, Renderer,
     RowKind, ScrollAnchor, ScrollbarMetrics, Span, SyntaxHighlighter, ViewportTransition, channel,
@@ -628,7 +628,7 @@ impl Renderer {
             scrollbar_drag: None,
             staged_picker: diffo_ui::file_picker::FilePicker::default(),
             unstaged_picker: diffo_ui::file_picker::FilePicker::default(),
-            hunk_buttons: HunkButtonMetrics::default(),
+            change_warnings: ChangeWarningAreas::default(),
             content_revision: 0,
             #[cfg(test)]
             highlight_computations: 0,

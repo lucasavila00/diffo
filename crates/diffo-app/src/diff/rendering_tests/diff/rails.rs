@@ -1,7 +1,55 @@
 use super::*;
 
 #[test]
-fn change_button_availability_does_not_move_the_diff_rails() {
+fn whole_block_navigation_uses_projection_specific_region_bounds() {
+    let mut patch = String::from("@@ -1,20 +1,20 @@\n context\n");
+    for line in 0..10 {
+        writeln!(patch, "-old {line}").unwrap();
+    }
+    for line in 0..10 {
+        writeln!(patch, "+new {line}").unwrap();
+    }
+    for line in 0..9 {
+        writeln!(patch, " context {line}").unwrap();
+    }
+    let area = Rect::new(0, 0, 100, 16);
+
+    let mut inline_model = model();
+    inline_model.snapshot.files[0]
+        .unstaged
+        .as_mut()
+        .unwrap()
+        .text = patch.clone();
+    let mut inline_renderer = Renderer::new();
+    inline_renderer.prepare_frame(&inline_model, area);
+    let inline = inline_renderer.diff_viewport_metrics_at(DiffViewMode::Inline, area, 0);
+
+    let mut side_model = model();
+    side_model.diff_view_mode = DiffViewMode::SideBySide;
+    side_model.snapshot.files[0].unstaged.as_mut().unwrap().text = patch;
+    let mut side_renderer = Renderer::new();
+    side_renderer.prepare_frame(&side_model, area);
+    let side = side_renderer.diff_viewport_metrics_at(DiffViewMode::SideBySide, area, 0);
+
+    assert_eq!(inline.viewport_rows, side.viewport_rows);
+    assert_eq!(inline.next_change, None);
+    assert_eq!(side.next_change, None);
+    assert_eq!(
+        inline_renderer.highlighted.as_ref().unwrap().inline_changes[0],
+        diffo_diff::ChangeRegion { first: 2, last: 21 }
+    );
+    assert_eq!(
+        side_renderer
+            .highlighted
+            .as_ref()
+            .unwrap()
+            .side_by_side_changes[0],
+        diffo_diff::ChangeRegion { first: 2, last: 11 }
+    );
+}
+
+#[test]
+fn change_warning_availability_does_not_move_the_diff_rails() {
     for mode in [DiffViewMode::Inline, DiffViewMode::SideBySide] {
         assert_stable_diff_rails(mode);
     }
@@ -42,12 +90,13 @@ fn assert_stable_diff_rails(mode: DiffViewMode) {
         };
         let marker_cells = changes
             .iter()
-            .map(|change| {
+            .enumerate()
+            .map(|(index, change)| {
                 let row =
                     rail.y + overview_position(change.first, renderer.scrollbars.rows, rail.height);
                 assert_eq!(
                     renderer.change_at_marker(marker_column, row, &model),
-                    Some(change.first)
+                    Some(change.first.saturating_sub(usize::from(index > 0)))
                 );
                 (
                     row,
@@ -57,24 +106,6 @@ fn assert_stable_diff_rails(mode: DiffViewMode) {
                 )
             })
             .collect::<Vec<_>>();
-        if viewport.previous_change.is_none() {
-            assert_eq!(
-                renderer.hunk_button_direction_at(
-                    viewport.content_area.x,
-                    viewport.content_area.y.saturating_sub(1),
-                ),
-                None
-            );
-        }
-        if viewport.next_change.is_none() {
-            assert_eq!(
-                renderer.hunk_button_direction_at(
-                    viewport.content_area.x,
-                    viewport.content_area.bottom(),
-                ),
-                None
-            );
-        }
         assert_eq!(
             renderer.scrollbar_at(rail.x, rail.y),
             Some(crate::diff::ScrollbarAxis::Vertical)
@@ -84,8 +115,8 @@ fn assert_stable_diff_rails(mode: DiffViewMode) {
             rail,
             marker_cells,
             (
-                renderer.hunk_buttons.previous.is_some(),
-                renderer.hunk_buttons.next.is_some(),
+                renderer.change_warnings.previous.is_some(),
+                renderer.change_warnings.next.is_some(),
             ),
         ));
     }
@@ -102,20 +133,54 @@ fn assert_stable_diff_rails(mode: DiffViewMode) {
 }
 
 #[test]
-fn fixed_change_button_lanes_saturate_in_narrow_layouts() {
+fn diff_content_uses_the_full_inner_area_in_narrow_layouts() {
     let mut model = model();
     model.snapshot.files[0].unstaged.as_mut().unwrap().text = navigation_layout_patch();
     let mut renderer = Renderer::new();
     renderer.prepare_frame(&model, Rect::new(0, 0, 100, 30));
+    wait_for_syntax_ready(&mut renderer, &model);
 
     for mode in [DiffViewMode::Inline, DiffViewMode::SideBySide] {
         for height in 0..=4 {
             let area = Rect::new(7, 9, 20, height);
             let viewport = renderer.diff_viewport_metrics_at(mode, area, 0);
-            assert!(viewport.content_area.y >= area.y);
-            assert!(viewport.content_area.bottom() <= area.bottom());
-            assert!(viewport.content_area.x >= area.x);
-            assert!(viewport.content_area.right() <= area.right());
+            assert_eq!(viewport.content_area, diff_panel_inner(area));
+        }
+    }
+}
+
+#[test]
+fn change_warnings_share_one_row_only_in_a_one_row_viewport() {
+    for mode in [DiffViewMode::Inline, DiffViewMode::SideBySide] {
+        let mut model = model();
+        model.diff_view_mode = mode;
+        model.snapshot.files[0].unstaged.as_mut().unwrap().text = navigation_layout_patch();
+        let mut renderer = Renderer::new();
+        renderer.prepare_frame(&model, Rect::new(0, 0, 100, 30));
+        wait_for_syntax_ready(&mut renderer, &model);
+
+        for (height, expected_rows) in [(2, 0), (3, 1), (4, 2)] {
+            let area = Rect::new(0, 0, 20, height);
+            let viewport = renderer.diff_viewport_metrics_at(mode, area, 100);
+            let backend = TestBackend::new(area.width, area.height);
+            let mut terminal = Terminal::new(backend).unwrap();
+            terminal
+                .draw(|frame| renderer.render_change_warnings(frame, &viewport))
+                .unwrap();
+
+            let warning_rows = [
+                renderer.change_warnings.previous,
+                renderer.change_warnings.next,
+            ]
+            .into_iter()
+            .flatten()
+            .map(|area| area.y)
+            .collect::<std::collections::BTreeSet<_>>();
+            assert_eq!(
+                warning_rows.len(),
+                expected_rows,
+                "mode={mode:?}, height={height}, viewport={viewport:?}"
+            );
         }
     }
 }

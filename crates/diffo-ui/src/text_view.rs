@@ -377,47 +377,22 @@ pub fn viewport_metrics(
     horizontal_enabled: bool,
 ) -> ViewportMetrics {
     let viewport_columns = usize::from(area.width);
-    let mut horizontal = false;
-    let mut columns = 0;
-    for _ in 0..2 {
-        let viewport_rows = usize::from(area.height).saturating_sub(usize::from(horizontal));
-        let maximum_vertical = maximum_scroll(row_widths.len(), viewport_rows);
-        let first = requested_vertical.min(maximum_vertical);
-        columns = row_widths
-            .iter()
-            .skip(first)
-            .take(viewport_rows)
-            .copied()
-            .max()
-            .unwrap_or(0);
-        horizontal = horizontal_enabled && columns > viewport_columns;
-    }
-    let horizontal_rows = u16::from(horizontal);
-    let content = Rect::new(
-        area.x,
-        area.y,
-        area.width,
-        area.height.saturating_sub(horizontal_rows),
-    );
+    let content = area;
     let viewport_rows = usize::from(content.height);
     let maximum_vertical = maximum_scroll(row_widths.len(), viewport_rows);
     let first = requested_vertical.min(maximum_vertical);
-    columns = row_widths
+    let columns = row_widths
         .iter()
         .skip(first)
         .take(viewport_rows)
         .copied()
         .max()
-        .unwrap_or(columns);
+        .unwrap_or(0);
+    let horizontal = horizontal_enabled && columns > viewport_columns;
     ViewportMetrics {
         area: content,
         horizontal_scrollbar: if horizontal {
-            Rect::new(
-                area.x,
-                area.bottom().saturating_sub(design::BORDER_WIDTH),
-                area.width,
-                design::BORDER_WIDTH,
-            )
+            Rect::new(area.x, area.bottom(), area.width, design::BORDER_WIDTH)
         } else {
             Rect::default()
         },
@@ -539,8 +514,26 @@ mod tests {
         let widths = [200, 10, 10, 10];
         let top = viewport_metrics(Rect::new(0, 0, 20, 2), &widths, 0, true);
         let bottom = viewport_metrics(Rect::new(0, 0, 20, 2), &widths, 2, true);
+
         assert!(top.maximum_horizontal > 0);
         assert_eq!(bottom.maximum_horizontal, 0);
+        assert_eq!(top.area, bottom.area);
+        assert_eq!(top.viewport_rows, bottom.viewport_rows);
+        assert!(!top.horizontal_scrollbar.is_empty());
+        assert!(bottom.horizontal_scrollbar.is_empty());
+        assert_eq!(
+            scrollbar_axis_at(
+                scrollbar_areas(Rect::new(0, 0, 20, 2), bottom),
+                bottom,
+                0,
+                bottom.area.bottom(),
+            ),
+            None
+        );
+
+        let full_screen = viewport_metrics(Rect::new(0, 0, 20, 2), &widths, 0, false);
+        assert_eq!(full_screen.area, Rect::new(0, 0, 20, 2));
+        assert_eq!(full_screen.viewport_rows, 2);
     }
 
     #[test]

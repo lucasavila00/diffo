@@ -85,7 +85,7 @@ fn ready_discrete_jump_commits_in_one_frame_without_preparation() {
 }
 
 #[test]
-fn passive_mouse_movement_does_not_change_hunk_buttons_or_request_actions() {
+fn passive_mouse_movement_does_not_change_warnings_or_request_actions() {
     let mut model = model();
     let mut patch = String::from("@@ -1,100 +1,100 @@\n");
     for line in 1..=100 {
@@ -107,8 +107,8 @@ fn passive_mouse_movement_does_not_change_hunk_buttons_or_request_actions() {
         .draw(|frame| renderer.render(frame, &model))
         .unwrap();
 
-    let previous = renderer.hunk_buttons.previous.expect("previous button");
-    let next = renderer.hunk_buttons.next.expect("next button");
+    let previous = renderer.change_warnings.previous.expect("previous warning");
+    let next = renderer.change_warnings.next.expect("next warning");
     let before_movement = terminal.backend().buffer().clone();
     let positions = [
         previous,

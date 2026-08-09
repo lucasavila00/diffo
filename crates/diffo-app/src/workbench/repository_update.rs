@@ -90,7 +90,6 @@ impl Workbench {
         result: OperationResult,
         snapshot: RepositorySnapshot,
     ) {
-        let starts_deferred_ai_commit = action == RepositoryAction::StageAll;
         if self
             .commands
             .acknowledge(id, CommandResult::Succeeded)
@@ -105,9 +104,6 @@ impl Workbench {
             result,
             Box::new(snapshot),
         ));
-        if starts_deferred_ai_commit {
-            self.start_deferred_ai_commit();
-        }
     }
 
     pub fn action_failed(&mut self, id: ApplicationCommandId, failure: OperationFailure) {
@@ -120,9 +116,6 @@ impl Workbench {
         failure: OperationFailure,
         snapshot: Option<RepositorySnapshot>,
     ) {
-        if failure.action == RepositoryAction::StageAll {
-            self.cancel_deferred_ai_commit();
-        }
         if self.handle_delete_branch_failure(id, &failure) {
             return;
         }
@@ -135,6 +128,7 @@ impl Workbench {
         }
         self.close_prompt(id);
         self.finish_command_progress(id);
+        self.diff.model.finish_ai_commit();
         let _ = self.update_diff(Message::ActionFailed(failure));
         if let Some(snapshot) = snapshot {
             self.repository_changed(snapshot);
@@ -147,9 +141,6 @@ impl Workbench {
         action: RepositoryAction,
         snapshot: RepositorySnapshot,
     ) {
-        if action == RepositoryAction::StageAll {
-            self.cancel_deferred_ai_commit();
-        }
         if self
             .commands
             .acknowledge(id, CommandResult::Cancelled)
@@ -159,6 +150,7 @@ impl Workbench {
         }
         self.close_prompt(id);
         self.finish_command_progress(id);
+        self.diff.model.finish_ai_commit();
         let _ = self.update_diff(Message::OperationCancelled(action));
         self.repository_changed(snapshot);
     }

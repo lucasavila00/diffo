@@ -101,11 +101,29 @@ impl Model {
         self.commit_message = message;
     }
 
+    #[must_use]
+    pub(crate) fn commit_draft(&self) -> String {
+        self.commit_message.clone()
+    }
+
+    pub(crate) fn prepare_commit(&self, draft: &str) -> Option<RepositoryAction> {
+        if matches!(self.merge_phase(), Some(MergePhase::Conflicts(_))) {
+            return None;
+        }
+        let message = draft.trim();
+        let message = if message.is_empty() {
+            self.suggested_commit_message()?
+        } else {
+            message.to_owned()
+        };
+        Some(RepositoryAction::Commit(message))
+    }
+
     pub fn execute_commit(&mut self) -> Option<RepositoryAction> {
         if !self.commit_enabled() {
             return None;
         }
-        let action = RepositoryAction::Commit(self.effective_commit_message()?);
+        let action = self.prepare_commit(&self.commit_message)?;
         self.pending_operation = Some(action.clone());
         Some(action)
     }

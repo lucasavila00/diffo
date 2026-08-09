@@ -18,6 +18,9 @@ impl Workbench {
         if self.commands.acknowledge(id, result).is_none() {
             return;
         }
+        if result != CommandResult::Succeeded {
+            self.diff.model.finish_ai_commit();
+        }
         self.finish_command_progress(id);
         match outcome {
             UpdateOutcome::Succeeded(message) => self.show_toast(ToastKind::Success, message),

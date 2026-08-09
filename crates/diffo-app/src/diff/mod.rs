@@ -56,8 +56,8 @@ use view::geometry::{diff_panel_inner, scrollbar_position_count};
 use view::geometry::{horizontal_panes, main_area, overview_position};
 use view::overlays::commit_editor_action_at_position;
 pub use view::overlays::{
-    CommandProgress, command_cancel_at_position, render_command_progress, render_toasts,
-    toast_at_position,
+    CommandProgress, CommandProgressAction, CommandProgressRow, CommandProgressState,
+    command_action_at_position, render_command_progress, render_toasts, toast_at_position,
 };
 #[cfg(test)]
 use view::style::{

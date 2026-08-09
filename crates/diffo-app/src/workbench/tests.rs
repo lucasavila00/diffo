@@ -394,7 +394,7 @@ fn command_progress_survives_activity_switching_and_animates_the_app_border() {
     assert_eq!(workbench.active, Activity::Explorer);
     insta::assert_debug_snapshot!(buffer_region(
         terminal.backend().buffer(),
-        Rect::new(55, 1, 44, 3),
+        Rect::new(55, 1, 44, 4),
     ));
     assert_ne!(terminal.backend().buffer()[(0, 0)].fg, first_border);
 }
@@ -413,7 +413,7 @@ fn clicking_the_progress_marker_requests_cancellation_until_acknowledged() {
     let click = Event::Mouse(MouseEvent {
         kind: MouseEventKind::Down(MouseButton::Left),
         column: content.right().saturating_sub(3),
-        row: content.y.saturating_add(1),
+        row: content.y.saturating_add(2),
         modifiers: KeyModifiers::NONE,
     });
 
@@ -431,6 +431,67 @@ fn clicking_the_progress_marker_requests_cancellation_until_acknowledged() {
     );
     assert!(workbench.commands.active().is_none());
     assert!(workbench.toasts.as_slice().is_empty());
+}
+
+#[test]
+fn queue_controls_truncate_waiting_work_and_cancel_the_active_command() {
+    let mut workbench = Workbench::new(RepositorySnapshot::default());
+    workbench.commands.enqueue(RepositoryAction::Fetch);
+    let running = workbench
+        .take_application_command(Instant::now())
+        .expect("fetch starts");
+    let sync = workbench.commands.enqueue(RepositoryAction::Sync);
+    workbench.commands.enqueue_update();
+    let area = Rect::new(0, 0, 100, 30);
+    let content = workbench_areas(area).content;
+    let cancel_sync = Event::Mouse(MouseEvent {
+        kind: MouseEventKind::Down(MouseButton::Left),
+        column: content.right().saturating_sub(3),
+        row: content.y.saturating_add(3),
+        modifiers: KeyModifiers::NONE,
+    });
+
+    let _ = workbench.handle_event(&cancel_sync, area);
+
+    assert_eq!(workbench.commands.queued_len(), 0);
+    assert_eq!(
+        workbench.commands.active().map(|command| command.id),
+        Some(running.id)
+    );
+    assert!(!workbench.commands.entries().any(|(id, _, _)| id == sync));
+
+    workbench.commands.enqueue(RepositoryAction::Sync);
+    let cancel_all = Event::Mouse(MouseEvent {
+        kind: MouseEventKind::Down(MouseButton::Left),
+        column: content.right().saturating_sub(5),
+        row: content.y.saturating_add(4),
+        modifiers: KeyModifiers::NONE,
+    });
+    let _ = workbench.handle_event(&cancel_all, area);
+
+    assert!(running.cancellation.is_cancelled());
+    assert_eq!(workbench.commands.queued_len(), 0);
+    assert_eq!(
+        workbench.commands.active().map(|command| command.state),
+        Some(CommandState::Cancelling)
+    );
+}
+
+#[test]
+fn preparation_failure_discards_every_waiting_command() {
+    let mut workbench = Workbench::new(RepositorySnapshot::default());
+    workbench.commands.enqueue_intent(CommandIntent::StageAll);
+    workbench.commands.enqueue_update();
+
+    assert!(workbench.take_application_command(Instant::now()).is_none());
+
+    assert!(!workbench.commands.has_work());
+    assert!(matches!(
+        workbench.modal,
+        Some(Modal::Error(ref error))
+            if error.title == "Queued command stopped"
+                && error.detail.contains("no longer has the changes")
+    ));
 }
 
 #[test]
@@ -456,15 +517,8 @@ fn network_activity_does_not_own_the_toast_queue() {
     workbench.show_toast(ToastKind::Info, "Existing result");
     let existing_id = workbench.toasts.as_slice()[0].id;
 
-    assert_eq!(
-        workbench
-            .diff
-            .model
-            .start_repository_action(RepositoryAction::Fetch),
-        Some(RepositoryAction::Fetch)
-    );
     let id = workbench.commands.enqueue(RepositoryAction::Fetch);
-    let _ = workbench.commands.start_next();
+    let _ = workbench.take_application_command(Instant::now());
     assert_eq!(
         workbench.diff.model.network_operation(),
         Some(NetworkOperation::Fetch)

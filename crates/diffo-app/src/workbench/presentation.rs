@@ -10,8 +10,7 @@ use ratatui::{
 };
 
 use super::{
-    Activity, CommandState, Tool, Workbench, explorer_frame_preparation, render_activity_bar,
-    workbench_areas,
+    Activity, Tool, Workbench, explorer_frame_preparation, render_activity_bar, workbench_areas,
 };
 
 pub(super) struct PresentationState {
@@ -135,16 +134,13 @@ impl Workbench {
         self.render_full_screen_entry(frame);
         render_pane_drag_marker(frame, tool_areas(content).content, self.pane_split);
         render_toasts(frame, self.toasts.as_slice(), content);
-        if let Some(command) = self
-            .commands
-            .active()
-            .filter(|_| self.command_progress.is_visible())
-        {
+        let (command_rows, hidden_commands) = self.command_progress_rows();
+        if !command_rows.is_empty() {
             render_command_progress(
                 frame,
                 CommandProgress {
-                    label: &command.label,
-                    cancelling: command.state == CommandState::Cancelling,
+                    rows: &command_rows,
+                    hidden: hidden_commands,
                     animation_tick: self.command_animation_tick,
                 },
                 content,

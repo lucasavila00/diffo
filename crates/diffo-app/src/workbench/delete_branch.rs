@@ -142,6 +142,7 @@ impl Workbench {
         }
         self.close_prompt(id);
         self.finish_command_progress(id);
+        self.diff.model.finish_ai_commit();
         let _ = self.update_diff(Message::OperationCancelled(failure.action.clone()));
         self.set_modal(Modal::DeleteBranchConfirmation(
             DeleteBranchConfirmation::new((**target).clone()),

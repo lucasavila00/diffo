@@ -1,6 +1,9 @@
 use std::collections::VecDeque;
+use std::path::PathBuf;
 
 use diffo_core::{ApplicationCommandId, CancellationHandle, RepositoryAction};
+
+use crate::diff::FileKey;
 
 use super::AiCommitRequest;
 
@@ -8,6 +11,22 @@ use super::AiCommitRequest;
 pub enum ApplicationAction {
     Repository(RepositoryAction),
     AiCommit(AiCommitRequest),
+    Update,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) enum CommandIntent {
+    Repository(RepositoryAction),
+    ToggleStage(FileKey),
+    ToggleStageAll,
+    StageAll,
+    UnstageAll,
+    StageFile(PathBuf),
+    UnstageFile(PathBuf),
+    Commit(String),
+    AiCommit,
+    Sync,
+    SyncToRemote(String),
     Update,
 }
 
@@ -35,9 +54,17 @@ pub struct ApplicationCommand {
     pub state: CommandState,
 }
 
+#[derive(Clone, Debug)]
+pub(crate) struct QueuedCommand {
+    pub id: ApplicationCommandId,
+    pub intent: CommandIntent,
+    pub label: String,
+    pub cancellation: CancellationHandle,
+}
+
 #[derive(Default)]
 pub struct CommandQueue {
-    queued: VecDeque<ApplicationCommand>,
+    queued: VecDeque<QueuedCommand>,
     active: Option<ApplicationCommand>,
     next_id: u64,
 }
@@ -52,26 +79,25 @@ impl CommandQueue {
     }
 
     pub fn enqueue(&mut self, action: RepositoryAction) -> ApplicationCommandId {
-        self.enqueue_action(ApplicationAction::Repository(action))
+        self.enqueue_intent(CommandIntent::Repository(action))
     }
 
     pub fn enqueue_update(&mut self) -> ApplicationCommandId {
-        self.enqueue_action(ApplicationAction::Update)
+        self.enqueue_intent(CommandIntent::Update)
     }
 
-    pub fn enqueue_ai_commit(&mut self, request: AiCommitRequest) -> ApplicationCommandId {
-        self.enqueue_action(ApplicationAction::AiCommit(request))
+    pub fn enqueue_ai_commit(&mut self) -> ApplicationCommandId {
+        self.enqueue_intent(CommandIntent::AiCommit)
     }
 
-    fn enqueue_action(&mut self, action: ApplicationAction) -> ApplicationCommandId {
+    pub(crate) fn enqueue_intent(&mut self, intent: CommandIntent) -> ApplicationCommandId {
         let id = ApplicationCommandId(self.next_id);
         self.next_id = self.next_id.saturating_add(1);
-        self.queued.push_back(ApplicationCommand {
+        self.queued.push_back(QueuedCommand {
             id,
-            label: command_label(&action),
-            action,
+            label: intent_label(&intent),
+            intent,
             cancellation: CancellationHandle::default(),
-            state: CommandState::Queued,
         });
         id
     }
@@ -89,7 +115,6 @@ impl CommandQueue {
     pub fn ai_commit_id(&self) -> Option<ApplicationCommandId> {
         self.active
             .iter()
-            .chain(self.queued.iter())
             .find(|command| {
                 matches!(
                     command.action,
@@ -98,14 +123,31 @@ impl CommandQueue {
                 )
             })
             .map(|command| command.id)
+            .or_else(|| {
+                self.queued
+                    .iter()
+                    .find(|command| command.intent == CommandIntent::AiCommit)
+                    .map(|command| command.id)
+            })
     }
 
     #[must_use]
-    pub fn has_stage_all(&self) -> bool {
-        self.active.iter().chain(self.queued.iter()).any(|command| {
+    pub fn has_sync(&self) -> bool {
+        self.active.as_ref().is_some_and(|command| {
             matches!(
                 command.action,
-                ApplicationAction::Repository(RepositoryAction::StageAll)
+                ApplicationAction::Repository(
+                    RepositoryAction::Sync | RepositoryAction::SyncToRemote(_)
+                )
+            )
+        }) || self.queued.iter().any(|command| {
+            matches!(
+                command.intent,
+                CommandIntent::Sync
+                    | CommandIntent::SyncToRemote(_)
+                    | CommandIntent::Repository(
+                        RepositoryAction::Sync | RepositoryAction::SyncToRemote(_)
+                    )
             )
         })
     }
@@ -115,25 +157,72 @@ impl CommandQueue {
         self.queued.len()
     }
 
-    pub fn start_next(&mut self) -> Option<ApplicationCommand> {
+    #[must_use]
+    pub fn has_work(&self) -> bool {
+        self.active.is_some() || !self.queued.is_empty()
+    }
+
+    pub fn entries(&self) -> impl Iterator<Item = (ApplicationCommandId, &str, CommandState)> {
+        self.active
+            .iter()
+            .map(|command| (command.id, command.label.as_str(), command.state))
+            .chain(
+                self.queued
+                    .iter()
+                    .map(|command| (command.id, command.label.as_str(), CommandState::Queued)),
+            )
+    }
+
+    pub(crate) fn take_next(&mut self) -> Option<QueuedCommand> {
         if self.active.is_some() {
             return None;
         }
-        let mut command = self.queued.pop_front()?;
-        command.state = CommandState::Running;
+        self.queued.pop_front()
+    }
+
+    pub(crate) fn activate(
+        &mut self,
+        queued: QueuedCommand,
+        action: ApplicationAction,
+    ) -> ApplicationCommand {
+        debug_assert!(self.active.is_none());
+        let command = ApplicationCommand {
+            id: queued.id,
+            label: command_label(&action),
+            action,
+            cancellation: queued.cancellation,
+            state: CommandState::Running,
+        };
         self.active = Some(command.clone());
-        Some(command)
+        command
     }
 
     pub fn cancel(&mut self, id: ApplicationCommandId) -> bool {
         if let Some(command) = self.active.as_mut().filter(|command| command.id == id) {
             command.cancellation.cancel();
             command.state = CommandState::Cancelling;
+            self.queued.clear();
             return true;
         }
-        let original_len = self.queued.len();
-        self.queued.retain(|command| command.id != id);
-        self.queued.len() != original_len
+        let Some(index) = self.queued.iter().position(|command| command.id == id) else {
+            return false;
+        };
+        self.queued.truncate(index);
+        true
+    }
+
+    pub fn cancel_all(&mut self) -> bool {
+        let changed = self.has_work();
+        self.queued.clear();
+        if let Some(command) = self.active.as_mut() {
+            command.cancellation.cancel();
+            command.state = CommandState::Cancelling;
+        }
+        changed
+    }
+
+    pub(crate) fn fail_preparation(&mut self) {
+        self.queued.clear();
     }
 
     pub fn acknowledge(
@@ -146,7 +235,28 @@ impl CommandQueue {
         }
         let mut command = self.active.take()?;
         command.state = CommandState::Finished(result);
+        if result != CommandResult::Succeeded {
+            self.queued.clear();
+        }
         Some(command)
+    }
+}
+
+fn intent_label(intent: &CommandIntent) -> String {
+    match intent {
+        CommandIntent::Repository(action) => {
+            command_label(&ApplicationAction::Repository(action.clone()))
+        }
+        CommandIntent::ToggleStage(_) => "Stage / unstage file".to_owned(),
+        CommandIntent::ToggleStageAll => "Stage / unstage all".to_owned(),
+        CommandIntent::StageAll => "Stage all".to_owned(),
+        CommandIntent::UnstageAll => "Unstage all".to_owned(),
+        CommandIntent::StageFile(_) => "Stage file".to_owned(),
+        CommandIntent::UnstageFile(_) => "Unstage file".to_owned(),
+        CommandIntent::Commit(_) => "Commit".to_owned(),
+        CommandIntent::AiCommit => "AI commit".to_owned(),
+        CommandIntent::Sync | CommandIntent::SyncToRemote(_) => "Sync".to_owned(),
+        CommandIntent::Update => "Update Diffo".to_owned(),
     }
 }
 
@@ -223,8 +333,13 @@ mod tests {
         let fetch = queue.enqueue(RepositoryAction::Fetch);
         let sync = queue.enqueue(RepositoryAction::Sync);
 
-        assert_eq!(queue.start_next().map(|command| command.id), Some(fetch));
-        assert!(queue.start_next().is_none());
+        let queued = queue.take_next().expect("fetch queued");
+        assert_eq!(queued.id, fetch);
+        let _ = queue.activate(
+            queued,
+            ApplicationAction::Repository(RepositoryAction::Fetch),
+        );
+        assert!(queue.take_next().is_none());
         assert_eq!(queue.queued_len(), 1);
         assert_eq!(
             queue
@@ -232,17 +347,19 @@ mod tests {
                 .map(|command| command.state),
             Some(CommandState::Finished(CommandResult::Succeeded))
         );
-        assert_eq!(queue.start_next().map(|command| command.id), Some(sync));
+        assert_eq!(queue.take_next().map(|command| command.id), Some(sync));
     }
 
     #[test]
-    fn queued_cancellation_removes_the_command_immediately() {
+    fn queued_cancellation_removes_the_command_and_everything_after_it() {
         let mut queue = CommandQueue::new();
         let fetch = queue.enqueue(RepositoryAction::Fetch);
         let sync = queue.enqueue(RepositoryAction::Sync);
+        let update = queue.enqueue_update();
 
-        assert!(queue.cancel(fetch));
-        assert_eq!(queue.start_next().map(|command| command.id), Some(sync));
+        assert!(queue.cancel(sync));
+        assert_eq!(queue.take_next().map(|command| command.id), Some(fetch));
+        assert!(!queue.entries().any(|(id, _, _)| id == update));
     }
 
     #[test]
@@ -250,7 +367,11 @@ mod tests {
         let mut queue = CommandQueue::new();
         let fetch = queue.enqueue(RepositoryAction::Fetch);
         let sync = queue.enqueue(RepositoryAction::Sync);
-        let running = queue.start_next().expect("fetch starts");
+        let queued = queue.take_next().expect("fetch queued");
+        let running = queue.activate(
+            queued,
+            ApplicationAction::Repository(RepositoryAction::Fetch),
+        );
 
         assert!(queue.cancel(fetch));
         assert!(running.cancellation.is_cancelled());
@@ -258,13 +379,14 @@ mod tests {
             queue.active().map(|command| command.state),
             Some(CommandState::Cancelling)
         );
-        assert!(queue.start_next().is_none());
-        assert_eq!(queue.queued_len(), 1);
+        assert!(queue.take_next().is_none());
+        assert_eq!(queue.queued_len(), 0);
 
         queue
             .acknowledge(fetch, CommandResult::Cancelled)
             .expect("cancellation acknowledged");
-        assert_eq!(queue.start_next().map(|command| command.id), Some(sync));
+        assert!(queue.take_next().is_none());
+        assert!(!queue.entries().any(|(id, _, _)| id == sync));
     }
 
     #[test]
@@ -273,10 +395,33 @@ mod tests {
         let fetch = queue.enqueue(RepositoryAction::Fetch);
         let update = queue.enqueue_update();
 
-        assert_eq!(queue.start_next().map(|command| command.id), Some(fetch));
+        let queued = queue.take_next().expect("fetch queued");
+        assert_eq!(queued.id, fetch);
+        let _ = queue.activate(
+            queued,
+            ApplicationAction::Repository(RepositoryAction::Fetch),
+        );
         queue.acknowledge(fetch, CommandResult::Succeeded).unwrap();
-        let command = queue.start_next().unwrap();
-        assert_eq!(command.id, update);
+        let queued = queue.take_next().unwrap();
+        assert_eq!(queued.id, update);
+        let command = queue.activate(queued, ApplicationAction::Update);
         assert_eq!(command.action, ApplicationAction::Update);
+    }
+
+    #[test]
+    fn failure_discards_every_waiting_command() {
+        let mut queue = CommandQueue::new();
+        let fetch = queue.enqueue(RepositoryAction::Fetch);
+        queue.enqueue(RepositoryAction::Sync);
+        queue.enqueue_update();
+        let queued = queue.take_next().expect("fetch queued");
+        let _ = queue.activate(
+            queued,
+            ApplicationAction::Repository(RepositoryAction::Fetch),
+        );
+
+        queue.acknowledge(fetch, CommandResult::Failed).unwrap();
+
+        assert!(!queue.has_work());
     }
 }

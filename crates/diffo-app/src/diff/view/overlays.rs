@@ -2,14 +2,34 @@ use crate::diff::{
     Alignment, Block, Borders, Clear, Constraint, Frame, Layout, Line, Model, Paragraph, Rect,
     Style, Toast, ToastKind, terminal_safe_text,
 };
+use diffo_core::ApplicationCommandId;
 use diffo_ui::{
     command_progress_style, design, disabled_control_style, icons, mouse_target_style, theme,
 };
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CommandProgressState {
+    Active,
+    Cancelling,
+    Queued,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CommandProgressRow {
+    pub id: ApplicationCommandId,
+    pub label: String,
+    pub state: CommandProgressState,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CommandProgressAction {
+    Cancel(ApplicationCommandId),
+    CancelAll,
+}
+
 pub struct CommandProgress<'a> {
-    pub label: &'a str,
-    pub cancelling: bool,
+    pub rows: &'a [CommandProgressRow],
+    pub hidden: usize,
     pub animation_tick: usize,
 }
 
@@ -18,46 +38,112 @@ pub fn render_command_progress(
     progress: CommandProgress<'_>,
     content_area: Rect,
 ) {
-    let Some(area) = command_progress_area(content_area) else {
+    let Some(area) = command_progress_area(content_area, progress.rows.len()) else {
         return;
     };
-    let label = if progress.cancelling {
-        format!("Cancelling {}…", progress.label.to_lowercase())
-    } else {
-        format!(
-            "{} {}…",
-            icons::SPINNER[(progress.animation_tick / 2) % icons::SPINNER.len()],
-            progress.label
-        )
-    };
-    let label = terminal_safe_text(&label);
     frame.render_widget(Clear, area);
     frame.render_widget(
-        Paragraph::new(label)
-            .style(command_progress_style(progress.animation_tick))
-            .block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .border_style(Style::default().fg(theme::CHROME))
-                    .title(
-                        Line::styled(icons::DISMISS, mouse_target_style())
-                            .alignment(Alignment::Right),
-                    ),
-            ),
+        Block::default()
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(theme::CHROME))
+            .title(" Commands "),
         area,
+    );
+    let inner = area.inner(ratatui::layout::Margin {
+        horizontal: design::BORDER_WIDTH,
+        vertical: design::BORDER_WIDTH,
+    });
+    for (index, row) in progress.rows.iter().enumerate() {
+        let y = inner
+            .y
+            .saturating_add(u16::try_from(index).unwrap_or(u16::MAX));
+        if y >= inner.bottom().saturating_sub(design::SINGLE_LINE_HEIGHT) {
+            break;
+        }
+        let label = match row.state {
+            CommandProgressState::Active => format!(
+                "{} {}…",
+                icons::SPINNER[(progress.animation_tick / 2) % icons::SPINNER.len()],
+                row.label
+            ),
+            CommandProgressState::Cancelling => {
+                format!("Cancelling {}…", row.label.to_lowercase())
+            }
+            CommandProgressState::Queued => format!("{}. {}", index + 1, row.label),
+        };
+        let row_area = Rect::new(
+            inner.x,
+            y,
+            inner.width.saturating_sub(design::INLINE_GAP),
+            design::SINGLE_LINE_HEIGHT,
+        );
+        frame.render_widget(
+            Paragraph::new(terminal_safe_text(&label)).style(match row.state {
+                CommandProgressState::Active | CommandProgressState::Cancelling => {
+                    command_progress_style(progress.animation_tick)
+                }
+                CommandProgressState::Queued => Style::default(),
+            }),
+            row_area,
+        );
+        frame.render_widget(
+            Paragraph::new(Line::styled(icons::DISMISS, mouse_target_style()))
+                .alignment(Alignment::Right),
+            Rect::new(
+                inner.right().saturating_sub(design::SINGLE_LINE_HEIGHT),
+                y,
+                design::SINGLE_LINE_HEIGHT,
+                design::SINGLE_LINE_HEIGHT,
+            ),
+        );
+    }
+    let footer = Rect::new(
+        inner.x,
+        inner.bottom().saturating_sub(design::SINGLE_LINE_HEIGHT),
+        inner.width,
+        design::SINGLE_LINE_HEIGHT,
+    );
+    let hidden = (progress.hidden > 0).then(|| format!("+{} more", progress.hidden));
+    frame.render_widget(Paragraph::new(hidden.unwrap_or_default()), footer);
+    frame.render_widget(
+        Paragraph::new(Line::styled("× Cancel all", mouse_target_style()))
+            .alignment(Alignment::Right),
+        footer,
     );
 }
 
 #[must_use]
-pub fn command_cancel_at_position(area: Rect, column: u16, row: u16) -> bool {
-    command_progress_area(area).is_some_and(|progress| {
-        row == progress.y && column == progress.right().saturating_sub(design::INLINE_GAP)
-    })
+pub fn command_action_at_position(
+    progress: CommandProgress<'_>,
+    area: Rect,
+    column: u16,
+    row: u16,
+) -> Option<CommandProgressAction> {
+    let progress_area = command_progress_area(area, progress.rows.len())?;
+    let inner = progress_area.inner(ratatui::layout::Margin {
+        horizontal: design::BORDER_WIDTH,
+        vertical: design::BORDER_WIDTH,
+    });
+    if !inner.contains((column, row).into()) {
+        return None;
+    }
+    if row == inner.bottom().saturating_sub(design::SINGLE_LINE_HEIGHT) {
+        return (column >= inner.right().saturating_sub(12))
+            .then_some(CommandProgressAction::CancelAll);
+    }
+    let index = usize::from(row.saturating_sub(inner.y));
+    (column == inner.right().saturating_sub(design::SINGLE_LINE_HEIGHT))
+        .then(|| progress.rows.get(index))
+        .flatten()
+        .map(|command| CommandProgressAction::Cancel(command.id))
 }
 
-fn command_progress_area(area: Rect) -> Option<Rect> {
+fn command_progress_area(area: Rect, rows: usize) -> Option<Rect> {
     let width = design::TOAST_MAX_WIDTH.min(area.width.saturating_sub(design::INLINE_GAP));
-    if width < design::TOAST_MIN_WIDTH || area.height < design::TOAST_MIN_HEIGHT {
+    let height = u16::try_from(rows)
+        .unwrap_or(u16::MAX)
+        .saturating_add(design::TOAST_MIN_HEIGHT);
+    if rows == 0 || width < design::TOAST_MIN_WIDTH || area.height < height {
         return None;
     }
     Some(Rect::new(
@@ -66,7 +152,7 @@ fn command_progress_area(area: Rect) -> Option<Rect> {
             .saturating_sub(width),
         area.y.saturating_add(design::BORDER_WIDTH),
         width,
-        design::TOAST_MIN_HEIGHT,
+        height,
     ))
 }
 

@@ -75,13 +75,18 @@ fn change_navigation_backgrounds_follow_target_content() {
 fn command_progress_animates_and_exposes_only_the_cancel_marker() {
     let backend = TestBackend::new(80, 24);
     let mut terminal = Terminal::new(backend).unwrap();
+    let rows = vec![crate::diff::CommandProgressRow {
+        id: diffo_core::ApplicationCommandId(1),
+        label: "Pushing".to_owned(),
+        state: crate::diff::CommandProgressState::Active,
+    }];
     terminal
         .draw(|frame| {
             crate::diff::render_command_progress(
                 frame,
                 crate::diff::CommandProgress {
-                    label: "Pushing",
-                    cancelling: false,
+                    rows: &rows,
+                    hidden: 0,
                     animation_tick: 0,
                 },
                 frame.area(),
@@ -90,18 +95,91 @@ fn command_progress_animates_and_exposes_only_the_cancel_marker() {
         .unwrap();
     insta::assert_debug_snapshot!(buffer_region(
         terminal.backend().buffer(),
-        Rect::new(35, 1, 44, 3),
+        Rect::new(35, 1, 44, 4),
     ));
-    assert!(crate::diff::command_cancel_at_position(
-        Rect::new(0, 0, 80, 24),
-        77,
-        1
-    ));
-    assert!(!crate::diff::command_cancel_at_position(
-        Rect::new(0, 0, 80, 24),
-        76,
-        1
-    ));
+    let progress = crate::diff::CommandProgress {
+        rows: &rows,
+        hidden: 0,
+        animation_tick: 0,
+    };
+    assert_eq!(
+        crate::diff::command_action_at_position(progress, Rect::new(0, 0, 80, 24), 77, 2),
+        Some(crate::diff::CommandProgressAction::Cancel(
+            diffo_core::ApplicationCommandId(1)
+        ))
+    );
+}
+
+#[test]
+fn command_progress_shows_order_overflow_and_every_cancel_target() {
+    let backend = TestBackend::new(80, 24);
+    let mut terminal = Terminal::new(backend).unwrap();
+    let rows = vec![
+        crate::diff::CommandProgressRow {
+            id: diffo_core::ApplicationCommandId(1),
+            label: "Staging".to_owned(),
+            state: crate::diff::CommandProgressState::Active,
+        },
+        crate::diff::CommandProgressRow {
+            id: diffo_core::ApplicationCommandId(2),
+            label: "AI commit".to_owned(),
+            state: crate::diff::CommandProgressState::Queued,
+        },
+        crate::diff::CommandProgressRow {
+            id: diffo_core::ApplicationCommandId(3),
+            label: "Sync".to_owned(),
+            state: crate::diff::CommandProgressState::Queued,
+        },
+    ];
+    terminal
+        .draw(|frame| {
+            crate::diff::render_command_progress(
+                frame,
+                crate::diff::CommandProgress {
+                    rows: &rows,
+                    hidden: 2,
+                    animation_tick: 0,
+                },
+                frame.area(),
+            );
+        })
+        .unwrap();
+    let buffer = terminal.backend().buffer();
+    let line = |row| {
+        (35..79)
+            .map(|column| buffer[(column, row)].symbol())
+            .collect::<Vec<_>>()
+            .concat()
+    };
+    assert!(line(3).contains("2. AI commit"));
+    assert!(line(4).contains("3. Sync"));
+    assert!(line(5).contains("+2 more"));
+    assert!(line(5).contains("Cancel all"));
+
+    let progress = crate::diff::CommandProgress {
+        rows: &rows,
+        hidden: 2,
+        animation_tick: 0,
+    };
+    assert_eq!(
+        crate::diff::command_action_at_position(progress, Rect::new(0, 0, 80, 24), 77, 3),
+        Some(crate::diff::CommandProgressAction::Cancel(
+            diffo_core::ApplicationCommandId(2)
+        ))
+    );
+    assert_eq!(
+        crate::diff::command_action_at_position(
+            crate::diff::CommandProgress {
+                rows: &rows,
+                hidden: 2,
+                animation_tick: 0,
+            },
+            Rect::new(0, 0, 80, 24),
+            70,
+            5,
+        ),
+        Some(crate::diff::CommandProgressAction::CancelAll)
+    );
 }
 
 #[test]

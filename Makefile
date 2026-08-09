@@ -1,4 +1,4 @@
-.PHONY: all check-e2e-binary check-file-lines diffo install diffo-mock e2e e2e-review measure-cpu measure-startup measure-text-readiness
+.PHONY: all check-e2e-binary check-file-lines cloc diffo install diffo-mock e2e e2e-review measure-cpu measure-startup measure-text-readiness
 
 # Run every automated repository check once. Workspace tests include the black-box
 # diffo-e2e package and the diffo integration tests.
@@ -25,6 +25,13 @@ check-file-lines:
 		fi; \
 	done; \
 	test -z "$$failed"; }
+
+# Count tracked files, excluding files that contain or are dedicated to tests.
+cloc:
+	cloc . --vcs=git \
+		--exclude-content='^\s*#\[cfg\(test\)\]' \
+		--fullpath \
+		--not-match-f='(^|/)(diffo-e2e|benches|tests?|[^/]+_tests?)(/|\.rs$$)'
 
 # Build and run the diff viewer using Cargo's debug profile.
 diffo:

@@ -27,6 +27,7 @@ use super::{
 
 mod checkout;
 mod protected_push;
+mod single_command;
 mod sync_target;
 pub(super) use checkout::verify_checkout_target;
 #[cfg(test)]
@@ -86,52 +87,7 @@ impl GitRepositorySource {
             .env("GIT_TERMINAL_PROMPT", "0")
             .env("GIT_EDITOR", "true")
             .stdin(Stdio::null());
-        match action {
-            RepositoryAction::Stage(path) => {
-                command.args(["add", "--"]).arg(path);
-            }
-            RepositoryAction::Unstage(path) => {
-                command.args(["reset", "--"]).arg(path);
-            }
-            RepositoryAction::StageAll => {
-                command.args(["add", "--all"]);
-            }
-            RepositoryAction::UnstageAll => {
-                command.arg("reset");
-            }
-            RepositoryAction::Fetch => {
-                command.arg("fetch");
-            }
-            RepositoryAction::Sync | RepositoryAction::SyncToRemote(_) => {
-                unreachable!("sync is handled before single commands")
-            }
-            RepositoryAction::Commit(message) => {
-                command.args(["commit", "--no-verify", "-m", message]);
-            }
-            RepositoryAction::Checkout(target) => {
-                configure_checkout(self, &mut command, action, target)?;
-            }
-            RepositoryAction::CreateBranch(target) => {
-                configure_create_branch(self, &mut command, action, target)?;
-            }
-            RepositoryAction::DeleteBranch(target) => {
-                configure_delete_branch(self, &mut command, action, target)?;
-            }
-            RepositoryAction::Merge(_) | RepositoryAction::AbortMerge => {
-                unreachable!("merge actions are handled before single commands")
-            }
-            RepositoryAction::Discard(_)
-            | RepositoryAction::DiscardAll(_)
-            | RepositoryAction::Stash { .. }
-            | RepositoryAction::ApplyStash(_)
-            | RepositoryAction::DropStash(_)
-            | RepositoryAction::Amend(_)
-            | RepositoryAction::UndoLastCommit(_)
-            | RepositoryAction::Revert(_)
-            | RepositoryAction::RenameBranch(_) => {
-                unreachable!("everyday actions are handled before single commands")
-            }
-        }
+        single_command::configure(self, &mut command, action)?;
 
         let _bridge = configure_askpass(&mut command, action, context, self)?;
         let outcome = run_cancellable(&mut command, cancellation)
@@ -608,7 +564,7 @@ fn collect_operation_result(
         RepositoryAction::Sync | RepositoryAction::SyncToRemote(_) => {
             unreachable!("sync collects its result directly")
         }
-        RepositoryAction::Commit(_) => {
+        RepositoryAction::Commit(_) | RepositoryAction::GuardedCommit(_) => {
             let hash = source
                 .git(&["rev-parse", "HEAD"])
                 .map_err(|error| {

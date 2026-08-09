@@ -46,6 +46,7 @@ pub enum Message {
     CommitMessageCursorLeft,
     CommitMessageCursorRight,
     ExecuteCommit,
+    ExecuteAiCommit,
     ExecuteSync,
     ExecuteSyncToRemote(String),
     SnapshotLoaded(RepositorySnapshot),
@@ -81,6 +82,7 @@ pub fn update(model: &mut Model, message: Message) -> Option<Effect> {
         | Message::JumpToNextChange
         | Message::FocusCommitInput
         | Message::BlurCommitInput
+        | Message::ExecuteAiCommit
         | Message::RequestDiscardFile(_) => {}
         Message::ToggleDiffView => model.toggle_diff_view(),
         Message::BeginFilePaneResize => model.begin_file_pane_resize(),
@@ -108,10 +110,19 @@ pub fn update(model: &mut Model, message: Message) -> Option<Effect> {
             return Some(Effect::Error("Repository refresh failed".to_owned(), error));
         }
         Message::OperationCompleted(action, result, snapshot) => {
-            if model.complete_operation(&action, &result, *snapshot)
-                && let Some((kind, title)) = state::operation_result_toast(&result)
-            {
-                return Some(Effect::Toast(kind, title));
+            if model.complete_operation(&action, &result, *snapshot) {
+                if let (RepositoryAction::GuardedCommit(target), OperationResult::Commit { hash }) =
+                    (&action, &result)
+                {
+                    let short_hash = hash.get(..7.min(hash.len())).unwrap_or(hash);
+                    return Some(Effect::Toast(
+                        ToastKind::Success,
+                        format!("Committed {short_hash} — {}", target.message),
+                    ));
+                }
+                if let Some((kind, title)) = state::operation_result_toast(&result) {
+                    return Some(Effect::Toast(kind, title));
+                }
             }
         }
         Message::OperationCancelled(action) => {

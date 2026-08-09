@@ -20,8 +20,8 @@ use diffo_ui::{PaneSplit, tool_areas};
 use ratatui::{Frame, layout::Rect};
 
 use crate::explorer::{ExplorerActivity, ExplorerEvent, ExplorerOutcome, ExplorerRequest};
-
 mod activity_bar;
+mod ai_commit;
 mod application_update;
 mod bindings;
 mod checkout_picker;
@@ -47,14 +47,14 @@ use pending_scroll::PendingScroll;
 use presentation::PresentationState;
 use prompt::{ConfirmChoice, PromptModal, prompt_button_style, prompt_layout, render_prompt};
 
-pub use command_queue::{
-    ApplicationAction, ApplicationCommand, CommandQueue, CommandResult, CommandState,
-};
-
 pub use activity_bar::{
     ACTIVITY_BAR_WIDTH, WorkbenchAreas, activity_at_position, render_activity_bar, workbench_areas,
 };
+pub use ai_commit::*;
 pub use application_update::UpdateOutcome;
+pub use command_queue::{
+    ApplicationAction, ApplicationCommand, CommandQueue, CommandResult, CommandState,
+};
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum Activity {
@@ -105,6 +105,7 @@ pub struct Workbench {
     toast_deadlines: HashMap<u64, Instant>,
     pending_errors: VecDeque<ErrorDialog>,
     commands: CommandQueue,
+    deferred_ai_commit: ai_commit::DeferredAiCommit,
     repository_generation: u64,
     command_progress: CommandProgressState,
     command_animation_tick: usize,
@@ -217,6 +218,7 @@ impl Workbench {
             toast_deadlines: HashMap::new(),
             pending_errors: VecDeque::new(),
             commands: CommandQueue::new(),
+            deferred_ai_commit: ai_commit::DeferredAiCommit::default(),
             repository_generation: 0,
             command_progress: CommandProgressState::Hidden,
             command_animation_tick: 0,
@@ -305,6 +307,10 @@ impl Workbench {
     #[must_use]
     pub fn active_command_id(&self) -> Option<ApplicationCommandId> {
         self.commands.active().map(|command| command.id)
+    }
+
+    pub fn cancel_application_command(&mut self, id: ApplicationCommandId) -> bool {
+        self.commands.cancel(id)
     }
 
     #[must_use]
@@ -554,7 +560,14 @@ impl Workbench {
     }
 
     fn update_diff(&mut self, message: Message) -> Option<WorkbenchEffect> {
+        if message == Message::ExecuteAiCommit {
+            self.request_ai_commit();
+            return None;
+        }
         if message == Message::FocusCommitInput {
+            if self.diff.model.ai_commit_pending() {
+                return None;
+            }
             self.set_modal(Modal::CommitEditor);
             return None;
         }

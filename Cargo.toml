@@ -1,6 +1,8 @@
 [workspace]
 members = [
+    "crates/codex-mock",
     "crates/diffo",
+    "crates/diffo-ai-config",
     "crates/diffo-app",
     "crates/diffo-core",
     "crates/diffo-diff",
@@ -26,6 +28,7 @@ crossterm = "0.29"
 criterion = "0.7"
 diffo-core = { path = "crates/diffo-core" }
 diffo-diff = { path = "crates/diffo-diff" }
+diffo-ai-config = { path = "crates/diffo-ai-config" }
 diffo-app = { path = "crates/diffo-app" }
 diffo-git = { path = "crates/diffo-git" }
 diffo-highlight = { path = "crates/diffo-highlight" }

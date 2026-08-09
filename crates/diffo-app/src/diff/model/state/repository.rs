@@ -43,9 +43,13 @@ impl Model {
     }
 
     pub(super) fn finish_pending_operation(&mut self) {
-        if matches!(self.pending_operation, Some(RepositoryAction::Commit(_))) {
+        if matches!(
+            self.pending_operation,
+            Some(RepositoryAction::Commit(_) | RepositoryAction::GuardedCommit(_))
+        ) {
             self.commit_message.clear();
             self.commit_message_cursor = 0;
+            self.ai_commit_pending = false;
         }
         self.pending_operation = None;
     }
@@ -96,6 +100,9 @@ impl Model {
     pub fn cancel_operation(&mut self, action: &RepositoryAction) {
         if self.pending_operation.as_ref() == Some(action) {
             self.pending_operation = None;
+            if matches!(action, RepositoryAction::GuardedCommit(_)) {
+                self.ai_commit_pending = false;
+            }
         }
         if self
             .pending_file_action
@@ -117,6 +124,9 @@ impl Model {
             .as_ref()
             .is_some_and(|pending| pending.matches_repository_action(&failure.action));
         self.pending_operation = None;
+        if matches!(failure.action, RepositoryAction::GuardedCommit(_)) {
+            self.ai_commit_pending = false;
+        }
         if pending_file_action_failed {
             self.pending_file_action = None;
         }
@@ -165,6 +175,10 @@ pub(super) fn same_repository_operation(left: &RepositoryAction, right: &Reposit
                 RepositoryAction::Sync | RepositoryAction::SyncToRemote(_)
             )
             | (RepositoryAction::Commit(_), RepositoryAction::Commit(_))
+            | (
+                RepositoryAction::GuardedCommit(_),
+                RepositoryAction::GuardedCommit(_)
+            )
             | (RepositoryAction::Stage(_), RepositoryAction::Stage(_))
             | (RepositoryAction::Unstage(_), RepositoryAction::Unstage(_))
             | (RepositoryAction::StageAll, RepositoryAction::StageAll)

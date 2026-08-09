@@ -11,10 +11,10 @@ use std::{
 
 use super::status::parse_status;
 use diffo_core::{
-    BranchKind, CancellationHandle, ChangeKind, CheckoutTarget, FailureKind, GitPrompt, HeadState,
-    OperationOutcome, OperationResult, ProgressHandler, PromptAnswer, PromptHandler, PromptId,
-    Repository, RepositoryAction, RepositoryOperationContext, RepositorySource, SyncPlan,
-    SyncProgress,
+    BranchKind, CancellationHandle, ChangeKind, CheckoutTarget, FailureKind, GitPrompt,
+    GuardedCommitTarget, HeadState, OperationOutcome, OperationResult, ProgressHandler,
+    PromptAnswer, PromptHandler, PromptId, Repository, RepositoryAction,
+    RepositoryOperationContext, RepositorySource, SyncPlan, SyncProgress,
 };
 
 mod checkout;

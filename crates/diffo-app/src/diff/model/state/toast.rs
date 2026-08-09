@@ -94,7 +94,7 @@ pub(crate) fn operation_failure_error(failure: &OperationFailure) -> (String, St
         RepositoryAction::Unstage(_) | RepositoryAction::UnstageAll => "Unstage",
         RepositoryAction::Fetch => "Fetch",
         RepositoryAction::Sync | RepositoryAction::SyncToRemote(_) => "Sync",
-        RepositoryAction::Commit(_) => "Commit",
+        RepositoryAction::Commit(_) | RepositoryAction::GuardedCommit(_) => "Commit",
         RepositoryAction::Checkout(_) => "Checkout",
         RepositoryAction::CreateBranch(_) => "Create branch",
         RepositoryAction::DeleteBranch(_) => "Delete branch",
@@ -110,7 +110,12 @@ pub(crate) fn operation_failure_error(failure: &OperationFailure) -> (String, St
         RepositoryAction::RenameBranch(_) => "Rename branch",
     };
     let title = match failure.kind {
-        FailureKind::HookRejected if matches!(failure.action, RepositoryAction::Commit(_)) => {
+        FailureKind::HookRejected
+            if matches!(
+                failure.action,
+                RepositoryAction::Commit(_) | RepositoryAction::GuardedCommit(_)
+            ) =>
+        {
             "Commit rejected".to_owned()
         }
         FailureKind::PushRejected | FailureKind::HookRejected => "Push rejected".to_owned(),

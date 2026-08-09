@@ -223,6 +223,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c8d4a3bb8b1e0c1050499d1815f5ab16d04f0959b233085fb31653fbfc9d98f9"
 
 [[package]]
+name = "codex-mock"
+version = "0.1.0"
+dependencies = [
+ "diffo-ai-config",
+]
+
+[[package]]
 name = "compact_str"
 version = "0.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -464,6 +471,7 @@ dependencies = [
  "anyhow",
  "base64",
  "crossterm 0.29.0",
+ "diffo-ai-config",
  "diffo-app",
  "diffo-core",
  "diffo-e2e",
@@ -480,11 +488,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "diffo-ai-config"
+version = "0.1.0"
+
+[[package]]
 name = "diffo-app"
 version = "0.1.0"
 dependencies = [
  "anyhow",
  "crossterm 0.29.0",
+ "diffo-ai-config",
  "diffo-core",
  "diffo-diff",
  "diffo-highlight",

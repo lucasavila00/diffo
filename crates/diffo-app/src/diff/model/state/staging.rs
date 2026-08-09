@@ -13,7 +13,7 @@ impl Model {
 
     #[must_use]
     pub fn toggle_stage_selected(&mut self) -> Option<RepositoryAction> {
-        if self.pending_file_action.is_some() {
+        if self.ai_commit_pending || self.pending_file_action.is_some() {
             return None;
         }
         let selected = self.selected.clone()?;
@@ -55,6 +55,9 @@ impl Model {
 
     #[must_use]
     pub fn toggle_stage_all(&self) -> Option<RepositoryAction> {
+        if self.ai_commit_pending {
+            return None;
+        }
         if self
             .snapshot
             .files
@@ -73,6 +76,9 @@ impl Model {
 
     #[must_use]
     pub fn stage_all(&self) -> Option<RepositoryAction> {
+        if self.ai_commit_pending {
+            return None;
+        }
         self.snapshot
             .files
             .iter()
@@ -82,6 +88,9 @@ impl Model {
 
     #[must_use]
     pub fn unstage_all(&self) -> Option<RepositoryAction> {
+        if self.ai_commit_pending {
+            return None;
+        }
         self.snapshot
             .files
             .iter()
@@ -91,6 +100,9 @@ impl Model {
 
     #[must_use]
     pub fn stage_file(&self, path: PathBuf) -> Option<RepositoryAction> {
+        if self.ai_commit_pending {
+            return None;
+        }
         self.snapshot
             .files
             .iter()
@@ -103,6 +115,9 @@ impl Model {
 
     #[must_use]
     pub fn unstage_file(&self, path: PathBuf) -> Option<RepositoryAction> {
+        if self.ai_commit_pending {
+            return None;
+        }
         self.snapshot
             .files
             .iter()

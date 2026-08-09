@@ -82,8 +82,24 @@ fn render_text(review: &ReviewActivity) -> String {
     render(review).0
 }
 
+fn render_empty_diff_text(review: &ReviewActivity) -> String {
+    let mut terminal = Terminal::new(TestBackend::new(60, 30)).unwrap();
+    terminal
+        .draw(|frame| view::render_empty_diff(frame, frame.area(), review))
+        .unwrap();
+    let buffer = terminal.backend().buffer();
+    let mut text = String::new();
+    for y in 0..buffer.area.height {
+        for x in 0..buffer.area.width {
+            text.push_str(buffer[(x, y)].symbol());
+        }
+        text.push('\n');
+    }
+    text
+}
+
 #[test]
-fn generation_is_explicit_and_installs_only_known_hunks() {
+fn generation_is_explicit_and_installs_only_known_targets() {
     let mut review = ReviewActivity::new(snapshot("new"), CodexAvailability::Available);
     assert!(review.active_request.is_none());
 
@@ -94,8 +110,7 @@ fn generation_is_explicit_and_installs_only_known_hunks() {
     };
     let id = ApplicationCommandId(1);
     review.generation_queued(id, request.clone());
-    review.generation_started(id, CancellationHandle::default());
-    let first_hunk_id = request.first_hunk_id().to_owned();
+    let first_target_id = request.first_target_id().to_owned();
     let result = request
         .validate_review(
             vec!["Overview".to_owned()],
@@ -103,7 +118,7 @@ fn generation_is_explicit_and_installs_only_known_hunks() {
                 title: "Inspect behavior".to_owned(),
                 category: AttentionCategory::Behavior,
                 reason: "The behavior changes here.".to_owned(),
-                primary_hunk_id: first_hunk_id.clone(),
+                target_id: first_target_id,
             }],
         )
         .unwrap();
@@ -111,171 +126,17 @@ fn generation_is_explicit_and_installs_only_known_hunks() {
     assert!(review.accept(ReviewCodexTaskResult {
         id,
         outcome: ReviewCodexOutcome::Generated(result),
-        complete: true,
     }));
     assert!(review.ready().is_some());
-    assert_eq!(
-        review.active_hunk_id.as_deref(),
-        Some(first_hunk_id.as_str())
-    );
+    assert_eq!(review.selected_stop, 0);
+    assert!(review.pending_recenter);
 }
 
 #[test]
-fn partial_results_open_immediately_and_merge_while_generation_continues() {
-    let initial = two_file_snapshot();
-    let request = ReviewRequest::from_snapshot(&initial).unwrap();
-    let ids = request.hunk_ids();
-    let id = ApplicationCommandId(1);
-    let mut review = ReviewActivity::new(initial, CodexAvailability::Available);
-    review.generation_queued(id, request.clone());
-    review.generation_started(id, CancellationHandle::default());
-    assert!(review.generation_progress(
-        id,
-        ReviewProgress {
-            batch: 1,
-            batches: 2,
-            change_start: 1,
-            change_end: 1,
-            changes: 2,
-            files: vec!["a.rs".into()],
-        },
-    ));
-
-    let first = request
-        .validate_review(
-            vec!["First part is ready.".to_owned()],
-            vec![ReviewStop {
-                title: "Review the first file".to_owned(),
-                category: AttentionCategory::Behavior,
-                reason: "This is available before the remaining work finishes.".to_owned(),
-                primary_hunk_id: ids[0].clone(),
-            }],
-        )
-        .unwrap();
-    assert!(review.accept(ReviewCodexTaskResult {
-        id,
-        outcome: ReviewCodexOutcome::Generated(first),
-        complete: false,
-    }));
-    assert!(review.generation_progress(
-        id,
-        ReviewProgress {
-            batch: 2,
-            batches: 2,
-            change_start: 2,
-            change_end: 2,
-            changes: 2,
-            files: vec!["b.rs".into()],
-        },
-    ));
-
-    assert!(review.active_request.is_some());
-    assert_eq!(review.active_hunk_id.as_deref(), Some(ids[0].as_str()));
-    let text = render_text(&review);
-    assert!(text.contains("Reviewing change 2 of 2 · part 2 of 2"));
-    assert!(text.contains("Files now: b.rs"));
-    assert!(text.contains("1 review step ready"));
-    assert!(!text.contains("End of guided review"));
-    assert!(
-        review
-            .handle_event(&key(' '), Rect::new(0, 0, 100, 30), PaneSplit::default())
-            .is_none()
-    );
-
-    let second = request
-        .validate_review(
-            vec!["Second part is ready.".to_owned()],
-            vec![ReviewStop {
-                title: "Review the second file".to_owned(),
-                category: AttentionCategory::Correctness,
-                reason: "This completes the suggested review path.".to_owned(),
-                primary_hunk_id: ids[1].clone(),
-            }],
-        )
-        .unwrap();
-    assert!(review.accept(ReviewCodexTaskResult {
-        id,
-        outcome: ReviewCodexOutcome::Generated(second),
-        complete: true,
-    }));
-
-    assert!(review.active_request.is_none());
-    assert_eq!(review.ready().unwrap().result.stops.len(), 2);
-    let _ = review.handle_event(&key('n'), Rect::new(0, 0, 100, 30), PaneSplit::default());
-    assert_eq!(review.active_hunk_id.as_deref(), Some(ids[1].as_str()));
-}
-
-#[test]
-fn cancellation_discards_late_partial_results() {
+fn staging_from_review_keeps_the_path_and_rebinds_the_target() {
     let initial = snapshot("new");
     let request = ReviewRequest::from_snapshot(&initial).unwrap();
-    let id = ApplicationCommandId(1);
-    let cancellation = CancellationHandle::default();
-    let result = request
-        .validate_review(
-            vec!["Late overview".to_owned()],
-            vec![ReviewStop {
-                title: "Late step".to_owned(),
-                category: AttentionCategory::Behavior,
-                reason: "This arrived after cancellation.".to_owned(),
-                primary_hunk_id: request.first_hunk_id().to_owned(),
-            }],
-        )
-        .unwrap();
-    let mut review = ReviewActivity::new(initial, CodexAvailability::Available);
-    review.generation_queued(id, request);
-    review.generation_started(id, cancellation.clone());
-    cancellation.cancel();
-
-    assert!(review.accept(ReviewCodexTaskResult {
-        id,
-        outcome: ReviewCodexOutcome::Generated(result),
-        complete: true,
-    }));
-    assert!(review.cached.is_none());
-    assert!(review.active_request.is_none());
-}
-
-#[test]
-fn a_later_batch_failure_does_not_present_a_partial_review_as_complete() {
-    let initial = snapshot("new");
-    let request = ReviewRequest::from_snapshot(&initial).unwrap();
-    let id = ApplicationCommandId(1);
-    let partial = request
-        .validate_review(
-            vec!["Partial overview".to_owned()],
-            vec![ReviewStop {
-                title: "Partial step".to_owned(),
-                category: AttentionCategory::Behavior,
-                reason: "Only part of the review completed.".to_owned(),
-                primary_hunk_id: request.first_hunk_id().to_owned(),
-            }],
-        )
-        .unwrap();
-    let mut review = ReviewActivity::new(initial, CodexAvailability::Available);
-    review.generation_queued(id, request);
-    review.generation_started(id, CancellationHandle::default());
-    assert!(review.accept(ReviewCodexTaskResult {
-        id,
-        outcome: ReviewCodexOutcome::Generated(partial),
-        complete: false,
-    }));
-
-    assert!(review.accept(ReviewCodexTaskResult {
-        id,
-        outcome: ReviewCodexOutcome::Failed("Codex crashed".to_owned()),
-        complete: true,
-    }));
-    assert!(review.cached.is_none());
-    assert!(render_text(&review).contains("Codex crashed"));
-    assert!(render_text(&review).contains("Retry review"));
-}
-
-#[test]
-fn staging_from_review_keeps_the_map_and_rebinds_the_hunk() {
-    let initial = snapshot("new");
-    let request = ReviewRequest::from_snapshot(&initial).unwrap();
-    let first_hunk_id = request.first_hunk_id().to_owned();
+    let first_target_id = request.first_target_id().to_owned();
     let result = request
         .validate_review(
             vec!["Overview".to_owned()],
@@ -283,24 +144,23 @@ fn staging_from_review_keeps_the_map_and_rebinds_the_hunk() {
                 title: "Inspect behavior".to_owned(),
                 category: AttentionCategory::Behavior,
                 reason: "The behavior changes here.".to_owned(),
-                primary_hunk_id: first_hunk_id.clone(),
+                target_id: first_target_id,
             }],
         )
         .unwrap();
     let mut review = ReviewActivity::new(initial.clone(), CodexAvailability::Available);
-    review.cached = Some(CachedReview { request, result });
-    review.active_hunk_id = Some(first_hunk_id.clone());
+    review.cached = Some(CachedReview {
+        request,
+        result,
+        stale: false,
+    });
+    review.open_selected_stop();
 
     let event = Event::Key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::NONE));
     assert!(matches!(
         review.handle_event(&event, Rect::new(0, 0, 100, 30), PaneSplit::default()),
         Some(ReviewEvent::ToggleStage(file)) if file.area == crate::diff::ChangeArea::Unstaged
     ));
-    assert_eq!(
-        review.active_hunk_id.as_deref(),
-        Some(first_hunk_id.as_str())
-    );
-
     let mut staged = initial;
     staged.files[0].staged = staged.files[0].unstaged.take();
     review.repository_changed(staged);
@@ -316,7 +176,7 @@ fn staging_from_review_keeps_the_map_and_rebinds_the_hunk() {
 fn successful_staging_advances_to_the_next_review_step() {
     let initial = two_file_snapshot();
     let request = ReviewRequest::from_snapshot(&initial).unwrap();
-    let ids = request.hunk_ids();
+    let ids = request.target_ids();
     let result = request
         .validate_review(
             vec!["Overview".to_owned()],
@@ -326,21 +186,28 @@ fn successful_staging_advances_to_the_next_review_step() {
                     title: format!("Stop {index}"),
                     category: AttentionCategory::Behavior,
                     reason: "Review this file.".to_owned(),
-                    primary_hunk_id: id.clone(),
+                    target_id: id.clone(),
                 })
                 .collect(),
         )
         .unwrap();
     let mut review = ReviewActivity::new(initial.clone(), CodexAvailability::Available);
-    review.cached = Some(CachedReview { request, result });
-    review.active_hunk_id = Some(ids[0].clone());
+    review.cached = Some(CachedReview {
+        request,
+        result,
+        stale: false,
+    });
+    review.open_selected_stop();
 
     let mut staged = initial;
     staged.files[0].staged = staged.files[0].unstaged.take();
     review.repository_changed(staged);
 
     assert_eq!(review.selected_stop, 1);
-    assert_eq!(review.active_hunk_id.as_deref(), Some(ids[1].as_str()));
+    assert_eq!(
+        review.selected_target().map(|target| target.id.as_str()),
+        Some(ids[1].as_str())
+    );
     assert_eq!(
         review.active_file().map(|file| file.area),
         Some(crate::diff::ChangeArea::Unstaged)
@@ -362,7 +229,7 @@ fn staging_advances_to_the_next_step_in_the_same_now_staged_file() {
         ..RepositorySnapshot::default()
     };
     let request = ReviewRequest::from_snapshot(&initial).unwrap();
-    let ids = request.hunk_ids();
+    let ids = request.target_ids();
     let result = request
         .validate_review(
             vec!["Overview".to_owned()],
@@ -372,21 +239,28 @@ fn staging_advances_to_the_next_step_in_the_same_now_staged_file() {
                     title: format!("Step {index}"),
                     category: AttentionCategory::Behavior,
                     reason: "Review this change.".to_owned(),
-                    primary_hunk_id: id.clone(),
+                    target_id: id.clone(),
                 })
                 .collect(),
         )
         .unwrap();
     let mut review = ReviewActivity::new(initial.clone(), CodexAvailability::Available);
-    review.cached = Some(CachedReview { request, result });
-    review.active_hunk_id = Some(ids[0].clone());
+    review.cached = Some(CachedReview {
+        request,
+        result,
+        stale: false,
+    });
+    review.open_selected_stop();
 
     let mut staged = initial;
     staged.files[0].staged = staged.files[0].unstaged.take();
     review.repository_changed(staged);
 
     assert_eq!(review.selected_stop, 1);
-    assert_eq!(review.active_hunk_id.as_deref(), Some(ids[1].as_str()));
+    assert_eq!(
+        review.selected_target().map(|target| target.id.as_str()),
+        Some(ids[1].as_str())
+    );
     assert_eq!(
         review.active_file().map(|file| file.area),
         Some(crate::diff::ChangeArea::Staged)
@@ -397,7 +271,7 @@ fn staging_advances_to_the_next_step_in_the_same_now_staged_file() {
 fn keyboard_selection_immediately_opens_the_selected_step() {
     let initial = two_file_snapshot();
     let request = ReviewRequest::from_snapshot(&initial).unwrap();
-    let ids = request.hunk_ids();
+    let ids = request.target_ids();
     let result = request
         .validate_review(
             vec!["Overview".to_owned()],
@@ -407,13 +281,17 @@ fn keyboard_selection_immediately_opens_the_selected_step() {
                     title: format!("Step {index}"),
                     category: AttentionCategory::Behavior,
                     reason: "Review this change.".to_owned(),
-                    primary_hunk_id: id.clone(),
+                    target_id: id.clone(),
                 })
                 .collect(),
         )
         .unwrap();
     let mut review = ReviewActivity::new(initial, CodexAvailability::Available);
-    review.cached = Some(CachedReview { request, result });
+    review.cached = Some(CachedReview {
+        request,
+        result,
+        stale: false,
+    });
     review.open_selected_stop();
     let before = render_text(&review);
 
@@ -422,40 +300,47 @@ fn keyboard_selection_immediately_opens_the_selected_step() {
         Some(ReviewEvent::Redraw)
     ));
     assert_eq!(review.selected_stop, 1);
-    assert_eq!(review.active_hunk_id.as_deref(), Some(ids[1].as_str()));
+    assert_eq!(
+        review.selected_target().map(|target| target.id.as_str()),
+        Some(ids[1].as_str())
+    );
     let after = render_text(&review);
     let row = |text: &str, needle: &str| {
         text.lines()
             .position(|line| line.contains(needle))
             .unwrap_or(usize::MAX)
     };
-    for label in [
-        "Review order · one change per step",
-        "1. Step 0",
-        "2. Step 1",
-    ] {
+    for label in ["Review path", "1. Step 0", "2. Step 1"] {
         assert_eq!(row(&before, label), row(&after, label), "{label} moved");
     }
-    assert!(row(&after, "Review order") < row(&after, "Selected change 2 of 2"));
+    assert!(row(&after, "Review path") < row(&after, "Step 2/2 · one change"));
 
     let _ = review.handle_event(&key('p'), Rect::new(0, 0, 100, 30), PaneSplit::default());
     assert_eq!(review.selected_stop, 0);
-    assert_eq!(review.active_hunk_id.as_deref(), Some(ids[0].as_str()));
+    assert_eq!(
+        review.selected_target().map(|target| target.id.as_str()),
+        Some(ids[0].as_str())
+    );
 }
 
 #[test]
 fn initial_screen_teaches_the_complete_workflow_without_internal_terms() {
     let review = ReviewActivity::new(snapshot("new"), CodexAvailability::Available);
-    let text = render_text(&review);
+    let text = format!(
+        "{}{}",
+        render_text(&review),
+        render_empty_diff_text(&review)
+    );
 
-    assert!(text.contains("[ Generate review (Enter) ]"));
+    assert!(text.contains("[ Generate (Enter) ]"));
     assert!(text.contains("How it works"));
-    assert!(text.contains("Next / previous"));
-    assert!(text.contains("Stage / unstage"));
-    assert!(text.contains("the whole file"));
-    assert!(text.contains("Commit staged work"));
+    assert!(text.contains("n / p"));
+    assert!(text.contains("click"));
+    assert!(text.contains("stage or unstage"));
+    assert!(text.contains("whole file"));
+    assert!(text.contains("commit staged work"));
     assert!(text.contains("changes as they are now"));
-    assert!(text.contains("out-of-date label"));
+    assert!(text.contains("marks it out of date"));
     let lower = text.to_lowercase();
     assert!(!lower.contains("hunk"));
     assert!(!lower.contains("review stop"));
@@ -471,7 +356,7 @@ fn only_the_visible_generate_button_starts_a_review() {
 
     assert_eq!(
         button.width,
-        u16::try_from("[ Generate review (Enter) ]".len()).unwrap()
+        u16::try_from("[ Generate (Enter) ]".len()).unwrap()
     );
     assert!(
         review
@@ -496,7 +381,7 @@ fn only_the_visible_generate_button_starts_a_review() {
 fn ready_screen_connects_the_review_step_to_staging_and_commit_actions() {
     let initial = two_file_snapshot();
     let request = ReviewRequest::from_snapshot(&initial).unwrap();
-    let ids = request.hunk_ids();
+    let ids = request.target_ids();
     let result = request
         .validate_review(
             vec!["Two files change the reviewed behavior.".to_owned()],
@@ -506,22 +391,25 @@ fn ready_screen_connects_the_review_step_to_staging_and_commit_actions() {
                     title: format!("Inspect change {}", index + 1),
                     category: AttentionCategory::Behavior,
                     reason: "This change affects visible behavior.".to_owned(),
-                    primary_hunk_id: id.clone(),
+                    target_id: id.clone(),
                 })
                 .collect(),
         )
         .unwrap();
     let mut review = ReviewActivity::new(initial, CodexAvailability::Available);
-    review.cached = Some(CachedReview { request, result });
+    review.cached = Some(CachedReview {
+        request,
+        result,
+        stale: false,
+    });
     review.open_selected_stop();
 
     let text = render_text(&review);
     assert!(text.contains("Summary"));
-    assert!(text.contains("Review order · one change per step"));
-    assert!(text.contains("Selected change 1 of 2"));
-    assert!(text.contains("File · a.rs"));
-    assert!(text.contains("Focus · one change · behavior"));
-    assert!(text.contains("File state · Unstaged"));
+    assert!(text.contains("Review path"));
+    assert!(text.contains("Step 1/2 · one change"));
+    assert!(text.contains("in a.rs"));
+    assert!(text.contains("behavior · Unstaged"));
     assert!(text.contains("Why this matters"));
     assert!(text.contains("Stage file"));
     assert!(text.contains("Commit staged work"));
@@ -541,7 +429,6 @@ fn clean_generating_stale_failed_and_unavailable_states_explain_the_next_action(
     generating.generation_queued(ApplicationCommandId(1), request);
     assert!(render_text(&generating).contains("Building your review"));
     assert!(render_text(&generating).contains("Preparing changes and starting Codex"));
-    assert!(render_text(&generating).contains("0 review steps ready"));
     assert!(render_text(&generating).contains("Esc  Cancel review"));
     assert!(
         generating
@@ -566,24 +453,32 @@ fn clean_generating_stale_failed_and_unavailable_states_explain_the_next_action(
                 title: "Inspect behavior".to_owned(),
                 category: AttentionCategory::Behavior,
                 reason: "The behavior changes here.".to_owned(),
-                primary_hunk_id: request.first_hunk_id().to_owned(),
+                target_id: request.first_target_id().to_owned(),
             }],
         )
         .unwrap();
     let mut stale = ReviewActivity::new(initial, CodexAvailability::Available);
-    stale.cached = Some(CachedReview { request, result });
+    stale.cached = Some(CachedReview {
+        request,
+        result,
+        stale: false,
+    });
     stale.repository_changed(snapshot("newer"));
-    assert!(render_text(&stale).contains("Regenerate review"));
+    assert!(render_text(&stale).contains("Regenerate"));
 
     let mut failed = ReviewActivity::new(snapshot("new"), CodexAvailability::Available);
     failed.failure = Some("Codex could not build this review.".to_owned());
-    assert!(render_text(&failed).contains("Retry review"));
+    assert!(render_text(&failed).contains("Retry"));
 
     let unavailable = ReviewActivity::new(
         snapshot("new"),
         CodexAvailability::Unavailable("Install Codex, then restart Diffo.".to_owned()),
     );
-    let text = render_text(&unavailable);
+    let text = format!(
+        "{}{}",
+        render_text(&unavailable),
+        render_empty_diff_text(&unavailable)
+    );
     assert!(text.contains("AI Review is unavailable"));
     assert!(text.contains("restart Diffo"));
 }

@@ -13,6 +13,10 @@ use crate::diff::ChangeArea;
 
 use super::{CachedReview, CodexAvailability, ReviewActivity};
 
+const GENERATE_LABEL: &str = "[ Generate (Enter) ]";
+const RETRY_LABEL: &str = "[ Retry (Enter) ]";
+const REGENERATE_LABEL: &str = "[ Regenerate (Enter) ]";
+
 pub(super) struct ReviewHitAreas {
     pub stop_areas: Vec<(Rect, usize)>,
     pub generate_area: Rect,
@@ -51,7 +55,7 @@ pub(super) fn render_review(
         frame.render_widget(Paragraph::new(footer), footer_area);
     }
     if review.stale() && review.active_request.is_none() && footer_area.height > 0 {
-        let label = "[ Regenerate review (Enter) ]";
+        let label = REGENERATE_LABEL;
         generate_area = Rect::new(
             footer_area.x,
             footer_area.bottom().saturating_sub(1),
@@ -71,13 +75,16 @@ pub(super) fn render_review(
 fn render_state(frame: &mut Frame, area: Rect, review: &ReviewActivity) -> Rect {
     let mut lines = Vec::new();
     let mut action = None;
-    if let CodexAvailability::Unavailable(reason) = &review.availability {
+    if matches!(review.availability, CodexAvailability::Unavailable(_)) {
         lines.push(Line::styled(
-            "AI Review is unavailable.",
+            "AI Review unavailable",
             disabled_control_style(),
         ));
         lines.push(Line::raw(""));
-        lines.push(Line::styled(reason.clone(), disabled_control_style()));
+        lines.push(Line::styled(
+            "See the setup instructions on the right.",
+            disabled_control_style(),
+        ));
     } else if let Some(active) = &review.active_request {
         let (label, style) = if active.cancelling {
             ("Cancelling review…", Style::default().fg(theme::WARNING))
@@ -98,8 +105,6 @@ fn render_state(frame: &mut Frame, area: Rect, review: &ReviewActivity) -> Rect 
         if let Some(progress) = &active.progress {
             lines.push(Line::raw(progress_files(progress)));
         }
-        lines.push(Line::raw("0 review steps ready"));
-        lines.push(Line::raw("Results appear here as each part finishes."));
     } else if !review.has_changes() {
         lines.push(Line::styled(
             "Nothing to review.",
@@ -108,14 +113,14 @@ fn render_state(frame: &mut Frame, area: Rect, review: &ReviewActivity) -> Rect 
         lines.push(Line::raw(""));
         lines.push(Line::raw("Make a change, then come back."));
     } else {
-        lines.push(Line::raw("Review your changes in a suggested order."));
+        lines.push(Line::styled(
+            "Review changes with Codex",
+            Style::default().add_modifier(Modifier::BOLD),
+        ));
         lines.push(Line::raw(""));
         lines.push(Line::raw(
-            "Codex summarizes the work, then opens one change in one file at a time.",
+            "Build a suggested path through the staged and unstaged changes as they are now.",
         ));
-        lines.push(Line::raw("Review covers the changes as they are now."));
-        lines.push(Line::raw("Later edits keep it visible."));
-        lines.push(Line::raw("An out-of-date label tells you to refresh it."));
         lines.push(Line::raw(""));
         if let Some(error) = &review.failure {
             lines.push(Line::styled(
@@ -123,9 +128,9 @@ fn render_state(frame: &mut Frame, area: Rect, review: &ReviewActivity) -> Rect 
                 Style::default().fg(theme::DANGER),
             ));
             lines.push(Line::raw(""));
-            action = Some("[ Retry review (Enter) ]");
+            action = Some(RETRY_LABEL);
         } else {
-            action = Some("[ Generate review (Enter) ]");
+            action = Some(GENERATE_LABEL);
         }
     }
     frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), area);
@@ -157,7 +162,7 @@ fn render_ready(
     let Some(stop) = cached.result.stops.get(review.selected_stop) else {
         return Vec::new();
     };
-    let Some(target) = cached.request.hunk(&stop.primary_hunk_id) else {
+    let Some(target) = cached.request.target(&stop.target_id) else {
         return Vec::new();
     };
     let mut y = area.y;
@@ -167,18 +172,13 @@ fn render_ready(
             area,
             &mut y,
             Line::styled(
-                "Review out of date",
+                "Out of date",
                 Style::default()
                     .fg(theme::WARNING)
                     .add_modifier(Modifier::BOLD),
             ),
         );
-        render_row(
-            frame,
-            area,
-            &mut y,
-            Line::raw("The code changed after this review. Keep reading or regenerate."),
-        );
+        render_row(frame, area, &mut y, Line::raw("Read it or regenerate."));
         if let Some(error) = &review.failure {
             render_row(
                 frame,
@@ -218,14 +218,11 @@ fn render_ready(
         frame,
         area,
         &mut y,
-        Line::styled(
-            "Review order · one change per step",
-            Style::default().add_modifier(Modifier::BOLD),
-        ),
+        Line::styled("Review path", Style::default().add_modifier(Modifier::BOLD)),
     );
     let remaining = area.bottom().saturating_sub(y);
     let capacity =
-        usize::from(remaining.saturating_sub(11).max(u16::from(remaining > 0))).min(count);
+        usize::from(remaining.saturating_sub(10).max(u16::from(remaining > 0))).min(count);
     let start = review
         .selected_stop
         .saturating_sub(capacity.saturating_sub(1) / 2)
@@ -260,8 +257,7 @@ fn render_ready(
         .collect();
     y = y.saturating_add(1).min(area.bottom());
 
-    let final_step = review.active_request.is_none() && review.selected_stop + 1 == count;
-    let progress = format!("Selected change {} of {count}", review.selected_stop + 1);
+    let progress = format!("Step {}/{} · one change", review.selected_stop + 1, count);
     render_row(
         frame,
         area,
@@ -287,7 +283,7 @@ fn render_ready(
         &mut y,
         Line::styled(
             format!(
-                "File · {}",
+                "in {}",
                 terminal_safe_text(&target.file.path.to_string_lossy())
             ),
             Style::default().fg(theme::CHROME),
@@ -298,26 +294,9 @@ fn render_ready(
         area,
         &mut y,
         Line::styled(
-            format!("Focus · one change · {}", stop.category.label()),
+            format!("{} · {state}", stop.category.label()),
             Style::default().fg(theme::CHROME),
         ),
-    );
-    render_row(
-        frame,
-        area,
-        &mut y,
-        Line::styled(
-            format!("File state · {state}"),
-            Style::default().fg(theme::CHROME),
-        ),
-    );
-    let completion = final_step
-        .then(|| Line::styled("End of guided review", Style::default().fg(theme::SUCCESS)));
-    render_row(
-        frame,
-        area,
-        &mut y,
-        completion.unwrap_or_else(|| Line::raw("")),
     );
     y = y.saturating_add(1).min(area.bottom());
     render_row(
@@ -329,7 +308,7 @@ fn render_ready(
             Style::default().add_modifier(Modifier::BOLD),
         ),
     );
-    let reason_height = 3.min(area.bottom().saturating_sub(y));
+    let reason_height = area.bottom().saturating_sub(y);
     if reason_height > 0 {
         frame.render_widget(
             Paragraph::new(stop.reason.clone()).wrap(Wrap { trim: false }),
@@ -361,11 +340,9 @@ fn footer_lines(review: &ReviewActivity) -> Vec<Line<'static>> {
     if review.cached.is_some() {
         let mut lines = Vec::new();
         if let Some(active) = &review.active_request {
-            let count = review.ready().map_or(0, |cached| cached.result.stops.len());
-            let steps = if count == 1 { "step" } else { "steps" };
             lines.push(Line::styled(
                 active.progress.as_ref().map_or_else(
-                    || "Preparing the next part…".to_owned(),
+                    || "Preparing changes and starting Codex…".to_owned(),
                     super::ReviewProgress::description,
                 ),
                 Style::default().fg(theme::INFORMATION),
@@ -376,12 +353,6 @@ fn footer_lines(review: &ReviewActivity) -> Vec<Line<'static>> {
                     Style::default().fg(theme::CHROME),
                 ));
             }
-            let ready = if review.stale() {
-                format!("{count} new review {steps} ready · n / p  Next / previous step")
-            } else {
-                format!("{count} review {steps} ready · n / p  Next / previous step")
-            };
-            lines.push(Line::styled(ready, Style::default().fg(theme::CHROME)));
             if active.cancelling {
                 lines.push(Line::styled(
                     "Cancelling review…",
@@ -396,22 +367,23 @@ fn footer_lines(review: &ReviewActivity) -> Vec<Line<'static>> {
             return lines;
         }
         lines.push(Line::styled(
-            "n / p  Next / previous review step",
+            "n / p  Previous / next",
+            Style::default().fg(theme::CHROME),
+        ));
+        lines.push(Line::styled(
+            "Click  Open suggestion",
             Style::default().fg(theme::CHROME),
         ));
         if review.stale() {
             lines.push(Line::styled(
-                "Space  Refresh the review before staging",
+                "Staging paused",
                 Style::default().fg(theme::WARNING),
             ));
             lines.push(Line::styled(
-                "i  Commit current staged work",
+                "i  Commit staged work",
                 Style::default().fg(theme::CHROME),
             ));
-            lines.push(Line::styled(
-                "[ Regenerate review (Enter) ]",
-                mouse_target_style(),
-            ));
+            lines.push(Line::styled(REGENERATE_LABEL, mouse_target_style()));
             return lines;
         }
         if let Some(file) = review.active_file() {
@@ -433,24 +405,14 @@ fn footer_lines(review: &ReviewActivity) -> Vec<Line<'static>> {
             Style::default().fg(theme::WARNING),
         )];
     }
-    vec![
-        Line::styled(
-            "How it works",
-            Style::default().add_modifier(Modifier::BOLD),
-        ),
-        Line::styled(
-            "n / p  Next / previous review step",
-            Style::default().fg(theme::CHROME),
-        ),
-        Line::styled("Space  Stage / unstage", Style::default().fg(theme::CHROME)),
-        Line::styled("       the whole file", Style::default().fg(theme::CHROME)),
-        Line::styled("i  Commit staged work", Style::default().fg(theme::CHROME)),
-    ]
+    Vec::new()
 }
 
 pub(super) fn render_empty_diff(frame: &mut Frame, area: Rect, review: &ReviewActivity) {
     let message = if let CodexAvailability::Unavailable(reason) = &review.availability {
-        format!("AI Review is unavailable.\n\n{reason}")
+        format!(
+            "AI Review is unavailable.\n\n{reason}\n\nReview needs the Codex CLI. Other Diffo activities still work normally."
+        )
     } else if let Some(active) = &review.active_request {
         let progress = active.progress.as_ref().map_or_else(
             || "Preparing changes and starting Codex…".to_owned(),
@@ -461,15 +423,27 @@ pub(super) fn render_empty_diff(frame: &mut Frame, area: Rect, review: &ReviewAc
             .as_ref()
             .map(progress_files)
             .unwrap_or_default();
-        format!("{progress}\n{files}\n\nThe first suggested change will open here.")
+        format!(
+            "Codex is building one review of the current changes.\n\n{progress}\n{files}\n\nThe first suggested change will open here.\n\nEsc cancels generation."
+        )
     } else if review.stale() {
         "Review out of date.\n\nSelect a review step or regenerate.".to_owned()
     } else if !review.has_changes() {
         "Nothing to review.\n\nMake a change, then come back.".to_owned()
     } else if review.failure.is_some() {
-        "The review could not be built.\n\nPress Enter to try again.".to_owned()
+        "The review could not be built.\n\nPress Enter or click Retry review to try again."
+            .to_owned()
     } else {
-        "Press Enter to start.\n\nThe first suggested change will open here.".to_owned()
+        concat!(
+            "How it works\n\n",
+            "1. Press Enter or click Generate.\n\n",
+            "2. Use n / p or click a suggestion. Its change opens here.\n\n",
+            "3. Press Space to stage or unstage that whole file.\n\n",
+            "4. Press i to commit staged work with Codex.\n\n",
+            "The review describes changes as they are now. If code changes later, ",
+            "Diffo marks it out of date and lets you regenerate."
+        )
+        .to_owned()
     };
     frame.render_widget(
         Paragraph::new(message)
@@ -486,5 +460,5 @@ fn progress_files(progress: &super::ReviewProgress) -> String {
         .map(|path| terminal_safe_text(&path.to_string_lossy()))
         .collect::<Vec<_>>()
         .join(", ");
-    format!("Files now: {files}")
+    format!("Files: {files}")
 }

@@ -23,7 +23,6 @@ impl Workbench {
 
     pub fn accept_review_codex_result(&mut self, result: ReviewCodexTaskResult) {
         let id = result.id;
-        let complete = result.complete;
         let cancelling = self
             .commands
             .active()
@@ -44,10 +43,8 @@ impl Workbench {
         if !self.review.accept(result) {
             return;
         }
-        if complete {
-            let _ = self.commands.acknowledge(id, command_result);
-            self.finish_command_progress(id);
-        }
+        let _ = self.commands.acknowledge(id, command_result);
+        self.finish_command_progress(id);
         self.request_redraw();
     }
 

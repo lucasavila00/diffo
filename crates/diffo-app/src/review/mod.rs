@@ -4,7 +4,7 @@ mod request;
 mod view;
 
 use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind};
-use diffo_core::{ApplicationCommandId, CancellationHandle, RepositorySnapshot};
+use diffo_core::{ApplicationCommandId, RepositorySnapshot};
 use diffo_ui::{PaneSplit, tool_areas};
 use ratatui::{Frame, layout::Rect};
 
@@ -29,45 +29,30 @@ impl CodexAvailability {
 pub struct ReviewCodexTaskResult {
     pub id: ApplicationCommandId,
     pub outcome: ReviewCodexOutcome,
-    pub complete: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ReviewProgress {
-    pub batch: usize,
-    pub batches: usize,
-    pub change_start: usize,
-    pub change_end: usize,
     pub changes: usize,
     pub files: Vec<std::path::PathBuf>,
 }
 
 impl ReviewProgress {
     pub(crate) fn command_phase(&self) -> String {
-        if self.change_start == self.change_end {
-            format!(
-                "Change {}/{} · part {}/{}",
-                self.change_start, self.changes, self.batch, self.batches
-            )
+        let files = self.files.len();
+        if files == 1 {
+            format!("{} changes · 1 file", self.changes)
         } else {
-            format!(
-                "Changes {}-{}/{} · part {}/{}",
-                self.change_start, self.change_end, self.changes, self.batch, self.batches
-            )
+            format!("{} changes · {files} files", self.changes)
         }
     }
 
     pub(crate) fn description(&self) -> String {
-        if self.change_start == self.change_end {
-            format!(
-                "Reviewing change {} of {} · part {} of {}",
-                self.change_start, self.changes, self.batch, self.batches
-            )
+        let files = self.files.len();
+        if self.changes == 1 && files == 1 {
+            "Reviewing 1 change in 1 file".to_owned()
         } else {
-            format!(
-                "Reviewing changes {}-{} of {} · part {} of {}",
-                self.change_start, self.change_end, self.changes, self.batch, self.batches
-            )
+            format!("Reviewing {} changes across {files} files", self.changes)
         }
     }
 }
@@ -90,12 +75,12 @@ pub(crate) enum ReviewEvent {
 struct CachedReview {
     request: ReviewRequest,
     result: ReviewResult,
+    stale: bool,
 }
 
 struct ActiveRequest {
     id: ApplicationCommandId,
     request: ReviewRequest,
-    cancellation: Option<CancellationHandle>,
     cancelling: bool,
     progress: Option<ReviewProgress>,
 }
@@ -108,8 +93,7 @@ pub(crate) struct ReviewActivity {
     active_request: Option<ActiveRequest>,
     failure: Option<String>,
     selected_stop: usize,
-    active_hunk_id: Option<String>,
-    pending_hunk_id: Option<String>,
+    pending_recenter: bool,
     stop_areas: Vec<(Rect, usize)>,
     generate_area: Rect,
 }
@@ -125,8 +109,7 @@ impl ReviewActivity {
             active_request: None,
             failure: None,
             selected_stop: 0,
-            active_hunk_id: None,
-            pending_hunk_id: None,
+            pending_recenter: false,
             stop_areas: Vec::new(),
             generate_area: Rect::default(),
         }
@@ -153,14 +136,12 @@ impl ReviewActivity {
             return None;
         }
         if let Some(active) = self.active_request.as_mut() {
-            if let Some(cancellation) = &active.cancellation {
-                cancellation.cancel();
-            }
             active.cancelling = true;
             let id = active.id;
-            let request = active.request.clone();
             let _ = update(&mut self.model, Message::SnapshotLoaded(snapshot));
-            self.clear_review_for_request(&request);
+            if let Some(cached) = self.cached.as_mut() {
+                cached.stale = true;
+            }
             self.failure = None;
             return Some(id);
         }
@@ -172,10 +153,8 @@ impl ReviewActivity {
         let _ = update(&mut self.model, Message::SnapshotLoaded(snapshot));
         if let (Some(cached), Some(request)) = (&mut self.cached, rebound) {
             cached.request = request;
-            if let Some(id) = self.active_hunk_id.clone() {
-                self.open_hunk(id.clone());
-                self.pending_hunk_id = Some(id);
-            }
+            cached.stale = false;
+            self.open_selected_stop();
             if active_before.is_some_and(|file| {
                 file.area == crate::diff::ChangeArea::Unstaged
                     && self
@@ -186,23 +165,22 @@ impl ReviewActivity {
             }
             return None;
         }
-        self.pending_hunk_id = None;
+        if let Some(cached) = self.cached.as_mut() {
+            cached.stale = true;
+        }
+        self.pending_recenter = false;
         self.failure = None;
         None
     }
 
     #[must_use]
     fn ready(&self) -> Option<&CachedReview> {
-        self.cached
-            .as_ref()
-            .filter(|cached| cached.request.still_matches(&self.model.snapshot))
+        self.cached.as_ref().filter(|cached| !cached.stale)
     }
 
     #[must_use]
     fn stale(&self) -> bool {
-        self.cached
-            .as_ref()
-            .is_some_and(|cached| !cached.request.still_matches(&self.model.snapshot))
+        self.cached.as_ref().is_some_and(|cached| cached.stale)
     }
 
     #[must_use]
@@ -256,10 +234,6 @@ impl ReviewActivity {
             self.select_previous();
             return Some(ReviewEvent::Redraw);
         }
-        if !generating && !self.stale() && plain_key(event, KeyCode::Enter) {
-            self.open_selected_stop();
-            return Some(ReviewEvent::Redraw);
-        }
         if !generating
             && plain_key(event, KeyCode::Char(' '))
             && let Some(file) = self.active_file()
@@ -309,26 +283,11 @@ impl ReviewActivity {
         self.active_request = Some(ActiveRequest {
             id,
             request,
-            cancellation: None,
             cancelling: false,
             progress: None,
         });
         self.failure = None;
-        self.pending_hunk_id = None;
-    }
-
-    pub(crate) fn generation_started(
-        &mut self,
-        id: ApplicationCommandId,
-        cancellation: CancellationHandle,
-    ) {
-        if let Some(active) = self
-            .active_request
-            .as_mut()
-            .filter(|active| active.id == id)
-        {
-            active.cancellation = Some(cancellation);
-        }
+        self.pending_recenter = false;
     }
 
     pub(crate) fn generation_cancelling(&mut self, id: ApplicationCommandId) {
@@ -395,15 +354,10 @@ impl ReviewActivity {
     }
 
     fn open_selected_stop(&mut self) {
-        let id = self.cached.as_ref().and_then(|cached| {
-            cached
-                .result
-                .stops
-                .get(self.selected_stop)
-                .map(|stop| stop.primary_hunk_id.clone())
-        });
-        if let Some(id) = id {
-            self.open_hunk(id);
+        let target = self.selected_target().cloned();
+        if let Some(target) = target {
+            self.model.select_file(&target.file);
+            self.pending_recenter = !self.stale();
         }
     }
 
@@ -419,25 +373,15 @@ impl ReviewActivity {
         }
     }
 
-    fn open_hunk(&mut self, id: String) {
-        let hunk = self
-            .cached
-            .as_ref()
-            .and_then(|cached| cached.request.hunk(&id))
-            .cloned();
-        let Some(hunk) = hunk else {
-            return;
-        };
-        self.model.select_file(&hunk.file);
-        self.pending_hunk_id = (!self.stale()).then(|| id.clone());
-        self.active_hunk_id = Some(id);
+    fn selected_target(&self) -> Option<&request::ReviewTarget> {
+        let cached = self.cached.as_ref()?;
+        let stop = cached.result.stops.get(self.selected_stop)?;
+        cached.request.target(&stop.target_id)
     }
 
     fn active_file(&self) -> Option<crate::diff::FileKey> {
-        self.active_hunk_id
-            .as_ref()
-            .and_then(|id| self.ready()?.request.hunk(id))
-            .map(|hunk| hunk.file.clone())
+        self.ready()?;
+        self.selected_target().map(|target| target.file.clone())
     }
 
     pub(crate) fn accept(&mut self, result: ReviewCodexTaskResult) -> bool {
@@ -449,32 +393,16 @@ impl ReviewActivity {
             return false;
         };
         let request = active.request.clone();
-        let cancelled = active
-            .cancellation
-            .as_ref()
-            .is_some_and(CancellationHandle::is_cancelled);
-        if cancelled {
-            if result.complete {
-                self.clear_review_for_request(&request);
-                self.active_request = None;
-            }
-            return true;
-        }
         match result.outcome {
             ReviewCodexOutcome::Generated(review) => {
-                let first = self
-                    .cached
-                    .as_ref()
-                    .is_none_or(|cached| cached.request != request);
-                if first {
-                    self.clear_partial_review();
-                }
-                self.merge_review(request, review);
+                self.cached = Some(CachedReview {
+                    request,
+                    result: review,
+                    stale: false,
+                });
                 self.failure = None;
-                if first {
-                    self.selected_stop = 0;
-                    self.open_selected_stop();
-                }
+                self.selected_stop = 0;
+                self.open_selected_stop();
             }
             ReviewCodexOutcome::Failed(error) => {
                 self.clear_review_for_request(&request);
@@ -482,17 +410,14 @@ impl ReviewActivity {
             }
             ReviewCodexOutcome::Cancelled => self.clear_review_for_request(&request),
         }
-        if result.complete {
-            self.active_request = None;
-        }
+        self.active_request = None;
         true
     }
 
     fn clear_partial_review(&mut self) {
         self.cached = None;
         self.selected_stop = 0;
-        self.active_hunk_id = None;
-        self.pending_hunk_id = None;
+        self.pending_recenter = false;
     }
 
     fn clear_review_for_request(&mut self, request: &ReviewRequest) {
@@ -505,45 +430,14 @@ impl ReviewActivity {
         }
     }
 
-    fn merge_review(&mut self, request: ReviewRequest, review: ReviewResult) {
-        let cached = self.cached.get_or_insert_with(|| CachedReview {
-            request,
-            result: ReviewResult {
-                overview: Vec::new(),
-                stops: Vec::new(),
-            },
-        });
-        for overview in review.overview {
-            if cached.result.overview.len() == 3 {
-                break;
-            }
-            if !cached.result.overview.contains(&overview) {
-                cached.result.overview.push(overview);
-            }
-        }
-        for stop in review.stops {
-            if cached.result.stops.len() == 8 {
-                break;
-            }
-            if !cached
-                .result
-                .stops
-                .iter()
-                .any(|known| known.primary_hunk_id == stop.primary_hunk_id)
-            {
-                cached.result.stops.push(stop);
-            }
-        }
-    }
-
     pub(crate) fn prepare_frame(&mut self, area: Rect, split: PaneSplit) -> FramePreparation {
         let panes = split.areas(tool_areas(area).content);
-        let target = self.pending_hunk_id.as_ref().and_then(|id| {
-            self.ready()
-                .and_then(|cached| cached.request.hunk(id))
-                .map(|hunk| hunk.target)
-        });
-        if self.active_hunk_id.is_none() || self.cached.is_none() {
+        let target = if self.pending_recenter {
+            self.selected_target().map(|target| target.diff_row)
+        } else {
+            None
+        };
+        if self.selected_target().is_none() {
             return FramePreparation::default();
         }
         let preparation = self
@@ -561,7 +455,7 @@ impl ReviewActivity {
             && preparation.syntax_ready
             && target.is_some_and(|target| target == self.model.diff_scroll)
         {
-            self.pending_hunk_id = None;
+            self.pending_recenter = false;
         }
         preparation
     }
@@ -571,7 +465,7 @@ impl ReviewActivity {
         let hits = view::render_review(frame, panes.leading, self);
         self.stop_areas = hits.stop_areas;
         self.generate_area = hits.generate_area;
-        if self.active_hunk_id.is_some() && self.cached.is_some() {
+        if self.selected_target().is_some() {
             self.renderer
                 .render_review_buffer(frame, panes.trailing, &self.model);
         } else {
@@ -591,7 +485,7 @@ impl ReviewActivity {
     pub(crate) fn help_rows() -> Vec<(String, &'static str)> {
         vec![
             ("n / p".to_owned(), "Next / previous review step"),
-            ("Enter".to_owned(), "Start or recenter review"),
+            ("Enter".to_owned(), "Generate / regenerate review"),
             ("Esc".to_owned(), "Cancel review generation"),
             ("Space".to_owned(), "Stage / unstage current file"),
             ("i".to_owned(), "AI commit staged changes"),

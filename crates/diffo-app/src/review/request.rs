@@ -1,6 +1,6 @@
 use std::{collections::HashSet, fmt::Write as _, path::PathBuf};
 
-use diffo_ai_config::MAX_AI_REVIEW_CONTEXT_BYTES;
+use diffo_ai_config::{MAX_AI_REVIEW_CONTEXT_BYTES, MAX_AI_REVIEW_TARGETS_PER_CHANGE};
 use diffo_core::{ChangeKind, HeadState, RepositorySnapshot};
 use diffo_diff::{inline_change_regions, inline_rows, parse_unified_patch};
 
@@ -50,11 +50,11 @@ impl AttentionCategory {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct ReviewHunk {
+pub struct ReviewTarget {
     pub id: String,
     pub file: FileKey,
-    pub target: usize,
-    pub header: String,
+    pub diff_row: usize,
+    pub location: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -63,7 +63,8 @@ struct ReviewChange {
     old_path: Option<PathBuf>,
     kind: ChangeKind,
     patch: String,
-    hunks: Vec<ReviewHunk>,
+    targets: Vec<ReviewTarget>,
+    omitted_targets: usize,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -77,7 +78,7 @@ pub struct ReviewStop {
     pub title: String,
     pub category: AttentionCategory,
     pub reason: String,
-    pub primary_hunk_id: String,
+    pub target_id: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -126,25 +127,19 @@ impl ReviewRequest {
                 let parsed = parse_unified_patch(&patch).ok();
                 let rows = parsed.as_ref().map(inline_rows).unwrap_or_default();
                 let regions = inline_change_regions(&rows);
-                let targets = regions
-                    .iter()
-                    .map(|region| region.first)
-                    .collect::<Vec<_>>();
-                let headers = regions
-                    .iter()
-                    .map(|region| {
-                        rows.get(region.first)
-                            .and_then(|row| row.number)
-                            .map_or_else(
-                                || format!("change at diff row {}", region.first + 1),
-                                |line| format!("change near line {line}"),
-                            )
-                    })
-                    .collect::<Vec<_>>();
-                let count = targets.len().max(1);
-                let hunks = (0..count)
+                let target_indexes =
+                    representative_target_indexes(regions.len(), MAX_AI_REVIEW_TARGETS_PER_CHANGE);
+                let omitted_targets = regions.len().saturating_sub(target_indexes.len());
+                let target_indexes = if target_indexes.is_empty() {
+                    vec![0]
+                } else {
+                    target_indexes
+                };
+                let targets = target_indexes
+                    .into_iter()
                     .map(|index| {
-                        let mut id = stable_hunk_id(&file.path, &patch, index);
+                        let diff_row = regions.get(index).map_or(0, |region| region.first);
+                        let mut id = stable_target_id(&file.path, &patch, index);
                         if !used_ids.insert(id.clone()) {
                             id.push(match file.area {
                                 ChangeArea::Staged => 's',
@@ -152,14 +147,14 @@ impl ReviewRequest {
                             });
                             used_ids.insert(id.clone());
                         }
-                        ReviewHunk {
+                        ReviewTarget {
                             id,
                             file: file.clone(),
-                            target: targets.get(index).copied().unwrap_or(0),
-                            header: headers
-                                .get(index)
-                                .cloned()
-                                .unwrap_or_else(|| "whole change".to_owned()),
+                            diff_row,
+                            location: rows.get(diff_row).and_then(|row| row.number).map_or_else(
+                                || format!("change at diff row {}", diff_row + 1),
+                                |line| format!("change near line {line}"),
+                            ),
                         }
                     })
                     .collect();
@@ -168,7 +163,8 @@ impl ReviewRequest {
                     old_path,
                     kind,
                     patch,
-                    hunks,
+                    targets,
+                    omitted_targets,
                 }
             })
             .collect();
@@ -179,27 +175,11 @@ impl ReviewRequest {
     }
 
     #[must_use]
-    pub fn still_matches(&self, snapshot: &RepositorySnapshot) -> bool {
-        Self::from_snapshot(snapshot).is_some_and(|current| current == *self)
-    }
-
-    #[must_use]
     pub fn rebind_staging(&self, snapshot: &RepositorySnapshot) -> Option<Self> {
         let current = Self::from_snapshot(snapshot)?;
         (self.expected_head == current.expected_head
             && semantic_changes(&self.changes) == semantic_changes(&current.changes))
         .then_some(current)
-    }
-
-    #[must_use]
-    pub fn batches(&self, maximum_changes: usize) -> Vec<Self> {
-        self.changes
-            .chunks(maximum_changes.max(1))
-            .map(|changes| Self {
-                expected_head: self.expected_head.clone(),
-                changes: changes.to_vec(),
-            })
-            .collect()
     }
 
     #[must_use]
@@ -219,29 +199,29 @@ impl ReviewRequest {
     }
 
     #[must_use]
-    pub(crate) fn hunk(&self, id: &str) -> Option<&ReviewHunk> {
+    pub(crate) fn target(&self, id: &str) -> Option<&ReviewTarget> {
         self.changes
             .iter()
-            .flat_map(|change| &change.hunks)
-            .find(|hunk| hunk.id == id)
+            .flat_map(|change| &change.targets)
+            .find(|target| target.id == id)
     }
 
     #[must_use]
-    fn contains_hunk(&self, id: &str) -> bool {
-        self.hunk(id).is_some()
+    fn contains_target(&self, id: &str) -> bool {
+        self.target(id).is_some()
     }
 
     #[cfg(test)]
-    pub(crate) fn first_hunk_id(&self) -> &str {
-        &self.changes[0].hunks[0].id
+    pub(crate) fn first_target_id(&self) -> &str {
+        &self.changes[0].targets[0].id
     }
 
     #[cfg(test)]
-    pub(crate) fn hunk_ids(&self) -> Vec<String> {
+    pub(crate) fn target_ids(&self) -> Vec<String> {
         self.changes
             .iter()
-            .flat_map(|change| &change.hunks)
-            .map(|hunk| hunk.id.clone())
+            .flat_map(|change| &change.targets)
+            .map(|target| target.id.clone())
             .collect()
     }
 
@@ -326,8 +306,8 @@ impl ReviewRequest {
         for stop in &stops {
             if !valid_text(&stop.title, 80)
                 || !valid_text(&stop.reason, 240)
-                || !self.contains_hunk(&stop.primary_hunk_id)
-                || !primary.insert(&stop.primary_hunk_id)
+                || !self.contains_target(&stop.target_id)
+                || !primary.insert(&stop.target_id)
             {
                 return None;
             }
@@ -345,20 +325,28 @@ fn change_header(change: &ReviewChange) -> String {
         format!(" old-path=\"{}\"", escaped(&path.to_string_lossy()))
     });
     let mut header = format!(
-        "<change origin=\"{origin}\" path=\"{}\"{old_path} kind=\"{:?}\">\n<hunks>\n",
+        "<change origin=\"{origin}\" path=\"{}\"{old_path} kind=\"{:?}\">\n<targets>\n",
         escaped(&change.file.path.to_string_lossy()),
         change.kind
     );
-    for hunk in &change.hunks {
+    for target in &change.targets {
         writeln!(
             header,
-            "<hunk id=\"{}\" header=\"{}\" />",
-            hunk.id,
-            escaped(&hunk.header)
+            "<target id=\"{}\" location=\"{}\" />",
+            target.id,
+            escaped(&target.location)
         )
         .expect("writing to a String cannot fail");
     }
-    header.push_str("</hunks>\n<patch>\n");
+    if change.omitted_targets > 0 {
+        writeln!(
+            header,
+            "<omitted-targets count=\"{}\" />",
+            change.omitted_targets
+        )
+        .expect("writing to a String cannot fail");
+    }
+    header.push_str("</targets>\n<patch>\n");
     header
 }
 
@@ -380,7 +368,7 @@ fn semantic_changes(
     changes
 }
 
-fn stable_hunk_id(file_path: &std::path::Path, diff_text: &str, index: usize) -> String {
+fn stable_target_id(file_path: &std::path::Path, diff_text: &str, index: usize) -> String {
     let mut hash = 0xcbf2_9ce4_8422_2325_u64;
     for byte in file_path
         .to_string_lossy()
@@ -392,7 +380,16 @@ fn stable_hunk_id(file_path: &std::path::Path, diff_text: &str, index: usize) ->
         hash ^= u64::from(*byte);
         hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
     }
-    format!("H{hash:016x}")
+    format!("T{hash:016x}")
+}
+
+fn representative_target_indexes(count: usize, maximum: usize) -> Vec<usize> {
+    if count <= maximum {
+        return (0..count).collect();
+    }
+    let prefix = maximum.div_ceil(2);
+    let suffix = maximum / 2;
+    (0..prefix).chain(count - suffix..count).collect()
 }
 
 const OMISSION: &str = "\n[... oversized diff omitted ...]\n";
@@ -484,13 +481,13 @@ mod tests {
     }
 
     #[test]
-    fn assigns_distinct_stable_ids_to_staged_and_unstaged_hunks() {
+    fn assigns_distinct_stable_ids_to_staged_and_unstaged_targets() {
         let request = ReviewRequest::from_snapshot(&snapshot(
             "@@ -1 +1 @@\n-old\n+new\n@@ -4 +4 @@\n-a\n+b\n".to_owned(),
         ))
         .unwrap();
         let context = request.prompt_context("repo");
-        assert_eq!(context.matches("<hunk id=").count(), 4);
+        assert_eq!(context.matches("<target id=").count(), 4);
         assert!(context.contains("origin=\"staged\""));
         assert!(context.contains("origin=\"unstaged\""));
     }
@@ -513,10 +510,17 @@ mod tests {
         );
         let request = ReviewRequest::from_snapshot(&snapshot(patch.to_owned())).unwrap();
 
-        assert_eq!(request.changes[0].hunks.len(), 2);
-        assert!(request.changes[0].hunks[0].target < request.changes[0].hunks[1].target);
-        assert_eq!(request.changes[0].hunks[0].header, "change near line 2");
-        assert_eq!(request.changes[0].hunks[1].header, "change near line 8");
+        assert_eq!(request.changes[0].targets.len(), 2);
+        assert!(request.changes[0].targets[0].diff_row < request.changes[0].targets[1].diff_row);
+        assert_eq!(request.changes[0].targets[0].location, "change near line 2");
+        assert_eq!(request.changes[0].targets[1].location, "change near line 8");
+    }
+
+    #[test]
+    fn target_manifest_keeps_bounded_prefix_and_suffix_candidates() {
+        let indexes = representative_target_indexes(100, 8);
+
+        assert_eq!(indexes, vec![0, 1, 2, 3, 96, 97, 98, 99]);
     }
 
     #[test]
@@ -531,7 +535,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_an_invented_hunk_id() {
+    fn rejects_an_invented_target_id() {
         let request =
             ReviewRequest::from_snapshot(&snapshot("@@ -1 +1 @@\n-old\n+new\n".to_owned()))
                 .unwrap();
@@ -543,7 +547,7 @@ mod tests {
                         title: "Stop".to_owned(),
                         category: AttentionCategory::Behavior,
                         reason: "Reason".to_owned(),
-                        primary_hunk_id: "H9999".to_owned(),
+                        target_id: "T9999".to_owned(),
                     }],
                 )
                 .is_none()
@@ -551,7 +555,7 @@ mod tests {
     }
 
     #[test]
-    fn batches_keep_every_change_in_stable_order() {
+    fn changes_keep_stable_path_order() {
         let mut snapshot = snapshot("@@ -1 +1 @@\n-old\n+new\n".to_owned());
         snapshot.files.push(FileState {
             path: "src/second.rs".into(),
@@ -563,21 +567,10 @@ mod tests {
             unstaged: None,
         });
         let request = ReviewRequest::from_snapshot(&snapshot).unwrap();
-        let batches = request.batches(2);
-
-        assert_eq!(batches.len(), 2);
-        assert!(batches.iter().all(|batch| batch.changes.len() <= 2));
         assert_eq!(
             request.file_paths(),
             vec![PathBuf::from("src/lib.rs"), PathBuf::from("src/second.rs")]
         );
-        assert_eq!(
-            batches
-                .iter()
-                .flat_map(|batch| &batch.changes)
-                .cloned()
-                .collect::<Vec<_>>(),
-            request.changes
-        );
+        assert_eq!(request.change_count(), 3);
     }
 }

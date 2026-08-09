@@ -1,80 +1,66 @@
 # AI Review
 
-Review is a normal Diffo activity after Diff and Explorer in the `Tab` cycle. It
-uses Codex to summarize staged and unstaged changes and build an ordered path
-through the changes worth inspecting. Opening the activity does not contact
-Codex. The explicit `[ Generate review (Enter) ]` control starts generation;
-surrounding explanatory text is inert.
+Review is the third Diffo activity. It asks Codex for a short overview and an
+ordered path through the staged and unstaged changes. Entering the activity does
+not run AI; `Enter` or the visible Generate button starts a review.
 
-The initial screen explains that a review covers the changes as they are when
-generation starts. If those changes are edited later, Diffo keeps the review and
-current diff visible and labels the review **Review out of date**. The user can
-still navigate it or commit current staged work. Staging from stale guidance is
-paused until `[ Regenerate review (Enter) ]` refreshes the review.
+## User flow
 
-## Review flow
+The initial screen teaches the complete path: generate, choose suggestions with
+`n`, `p`, or a click, stage or unstage the selected file with `Space`, and commit
+staged work with `i`. Explanatory text is inert. Only rendered buttons have
+click targets.
 
-The left pane shows a short summary, a stable review order, and details for the
-selected change. Every step focuses on one concrete change in one file. Its
-explanation may connect related work, but the selection is never a whole-file or
-multi-file group. The right pane uses Diffo's normal diff renderer and centers
-the selected change.
+The left pane keeps the summary and review path above the selected suggestion's
+details. Every suggestion points to one concrete change in one file. Selecting
+it immediately opens that change in Diffo's normal diff renderer; the
+explanation may still connect it to related work elsewhere.
 
-`n` and `p` move between changes, matching Diff. `Space` stages or unstages the
-entire selected file through the shared command queue, then advances through the
-review when staging succeeds. `i` uses the existing guarded AI-commit flow for
-staged work. Review does not own separate staging or commit implementations.
+Review uses the existing command queue for generation, staging, and committing.
+The queue owns scheduling and cancellation and supplies the standard pulsating
+border, progress overlay, and cancel target. `Esc` cancels generation. `Enter`
+only generates, retries, or regenerates a review.
 
-## Codex request
+The review is a description of the repository snapshot used to create it. A
+content or HEAD change marks it **Out of date** without replacing the interface.
+The old review stays readable and navigable, and current staged work can still
+be committed. Staging from old guidance is paused until regeneration. A pure
+stage/unstage projection change rebinds the review when its patch is unchanged.
 
-Review uses the shared `gpt-5.6-luna` Codex runner in an ephemeral, read-only
-sandbox. The request contains staged and unstaged patches with stable opaque
-identifiers for each contiguous changed region. Repository content is untrusted
-and is written through stdin. The fixed `AI_REVIEW_PROMPT`, schema, model,
-executable policy, and limits live in `diffo-ai-config`.
+## Request and response
 
-Diffo sends at most two changed file projections per Codex call. Each batch is
-bounded at 256 KiB and records omitted content instead of rejecting a large
-change. One queued Review command owns all batches and has a 120-second
-deadline.
+`ReviewRequest` walks staged and unstaged file projections in stable order and
+maps contiguous changed regions to opaque target IDs and exact diff rows. It
+keeps at most 32 targets per projection, preserving candidates from the start
+and end when there are more. The complete XML-shaped context is capped at 256
+KiB; fair prefix/suffix patch samples and explicit omission markers replace
+oversized content.
 
-## Response and progress
+Diffo starts one ephemeral, read-only `codex exec` request with
+`gpt-5.6-luna`, the fixed prompt, and a temporary output schema. The one request
+sees the bounded repository context together, so its overview and order are
+coherent and only one CLI process is started. Repository data goes through
+stdin and is explicitly untrusted.
 
-Each response contains one to three overview lines and one to eight ordered
-steps. Every step has a bounded title and reason, a fixed attention category,
-and one known change identifier. Diffo rejects malformed output, invalid bounds
-or categories, and unknown or repeated identifiers.
+The schema allows one to three overview lines and one to eight suggestions.
+Each suggestion contains a title, attention category, reason, and target ID.
+Diffo independently validates lengths, control characters, categories, known
+IDs, and uniqueness before installing the result atomically. Late, malformed,
+cancelled, or snapshot-mismatched results cannot alter the active review.
 
-Validated batches become available immediately, so the user can start reviewing
-while later batches continue. The interface reports the active part, change
-range, file paths, and number of ready steps. It does not invent a completion
-percentage. The shared command progress border and cancel control remain active
-until the complete Review command finishes. `Esc` cancels the active Review
-command and its remaining batches. `Enter` only starts, refreshes, or recenters
-a review.
+## Availability, failures, and tests
 
-## Availability and failure handling
+At startup, Diffo resolves Codex first from its inherited `PATH`, then from the
+user's login shell, and stores the result for the process lifetime. A missing or
+non-executable CLI disables Review and explains the setup action inside the
+activity. Authentication, account/model access, rate limits, network failures,
+timeouts, crashes, malformed output, and cancellation use the shared bounded
+Codex failure handling.
 
-At startup, Diffo resolves Codex from its inherited `PATH` or the user's login
-shell and keeps that result for the process lifetime. If Codex is missing, the
-Review activity is disabled and explains that installation and a restart are
-required.
+The fixed model, prompt, schema, executable policy, and limits live in
+`diffo-ai-config`. End-to-end and stress builds select `codex-mock` at compile
+time. The mock validates the exact CLI arguments, schema, prompt, and stdin
+shape before returning deterministic JSON, so tests never invoke Codex or the
+network.
 
-The shared runner handles cancellation, timeouts, process crashes, bounded
-stdout and stderr, authentication and usage failures, malformed responses, and
-terminal-safe diagnostics. Results are accepted only for the matching request
-and repository snapshot. Content or HEAD changes mark the review out of date; a
-pure staging projection change can retain it when the patch still matches. An
-out-of-date review remains readable while regeneration runs. The first validated
-new batch replaces it; cancellation or failure before that point leaves the old
-review visible.
-
-## Offline testing
-
-End-to-end and stress builds select `codex-mock` at compile time. The mock
-validates the complete CLI argument, schema, prompt, and stdin contract before
-returning deterministic Review JSON. Tests never invoke Codex, credentials, or
-an AI service.
-
-The product decision is recorded in
-[ADR 0111](../adr/0111-ai-review-activity.md).
+See [ADR 0111](../adr/0111-ai-review-activity.md).

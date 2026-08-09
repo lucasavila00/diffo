@@ -435,10 +435,6 @@ impl Workbench {
             return None;
         }
         let command = self.commands.activate(queued, action);
-        if matches!(command.action, ApplicationAction::AiReview(_)) {
-            self.review
-                .generation_started(command.id, command.cancellation.clone());
-        }
         self.last_prompt_id = None;
         self.command_progress = WorkbenchProgressState::Waiting {
             command_id: command.id,

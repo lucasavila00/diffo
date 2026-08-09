@@ -196,7 +196,7 @@ fn generation_failure_cancels_every_command_behind_it() {
 }
 
 #[test]
-fn ai_review_uses_shared_progress_and_cancellation() {
+fn ai_review_uses_shared_progress_and_completion() {
     let mut workbench = Workbench::new(queue_snapshot("STAGED"));
     let area = Rect::new(0, 0, 100, 30);
     let _ = workbench.handle_events(&[key(KeyCode::Tab), key(KeyCode::Tab)], area);
@@ -221,10 +221,6 @@ fn ai_review_uses_shared_progress_and_cancellation() {
     workbench.accept_review_progress(
         command.id,
         crate::review::ReviewProgress {
-            batch: 1,
-            batches: 3,
-            change_start: 1,
-            change_end: 2,
             changes: 5,
             files: vec!["src/main.rs".into(), "src/lib.rs".into()],
         },
@@ -235,40 +231,46 @@ fn ai_review_uses_shared_progress_and_cancellation() {
             .entries()
             .next()
             .map(|(_, label, _)| label),
-        Some("AI review — Changes 1-2/5 · part 1/3".to_owned())
+        Some("AI review — 5 changes · 2 files".to_owned())
     );
 
     workbench.tick(started + Duration::from_millis(150));
     assert!(workbench.command_progress.is_visible());
-    let partial = request
+    let review = request
         .validate_review(
-            vec!["The first review batch is ready.".to_owned()],
+            vec!["The review is ready.".to_owned()],
             vec![crate::review::ReviewStop {
                 title: "Inspect the first change".to_owned(),
                 category: crate::review::AttentionCategory::Behavior,
-                reason: "This step can be reviewed while more work continues.".to_owned(),
-                primary_hunk_id: request.first_hunk_id().to_owned(),
+                reason: "This step contains the main behavior change.".to_owned(),
+                target_id: request.first_target_id().to_owned(),
             }],
         )
-        .expect("valid partial review");
+        .expect("valid review");
     workbench.accept_review_codex_result(ReviewCodexTaskResult {
         id: command.id,
-        outcome: ReviewCodexOutcome::Generated(partial),
-        complete: false,
+        outcome: ReviewCodexOutcome::Generated(review),
     });
-    assert!(workbench.command_progress.is_visible());
-    assert_eq!(workbench.active_command_id(), Some(command.id));
-
-    let _ = workbench.handle_events(&[key(KeyCode::Enter)], area);
+    assert!(!workbench.command_progress.is_visible());
+    assert_eq!(workbench.active_command_id(), None);
 
     assert!(!command.cancellation.is_cancelled());
-    assert_eq!(
-        workbench.commands.active().map(|active| active.state),
-        Some(CommandState::Running)
-    );
+}
+
+#[test]
+fn ai_review_escape_cancels_without_quitting() {
+    let mut workbench = Workbench::new(queue_snapshot("STAGED"));
+    let area = Rect::new(0, 0, 100, 30);
+    let _ = workbench.handle_events(&[key(KeyCode::Tab), key(KeyCode::Tab)], area);
+    let _ = workbench.handle_events(&[key(KeyCode::Enter)], area);
+    let command = workbench
+        .take_application_command(Instant::now())
+        .expect("AI review starts");
+
+    let _ = workbench.handle_events(&[key(KeyCode::Enter)], area);
+    assert!(!command.cancellation.is_cancelled());
 
     let _ = workbench.handle_events(&[key(KeyCode::Esc)], area);
-
     assert!(command.cancellation.is_cancelled());
     assert!(!workbench.should_quit);
     assert_eq!(

@@ -22,6 +22,22 @@ fn request() -> AiCommitRequest {
     AiCommitRequest::from_snapshot(&snapshot).expect("AI request")
 }
 
+fn review_request() -> ReviewRequest {
+    let snapshot = RepositorySnapshot {
+        files: vec![FileState {
+            path: PathBuf::from("src/main.rs"),
+            old_path: None,
+            kind: ChangeKind::Modified,
+            staged: None,
+            unstaged: Some(FileDiff {
+                text: "@@ -1 +1 @@\n-old\n+new\n".to_owned(),
+            }),
+        }],
+        ..RepositorySnapshot::default()
+    };
+    ReviewRequest::from_snapshot(&snapshot).expect("review request")
+}
+
 fn fake_codex(script: &str) -> (tempfile::TempDir, PathBuf) {
     let directory = tempfile::tempdir().expect("Codex directory");
     let executable = directory.path().join("fake-codex");
@@ -48,6 +64,49 @@ fn accepts_only_the_strict_commit_response() {
 }
 
 #[test]
+fn accepts_only_a_strict_review_with_known_unique_targets() {
+    let request = review_request();
+    let context = request.prompt_context("repository");
+    let target_id = context
+        .split_once("<target id=\"")
+        .and_then(|(_, value)| value.split_once('"'))
+        .map(|(id, _)| id)
+        .expect("target ID");
+    let response = format!(
+        r#"{{"overview":["Overview"],"stops":[{{"title":"Inspect behavior","category":"behavior","reason":"The behavior changes here.","target_id":"{target_id}"}}]}}"#
+    );
+    assert!(matches!(
+        parse_review_response(&request, response.as_bytes()),
+        ReviewCodexOutcome::Generated(_)
+    ));
+
+    let unknown_target = response.replace(target_id, "T0000000000000000");
+    assert!(matches!(
+        parse_review_response(&request, unknown_target.as_bytes()),
+        ReviewCodexOutcome::Failed(_)
+    ));
+    let unknown_field = response.replacen(
+        r#""overview":["Overview"]"#,
+        r#""overview":["Overview"],"extra":true"#,
+        1,
+    );
+    assert!(matches!(
+        parse_review_response(&request, unknown_field.as_bytes()),
+        ReviewCodexOutcome::Failed(_)
+    ));
+    let repeated_target = response.replace(
+        "]}",
+        &format!(
+            r#",{{"title":"Inspect twice","category":"correctness","reason":"This repeats the same target.","target_id":"{target_id}"}}]}}"#
+        ),
+    );
+    assert!(matches!(
+        parse_review_response(&request, repeated_target.as_bytes()),
+        ReviewCodexOutcome::Failed(_)
+    ));
+}
+
+#[test]
 fn rejects_subjects_over_seventy_two_characters() {
     let response = format!(r#"{{"subject":"{}"}}"#, "x".repeat(73));
     assert!(matches!(
@@ -69,13 +128,6 @@ fn reports_empty_and_oversized_responses_explicitly() {
         }),
         RawCodexOutcome::Failed(message) if message.contains("oversized")
     ));
-}
-
-#[test]
-fn worker_guard_releases_the_busy_flag() {
-    let busy = Arc::new(AtomicBool::new(true));
-    drop(BusyGuard(Arc::clone(&busy)));
-    assert!(!busy.load(Ordering::Acquire));
 }
 
 #[test]
@@ -205,7 +257,7 @@ fn resolves_codex_from_inherited_or_login_shell_path() {
             Some(directory.path().as_os_str()),
             OsStr::new("/missing-shell")
         ),
-        Some(executable.as_os_str().to_owned())
+        Ok(Some(executable.as_os_str().to_owned()))
     );
 
     let shell = directory.path().join("login-shell");
@@ -225,7 +277,25 @@ fn resolves_codex_from_inherited_or_login_shell_path() {
 
     assert_eq!(
         resolve_executable("codex", Some(OsStr::new("")), shell.as_os_str()),
-        Some(executable.into_os_string())
+        Ok(Some(executable.into_os_string()))
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn rejects_a_non_executable_codex_during_startup_resolution() {
+    let directory = tempfile::tempdir().expect("executable directory");
+    let executable = directory.path().join("codex");
+    fs::write(&executable, "#!/bin/sh\n").expect("write fake Codex");
+
+    assert!(
+        resolve_executable(
+            "codex",
+            Some(directory.path().as_os_str()),
+            OsStr::new("/missing-shell")
+        )
+        .unwrap_err()
+        .contains("not executable")
     );
 }
 

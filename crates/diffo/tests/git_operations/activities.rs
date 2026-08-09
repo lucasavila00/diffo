@@ -65,7 +65,7 @@ fn guided_review_click_and_keys_open_the_selected_change() -> Result<()> {
         .press(Key::Tab)?
         .press(Key::Tab)?
         .wait_for_text("AI Review")?
-        .press(Key::Enter)?
+        .click(&Selector::text("[ Generate (Enter) ]"))?
         .wait_for_text("Inspect change 1")?
         .wait_for_text("Inspect change 2")?
         .wait_for_text("FIRST_REVIEW_CHANGE")?
@@ -92,11 +92,11 @@ fn guided_review_stages_and_ai_commits_without_leaving_review() -> Result<()> {
         .press(Key::Tab)?
         .press(Key::Tab)?
         .wait_for_text("AI Review")?
-        .wait_for_text("Generate review")?
-        .wait_for_text("Stage / unstage")?
-        .wait_for_text("the whole file")?
+        .wait_for_text("Generate")?
+        .wait_for_text("stage or unstage")?
+        .wait_for_text("whole file")?
         .press(Key::Enter)?
-        .wait_for_text("Review order")?
+        .wait_for_text("Review path")?
         .wait_for_text("Why this matters")?
         .wait_for_text("reviewed change")?
         .press(Key::Char(' '))?;
@@ -105,7 +105,7 @@ fn guided_review_stages_and_ai_commits_without_leaving_review() -> Result<()> {
         Ok(cached_paths(&repository.worktree)?.contains("tracked.txt"))
     })?;
     screen
-        .wait_for_text("Review order")?
+        .wait_for_text("Review path")?
         .wait_for_text("reviewed change")?
         .press(Key::Char('i'))?;
     wait_for("reviewed change to be AI committed", || {
@@ -115,6 +115,40 @@ fn guided_review_stages_and_ai_commits_without_leaving_review() -> Result<()> {
         )
     })?;
     screen.wait_for_text("Committed")?;
+    Ok(())
+}
+
+#[cfg(feature = "codex-mock")]
+#[test]
+fn guided_review_stays_useful_when_the_worktree_changes() -> Result<()> {
+    let repository = TestRepository::new()?;
+    std::fs::write(
+        repository.worktree.join("tracked.txt"),
+        "change before review\n",
+    )?;
+    let mut screen = repository.screen()?;
+
+    screen
+        .press(Key::Tab)?
+        .press(Key::Tab)?
+        .wait_for_text("AI Review")?
+        .press(Key::Enter)?
+        .wait_for_text("Review path")?
+        .wait_for_text("change before review")?;
+
+    std::fs::write(
+        repository.worktree.join("tracked.txt"),
+        "change after review\n",
+    )?;
+    screen
+        .wait_for_text("Out of date")?
+        .wait_for_text("Review path")?
+        .wait_for_text("change after review")?
+        .wait_for_text("[ Regenerate (Enter) ]")?
+        .click(&Selector::text("[ Regenerate (Enter) ]"))?
+        .wait_for_text_gone("Out of date")?
+        .wait_for_text("Review path")?
+        .wait_for_text("change after review")?;
     Ok(())
 }
 

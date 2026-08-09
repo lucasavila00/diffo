@@ -78,16 +78,18 @@ of every staged patch while preserving file metadata and explicit omission
 markers. If even the file manifest does not fit, it includes the path-ordered
 entries that fit and an omitted-file count.
 
-A Review request includes staged and unstaged patches with stable change
-identifiers. Diffo sends at most two changed file projections per Codex call and
-installs each valid result as soon as it arrives. Every review step focuses on
-one concrete change in one file; related changes may explain why it matters but
-never become part of the selection. The user can begin navigating those review
-steps while the same queued command builds later batches. The complete Review
-command still has one 120-second deadline and remains cancellable throughout.
-Progress reports the current part, change range, file paths, and number of ready
-review steps. Diffo does not show a fabricated completion percentage because
-Codex does not expose one.
+A Review request includes staged and unstaged patches with stable opaque target
+identifiers. Diffo exposes at most 32 navigable targets per file projection,
+keeps candidates from both ends when there are more, and applies the same 256
+KiB context bound with explicit omission markers. Every review suggestion
+focuses on one concrete change in one file; related changes may explain why it
+matters but never become part of the selection.
+
+Diffo sends the bounded context in one Codex request so the overview and review
+order are coherent and the CLI starts only once. The queued request has one
+120-second deadline and remains cancellable throughout. Progress reports the
+real change count and file paths. Diffo does not show a fabricated completion
+percentage because Codex does not expose one.
 
 ## Response and commit safety
 

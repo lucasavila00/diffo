@@ -4,11 +4,7 @@ use std::{
     io::{self, Read, Write as _},
     path::{Path, PathBuf},
     process::{Child, ChildStdin, Command, Stdio},
-    sync::{
-        Arc, OnceLock,
-        atomic::{AtomicBool, Ordering},
-        mpsc::{Receiver, Sender, channel},
-    },
+    sync::mpsc::{Receiver, Sender, channel},
     thread,
     time::{Duration, Instant},
 };
@@ -32,34 +28,15 @@ use tempfile::NamedTempFile;
 
 use crate::codex_failure;
 
-mod review;
-use review::run_review_worker;
-
-static RESOLVED_CODEX_EXECUTABLE: OnceLock<OsString> = OnceLock::new();
-
-enum CodexExecutable {
-    Found(OsString),
-    Missing(String),
-}
-
 enum CodexTaskResult {
     AiCommit(ApplicationCommandId, AiCommitOutcome),
     Review(ReviewCodexTaskResult),
     ReviewProgress(ApplicationCommandId, ReviewProgress),
 }
 
-struct BusyGuard(Arc<AtomicBool>);
-
-impl Drop for BusyGuard {
-    fn drop(&mut self) {
-        self.0.store(false, Ordering::Release);
-    }
-}
-
 pub(crate) struct CodexTasks {
     repository_root: PathBuf,
     executable: Result<OsString, String>,
-    busy: Arc<AtomicBool>,
     sender: Sender<CodexTaskResult>,
     receiver: Receiver<CodexTaskResult>,
 }
@@ -67,14 +44,10 @@ pub(crate) struct CodexTasks {
 impl CodexTasks {
     pub(crate) fn new(repository_root: PathBuf) -> Self {
         let (sender, receiver) = channel();
-        let executable = match selected_codex_executable() {
-            CodexExecutable::Found(executable) => Ok(executable),
-            CodexExecutable::Missing(error) => Err(error),
-        };
+        let executable = resolve_configured_codex();
         Self {
             repository_root,
             executable,
-            busy: Arc::new(AtomicBool::new(false)),
             sender,
             receiver,
         }
@@ -94,26 +67,16 @@ impl CodexTasks {
         cancellation: CancellationHandle,
     ) -> Result<(), String> {
         let executable = self.executable.as_ref().map_err(Clone::clone)?;
-        if self
-            .busy
-            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
-            .is_err()
-        {
-            return Err("Codex is already handling another AI request".to_owned());
-        }
         let sender = self.sender.clone();
         let repository_root = self.repository_root.clone();
         let executable = executable.clone();
-        let busy = Arc::clone(&self.busy);
         let spawn = thread::Builder::new()
             .name("codex-ai".to_owned())
             .spawn(move || {
-                let _busy = BusyGuard(busy);
                 let outcome = run_codex(&executable, &repository_root, &request, &cancellation);
                 let _ = sender.send(CodexTaskResult::AiCommit(id, outcome));
             });
         if let Err(error) = spawn {
-            self.busy.store(false, Ordering::Release);
             return Err(format!("Could not start the Codex worker: {error}"));
         }
         Ok(())
@@ -126,32 +89,30 @@ impl CodexTasks {
         cancellation: CancellationHandle,
     ) -> Result<(), String> {
         let executable = self.executable.as_ref().map_err(Clone::clone)?;
-        if self
-            .busy
-            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
-            .is_err()
-        {
-            return Err("Codex is already handling another AI request".to_owned());
-        }
         let sender = self.sender.clone();
         let repository_root = self.repository_root.clone();
         let executable = executable.clone();
-        let busy = Arc::clone(&self.busy);
         let spawn = thread::Builder::new()
             .name("codex-ai".to_owned())
             .spawn(move || {
-                let _busy = BusyGuard(busy);
-                run_review_worker(
-                    id,
-                    &request,
+                let progress = ReviewProgress {
+                    changes: request.change_count(),
+                    files: request.file_paths(),
+                };
+                let _ = sender.send(CodexTaskResult::ReviewProgress(id, progress));
+                let outcome = run_review_codex(
                     &executable,
                     &repository_root,
+                    &request,
                     &cancellation,
-                    &sender,
+                    Duration::from_secs(MAX_CODEX_RUNTIME_SECONDS),
                 );
+                let _ = sender.send(CodexTaskResult::Review(ReviewCodexTaskResult {
+                    id,
+                    outcome,
+                }));
             });
         if let Err(error) = spawn {
-            self.busy.store(false, Ordering::Release);
             return Err(format!("Could not start the Codex worker: {error}"));
         }
         Ok(())
@@ -185,58 +146,72 @@ impl CodexTasks {
     }
 }
 
-fn selected_codex_executable() -> CodexExecutable {
-    if let Some(executable) = RESOLVED_CODEX_EXECUTABLE.get() {
-        return CodexExecutable::Found(executable.to_owned());
-    }
-    let resolved = resolve_configured_codex();
-    match resolved {
-        Some(executable) => {
-            let executable = RESOLVED_CODEX_EXECUTABLE.get_or_init(|| executable);
-            CodexExecutable::Found(executable.to_owned())
-        }
-        None => CodexExecutable::Missing(
-            "Codex CLI was not found in this environment. Install Codex, sign in, and restart Diffo."
-                .to_owned(),
-        ),
-    }
-}
-
-fn resolve_configured_codex() -> Option<OsString> {
+fn resolve_configured_codex() -> Result<OsString, String> {
     let inherited_path = env::var_os("PATH");
     let shell = env::var_os("SHELL").unwrap_or_else(|| OsString::from("/bin/sh"));
-    resolve_executable(CODEX_EXECUTABLE, inherited_path.as_deref(), &shell)
+    resolve_executable(CODEX_EXECUTABLE, inherited_path.as_deref(), &shell)?.ok_or_else(|| {
+        "Codex CLI was not found in this environment. Install Codex, sign in, and restart Diffo."
+            .to_owned()
+    })
 }
 
 fn resolve_executable(
     executable: &str,
     inherited_path: Option<&OsStr>,
     shell: &OsStr,
-) -> Option<OsString> {
-    inherited_path
-        .and_then(|path| {
-            env::split_paths(path)
-                .map(|directory| directory.join(executable))
-                .find(|candidate| candidate.is_file())
-        })
-        .map(OsString::from)
-        .or_else(|| resolve_from_login_shell(executable, shell))
+) -> Result<Option<OsString>, String> {
+    if let Some(path) = inherited_path {
+        for directory in env::split_paths(path) {
+            let candidate = directory.join(executable);
+            if candidate.is_file() {
+                return executable_candidate(&candidate).map(Some);
+            }
+        }
+    }
+    resolve_from_login_shell(executable, shell)
 }
 
-fn resolve_from_login_shell(executable: &str, shell: &OsStr) -> Option<OsString> {
+fn resolve_from_login_shell(executable: &str, shell: &OsStr) -> Result<Option<OsString>, String> {
     let output = Command::new(shell)
         .args(["-lc", &format!("command -v -- {executable}")])
         .stdin(Stdio::null())
         .stderr(Stdio::null())
-        .output()
-        .ok()?;
+        .output();
+    let Ok(output) = output else {
+        return Ok(None);
+    };
     if !output.status.success() {
-        return None;
+        return Ok(None);
     }
-    let stdout = String::from_utf8(output.stdout).ok()?;
-    let path = stdout.lines().rev().find(|line| !line.trim().is_empty())?;
+    let Ok(stdout) = String::from_utf8(output.stdout) else {
+        return Ok(None);
+    };
+    let Some(path) = stdout.lines().rev().find(|line| !line.trim().is_empty()) else {
+        return Ok(None);
+    };
     let path = Path::new(path.trim());
-    (path.is_absolute() && path.is_file()).then(|| path.as_os_str().to_owned())
+    if !path.is_absolute() || !path.is_file() {
+        return Ok(None);
+    }
+    executable_candidate(path).map(Some)
+}
+
+fn executable_candidate(path: &Path) -> Result<OsString, String> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt as _;
+
+        let executable = path
+            .metadata()
+            .is_ok_and(|metadata| metadata.permissions().mode() & 0o111 != 0);
+        if !executable {
+            return Err(
+                "Codex CLI was found but is not executable. Fix its permissions, then restart Diffo."
+                    .to_owned(),
+            );
+        }
+    }
+    Ok(path.as_os_str().to_owned())
 }
 
 fn run_codex(
@@ -628,7 +603,7 @@ struct ReviewStopResponse {
     title: String,
     category: String,
     reason: String,
-    primary_hunk_id: String,
+    target_id: String,
 }
 
 fn parse_review_response(request: &ReviewRequest, bytes: &[u8]) -> ReviewCodexOutcome {
@@ -654,7 +629,7 @@ fn parse_review_response(request: &ReviewRequest, bytes: &[u8]) -> ReviewCodexOu
             title: stop.title,
             category,
             reason: stop.reason,
-            primary_hunk_id: stop.primary_hunk_id,
+            target_id: stop.target_id,
         });
     }
     request

@@ -11,27 +11,34 @@ fn repository_change_keeps_the_review_visible_and_marks_it_out_of_date() {
                 title: "Inspect behavior".to_owned(),
                 category: AttentionCategory::Behavior,
                 reason: "The behavior changes here.".to_owned(),
-                primary_hunk_id: request.first_hunk_id().to_owned(),
+                target_id: request.first_target_id().to_owned(),
             }],
         )
         .unwrap();
     let mut review = ReviewActivity::new(initial, CodexAvailability::Available);
-    review.cached = Some(CachedReview { request, result });
+    review.cached = Some(CachedReview {
+        request,
+        result,
+        stale: false,
+    });
     review.open_selected_stop();
-    let active_hunk_id = review.active_hunk_id.clone();
+    let selected_target = review.selected_target().map(|target| target.id.clone());
 
     review.repository_changed(snapshot("newer"));
 
     assert!(review.stale());
     assert!(review.ready().is_none());
-    assert_eq!(review.active_hunk_id, active_hunk_id);
+    assert_eq!(
+        review.selected_target().map(|target| target.id.clone()),
+        selected_target
+    );
     let text = render_text(&review);
     for expected in [
-        "Review out of date",
+        "Out of date",
         "Summary",
-        "Review order",
-        "Selected change 1 of 1",
-        "[ Regenerate review (Enter) ]",
+        "Review path",
+        "Step 1/1 · one change",
+        "[ Regenerate (Enter) ]",
     ] {
         assert!(text.contains(expected), "missing {expected:?}");
     }
@@ -42,7 +49,7 @@ fn repository_change_keeps_the_review_visible_and_marks_it_out_of_date() {
 fn stale_review_remains_navigable_but_cannot_stage() {
     let initial = two_file_snapshot();
     let request = ReviewRequest::from_snapshot(&initial).unwrap();
-    let ids = request.hunk_ids();
+    let ids = request.target_ids();
     let result = request
         .validate_review(
             vec!["Overview".to_owned()],
@@ -52,13 +59,17 @@ fn stale_review_remains_navigable_but_cannot_stage() {
                     title: format!("Step {index}"),
                     category: AttentionCategory::Behavior,
                     reason: "Review this change.".to_owned(),
-                    primary_hunk_id: id.clone(),
+                    target_id: id.clone(),
                 })
                 .collect(),
         )
         .unwrap();
     let mut review = ReviewActivity::new(initial, CodexAvailability::Available);
-    review.cached = Some(CachedReview { request, result });
+    review.cached = Some(CachedReview {
+        request,
+        result,
+        stale: false,
+    });
     review.open_selected_stop();
     review.repository_changed(snapshot("newer"));
 
@@ -67,7 +78,10 @@ fn stale_review_remains_navigable_but_cannot_stage() {
         Some(ReviewEvent::Redraw)
     ));
     assert_eq!(review.selected_stop, 1);
-    assert_eq!(review.active_hunk_id.as_deref(), Some(ids[1].as_str()));
+    assert_eq!(
+        review.selected_target().map(|target| target.id.as_str()),
+        Some(ids[1].as_str())
+    );
     assert!(
         review
             .handle_event(&key(' '), Rect::new(0, 0, 100, 30), PaneSplit::default())
@@ -86,12 +100,16 @@ fn only_the_visible_regenerate_button_refreshes_a_stale_review() {
                 title: "Inspect behavior".to_owned(),
                 category: AttentionCategory::Behavior,
                 reason: "The behavior changes here.".to_owned(),
-                primary_hunk_id: request.first_hunk_id().to_owned(),
+                target_id: request.first_target_id().to_owned(),
             }],
         )
         .unwrap();
     let mut review = ReviewActivity::new(initial, CodexAvailability::Available);
-    review.cached = Some(CachedReview { request, result });
+    review.cached = Some(CachedReview {
+        request,
+        result,
+        stale: false,
+    });
     review.open_selected_stop();
     review.repository_changed(snapshot("newer"));
     let (_, hits) = render(&review);
@@ -100,7 +118,7 @@ fn only_the_visible_regenerate_button_refreshes_a_stale_review() {
 
     assert_eq!(
         button.width,
-        u16::try_from("[ Regenerate review (Enter) ]".len()).unwrap()
+        u16::try_from("[ Regenerate (Enter) ]".len()).unwrap()
     );
     assert!(
         review
@@ -132,7 +150,7 @@ fn refreshing_keeps_the_stale_review_until_new_results_arrive() {
                 title: "Old review step".to_owned(),
                 category: AttentionCategory::Behavior,
                 reason: "This remains useful context.".to_owned(),
-                primary_hunk_id: old_request.first_hunk_id().to_owned(),
+                target_id: old_request.first_target_id().to_owned(),
             }],
         )
         .unwrap();
@@ -140,6 +158,7 @@ fn refreshing_keeps_the_stale_review_until_new_results_arrive() {
     review.cached = Some(CachedReview {
         request: old_request,
         result,
+        stale: false,
     });
     review.open_selected_stop();
     review.repository_changed(snapshot("newer"));
@@ -154,16 +173,15 @@ fn refreshing_keeps_the_stale_review_until_new_results_arrive() {
     let text = render_text(&review);
     assert!(text.contains("Old overview stays readable"));
     assert!(!text.contains("Building your review"));
-    assert!(text.contains("Preparing the next part"));
-    assert!(text.contains("Review out of date"));
+    assert!(text.contains("Preparing changes and starting Codex"));
+    assert!(text.contains("Out of date"));
 
     assert!(review.accept(ReviewCodexTaskResult {
         id,
         outcome: ReviewCodexOutcome::Failed("Codex stopped unexpectedly.".to_owned()),
-        complete: true,
     }));
     let text = render_text(&review);
     assert!(text.contains("Old overview stays readable"));
     assert!(text.contains("Codex stopped unexpectedly"));
-    assert!(text.contains("Regenerate review"));
+    assert!(text.contains("Regenerate"));
 }

@@ -46,19 +46,19 @@ fn run(arguments: impl IntoIterator<Item = String>) -> Result<(), String> {
             println!(r#"{{"subject":"{SUBJECT}"}}"#);
         }
         AI_REVIEW_PROMPT => {
-            let hunk_ids = hunk_ids(&context);
+            let target_ids = target_ids(&context);
             if schema != AI_REVIEW_SCHEMA
                 || !context.contains("<changes total=")
-                || hunk_ids.is_empty()
+                || target_ids.is_empty()
             {
                 return Err("review request does not match the fixed AI policy".to_owned());
             }
-            let stops = hunk_ids
+            let stops = target_ids
                 .iter()
                 .enumerate()
-                .map(|(index, hunk_id)| {
+                .map(|(index, target_id)| {
                     format!(
-                        r#"{{"title":"Inspect change {}","category":"behavior","reason":"This change contains an important behavior update.","primary_hunk_id":"{hunk_id}"}}"#,
+                        r#"{{"title":"Inspect change {}","category":"behavior","reason":"This change contains an important behavior update.","target_id":"{target_id}"}}"#,
                         index + 1
                     )
                 })
@@ -73,13 +73,13 @@ fn run(arguments: impl IntoIterator<Item = String>) -> Result<(), String> {
     Ok(())
 }
 
-fn hunk_ids(context: &str) -> Vec<&str> {
+fn target_ids(context: &str) -> Vec<&str> {
     context
-        .split("<hunk id=\"")
+        .split("<target id=\"")
         .skip(1)
         .filter_map(|value| value.split_once('"').map(|(id, _)| id))
         .filter(|id| {
-            id.starts_with('H')
+            id.starts_with('T')
                 && id.len() > 1
                 && id[1..]
                     .chars()

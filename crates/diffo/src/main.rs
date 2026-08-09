@@ -492,7 +492,6 @@ fn dispatch_events(
                         diffo_app::review::ReviewCodexTaskResult {
                             id,
                             outcome: diffo_app::review::ReviewCodexOutcome::Failed(error),
-                            complete: true,
                         },
                     );
                 }

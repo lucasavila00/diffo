@@ -195,9 +195,10 @@ impl CommandQueue {
         action: ApplicationAction,
     ) -> ApplicationCommand {
         debug_assert!(self.active.is_none());
-        let label = intent_label(&queued.intent);
+        let QueuedCommand { id, intent } = queued;
+        let label = intent_label(&intent);
         let command = ApplicationCommand {
-            id: queued.id,
+            id,
             label,
             phase: command_phase(&action),
             action,

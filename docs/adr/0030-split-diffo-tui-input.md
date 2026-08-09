@@ -1,7 +1,5 @@
 # ADR 0030: Split `diffo-tui/src/input.rs`
 
-Status: Accepted
-
 ## Decision
 
 Keep `input.rs` for `map_event` and modal precedence.
@@ -10,5 +8,5 @@ Keep `input.rs` for `map_event` and modal precedence.
 - `input/keyboard.rs`: normal, palette, help, and commit key mapping.
 - `input/mouse.rs`: clicks, wheel, drags, splitters, action buttons.
 
-Move tests beside their owner. Keep precedence tests in `input.rs`.
-Do not change keys, help text, or emitted messages.
+Move tests beside their owner. Keep precedence tests in `input.rs`. Do not
+change keys, help text, or emitted messages.

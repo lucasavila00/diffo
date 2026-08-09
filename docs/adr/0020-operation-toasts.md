@@ -1,7 +1,5 @@
 # ADR 0020: Operation toasts
 
-Status: Accepted
-
 ## Goal
 
 Show short results after repository actions.
@@ -31,8 +29,8 @@ OperationResult
   Unstage
 ```
 
-Stage and Unstage results do not create toasts. Their effect is already immediate
-and visible in the file lists.
+Stage and Unstage results do not create toasts. Their effect is already
+immediate and visible in the file lists.
 
 Failures are also structured:
 
@@ -59,9 +57,9 @@ Git gets this data with stable commands after the action:
 - configured upstream data for remote and branch;
 - refs before and after Fetch to count updates.
 
-Use `git push --porcelain` for stable push status. Use repository state before the
-command to detect known blocked actions. Keep raw stderr only as sanitized detail
-for unknown failures.
+Use `git push --porcelain` for stable push status. Use repository state before
+the command to detect known blocked actions. Keep raw stderr only as sanitized
+detail for unknown failures.
 
 Use short seven-character hashes in the UI. Keep full hashes in the result.
 
@@ -81,7 +79,8 @@ Do not silently ignore a primary action.
 
 - Ahead and behind: `Push blocked: pull and merge required`.
 - Behind: `Push blocked: pull required`.
-- Non-fast-forward rejection after a remote race: `Push rejected: remote changed`.
+- Non-fast-forward rejection after a remote race:
+  `Push rejected: remote changed`.
 - Merge conflict during Pull: `Pull stopped: resolve conflicts`.
 - Missing credentials: `Push failed: authentication required`.
 - Missing remote: `Fetch failed: no remote configured`.
@@ -91,12 +90,12 @@ Do not silently ignore a primary action.
 Never run `--force`, `--force-with-lease`, an automatic merge, or conflict
 resolution. A failure toast explains the next required user action.
 
-`Push + Pull` remains a blocked state for now. Clicking it creates the divergence
-toast and performs no repository mutation. The same rule applies if Push is
-requested from another UI path while the branch is behind.
+`Push + Pull` remains a blocked state for now. Clicking it creates the
+divergence toast and performs no repository mutation. The same rule applies if
+Push is requested from another UI path while the branch is behind.
 
-Sanitize failure detail. Never show credentials, credential-bearing URLs, tokens,
-or environment values.
+Sanitize failure detail. Never show credentials, credential-bearing URLs,
+tokens, or environment values.
 
 ## Toast state
 
@@ -111,8 +110,8 @@ Keep at most three toasts. New toasts go on top. Duplicate messages replace the
 older copy.
 
 The runtime owns time. It sends `DismissToast(id)` after three seconds. The pure
-model does not read the clock. Errors and blocked-action toasts stay until dismissed
-or replaced.
+model does not read the clock. Errors and blocked-action toasts stay until
+dismissed or replaced.
 
 ## UI
 
@@ -123,36 +122,15 @@ Render toasts above the footer in the bottom-right corner.
 - Error: red border.
 - Keep the current diff visible behind them.
 - Click a toast or press Esc when it is focused to dismiss it.
-- Network loading remains visible until the action result arrives. Then replace it
-  with the result toast.
+- Network loading remains visible until the action result arrives. Then replace
+  it with the result toast.
 
-Long text wraps inside a fixed maximum width. Toasts must not change pane layout.
-Use xterm-256 colors over SSH.
+Long text wraps inside a fixed maximum width. Toasts must not change pane
+layout. Use xterm-256 colors over SSH.
 
 ## Failures
 
-Keep the action name in every failure: `Push failed: ...`.
-Never show success before both the Git command and result-data collection succeed.
-If result metadata cannot be collected, show a generic success such as
-`Push complete`; do not report a false hash or count.
-
-## Tests
-
-- Pure tests cover queue order, duplicate replacement, maximum size, and dismissal.
-- Git tests cover structured Commit, Fetch, Pull, and Push results.
-- Git tests cover non-fast-forward, hook rejection, missing remote, conflict,
-  authentication, network, and unknown failures without leaking secrets.
-- Refresh tests prove watcher snapshots cannot create action results.
-- Renderer tests cover position, wrapping, colors, and three stacked toasts.
-- Compiled PTY tests perform real local Commit, Fetch, Pull, and Push operations and
-  assert their exact visible messages.
-- A compiled PTY test waits for automatic dismissal.
-- A compiled PTY test verifies a failed action names the action and stays visible.
-- Compiled PTY tests create a diverged branch and verify Push is blocked without
-  changing either ref.
-- A compiled PTY test advances the remote after the local snapshot, attempts Push,
-  and verifies the non-fast-forward rejection toast.
-- A compiled PTY test uses a rejecting local remote hook and shows its safe detail.
-- Failure tests use local repositories or invalid local remotes. They never depend
-  on public network access.
-- All E2E waits keep the existing five-second timeout.
+Keep the action name in every failure: `Push failed: ...`. Never show success
+before both the Git command and result-data collection succeed. If result
+metadata cannot be collected, show a generic success such as `Push complete`; do
+not report a false hash or count.

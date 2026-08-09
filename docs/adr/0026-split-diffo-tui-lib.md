@@ -1,10 +1,9 @@
 # ADR 0026: Split `diffo-tui/src/lib.rs`
 
-Status: Accepted
-
 ## Decision
 
-Keep `lib.rs` for `Renderer`, its public types, and top-level frame orchestration.
+Keep `lib.rs` for `Renderer`, its public types, and top-level frame
+orchestration.
 
 - `diff.rs`: buffer key, cache, worker, preparation, anchors.
 - `diff_view.rs`: diff rows, syntax spans, hunk buttons, scrollbars.
@@ -13,5 +12,5 @@ Keep `lib.rs` for `Renderer`, its public types, and top-level frame orchestratio
 - `geometry.rs`: layouts, hit targets, scrollbar math.
 - `style.rs`: colors, contrast, row styles.
 
-Move tests beside their owner. Keep atomic buffer commit in `Renderer::prepare_frame`.
-No behavior or public API change.
+Move tests beside their owner. Keep atomic buffer commit in
+`Renderer::prepare_frame`. No behavior or public API change.

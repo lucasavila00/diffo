@@ -1,14 +1,12 @@
 # ADR 0021: Full-file diffs
 
-Status: Accepted
-
 ## Problem
 
-Diffo only shows Git hunks. The user cannot see the rest of the file. This makes a
-change hard to understand.
+Diffo only shows Git hunks. The user cannot see the rest of the file. This makes
+a change hard to understand.
 
-Showing the full file creates another problem. Changes can be far apart and hard to
-find.
+Showing the full file creates another problem. Changes can be far apart and hard
+to find.
 
 ## Decision
 
@@ -17,13 +15,14 @@ Show the full old and new files, like VS Code.
 Keep hunks as navigation targets:
 
 - Add next-change and previous-change actions.
-- Mark every change on a dedicated rail adjacent to the vertical scrollbar. Never
-  paint markers over the scrollbar thumb or make the two controls share a click cell.
+- Mark every change on a dedicated rail adjacent to the vertical scrollbar.
+  Never paint markers over the scrollbar thumb or make the two controls share a
+  click cell.
 - Keep the viewport visible on the same scrollbar.
 - Let users click a change marker to jump to it.
 
-The scrollbar markers are Diffo's minimap. Do not render miniature code. A terminal
-does not have enough space for that.
+The scrollbar markers are Diffo's minimap. Do not render miniature code. A
+terminal does not have enough space for that.
 
 Use these file versions:
 
@@ -34,8 +33,8 @@ Use these file versions:
 
 ## Why
 
-The full file gives context. Hunk jumps make navigation fast. Scrollbar markers show
-where changes are.
+The full file gives context. Hunk jumps make navigation fast. Scrollbar markers
+show where changes are.
 
 ## Rejected
 
@@ -45,5 +44,5 @@ where changes are.
 
 ## Cost
 
-Diffo must load both full file versions. Large files need background diff and syntax
-work so input and scrolling stay responsive.
+Diffo must load both full file versions. Large files need background diff and
+syntax work so input and scrolling stay responsive.

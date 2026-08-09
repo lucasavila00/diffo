@@ -1,7 +1,5 @@
 # ADR 0007: File navigation and staging
 
-Status: Accepted
-
 ## UI
 
 Use two panes:
@@ -15,7 +13,8 @@ Files                  Diff
    └─ Cargo.toml
 ```
 
-Build the left pane now. The right pane can show a placeholder until file diff work.
+Build the left pane now. The right pane can show a placeholder until file diff
+work.
 
 ## State
 
@@ -39,8 +38,8 @@ enum ChangeArea {
 
 A file can appear in both groups. Selection includes path and group.
 
-After refresh, keep the same selection when it still exists. Otherwise select the
-nearest item.
+After refresh, keep the same selection when it still exists. Otherwise select
+the nearest item.
 
 ## Actions
 
@@ -69,13 +68,3 @@ Run Git outside rendering code. Refresh the snapshot after every action.
 - Disable actions that do not fit the selected group.
 - No discard button yet.
 - No line or hunk staging yet.
-
-## Done when
-
-- Left pane shows Changes and Staged Changes.
-- Keyboard navigation works.
-- Selected row is clear.
-- Stage, unstage, and stage-all work.
-- Snapshot refresh keeps selection when possible.
-- Mock mode can show and test both groups.
-- Read-only mode disables actions in every layer.

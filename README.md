@@ -19,12 +19,18 @@ curl --proto '=https' --tlsv1.2 -LsSf https://raw.githubusercontent.com/lucasavi
 ```
 
 The [installer](install.sh) verifies the latest release against its published
-SHA-256 checksum and installs it as `/usr/local/bin/diffo`. Rerun the same command
-to replace an existing installation with the latest release. Run `diffo` from inside
-a Git repository.
+SHA-256 checksum and installs it as `/usr/local/bin/diffo`. Rerun the same
+command to replace an existing installation with the latest release. Run `diffo`
+from inside a Git repository.
 
 ## AI commits
 
 Diffo can generate and create a commit from staged changes with Codex. See
-[AI.md](AI.md) for the supported provider and model, data boundaries, safety checks,
-and offline testing contract.
+[AI commits](docs/architecture/ai-commits.md) for the supported provider and
+model, data boundaries, safety checks, and offline testing contract.
+
+## Architecture
+
+The [architecture documentation](docs/architecture/) describes how Diffo works
+now. The [architecture decision log](docs/adr/) preserves the context and
+tradeoffs behind consequential decisions.

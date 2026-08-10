@@ -20,6 +20,12 @@ read changes, explore files, and run Git actions. Its launcher accepts only the
 fixed `update` maintenance argument; the application has no options or user
 configuration.
 
+Releases contain one statically linked x86_64 Linux executable built with musl.
+For compatibility with every existing installer and updater, the release asset
+and schema-1 target retain their original GNU names. Those names identify the
+x86_64 Linux update channel rather than the executable's linked libc. Ubuntu
+22.04 and newer are supported without a runtime glibc dependency.
+
 ## Main flow
 
 1. `diffo` starts the terminal and event loop.

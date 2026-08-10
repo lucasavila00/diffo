@@ -41,8 +41,9 @@ md: $(DPRINT)
 	$(DPRINT) fmt
 
 $(DPRINT):
-	CARGO_INSTALL_ROOT="$(CURDIR)/target/tools/dprint-$(DPRINT_VERSION)" \
-		cargo install --locked --version $(DPRINT_VERSION) dprint
+	curl -fsSL https://dprint.dev/install.sh | \
+		DPRINT_INSTALL="$(CURDIR)/target/tools/dprint-$(DPRINT_VERSION)" \
+		sh -s $(DPRINT_VERSION)
 
 # Build and run the diff viewer using Cargo's debug profile.
 diffo:

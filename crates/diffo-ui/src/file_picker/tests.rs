@@ -218,6 +218,48 @@ fn tree_refresh_preserves_expansion_by_stable_node_id() {
 }
 
 #[test]
+fn tree_branch_context_menu_is_independent_of_disclosure() {
+    let mut picker = FilePicker::default();
+    picker.prepare(
+        Rect::new(0, 0, 20, 5),
+        Document::tree(
+            "Explorer",
+            vec![
+                TreeNode::branch(
+                    1,
+                    Line::raw("src"),
+                    vec![TreeNode::leaf(2, Line::raw("main.rs"))],
+                )
+                .with_context_menu(),
+            ],
+        ),
+        None,
+    );
+
+    assert_eq!(picker.visible_rows(), 1);
+    assert_eq!(
+        picker.handle_event(
+            &mouse(MouseEventKind::Down(MouseButton::Right), 1, 1),
+            Rect::new(0, 0, 40, 10),
+        ),
+        Some(Outcome::Selected(1))
+    );
+    assert!(picker.has_open_menu());
+    assert_eq!(picker.visible_rows(), 1);
+    assert_eq!(
+        picker.handle_event(
+            &Event::Key(KeyEvent::new(KeyCode::Char('r'), KeyModifiers::NONE)),
+            Rect::new(0, 0, 40, 10),
+        ),
+        Some(Outcome::CopyPath {
+            id: 1,
+            absolute: false,
+        })
+    );
+    assert_eq!(picker.visible_rows(), 1);
+}
+
+#[test]
 fn flat_rows_start_with_their_label_without_a_dot() {
     let mut picker = FilePicker::default();
     picker.prepare(

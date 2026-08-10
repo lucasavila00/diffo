@@ -45,6 +45,7 @@ pub struct TreeNode<K> {
     id: K,
     label: Line<'static>,
     branch: bool,
+    context_menu: bool,
     children: Vec<Self>,
 }
 
@@ -54,6 +55,7 @@ impl<K> TreeNode<K> {
             id,
             label,
             branch: false,
+            context_menu: true,
             children: Vec::new(),
         }
     }
@@ -63,8 +65,15 @@ impl<K> TreeNode<K> {
             id,
             label,
             branch: true,
+            context_menu: false,
             children,
         }
+    }
+
+    #[must_use]
+    pub const fn with_context_menu(mut self) -> Self {
+        self.context_menu = true;
+        self
     }
 }
 
@@ -133,6 +142,7 @@ fn append_tree_rows<K>(rows: &mut Vec<DocumentRow<K>>, node: TreeNode<K>, depth:
         id,
         label,
         branch,
+        context_menu,
         children,
     } = node;
     rows.push(DocumentRow {
@@ -141,7 +151,7 @@ fn append_tree_rows<K>(rows: &mut Vec<DocumentRow<K>>, node: TreeNode<K>, depth:
         depth,
         branch,
         action: None,
-        context_menu: !branch,
+        context_menu,
         destructive_action: None,
     });
     for child in children {

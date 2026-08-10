@@ -301,6 +301,59 @@ fn explorer_uses_the_shared_path_menu() {
 }
 
 #[test]
+fn explorer_folders_use_the_shared_path_menu() {
+    let mut explorer = ExplorerActivity::new(&RepositorySnapshot::default());
+    explorer.accept(ExplorerOutcome::Paths {
+        id: 1,
+        result: Ok(vec![PathBuf::from("src/main.rs")]),
+    });
+    let area = Rect::new(0, 0, 100, 30);
+    let split = PaneSplit::default();
+    explorer.prepare_frame(area, split);
+
+    let open_with_key = Event::Key(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::NONE));
+    assert_eq!(
+        explorer.handle_event(&open_with_key, area, split),
+        Some(ExplorerEvent::Consumed)
+    );
+    assert!(explorer.picker.has_open_menu());
+    assert_eq!(explorer.picker.visible_rows(), 1);
+
+    let copy_relative = Event::Key(KeyEvent::new(KeyCode::Char('r'), KeyModifiers::NONE));
+    assert_eq!(
+        explorer.handle_event(&copy_relative, area, split),
+        Some(ExplorerEvent::CopyPath {
+            path: PathBuf::from("src"),
+            absolute: false,
+        })
+    );
+
+    let tree = explorer_areas(area, split).tree;
+    let right_click = Event::Mouse(MouseEvent {
+        kind: MouseEventKind::Down(MouseButton::Right),
+        column: tree.x + 2,
+        row: tree.y + 1,
+        modifiers: KeyModifiers::NONE,
+    });
+    assert_eq!(
+        explorer.handle_event(&right_click, area, split),
+        Some(ExplorerEvent::Consumed)
+    );
+    assert!(explorer.picker.has_open_menu());
+    assert_eq!(explorer.picker.visible_rows(), 1);
+
+    let copy_absolute = Event::Key(KeyEvent::new(KeyCode::Char('a'), KeyModifiers::NONE));
+    assert_eq!(
+        explorer.handle_event(&copy_absolute, area, split),
+        Some(ExplorerEvent::CopyPath {
+            path: PathBuf::from("src"),
+            absolute: true,
+        })
+    );
+    assert_eq!(explorer.picker.visible_rows(), 1);
+}
+
+#[test]
 fn explorer_commands_use_the_same_state_transitions_as_header_buttons() {
     let mut explorer = ExplorerActivity::new(&RepositorySnapshot::default());
     explorer.accept(ExplorerOutcome::Paths {

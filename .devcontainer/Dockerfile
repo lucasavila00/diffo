@@ -4,6 +4,7 @@ RUN apt-get update \
     && env DEBIAN_FRONTEND=noninteractive apt-get install --yes --no-install-recommends \
         cloc \
         git \
+        musl-tools \
         openssh-server \
         sudo \
     && rm -rf /var/lib/apt/lists/*
@@ -14,7 +15,8 @@ RUN useradd --create-home --shell /bin/bash --user-group vscode \
 
 RUN rustup update stable \
     && rustup default stable \
-    && rustup component add clippy rustfmt
+    && rustup component add clippy rustfmt \
+    && rustup target add x86_64-unknown-linux-musl
 
 USER vscode
 

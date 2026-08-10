@@ -13,10 +13,12 @@ permissions:
 
 jobs:
   build:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
     timeout-minutes: 30
     env:
-      TARGET: x86_64-unknown-linux-gnu
+      BUILD_TARGET: x86_64-unknown-linux-musl
+      CC_x86_64_unknown_linux_musl: musl-gcc
+      UPDATE_TARGET: x86_64-unknown-linux-gnu
       ASSET: diffo-x86_64-unknown-linux-gnu
       SOURCE_SHA: ${{ inputs.source_sha }}
 
@@ -27,10 +29,13 @@ jobs:
           fetch-depth: 0
           ref: ${{ inputs.source_sha }}
 
+      - name: Install musl toolchain
+        run: sudo apt-get update && sudo apt-get install --yes musl-tools
+
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: x86_64-unknown-linux-gnu
+          targets: x86_64-unknown-linux-musl
 
       - name: Derive internal update version
         run: |
@@ -54,20 +59,38 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Build production executable
-        run: cargo build --locked --release --package diffo --target "${TARGET}"
+        run: cargo build --locked --release --package diffo --target "${BUILD_TARGET}"
+
+      - name: Verify static Linux executable
+        run: |
+          set -euo pipefail
+          executable="target/${BUILD_TARGET}/release/diffo"
+          if readelf --program-headers "${executable}" | grep --quiet INTERP; then
+            echo "Production executable has a dynamic interpreter." >&2
+            exit 1
+          fi
+          if readelf --dynamic "${executable}" | grep --quiet NEEDED; then
+            echo "Production executable has a dynamic library dependency." >&2
+            exit 1
+          fi
+          if output=$("${executable}" --help 2>&1); then
+            echo "Production executable unexpectedly accepted --help." >&2
+            exit 1
+          fi
+          grep --fixed-strings --quiet 'usage: diffo [update]' <<< "${output}"
 
       - name: Build schema-1 metadata and checksums
         run: |
           set -euo pipefail
           mkdir -p dist
-          cp "target/${TARGET}/release/diffo" "dist/${ASSET}"
+          cp "target/${BUILD_TARGET}/release/diffo" "dist/${ASSET}"
           length=$(stat --format=%s "dist/${ASSET}")
           digest=$(sha256sum "dist/${ASSET}" | cut -d ' ' -f1)
           jq -cn \
             --arg version "${VERSION}" \
             --arg sha "${DIFFO_BUILD_SHA}" \
             --arg name "${ASSET}" \
-            --arg target "${TARGET}" \
+            --arg target "${UPDATE_TARGET}" \
             --arg sha256 "${digest}" \
             --argjson length "${length}" \
             '{schema:1,version:$version,sha:$sha,assets:[{name:$name,length:$length,target:$target,sha256:$sha256}]}' \

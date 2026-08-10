@@ -150,7 +150,7 @@ fn full_screen_explorer_shows_only_scrollable_file_text() -> Result<()> {
 }
 
 #[test]
-fn fixed_file_navigation_keys_move_selection() -> Result<()> {
+fn fixed_previous_and_next_file_keys_move_selection() -> Result<()> {
     let repository = TestRepository::new()?;
     fs::write(repository.worktree.join("tracked.txt"), "changed\n")?;
     fs::write(repository.worktree.join("new.txt"), "new\n")?;
@@ -158,14 +158,6 @@ fn fixed_file_navigation_keys_move_selection() -> Result<()> {
     screen.wait_for(&Selector::selected_row("tracked.txt"))?;
 
     screen
-        .press(Key::End)?
-        .wait_for(&Selector::selected_row("new.txt"))?
-        .press(Key::Char('g'))?
-        .wait_for(&Selector::selected_row("tracked.txt"))?
-        .press(Key::Char('k'))?
-        .wait_for(&Selector::selected_row("new.txt"))?
-        .press(Key::Home)?
-        .wait_for(&Selector::selected_row("tracked.txt"))?
         .press(Key::Char('k'))?
         .wait_for(&Selector::selected_row("new.txt"))?
         .press(Key::Char('j'))?

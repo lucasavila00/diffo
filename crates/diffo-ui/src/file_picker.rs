@@ -603,8 +603,6 @@ pub fn navigation(key: &KeyEvent) -> Option<Navigation> {
     match key.code {
         KeyCode::Char('j') => Some(Navigation::Previous),
         KeyCode::Char('k' | 'l') => Some(Navigation::Next),
-        KeyCode::Home | KeyCode::Char('g') => Some(Navigation::First),
-        KeyCode::End => Some(Navigation::Last),
         KeyCode::Enter => Some(Navigation::Activate),
         KeyCode::Char('c') => Some(Navigation::OpenMenu),
         _ => None,
@@ -616,9 +614,7 @@ pub fn help_rows() -> Vec<(String, &'static str)> {
     vec![
         ("j".to_owned(), "Previous file"),
         ("k / l".to_owned(), "Next file"),
-        ("Home / g".to_owned(), "First file"),
-        ("End".to_owned(), "Last file"),
-        ("c".to_owned(), "Open path menu"),
+        ("c".to_owned(), "Open contextual menu"),
     ]
 }
 

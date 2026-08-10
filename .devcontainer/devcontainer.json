@@ -5,6 +5,9 @@
 	"build": {
 		"dockerfile": "Dockerfile"
 	},
+	"containerEnv": {
+		"INSIDE_DEVCONTAINER": "true"
+	},
 	"postCreateCommand": "git config --global --add safe.directory /workspaces/workspace",
 	"remoteUser": "vscode"
 

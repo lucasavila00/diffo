@@ -403,7 +403,7 @@ impl ExplorerActivity {
             }
             return match outcome {
                 PickerOutcome::CopyPath {
-                    id: EntryId::File(path),
+                    id: EntryId::File(path) | EntryId::Directory(path),
                     absolute,
                 } => Some(ExplorerEvent::CopyPath { path, absolute }),
                 PickerOutcome::Selected(id @ EntryId::File(_))
@@ -412,11 +412,7 @@ impl ExplorerActivity {
                 {
                     None
                 }
-                PickerOutcome::CopyPath {
-                    id: EntryId::Directory(_),
-                    ..
-                }
-                | PickerOutcome::Consumed
+                PickerOutcome::Consumed
                 | PickerOutcome::Selected(_)
                 | PickerOutcome::Activated(_)
                 | PickerOutcome::RowAction(_)

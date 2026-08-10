@@ -114,6 +114,7 @@ fn picker_tree_node(entry: &TreeEntry) -> PickerTreeNode<EntryId> {
             label,
             entry.children.iter().map(picker_tree_node).collect(),
         )
+        .with_context_menu()
     } else {
         PickerTreeNode::leaf(entry.id.clone(), label)
     }

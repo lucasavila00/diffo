@@ -65,3 +65,9 @@ Slow work happens away from drawing. A new diff becomes visible only when its
 rows, syntax colors, navigation targets, and scroll state are all ready. Until
 then, Diffo keeps showing the old complete view. This avoids half-built frames
 and stale data.
+
+## Shared file-picker controls
+
+Diff and Explorer use the same fixed file-picker controls. Lowercase `j` selects
+the previous file, lowercase `k` or `l` selects the next file, and lowercase `c`
+opens the selected row's contextual menu. Right-click opens that same menu.

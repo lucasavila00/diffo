@@ -537,3 +537,10 @@ fn uppercase_shortcuts_are_rejected() {
         );
     }
 }
+
+#[test]
+fn first_and_last_file_shortcuts_are_rejected() {
+    for code in [KeyCode::Home, KeyCode::End, KeyCode::Char('g')] {
+        assert_eq!(navigation(&KeyEvent::new(code, KeyModifiers::NONE)), None);
+    }
+}

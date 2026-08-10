@@ -5,9 +5,7 @@ expression: help
 [
     "j: Previous file",
     "k / l: Next file",
-    "Home / g: First file",
-    "End: Last file",
-    "c: Open path menu",
+    "c: Open contextual menu",
     "f: Toggle full-screen buffer",
     "q / Esc / Ctrl+c: Quit",
     "↑: Scroll diff up by four lines",

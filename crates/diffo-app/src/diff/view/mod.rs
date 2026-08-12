@@ -5,7 +5,7 @@ use super::{
     resize_border_style, side_by_side_line, side_by_side_skeleton_line, terminal_safe_text,
 };
 use diffo_ui::text_view::{Viewport, ViewportMetrics, render_lines, render_scrollbars};
-use diffo_ui::{design, icons, theme};
+use diffo_ui::{design, icons, mouse_target_style, theme};
 
 pub(in crate::diff) mod files;
 pub(in crate::diff) mod geometry;
@@ -22,7 +22,7 @@ pub(in crate::diff) fn render_change_warning(
     frame.render_widget(
         Paragraph::new(label)
             .alignment(Alignment::Center)
-            .style(Style::default().fg(theme::TEXT).patch(background)),
+            .style(mouse_target_style().patch(background)),
         area,
     );
 }

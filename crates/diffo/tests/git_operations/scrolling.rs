@@ -204,41 +204,6 @@ fn vertical_scrollbar_reaches_its_end_with_the_last_diff_line() -> Result<()> {
 }
 
 #[test]
-fn change_warning_clicks_are_inert_and_shortcuts_navigate() -> Result<()> {
-    let repository = TestRepository::new()?;
-    let path = repository.worktree.join("navigation.rs");
-    fs::write(&path, navigation_file(false)?)?;
-    git(&repository.worktree, &["add", "navigation.rs"])?;
-    git(
-        &repository.worktree,
-        &["commit", "-m", "Add hunk navigation fixture"],
-    )?;
-    fs::write(&path, navigation_file(true)?)?;
-
-    let mut screen = repository.screen()?;
-    screen
-        .wait_for_text("FIRST_CHANGE")?
-        .click(&Selector::text(" Next change (n)"))?
-        .wait_for_text("FIRST_CHANGE")?;
-    assert!(!screen.contents().contains("MIDDLE_CHANGE"));
-    screen
-        .press(Key::Char('n'))?
-        .wait_for_text("MIDDLE_CHANGE")?;
-    assert!(screen.contents().contains(" Previous change (p)"));
-    screen
-        .press(Key::Char('n'))?
-        .wait_for_text("LAST_CHANGE")?
-        .wait_for_text_gone(" Next change (n)")?
-        .click(&Selector::text(" Previous change (p)"))?
-        .wait_for_text("LAST_CHANGE")?;
-    assert!(!screen.contents().contains("MIDDLE_CHANGE"));
-    screen
-        .press(Key::Char('p'))?
-        .wait_for_text("MIDDLE_CHANGE")?;
-    Ok(())
-}
-
-#[test]
 fn n_and_p_move_between_changes_with_the_keyboard() -> Result<()> {
     let repository = TestRepository::new()?;
     let path = repository.worktree.join("keyboard-navigation.rs");

@@ -16,6 +16,8 @@ mod delete_branch;
 mod merge;
 #[path = "git_operations/navigation.rs"]
 mod navigation;
+#[path = "git_operations/navigation_links.rs"]
+mod navigation_links;
 #[path = "git_operations/network.rs"]
 mod network;
 #[path = "git_operations/overlays.rs"]

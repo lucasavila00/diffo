@@ -560,19 +560,15 @@ fn hunk_markers_have_a_separate_clickable_rail_beside_the_scrollbar() {
     assert_eq!(transition.vertical, target);
 }
 
-fn assert_inert_warning_click(renderer: &mut Renderer, model: &Model, area: Rect, warning: Rect) {
-    assert_eq!(
-        renderer.map_event(
-            &mouse_at(MouseEventKind::Down(MouseButton::Left), warning),
-            model,
-            area,
-        ),
-        None
+fn assert_bold_row(buffer: &Buffer, area: Rect) {
+    assert!(
+        (area.x..area.right())
+            .all(|column| { buffer[(column, area.y)].modifier.contains(Modifier::BOLD) })
     );
 }
 
 #[test]
-fn change_warnings_overlay_fixed_edge_rows_and_do_not_activate() {
+fn change_navigation_links_overlay_fixed_edge_rows_and_activate() {
     let mut model = model();
     model.snapshot.files[0].unstaged.as_mut().unwrap().text = large_hunk_patch();
     let area = Rect::new(0, 0, 100, 30);
@@ -592,29 +588,24 @@ fn change_warnings_overlay_fixed_edge_rows_and_do_not_activate() {
     let next_target = renderer
         .change_jump(&model, area, true)
         .expect("next target");
-    assert_jump_event(
-        &mut renderer,
-        &Event::Key(KeyEvent::new(KeyCode::Char('n'), KeyModifiers::NONE)),
-        &model,
-        area,
-        next_target,
-    );
     insta::assert_debug_snapshot!(
         "next_warning",
         buffer_region(terminal.backend().buffer(), next_area)
     );
-    assert!((next_area.x..next_area.right()).all(|column| {
-        !terminal.backend().buffer()[(column, next_area.y)]
-            .modifier
-            .contains(Modifier::BOLD)
-    }));
+    assert_bold_row(terminal.backend().buffer(), next_area);
     assert!(renderer.scrollbars.horizontal_area.height > 0);
     assert_eq!(next_area.bottom(), renderer.scrollbars.horizontal_area.y);
-    assert_inert_warning_click(&mut renderer, &model, area, next_area);
+    assert_jump_event(
+        &mut renderer,
+        &mouse_at(MouseEventKind::Down(MouseButton::Left), next_area),
+        &model,
+        area,
+        next_target,
+    );
     let transition = renderer
         .prepare_frame(&model, area)
         .viewport_transition
-        .expect("button jump must commit in one frame");
+        .expect("link jump must commit in one frame");
     assert_eq!(transition.vertical, next_target);
     assert!(renderer.submitted.is_empty());
     model.diff_scroll = transition.vertical;
@@ -630,7 +621,22 @@ fn change_warnings_overlay_fixed_edge_rows_and_do_not_activate() {
     );
     assert_eq!(previous_area.y, area.y.saturating_add(1));
     assert!(renderer.change_warnings.next.is_some());
-    assert_inert_warning_click(&mut renderer, &model, area, previous_area);
+    assert_bold_row(terminal.backend().buffer(), previous_area);
+    let previous_target = renderer
+        .change_jump(&model, area, false)
+        .expect("previous target");
+    assert_jump_event(
+        &mut renderer,
+        &mouse_at(MouseEventKind::Down(MouseButton::Left), previous_area),
+        &model,
+        area,
+        previous_target,
+    );
+    let previous_transition = renderer
+        .prepare_frame(&model, area)
+        .viewport_transition
+        .expect("previous link jump must commit in one frame");
+    assert_eq!(previous_transition.vertical, previous_target);
 
     model.diff_scroll = renderer
         .highlighted
@@ -653,7 +659,14 @@ fn change_warnings_overlay_fixed_edge_rows_and_do_not_activate() {
     );
     assert_eq!(top_viewport.content_area, middle_viewport.content_area);
     assert_eq!(middle_viewport.content_area, end_viewport.content_area);
-    assert_inert_warning_click(&mut renderer, &model, area, next_area);
+    assert_eq!(
+        renderer.map_event(
+            &mouse_at(MouseEventKind::Down(MouseButton::Left), next_area),
+            &model,
+            area,
+        ),
+        None
+    );
 }
 
 fn large_hunk_patch() -> String {

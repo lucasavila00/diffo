@@ -428,6 +428,32 @@ impl Renderer {
                 mouse.kind,
                 MouseEventKind::Down(MouseButton::Left) | MouseEventKind::Drag(MouseButton::Left)
             ) {
+                if mouse.kind == MouseEventKind::Down(MouseButton::Left) {
+                    let position = (mouse.column, mouse.row).into();
+                    let next = if self
+                        .change_warnings
+                        .previous
+                        .is_some_and(|area| area.contains(position))
+                    {
+                        Some(false)
+                    } else if self
+                        .change_warnings
+                        .next
+                        .is_some_and(|area| area.contains(position))
+                    {
+                        Some(true)
+                    } else {
+                        None
+                    };
+                    if let Some(next) = next {
+                        return self.change_jump(model, area, next).map(|target| {
+                            RendererEvent::Message(self.vertical_message(
+                                crate::diff::Message::SetDiffScroll(target),
+                                model,
+                            ))
+                        });
+                    }
+                }
                 if mouse.kind == MouseEventKind::Down(MouseButton::Left)
                     && let Some(change) = self.change_at_marker(mouse.column, mouse.row, model)
                 {

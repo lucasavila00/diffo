@@ -71,3 +71,12 @@ and stale data.
 Diff and Explorer use the same fixed file-picker controls. Lowercase `j` selects
 the previous file, lowercase `k` or `l` selects the next file, and lowercase `c`
 opens the selected row's contextual menu. Right-click opens that same menu.
+
+## Diff change navigation
+
+When changed content exists outside the diff viewport, its top or bottom row
+shows a bold previous- or next-change link over the diff text. The complete
+visible link row is clickable and uses the same atomic navigation path as the
+fixed lowercase `p` and `n` shortcuts. Its background previews the semantic diff
+color at the destination. Pointer movement never changes its appearance or
+requests a redraw.

@@ -110,6 +110,9 @@ impl Workbench {
                 Activity::Explorer => {
                     explorer_frame_preparation(&mut self.explorer, content, self.pane_split)
                 }
+                Activity::History => {
+                    Tool::prepare_frame(&mut self.history, content, self.pane_split)
+                }
             }
         };
         let viewport = (self.active == Activity::Diff).then_some((
@@ -130,6 +133,7 @@ impl Workbench {
         match self.active {
             Activity::Diff => self.diff.render(frame, content, self.pane_split),
             Activity::Explorer => self.explorer.render(frame, content, self.pane_split),
+            Activity::History => self.history.render(frame, content, self.pane_split),
         }
         render_status(frame, tool_areas(content).status, &self.diff.model);
         self.render_full_screen_entry(frame);

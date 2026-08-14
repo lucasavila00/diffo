@@ -29,6 +29,7 @@ fn idle_and_unbound_input_emit_no_terminal_activity() -> Result<()> {
         .press(Key::Char('O'))?
         .expect_quiet(Duration::from_millis(150))?
         .press(Key::Tab)?
+        .press(Key::Tab)?
         .wait_for_text("Explorer")?
         .press(Key::Char('q'))?
         .wait_for_exit()?;
@@ -125,6 +126,7 @@ fn full_screen_explorer_shows_only_scrollable_file_text() -> Result<()> {
     let mut screen = repository.screen()?;
 
     screen
+        .press(Key::Tab)?
         .press(Key::Tab)?
         .wait_for_text("Explorer")?
         .wait_for_text("line 0")?

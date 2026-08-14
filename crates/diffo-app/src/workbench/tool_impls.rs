@@ -1,8 +1,8 @@
 use super::{
     Activity, Command, CommandId, DiffActivity, Event, ExplorerActivity, ExplorerEvent, Frame,
-    FramePreparation, KeyCode, KeyEventKind, KeyModifiers, PaneSplit, Rect, RendererEvent,
-    TextRenderMode, TextSurfacePreparation, Tool, Workbench, WorkbenchCommand, WorkbenchEffect,
-    WorkbenchTask,
+    FramePreparation, HistoryActivity, HistoryEvent, KeyCode, KeyEventKind, KeyModifiers,
+    PaneSplit, Rect, RendererEvent, TextRenderMode, TextSurfacePreparation, Tool, Workbench,
+    WorkbenchCommand, WorkbenchEffect, WorkbenchTask,
 };
 
 impl Workbench {
@@ -31,6 +31,7 @@ impl Workbench {
         match self.active {
             super::Activity::Diff => self.diff.is_preparing(),
             super::Activity::Explorer => self.explorer.is_preparing(),
+            super::Activity::History => self.history.is_preparing(),
         }
     }
 
@@ -136,6 +137,53 @@ impl Tool for ExplorerActivity {
 
     fn execute_command(&mut self, command: CommandId) -> bool {
         ExplorerActivity::execute_command(self, command)
+    }
+}
+
+impl Tool for HistoryActivity {
+    fn handle_event(
+        &mut self,
+        event: &Event,
+        area: Rect,
+        split: PaneSplit,
+    ) -> Option<WorkbenchCommand> {
+        HistoryActivity::handle_event(self, event, area, split).map(|event| match event {
+            HistoryEvent::Consumed => WorkbenchCommand::Redraw,
+        })
+    }
+
+    fn prepare_frame(&mut self, area: Rect, split: PaneSplit) -> FramePreparation {
+        let text_surface = HistoryActivity::prepare_frame(self, area, split);
+        history_preparation(self, text_surface)
+    }
+
+    fn render(&mut self, frame: &mut Frame, area: Rect, split: PaneSplit) {
+        HistoryActivity::render(self, frame, area, split);
+    }
+
+    fn is_preparing(&self) -> bool {
+        HistoryActivity::is_preparing(self)
+    }
+
+    fn help_rows(&self) -> Vec<(String, &'static str)> {
+        HistoryActivity::help_rows(self)
+    }
+}
+
+pub(super) fn history_preparation(
+    history: &HistoryActivity,
+    text_surface: TextSurfacePreparation,
+) -> FramePreparation {
+    let (requested, selected, displayed) = history.document_commits();
+    FramePreparation {
+        content_revision: text_surface.document_revision,
+        preparing: text_surface.mode == TextRenderMode::TextSkeleton,
+        syntax_ready: text_surface.mode == TextRenderMode::Full,
+        requested_history_commit: requested,
+        selected_history_commit: selected,
+        displayed_history_commit: displayed,
+        text_surface: Some(text_surface),
+        ..FramePreparation::default()
     }
 }
 

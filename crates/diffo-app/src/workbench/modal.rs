@@ -337,7 +337,7 @@ mod tests {
     #[test]
     fn help_toggles_with_2_and_f2_in_every_activity() {
         let area = Rect::new(0, 0, 100, 30);
-        for activity in [Activity::Diff, Activity::Explorer] {
+        for activity in [Activity::Diff, Activity::Explorer, Activity::History] {
             for shortcut in [KeyCode::Char('2'), KeyCode::F(2)] {
                 let mut workbench = Workbench::new(RepositorySnapshot::default());
                 workbench.active = activity;
@@ -489,7 +489,7 @@ mod tests {
     #[test]
     fn quick_open_is_global_and_captures_its_own_o_input() {
         let area = Rect::new(0, 0, 100, 30);
-        for activity in [Activity::Diff, Activity::Explorer] {
+        for activity in [Activity::Diff, Activity::Explorer, Activity::History] {
             let mut workbench = Workbench::new(RepositorySnapshot::default());
             workbench.active = activity;
 
@@ -688,6 +688,6 @@ mod tests {
         let _ = workbench.handle_event(&key(KeyCode::Esc), area);
         assert!(workbench.modal.is_none());
         let _ = workbench.handle_event(&key(KeyCode::Tab), area);
-        assert_eq!(workbench.active, Activity::Explorer);
+        assert_eq!(workbench.active, Activity::History);
     }
 }

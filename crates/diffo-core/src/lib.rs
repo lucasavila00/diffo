@@ -123,6 +123,12 @@ pub struct Commit {
     pub summary: String,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CheckoutHistory {
+    pub head_commit: Option<String>,
+    pub commits: Vec<Commit>,
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct UpstreamState {
     pub name: String,
@@ -485,6 +491,32 @@ impl std::fmt::Display for OperationFailure {
 impl std::error::Error for OperationFailure {}
 
 pub trait Repository: RepositorySource {
+    /// List commits reachable from the current checkout in newest-first order.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when commit history cannot be read or parsed.
+    fn checkout_history(&self) -> Result<CheckoutHistory> {
+        let snapshot = self.snapshot()?;
+        let head_commit = match snapshot.head {
+            HeadState::Named { commit, .. } | HeadState::Detached { commit } => Some(commit),
+            HeadState::Unborn { .. } => None,
+        };
+        Ok(CheckoutHistory {
+            head_commit,
+            commits: snapshot.recent_commits,
+        })
+    }
+
+    /// Read the unified patch recorded by one commit.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the commit does not exist or its patch cannot be read.
+    fn commit_patch(&self, _commit_id: &str) -> Result<String> {
+        anyhow::bail!("commit patch viewing is unavailable for this repository source")
+    }
+
     /// List local and remote branches known to the repository.
     ///
     /// # Errors

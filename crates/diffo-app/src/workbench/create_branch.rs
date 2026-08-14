@@ -457,7 +457,7 @@ mod tests {
             ..RepositorySnapshot::default()
         };
         let area = Rect::new(0, 0, 100, 30);
-        for activity in [Activity::Diff, Activity::Explorer] {
+        for activity in [Activity::Diff, Activity::Explorer, Activity::History] {
             let mut workbench = Workbench::new(snapshot.clone());
             workbench.active = activity;
             let _ = workbench.execute_palette_command(CREATE_BRANCH_COMMAND);

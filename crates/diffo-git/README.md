@@ -3,7 +3,8 @@
 `diffo-git` implements Diffo's repository interfaces with the system `git`
 command.
 
-It collects repository snapshots, discovers branches, tags, and merge state,
+It collects repository snapshots, discovers branches, tags, merge state, and the
+commits reachable from the current checkout, loads recorded commit patches,
 walks the worktree and loads files for Explorer, and performs staging, safe
 branch checkout, merge, merge abort, commit, fetch, and sync operations. Sync
 always fetches, then fast-forwards, pushes, or rebases local-only commits and

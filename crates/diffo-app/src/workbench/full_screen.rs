@@ -7,7 +7,10 @@ use ratatui::{
     widgets::{Clear, Paragraph},
 };
 
-use super::{Activity, Workbench, WorkbenchCommand, explorer_preparation, workbench_areas};
+use super::{
+    Activity, Workbench, WorkbenchCommand, explorer_preparation, history_preparation,
+    workbench_areas,
+};
 use crate::diff::{FramePreparation, RendererEvent};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -107,6 +110,7 @@ impl Workbench {
         match self.active {
             Activity::Diff => self.diff.renderer.full_screen_title(),
             Activity::Explorer => self.explorer.full_screen_title(),
+            Activity::History => self.history.full_screen_title(),
         }
     }
 
@@ -167,6 +171,10 @@ impl Workbench {
                 let (requested, displayed) = self.explorer.document_paths();
                 explorer_preparation(text_surface, requested, displayed)
             }
+            Activity::History => {
+                let text_surface = self.history.prepare_full_screen(buffer);
+                history_preparation(&self.history, text_surface)
+            }
         };
         if self.full_screen_pending && !preparation.preparing && preparation.syntax_ready {
             self.full_screen = true;
@@ -192,6 +200,7 @@ impl Workbench {
                     .render_full_screen(frame, buffer, &self.diff.model);
             }
             Activity::Explorer => self.explorer.render_full_screen(frame, buffer),
+            Activity::History => self.history.render_full_screen(frame, buffer),
         }
         true
     }
@@ -222,6 +231,10 @@ impl Workbench {
                 }),
             Activity::Explorer => self
                 .explorer
+                .handle_full_screen_event(event, buffer)
+                .map(|_| WorkbenchCommand::Redraw),
+            Activity::History => self
+                .history
                 .handle_full_screen_event(event, buffer)
                 .map(|_| WorkbenchCommand::Redraw),
         }

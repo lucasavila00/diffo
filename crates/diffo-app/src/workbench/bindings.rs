@@ -99,6 +99,7 @@ impl Workbench {
         let activity_rows = match self.active {
             Activity::Diff => self.diff.help_rows(),
             Activity::Explorer => self.explorer.help_rows(),
+            Activity::History => self.history.help_rows(),
         };
         std::iter::once(("Tab".to_owned(), "Next activity"))
             .chain(help_rows())

@@ -20,6 +20,7 @@ use crate::{
 pub enum TextSurface {
     Diff,
     Explorer,
+    History,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

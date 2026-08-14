@@ -59,12 +59,13 @@ pub use view::overlays::{
     CommandProgress, CommandProgressRow, CommandProgressState, command_at_position,
     render_command_progress, render_toasts, toast_at_position,
 };
+pub(crate) use view::style::raw_hunk_line;
 #[cfg(test)]
 use view::style::{
     contrast_ratio, contrasting_foreground, diff_background, diff_background_rgb, row_style,
 };
 use view::style::{
-    inline_line, inline_skeleton_line, raw_hunk_line, side_by_side_line, side_by_side_skeleton_line,
+    inline_line, inline_skeleton_line, side_by_side_line, side_by_side_skeleton_line,
 };
 
 use prepare::state::{
@@ -237,6 +238,9 @@ impl Renderer {
             displayed_file: self.displayed_key().map(|key| key.file.clone()),
             requested_explorer_file: None,
             displayed_explorer_file: None,
+            requested_history_commit: None,
+            selected_history_commit: None,
+            displayed_history_commit: None,
             text_surface: Some(self.text_surface_preparation(
                 rendered_vertical_scroll,
                 syntax_ready,

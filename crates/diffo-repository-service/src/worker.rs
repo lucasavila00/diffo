@@ -8,31 +8,29 @@ use std::{
 };
 
 use diffo_core::{
-    ApplicationCommandId, CancellationHandle, OperationFailure, OperationOutcome, Repository,
-    RepositoryAction, RepositoryOperationContext, RepositoryQueryId, RepositoryUpdate,
-    RepositoryUpdateKind, SyncProgress,
+    ApplicationCommandId, CancellationHandle, Repository, RepositoryAction, RepositoryQueryId,
+    RepositoryUpdate, RepositoryUpdateKind,
 };
 
 use crate::service::{PromptBroker, RepositoryEvent};
 
-struct CommandProgressReporter {
-    command_id: ApplicationCommandId,
-    events: Sender<RepositoryEvent>,
-}
+mod operation;
+mod queries;
 
-impl diffo_core::ProgressHandler for CommandProgressReporter {
-    fn progress(&self, progress: SyncProgress) {
-        let _ = self.events.send(RepositoryEvent::Progress {
-            command_id: self.command_id,
-            progress,
-        });
-    }
-}
+use operation::execute as execute_command;
+use queries::{
+    branches as collect_branches, commit_patch as collect_commit_patch, history as collect_history,
+    merge_refs as collect_merge_refs, refresh as collect_refresh, remotes as collect_remotes,
+    stashes as collect_stashes,
+};
 
 #[cfg(test)]
 use anyhow::Result;
 #[cfg(test)]
-use diffo_core::{OperationResult, RepositorySnapshot};
+use diffo_core::{
+    OperationFailure, OperationOutcome, OperationResult, RepositoryOperationContext,
+    RepositorySnapshot,
+};
 #[cfg(test)]
 use std::thread;
 
@@ -40,6 +38,13 @@ const DEBOUNCE: Duration = Duration::from_millis(100);
 
 pub(super) enum WorkerRequest {
     RefreshRequested,
+    LoadHistory {
+        query_id: RepositoryQueryId,
+    },
+    LoadCommitPatch {
+        query_id: RepositoryQueryId,
+        commit_id: String,
+    },
     LoadBranches {
         query_id: RepositoryQueryId,
     },
@@ -63,6 +68,13 @@ pub(super) enum WorkerRequest {
 
 enum DebouncedRequest {
     Refresh,
+    LoadHistory {
+        query_id: RepositoryQueryId,
+    },
+    LoadCommitPatch {
+        query_id: RepositoryQueryId,
+        commit_id: String,
+    },
     LoadBranches {
         query_id: RepositoryQueryId,
     },
@@ -104,50 +116,12 @@ pub(super) fn worker_loop(
                 {
                     break;
                 }
-                match debounced {
-                    DebouncedRequest::Refresh => Some(collect_refresh(repository, &mut generation)),
-                    DebouncedRequest::LoadBranches { query_id } => {
-                        if events.send(collect_branches(repository, query_id)).is_err() {
-                            break;
-                        }
-                        Some(collect_refresh(repository, &mut generation))
-                    }
-                    DebouncedRequest::LoadMergeRefs { query_id } => {
-                        if events
-                            .send(collect_merge_refs(repository, query_id))
-                            .is_err()
-                        {
-                            break;
-                        }
-                        Some(collect_refresh(repository, &mut generation))
-                    }
-                    DebouncedRequest::LoadStashes { query_id } => {
-                        if events.send(collect_stashes(repository, query_id)).is_err() {
-                            break;
-                        }
-                        Some(collect_refresh(repository, &mut generation))
-                    }
-                    DebouncedRequest::LoadRemotes { query_id } => {
-                        if events.send(collect_remotes(repository, query_id)).is_err() {
-                            break;
-                        }
-                        Some(collect_refresh(repository, &mut generation))
-                    }
-                    DebouncedRequest::Execute {
-                        id,
-                        action,
-                        cancellation,
-                    } => Some(execute_command(
-                        repository,
-                        id,
-                        &action,
-                        &cancellation,
-                        &mut generation,
-                        prompts,
-                        events,
-                    )),
-                    DebouncedRequest::Shutdown => break,
-                }
+                let Some(event) =
+                    collect_after_debounce(repository, debounced, &mut generation, prompts, events)
+                else {
+                    break;
+                };
+                Some(event)
             }
             WorkerRequest::Execute {
                 id,
@@ -165,6 +139,11 @@ pub(super) fn worker_loop(
             WorkerRequest::LoadBranches { query_id } => {
                 Some(collect_branches(repository, query_id))
             }
+            WorkerRequest::LoadHistory { query_id } => Some(collect_history(repository, query_id)),
+            WorkerRequest::LoadCommitPatch {
+                query_id,
+                commit_id,
+            } => Some(collect_commit_patch(repository, query_id, commit_id)),
             WorkerRequest::LoadMergeRefs { query_id } => {
                 Some(collect_merge_refs(repository, query_id))
             }
@@ -191,6 +170,45 @@ pub(super) fn worker_loop(
     busy.store(false, Ordering::Release);
 }
 
+fn collect_after_debounce(
+    repository: &dyn Repository,
+    request: DebouncedRequest,
+    generation: &mut u64,
+    prompts: &Arc<PromptBroker>,
+    events: &Sender<RepositoryEvent>,
+) -> Option<RepositoryEvent> {
+    let query = match request {
+        DebouncedRequest::Refresh => return Some(collect_refresh(repository, generation)),
+        DebouncedRequest::LoadHistory { query_id } => collect_history(repository, query_id),
+        DebouncedRequest::LoadCommitPatch {
+            query_id,
+            commit_id,
+        } => collect_commit_patch(repository, query_id, commit_id),
+        DebouncedRequest::LoadBranches { query_id } => collect_branches(repository, query_id),
+        DebouncedRequest::LoadMergeRefs { query_id } => collect_merge_refs(repository, query_id),
+        DebouncedRequest::LoadStashes { query_id } => collect_stashes(repository, query_id),
+        DebouncedRequest::LoadRemotes { query_id } => collect_remotes(repository, query_id),
+        DebouncedRequest::Execute {
+            id,
+            action,
+            cancellation,
+        } => {
+            return Some(execute_command(
+                repository,
+                id,
+                &action,
+                &cancellation,
+                generation,
+                prompts,
+                events,
+            ));
+        }
+        DebouncedRequest::Shutdown => return None,
+    };
+    events.send(query).ok()?;
+    Some(collect_refresh(repository, generation))
+}
+
 fn debounce(requests: &Receiver<WorkerRequest>, refresh_pending: &AtomicBool) -> DebouncedRequest {
     loop {
         match requests.recv_timeout(DEBOUNCE) {
@@ -206,6 +224,18 @@ fn debounce(requests: &Receiver<WorkerRequest>, refresh_pending: &AtomicBool) ->
                     id,
                     action,
                     cancellation,
+                };
+            }
+            Ok(WorkerRequest::LoadHistory { query_id }) => {
+                return DebouncedRequest::LoadHistory { query_id };
+            }
+            Ok(WorkerRequest::LoadCommitPatch {
+                query_id,
+                commit_id,
+            }) => {
+                return DebouncedRequest::LoadCommitPatch {
+                    query_id,
+                    commit_id,
                 };
             }
             Ok(WorkerRequest::LoadBranches { query_id }) => {
@@ -227,137 +257,6 @@ fn debounce(requests: &Receiver<WorkerRequest>, refresh_pending: &AtomicBool) ->
             Err(mpsc::RecvTimeoutError::Timeout) => return DebouncedRequest::Refresh,
         }
     }
-}
-
-fn collect_branches(repository: &dyn Repository, query_id: RepositoryQueryId) -> RepositoryEvent {
-    match repository.branches() {
-        Ok(branches) => RepositoryEvent::BranchesLoaded { query_id, branches },
-        Err(error) => RepositoryEvent::BranchesLoadFailed {
-            query_id,
-            message: error.to_string(),
-        },
-    }
-}
-
-fn collect_merge_refs(repository: &dyn Repository, query_id: RepositoryQueryId) -> RepositoryEvent {
-    match repository.merge_refs() {
-        Ok(refs) => RepositoryEvent::MergeRefsLoaded { query_id, refs },
-        Err(error) => RepositoryEvent::MergeRefsLoadFailed {
-            query_id,
-            message: error.to_string(),
-        },
-    }
-}
-
-fn collect_stashes(repository: &dyn Repository, query_id: RepositoryQueryId) -> RepositoryEvent {
-    match repository.stashes() {
-        Ok(stashes) => RepositoryEvent::StashesLoaded { query_id, stashes },
-        Err(error) => RepositoryEvent::StashesLoadFailed {
-            query_id,
-            message: error.to_string(),
-        },
-    }
-}
-
-fn collect_remotes(repository: &dyn Repository, query_id: RepositoryQueryId) -> RepositoryEvent {
-    match repository.remotes() {
-        Ok(remotes) => RepositoryEvent::RemotesLoaded { query_id, remotes },
-        Err(error) => RepositoryEvent::RemotesLoadFailed {
-            query_id,
-            message: error.to_string(),
-        },
-    }
-}
-
-fn collect_refresh(repository: &dyn Repository, generation: &mut u64) -> RepositoryEvent {
-    *generation = generation.saturating_add(1);
-    match repository.snapshot() {
-        Ok(snapshot) => RepositoryEvent::Update(RepositoryUpdate {
-            generation: *generation,
-            kind: RepositoryUpdateKind::Snapshot(snapshot),
-        }),
-        Err(error) => RepositoryEvent::Update(RepositoryUpdate {
-            generation: *generation,
-            kind: RepositoryUpdateKind::RefreshFailed(error.to_string()),
-        }),
-    }
-}
-
-fn execute_command(
-    repository: &dyn Repository,
-    command_id: ApplicationCommandId,
-    action: &RepositoryAction,
-    cancellation: &CancellationHandle,
-    generation: &mut u64,
-    prompts: &Arc<PromptBroker>,
-    events: &Sender<RepositoryEvent>,
-) -> RepositoryEvent {
-    *generation = generation.saturating_add(1);
-    let context = RepositoryOperationContext::with_progress(
-        Arc::clone(prompts) as Arc<dyn diffo_core::PromptHandler>,
-        cancellation.clone(),
-        Arc::new(CommandProgressReporter {
-            command_id,
-            events: events.clone(),
-        }),
-    );
-    let event = match repository.apply_with_context(action, &context) {
-        Ok(OperationOutcome::Completed(result)) => match repository.snapshot() {
-            Ok(snapshot) => RepositoryEvent::Update(RepositoryUpdate {
-                generation: *generation,
-                kind: RepositoryUpdateKind::CommandCompleted {
-                    command_id,
-                    action: action.clone(),
-                    result,
-                    snapshot,
-                },
-            }),
-            Err(error) => RepositoryEvent::Update(RepositoryUpdate {
-                generation: *generation,
-                kind: RepositoryUpdateKind::CommandFailed {
-                    command_id,
-                    failure: OperationFailure {
-                        action: action.clone(),
-                        kind: diffo_core::FailureKind::Unknown,
-                        detail: error.to_string(),
-                    },
-                    snapshot: None,
-                },
-            }),
-        },
-        Ok(OperationOutcome::Cancelled) => match repository.snapshot() {
-            Ok(snapshot) => RepositoryEvent::Update(RepositoryUpdate {
-                generation: *generation,
-                kind: RepositoryUpdateKind::CommandCancelled {
-                    command_id,
-                    action: action.clone(),
-                    snapshot,
-                },
-            }),
-            Err(error) => RepositoryEvent::Update(RepositoryUpdate {
-                generation: *generation,
-                kind: RepositoryUpdateKind::CommandFailed {
-                    command_id,
-                    failure: OperationFailure {
-                        action: action.clone(),
-                        kind: diffo_core::FailureKind::Unknown,
-                        detail: error.to_string(),
-                    },
-                    snapshot: None,
-                },
-            }),
-        },
-        Err(failure) => RepositoryEvent::Update(RepositoryUpdate {
-            generation: *generation,
-            kind: RepositoryUpdateKind::CommandFailed {
-                command_id,
-                failure,
-                snapshot: repository.snapshot().ok(),
-            },
-        }),
-    };
-    prompts.finish_operation(command_id);
-    event
 }
 
 #[cfg(test)]
@@ -384,6 +283,20 @@ mod tests {
     }
 
     impl Repository for FakeRepository {
+        fn checkout_history(&self) -> Result<diffo_core::CheckoutHistory> {
+            Ok(diffo_core::CheckoutHistory {
+                head_commit: Some("abc".to_owned()),
+                commits: vec![diffo_core::Commit {
+                    id: "abc".to_owned(),
+                    summary: "history".to_owned(),
+                }],
+            })
+        }
+
+        fn commit_patch(&self, commit_id: &str) -> Result<String> {
+            Ok(format!("patch for {commit_id}"))
+        }
+
         fn branches(&self) -> Result<Vec<diffo_core::BranchRef>> {
             Ok(Vec::new())
         }
@@ -553,6 +466,32 @@ mod tests {
         ));
         requests.send(WorkerRequest::Shutdown).unwrap();
         worker.join().unwrap();
+    }
+
+    #[test]
+    fn history_and_commit_patch_queries_keep_their_identities() {
+        let repository = FakeRepository {
+            collections: AtomicUsize::new(0),
+        };
+
+        assert!(matches!(
+            collect_history(&repository, RepositoryQueryId(7)),
+            RepositoryEvent::HistoryLoaded {
+                query_id: RepositoryQueryId(7),
+                history: diffo_core::CheckoutHistory {
+                    head_commit: Some(head),
+                    commits,
+                },
+            } if head == "abc" && commits[0].summary == "history"
+        ));
+        assert!(matches!(
+            collect_commit_patch(&repository, RepositoryQueryId(8), "abc".to_owned()),
+            RepositoryEvent::CommitPatchLoaded {
+                query_id: RepositoryQueryId(8),
+                commit_id,
+                patch,
+            } if commit_id == "abc" && patch == "patch for abc"
+        ));
     }
 
     #[test]

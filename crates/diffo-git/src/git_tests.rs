@@ -24,6 +24,7 @@ mod delete_branch;
 mod everyday;
 mod explorer;
 mod failure;
+mod history;
 mod merge;
 mod sync_publication_tests;
 mod sync_target_tests;

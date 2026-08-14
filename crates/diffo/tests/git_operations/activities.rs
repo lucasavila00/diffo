@@ -13,6 +13,14 @@ struct ExplorerSurface {
     render_mode: String,
 }
 
+#[derive(Deserialize)]
+struct HistoryFrame {
+    requested_history_commit: Option<String>,
+    selected_history_commit: Option<String>,
+    displayed_history_commit: Option<String>,
+    text_surface: Option<ExplorerSurface>,
+}
+
 #[test]
 fn command_palette_blocks_activity_switching_and_does_not_restore_hidden_state() -> Result<()> {
     let repository = changed_repository()?;
@@ -28,6 +36,8 @@ fn command_palette_blocks_activity_switching_and_does_not_restore_hidden_state()
         .wait_for_text("Changes")?
         .press(Key::Escape)?
         .wait_for_text_gone("Command Palette")?
+        .press(Key::Tab)?
+        .wait_for_text("History")?
         .press(Key::Tab)?
         .wait_for_text("Explorer")?
         .wait_for_text_gone("Changes")?;
@@ -55,6 +65,13 @@ fn activity_palettes_share_git_commands_and_keep_specific_catalogs_separate() ->
         .press(Key::Char('1'))?
         .wait_for_text("Git: Fetch")?
         .wait_for_text("Application: Update Diffo")?
+        .wait_for_text_gone("Explorer: Collapse All Folders")?
+        .press(Key::Escape)?
+        .wait_for_text_gone("Command Palette")?
+        .press(Key::Tab)?
+        .press(Key::Char('1'))?
+        .wait_for_text("Git: Fetch")?
+        .wait_for_text("Application: Update Diffo")?
         .wait_for_text("Explorer: Collapse All Folders")?
         .press(Key::Escape)?
         .wait_for_text_gone("Command Palette")?;
@@ -70,8 +87,82 @@ fn activity_bar_clicks_select_tools_and_diff_returns_intact() -> Result<()> {
         .wait_for_text("Changes")?
         .click(&Selector::text(""))?
         .wait_for_text_gone("Changes")?
+        .click(&Selector::text(""))?
+        .wait_for_text("History")?
         .click(&Selector::text(""))?
         .wait_for_text("Changes")?;
+    Ok(())
+}
+
+#[test]
+fn history_commit_selection_and_patch_commit_atomically() -> Result<()> {
+    let repository = TestRepository::new()?;
+    fs::write(
+        repository.worktree.join("history.rs"),
+        "pub const HISTORY_VALUE: &str = \"ALPHA\";\n",
+    )?;
+    git(&repository.worktree, &["add", "history.rs"])?;
+    git(&repository.worktree, &["commit", "-m", "Add history value"])?;
+    let older = git_output(&repository.worktree, &["rev-parse", "HEAD"])?;
+    fs::write(
+        repository.worktree.join("history.rs"),
+        "pub const HISTORY_VALUE: &str = \"BRAVO\";\n",
+    )?;
+    git(
+        &repository.worktree,
+        &["commit", "-am", "Update history value"],
+    )?;
+    let newest = git_output(&repository.worktree, &["rev-parse", "HEAD"])?;
+    let trace_path = repository.root.path().join("history-frames.ronl");
+    let mut screen = DiffoScreen::launch_with_env(
+        diffo_binary()?,
+        &repository.worktree,
+        &[("DIFFO_TRACE_FRAMES", trace_path.as_os_str())],
+    )?;
+
+    screen
+        .press(Key::Tab)?
+        .wait_for_text("History")?
+        .wait_for_text("Update history value")?
+        .wait_for_text("BRAVO")?
+        .click(&Selector::text(&older[..7]))?
+        .wait_for_text("ALPHA")?
+        .wait_for_text_gone("BRAVO")?
+        .press(Key::Char('q'))?
+        .wait_for_exit()?;
+    drop(screen);
+
+    let trace = fs::read_to_string(&trace_path).context("read History frame trace")?;
+    let frames = trace
+        .lines()
+        .map(ron::from_str::<HistoryFrame>)
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+    assert!(
+        frames.iter().all(|frame| {
+            frame.selected_history_commit == frame.displayed_history_commit
+                || frame
+                    .text_surface
+                    .as_ref()
+                    .is_none_or(|surface| surface.render_mode != "Full")
+        }),
+        "trace rendered mismatched History identities:\n{trace}"
+    );
+    assert!(frames.iter().any(|frame| {
+        frame.requested_history_commit.as_deref() == Some(newest.as_str())
+            && frame.selected_history_commit.as_deref() == Some(newest.as_str())
+            && frame.displayed_history_commit.as_deref() == Some(newest.as_str())
+            && frame.text_surface.as_ref().is_some_and(|surface| {
+                surface.surface == "History" && surface.render_mode == "Full"
+            })
+    }));
+    assert!(frames.iter().any(|frame| {
+        frame.requested_history_commit.as_deref() == Some(older.as_str())
+            && frame.selected_history_commit.as_deref() == Some(older.as_str())
+            && frame.displayed_history_commit.as_deref() == Some(older.as_str())
+            && frame.text_surface.as_ref().is_some_and(|surface| {
+                surface.surface == "History" && surface.render_mode == "Full"
+            })
+    }));
     Ok(())
 }
 
@@ -104,6 +195,7 @@ fn rapid_explorer_open_commits_only_the_latest_syntax_ready_file() -> Result<()>
     let mut screen = repository.screen()?;
 
     screen
+        .press(Key::Tab)?
         .press(Key::Tab)?
         .wait_for_text("a.rs")?
         .press(Key::Char('k'))?
@@ -142,6 +234,7 @@ fn explorer_cold_scrolls_keep_full_text_in_both_directions() -> Result<()> {
         &[("DIFFO_TRACE_FRAMES", trace_path.as_os_str())],
     )?;
     screen
+        .press(Key::Tab)?
         .press(Key::Tab)?
         .wait_for_text("EXPLORER_LINE_0001")?
         .drag_vertical_scrollbar(0, 100)?
@@ -271,6 +364,7 @@ fn explorer_removes_a_deleted_file_without_showing_head_content() -> Result<()> 
 
     screen
         .press(Key::Tab)?
+        .press(Key::Tab)?
         .wait_for_text("Explorer")?
         .wait_for_text("keep.txt")?
         .click(&Selector::text("keep.txt"))?
@@ -309,6 +403,7 @@ fn ignored_file_rename_commits_explorer_path_and_content_atomically() -> Result<
     )?;
 
     screen
+        .press(Key::Tab)?
         .press(Key::Tab)?
         .wait_for_text("old.ignored")?
         .click(&Selector::text("old.ignored"))?
@@ -383,6 +478,7 @@ fn explorer_horizontal_pan_is_bounded_and_terminal_safe() -> Result<()> {
     let mut screen = repository.screen()?;
 
     screen
+        .press(Key::Tab)?
         .press(Key::Tab)?
         .wait_for_text("START_")?
         .press_many(Key::Right, 20)?

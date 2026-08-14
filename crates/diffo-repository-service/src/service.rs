@@ -10,9 +10,9 @@ use std::{
 
 use anyhow::{Context, Result};
 use diffo_core::{
-    ApplicationCommandId, BranchRef, CancellationHandle, GitPrompt, MergeRef, PromptAnswer,
-    PromptHandler, PromptId, Repository, RepositoryAction, RepositoryQueryId, RepositoryUpdate,
-    RepositoryWatchPaths, StashEntry, SyncProgress,
+    ApplicationCommandId, BranchRef, CancellationHandle, CheckoutHistory, GitPrompt, MergeRef,
+    PromptAnswer, PromptHandler, PromptId, Repository, RepositoryAction, RepositoryQueryId,
+    RepositoryUpdate, RepositoryWatchPaths, StashEntry, SyncProgress,
 };
 #[cfg(test)]
 use diffo_core::{OperationFailure, OperationResult, RepositorySnapshot, RepositoryUpdateKind};
@@ -25,6 +25,24 @@ use crate::{
 #[derive(Debug)]
 pub enum RepositoryEvent {
     WorktreeChanged,
+    HistoryLoaded {
+        query_id: RepositoryQueryId,
+        history: CheckoutHistory,
+    },
+    HistoryLoadFailed {
+        query_id: RepositoryQueryId,
+        message: String,
+    },
+    CommitPatchLoaded {
+        query_id: RepositoryQueryId,
+        commit_id: String,
+        patch: String,
+    },
+    CommitPatchLoadFailed {
+        query_id: RepositoryQueryId,
+        commit_id: String,
+        message: String,
+    },
     BranchesLoaded {
         query_id: RepositoryQueryId,
         branches: Vec<BranchRef>,
@@ -337,6 +355,23 @@ impl RepositoryService {
     pub fn load_branches(&self, query_id: RepositoryQueryId) -> bool {
         self.requests
             .send(WorkerRequest::LoadBranches { query_id })
+            .is_ok()
+    }
+
+    #[must_use]
+    pub fn load_history(&self, query_id: RepositoryQueryId) -> bool {
+        self.requests
+            .send(WorkerRequest::LoadHistory { query_id })
+            .is_ok()
+    }
+
+    #[must_use]
+    pub fn load_commit_patch(&self, query_id: RepositoryQueryId, commit_id: String) -> bool {
+        self.requests
+            .send(WorkerRequest::LoadCommitPatch {
+                query_id,
+                commit_id,
+            })
             .is_ok()
     }
 

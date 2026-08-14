@@ -40,7 +40,7 @@ mod tests {
 
     #[test]
     fn update_command_is_available_in_every_activity_and_uses_the_shared_queue() {
-        for activity in [Activity::Diff, Activity::Explorer] {
+        for activity in [Activity::Diff, Activity::Explorer, Activity::History] {
             let mut workbench = Workbench::new(RepositorySnapshot::default());
             workbench.active = activity;
             workbench.open_active_palette();

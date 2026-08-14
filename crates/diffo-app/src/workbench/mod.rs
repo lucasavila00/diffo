@@ -18,6 +18,7 @@ use diffo_ui::{PaneSplit, tool_areas};
 use ratatui::{Frame, layout::Rect};
 
 use crate::explorer::{ExplorerActivity, ExplorerEvent, ExplorerOutcome, ExplorerRequest};
+use crate::history::{HistoryActivity, HistoryEvent, HistoryRequest};
 mod activity_bar;
 mod ai_commit;
 mod application_update;
@@ -29,6 +30,7 @@ mod delete_branch;
 mod error_dialog;
 mod full_screen;
 mod help;
+mod history;
 mod merge;
 mod modal;
 mod pending_scroll;
@@ -60,6 +62,7 @@ pub enum Activity {
     #[default]
     Diff,
     Explorer,
+    History,
 }
 
 enum WorkbenchCommand {
@@ -99,6 +102,7 @@ pub struct Workbench {
     active: Activity,
     diff: DiffActivity,
     explorer: ExplorerActivity,
+    history: HistoryActivity,
     pane_split: PaneSplit,
     toasts: ToastQueue,
     toast_deadlines: HashMap<u64, Instant>,
@@ -204,6 +208,7 @@ impl Workbench {
     #[must_use]
     pub fn new(snapshot: RepositorySnapshot) -> Self {
         let explorer = ExplorerActivity::new(&snapshot);
+        let history = HistoryActivity::new(&snapshot);
         Self {
             active: Activity::Diff,
             diff: DiffActivity {
@@ -211,6 +216,7 @@ impl Workbench {
                 renderer: Renderer::new(),
             },
             explorer,
+            history,
             pane_split: PaneSplit::default(),
             toasts: ToastQueue::new(),
             toast_deadlines: HashMap::new(),
@@ -355,10 +361,7 @@ impl Workbench {
         if !self.full_screen && self.select_activity(event, area) {
             return Some(WorkbenchCommand::Redraw);
         }
-        let tool_captures_global_input = match self.active {
-            Activity::Diff => self.diff.captures_global_input(),
-            Activity::Explorer => self.explorer.captures_global_input(),
-        };
+        let tool_captures_global_input = self.active_tool_captures_global_input();
         if self.full_screen
             && !tool_captures_global_input
             && bindings::action(event) == Some(GlobalAction::Sync)
@@ -439,10 +442,29 @@ impl Workbench {
             self.should_quit = true;
             return None;
         }
+        self.handle_active_tool_event(event, content)
+    }
+
+    fn active_tool_captures_global_input(&self) -> bool {
+        match self.active {
+            Activity::Diff => self.diff.captures_global_input(),
+            Activity::Explorer => self.explorer.captures_global_input(),
+            Activity::History => self.history.captures_global_input(),
+        }
+    }
+
+    fn handle_active_tool_event(
+        &mut self,
+        event: &Event,
+        content: Rect,
+    ) -> Option<WorkbenchCommand> {
         match self.active {
             Activity::Diff => self.diff.handle_event(event, content, self.pane_split),
             Activity::Explorer => {
                 Tool::handle_event(&mut self.explorer, event, content, self.pane_split)
+            }
+            Activity::History => {
+                Tool::handle_event(&mut self.history, event, content, self.pane_split)
             }
         }
     }
@@ -500,6 +522,7 @@ impl Workbench {
         match self.active {
             Activity::Diff => self.diff.dismiss_popover(),
             Activity::Explorer => self.explorer.dismiss_popover(),
+            Activity::History => self.history.dismiss_popover(),
         }
     }
 
@@ -566,9 +589,11 @@ impl Workbench {
         match &message {
             Message::SnapshotLoaded(snapshot) => {
                 self.explorer.repository_changed(snapshot);
+                self.history.repository_changed(snapshot);
             }
             Message::OperationCompleted(_, _, snapshot) => {
                 self.explorer.repository_changed(snapshot);
+                self.history.repository_changed(snapshot);
             }
             _ => {}
         }
@@ -600,6 +625,7 @@ impl Workbench {
         match self.active {
             Activity::Diff => self.diff.commands(),
             Activity::Explorer => self.explorer.commands(),
+            Activity::History => self.history.commands(),
         }
     }
 
@@ -636,6 +662,7 @@ impl Workbench {
         match self.active {
             Activity::Diff => self.diff.execute_command(command),
             Activity::Explorer => self.explorer.execute_command(command),
+            Activity::History => self.history.execute_command(command),
         };
         None
     }
@@ -660,7 +687,7 @@ impl Workbench {
 }
 
 mod tool_impls;
-use tool_impls::{explorer_frame_preparation, explorer_preparation};
+use tool_impls::{explorer_frame_preparation, explorer_preparation, history_preparation};
 
 #[cfg(test)]
 mod repository_update_tests;

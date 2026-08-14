@@ -253,7 +253,7 @@ mod tests {
 
     #[test]
     fn merge_command_is_shared_and_abort_replaces_it_during_a_merge() {
-        for activity in [Activity::Diff, Activity::Explorer] {
+        for activity in [Activity::Diff, Activity::Explorer, Activity::History] {
             let mut workbench = Workbench::new(RepositorySnapshot {
                 head: HeadState::Named {
                     name: "main".to_owned(),

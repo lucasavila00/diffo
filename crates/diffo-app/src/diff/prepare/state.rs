@@ -58,6 +58,9 @@ pub struct FramePreparation {
     pub displayed_file: Option<FileKey>,
     pub requested_explorer_file: Option<std::path::PathBuf>,
     pub displayed_explorer_file: Option<std::path::PathBuf>,
+    pub requested_history_commit: Option<String>,
+    pub selected_history_commit: Option<String>,
+    pub displayed_history_commit: Option<String>,
     pub text_surface: Option<TextSurfacePreparation>,
 }
 

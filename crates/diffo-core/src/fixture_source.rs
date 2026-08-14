@@ -289,6 +289,25 @@ impl RepositorySource for MutableFixtureRepository {
 }
 
 impl Repository for MutableFixtureRepository {
+    fn commit_patch(&self, commit_id: &str) -> Result<String> {
+        let snapshot = self.snapshot.lock().expect("mock snapshot mutex poisoned");
+        if !snapshot
+            .recent_commits
+            .iter()
+            .any(|commit| commit.id == commit_id)
+        {
+            bail!("mock repository has no commit {commit_id}");
+        }
+        Ok(snapshot
+            .files
+            .iter()
+            .filter_map(|file| file.staged.as_ref().or(file.unstaged.as_ref()))
+            .take(2)
+            .map(|diff| diff.text.as_str())
+            .collect::<Vec<_>>()
+            .join(""))
+    }
+
     fn apply(
         &self,
         action: &RepositoryAction,

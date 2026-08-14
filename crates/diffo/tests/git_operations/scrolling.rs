@@ -104,6 +104,7 @@ fn mouse_wheel_scrolls_explorer_tree() -> Result<()> {
 
     screen
         .press(Key::Tab)?
+        .press(Key::Tab)?
         .wait_for_text("tree-00.txt")?
         .scroll_many_at(&Selector::text("tree-00.txt"), ScrollDirection::Down, 4)?
         .wait_for_text_gone("tree-00.txt")?

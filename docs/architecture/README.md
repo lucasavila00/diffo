@@ -15,10 +15,10 @@ future maintainers.
 
 ## What Diffo is
 
-Diffo is one terminal program. It shows the current Git repository. User can
-read changes, explore files, and run Git actions. Its launcher accepts only the
-fixed `update` maintenance argument; the application has no options or user
-configuration.
+Diffo is one terminal program. It shows the current Git repository. Users can
+read changes, explore files, review commits reachable from the current checkout,
+and run Git actions. Its launcher accepts only the fixed `update` maintenance
+argument; the application has no options or user configuration.
 
 Releases contain one statically linked x86_64 Linux executable built with musl.
 For compatibility with every existing installer and updater, the release asset
@@ -46,6 +46,8 @@ x86_64 Linux update channel rather than the executable's linked libc. Ubuntu
 
 - `diffo-app::diff`: Diff state, input, buffer preparation, and drawing.
 - `diffo-app::explorer`: repository tree and file viewer.
+- `diffo-app::history`: flat checkout history and selected hunk-only commit
+  patch.
 - `diffo-app::workbench`: joins screens and owns global behavior.
 - `diffo-ui::command_palette`: command palette.
 - `diffo-ui::file_picker`: shared file list and tree picker.
@@ -61,16 +63,17 @@ x86_64 Linux update channel rather than the executable's linked libc. Ubuntu
 
 ## Important rule
 
-Slow work happens away from drawing. A new diff becomes visible only when its
-rows, syntax colors, navigation targets, and scroll state are all ready. Until
-then, Diffo keeps showing the old complete view. This avoids half-built frames
-and stale data.
+Slow work happens away from drawing. A new diff, Explorer file, or History
+commit patch becomes visible only when its rows, visible syntax colors, and
+scroll state are ready. Until then, Diffo keeps showing the old complete view.
+This avoids half-built frames and stale data.
 
 ## Shared file-picker controls
 
-Diff and Explorer use the same fixed file-picker controls. Lowercase `j` selects
-the previous file, lowercase `k` or `l` selects the next file, and lowercase `c`
-opens the selected row's contextual menu. Right-click opens that same menu.
+Diff, Explorer, and History use the same fixed file-picker movement controls.
+Lowercase `j` selects the previous row and lowercase `k` or `l` selects the next
+row. Diff and Explorer use lowercase `c` and right-click for contextual menus;
+History commit rows have no contextual menu.
 
 ## Diff change navigation
 

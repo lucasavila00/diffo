@@ -19,6 +19,7 @@ mod delete_branch;
 mod everyday;
 mod explorer;
 mod failure;
+mod history;
 mod merge;
 mod operation;
 #[cfg(test)]

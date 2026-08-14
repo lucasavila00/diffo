@@ -32,6 +32,7 @@ use ratatui::{Terminal, backend::CrosstermBackend};
 
 mod codex_tasks;
 mod frame_trace;
+mod history_requests;
 mod launcher;
 mod merge;
 mod startup;
@@ -454,6 +455,7 @@ fn dispatch_events(
             workbench.branches_load_failed(query_id, "repository service is unavailable");
         }
     }
+    history_requests::dispatch(workbench, repository_service);
     merge::dispatch_queries(workbench, repository_service);
     while let Some(query_id) = workbench.take_sync_remote_query() {
         if !repository_service.load_remotes(query_id) {
@@ -531,6 +533,22 @@ fn drain_repository_events(repository_service: &RepositoryService, workbench: &m
     while let Ok(Some(event)) = repository_service.try_recv() {
         match event {
             RepositoryEvent::WorktreeChanged => workbench.filesystem_changed(),
+            RepositoryEvent::HistoryLoaded { query_id, history } => {
+                workbench.history_loaded(query_id, history);
+            }
+            RepositoryEvent::HistoryLoadFailed { query_id, message } => {
+                workbench.history_load_failed(query_id, &message);
+            }
+            RepositoryEvent::CommitPatchLoaded {
+                query_id,
+                commit_id,
+                patch,
+            } => workbench.commit_patch_loaded(query_id, commit_id, patch),
+            RepositoryEvent::CommitPatchLoadFailed {
+                query_id,
+                commit_id,
+                message,
+            } => workbench.commit_patch_load_failed(query_id, &commit_id, &message),
             RepositoryEvent::BranchesLoaded { query_id, branches } => {
                 workbench.branches_loaded(query_id, branches);
             }

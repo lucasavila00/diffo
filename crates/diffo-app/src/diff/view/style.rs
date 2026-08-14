@@ -34,7 +34,7 @@ pub(in crate::diff) fn inline_line(
     Line::from(spans)
 }
 
-pub(in crate::diff) fn raw_hunk_line(
+pub(crate) fn raw_hunk_line(
     prefix: Option<char>,
     text: &str,
     kind: RowKind,

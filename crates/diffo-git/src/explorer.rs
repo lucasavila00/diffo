@@ -144,6 +144,14 @@ impl GitRepositorySource {
 }
 
 impl Repository for GitRepositorySource {
+    fn checkout_history(&self) -> Result<diffo_core::CheckoutHistory> {
+        self.checkout_commit_history()
+    }
+
+    fn commit_patch(&self, commit_id: &str) -> Result<String> {
+        self.recorded_commit_patch(commit_id)
+    }
+
     fn branches(&self) -> Result<Vec<diffo_core::BranchRef>> {
         self.branch_refs()
     }

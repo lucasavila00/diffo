@@ -82,6 +82,8 @@ fn tab_cycles_activities_without_changing_diff_state() {
     let area = Rect::new(0, 0, 100, 30);
 
     let _ = workbench.handle_event(&tab, area);
+    assert_eq!(workbench.active, Activity::History);
+    let _ = workbench.handle_event(&tab, area);
     assert_eq!(workbench.active, Activity::Explorer);
     let _ = workbench.handle_event(&tab, area);
     assert_eq!(workbench.active, Activity::Diff);
@@ -101,7 +103,7 @@ fn every_activity_renders_the_same_repository_footer() {
     let status = tool_areas(workbench_areas(area).content).status;
     let mut footers = Vec::new();
 
-    for activity in [Activity::Diff, Activity::Explorer] {
+    for activity in [Activity::Diff, Activity::Explorer, Activity::History] {
         let mut workbench = Workbench::new(snapshot.clone());
         workbench.active = activity;
         let backend = TestBackend::new(area.width, area.height);
@@ -110,7 +112,7 @@ fn every_activity_renders_the_same_repository_footer() {
         footers.push(buffer_region(terminal.backend().buffer(), status));
     }
 
-    assert_eq!(footers[0], footers[1]);
+    assert!(footers.windows(2).all(|pair| pair[0] == pair[1]));
     let text = footers[0]
         .content
         .iter()
@@ -286,6 +288,9 @@ fn pane_drag_is_shared_across_activities() {
     assert_eq!(workbench.pane_split.percent(), 60);
     assert_eq!(workbench.diff.model.file_pane_percent, 60);
     let _ = workbench.handle_event(&key(KeyCode::Tab), area);
+    assert_eq!(workbench.active, Activity::History);
+    assert_eq!(workbench.pane_split.areas(pane_area).trailing.x, 62);
+    let _ = workbench.handle_event(&key(KeyCode::Tab), area);
     assert_eq!(workbench.active, Activity::Explorer);
     assert_eq!(workbench.pane_split.areas(pane_area).trailing.x, 62);
     let _ = workbench.handle_event(&key(KeyCode::Tab), area);
@@ -357,7 +362,7 @@ fn empty_activities_keep_quit_available() {
 #[test]
 fn shared_git_commands_execute_from_every_activity() {
     let area = Rect::new(0, 0, 100, 30);
-    for activity in [Activity::Diff, Activity::Explorer] {
+    for activity in [Activity::Diff, Activity::Explorer, Activity::History] {
         let mut workbench = Workbench::new(RepositorySnapshot::default());
         workbench.active = activity;
 
@@ -394,6 +399,7 @@ fn command_progress_survives_activity_switching_and_animates_the_app_border() {
     workbench.tick(started + Duration::from_millis(150));
     terminal.draw(|frame| workbench.render(frame)).unwrap();
     let first_border = terminal.backend().buffer()[(0, 0)].fg;
+    let _ = workbench.handle_event(&key(KeyCode::Tab), area);
     let _ = workbench.handle_event(&key(KeyCode::Tab), area);
     for _ in 0..4 {
         workbench.tick(started + Duration::from_millis(150));

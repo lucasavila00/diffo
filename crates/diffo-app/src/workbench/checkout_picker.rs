@@ -592,7 +592,7 @@ mod tests {
 
     #[test]
     fn delete_branch_command_is_shared_by_every_activity() {
-        for activity in [Activity::Diff, Activity::Explorer] {
+        for activity in [Activity::Diff, Activity::Explorer, Activity::History] {
             let mut workbench = Workbench::new(RepositorySnapshot::default());
             workbench.active = activity;
 
@@ -613,7 +613,7 @@ mod tests {
             row: status.y,
             modifiers: KeyModifiers::NONE,
         });
-        for activity in [Activity::Diff, Activity::Explorer] {
+        for activity in [Activity::Diff, Activity::Explorer, Activity::History] {
             let mut workbench = Workbench::new(RepositorySnapshot {
                 head: HeadState::Named {
                     name: "main".to_owned(),

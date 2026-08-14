@@ -19,7 +19,7 @@ fn tracked_snapshot() -> RepositorySnapshot {
 #[test]
 fn sync_keys_run_once_and_disable_together_in_every_activity() {
     let area = Rect::new(0, 0, 100, 30);
-    for activity in [Activity::Diff, Activity::Explorer] {
+    for activity in [Activity::Diff, Activity::Explorer, Activity::History] {
         for shortcut in [KeyCode::Char('9'), KeyCode::F(9)] {
             let mut workbench = Workbench::new(tracked_snapshot());
             workbench.active = activity;
@@ -42,7 +42,7 @@ fn shared_footer_sync_button_runs_the_same_action() {
         .right()
         .saturating_sub(u16::try_from("[ Sync (9 / F9) ]".len()).unwrap());
 
-    for activity in [Activity::Diff, Activity::Explorer] {
+    for activity in [Activity::Diff, Activity::Explorer, Activity::History] {
         let mut workbench = Workbench::new(snapshot.clone());
         workbench.active = activity;
         let click = Event::Mouse(MouseEvent {
@@ -170,7 +170,7 @@ fn shared_footer_command_and_help_buttons_open_their_modals() {
 #[test]
 fn operation_toasts_render_in_diff_and_explorer() {
     let mut rendered = Vec::new();
-    for activity in [Activity::Diff, Activity::Explorer] {
+    for activity in [Activity::Diff, Activity::Explorer, Activity::History] {
         let mut workbench = Workbench::new(RepositorySnapshot::default());
         workbench.active = activity;
         let id = workbench.commands.enqueue(RepositoryAction::Sync);

@@ -45,6 +45,9 @@ pub struct FrameRecord {
     displayed_diff: Option<String>,
     requested_explorer_file: Option<String>,
     displayed_explorer_file: Option<String>,
+    requested_history_commit: Option<String>,
+    selected_history_commit: Option<String>,
+    displayed_history_commit: Option<String>,
     content_revision: u64,
     preparing: bool,
     syntax_ready: bool,
@@ -154,6 +157,9 @@ impl FrameRecord {
                 .displayed_explorer_file
                 .as_ref()
                 .map(|path| path.display().to_string()),
+            requested_history_commit: preparation.requested_history_commit.clone(),
+            selected_history_commit: preparation.selected_history_commit.clone(),
+            displayed_history_commit: preparation.displayed_history_commit.clone(),
             content_revision: preparation.content_revision,
             preparing: preparation.preparing,
             syntax_ready: preparation.syntax_ready,

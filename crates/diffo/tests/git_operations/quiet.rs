@@ -145,6 +145,7 @@ fn explorer_viewer_boundaries_are_silent_when_everything_fits() -> Result<()> {
     let mut screen = repository.screen()?;
     screen
         .press(Key::Tab)?
+        .press(Key::Tab)?
         .wait_for_text("Explorer")?
         .wait_for_text("base")?
         .wait_for_quiet(QUIET)?;
@@ -212,6 +213,7 @@ fn explorer_file_navigation_boundaries_are_silent_with_one_file() -> Result<()> 
     let mut screen = repository.screen()?;
     screen
         .press(Key::Tab)?
+        .press(Key::Tab)?
         .wait_for_text("Explorer")?
         .wait_for_text("base")?
         .wait_for_quiet(QUIET)?;
@@ -266,6 +268,7 @@ fn full_screen_explorer_boundaries_are_silent_when_everything_fits() -> Result<(
     let mut screen = repository.screen()?;
     screen
         .press(Key::Tab)?
+        .press(Key::Tab)?
         .wait_for_text("Explorer")?
         .wait_for_text("base")?
         .press(Key::Char('f'))?
@@ -290,6 +293,7 @@ fn clean_explorer_stays_silent_after_identical_worker_results() -> Result<()> {
     let repository = TestRepository::new()?;
     let mut screen = repository.screen()?;
     screen
+        .press(Key::Tab)?
         .press(Key::Tab)?
         .wait_for_text("Explorer")?
         .wait_for_text("base")?

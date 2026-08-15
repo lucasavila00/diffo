@@ -15,7 +15,7 @@ Diffo currently publishes an x86_64 GNU/Linux executable. With `curl` installed,
 run:
 
 ```sh
-curl --proto '=https' --tlsv1.2 -LsSf https://raw.githubusercontent.com/lucasavila00/diffo/main/install.sh | sudo sh
+curl --proto '=https' --tlsv1.2 -LsSf https://raw.githubusercontent.com/lucasavila00/diffo/main/install.sh | sh
 ```
 
 The [installer](install.sh) verifies the latest release against its published

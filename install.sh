@@ -43,9 +43,10 @@ curl --proto '=https' --proto-redir '=https' --tlsv1.2 \
 printf 'Installing Diffo to %s...\n' "${destination}"
 if [ -w "${install_directory}" ]; then
     install -m 0755 "${temporary_directory}/${asset}" "${destination}"
-else
-    command -v sudo >/dev/null 2>&1 || fail "sudo is required to install to ${install_directory}"
+elif command -v sudo >/dev/null 2>&1; then
     sudo install -m 0755 "${temporary_directory}/${asset}" "${destination}"
+else
+    install -m 0755 "${temporary_directory}/${asset}" "${destination}"
 fi
 
 printf 'Diffo was installed successfully. Run `diffo` from a Git repository.\n'

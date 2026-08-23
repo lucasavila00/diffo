@@ -1,4 +1,4 @@
-use std::{fmt::Write as _, os::unix::fs::PermissionsExt as _};
+use std::os::unix::fs::PermissionsExt as _;
 
 use super::support::*;
 

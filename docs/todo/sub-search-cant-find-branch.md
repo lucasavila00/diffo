@@ -1,6 +1,5 @@
- origin/wt/track-codex-git-state couldnt be found from
+origin/wt/track-codex-git-state couldnt be found from
 
-  /wt/track-codex-git-state substring!!!
+/wt/track-codex-git-state substring!!!
 
-
-  see docs/todo/trim-input-searchbox.md
+see docs/todo/trim-input-searchbox.md

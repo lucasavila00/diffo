@@ -107,3 +107,30 @@ fn preferred_match_tier_ranks_a_file_name_above_a_folder_match() {
 
     assert_eq!(picker.selected_identity(), Some(&2));
 }
+
+#[test]
+fn trims_whitespace_from_typed_and_pasted_queries() {
+    let item = SearchItem {
+        identity: 1,
+        payload: 1,
+        label: "origin/wt/track-codex-git-state".to_owned(),
+        preferred_match: None,
+        trailing: None,
+        aliases: Vec::new(),
+        enabled: true,
+    };
+    let area = Rect::new(0, 0, 100, 30);
+    let query = "/wt/track-codex-git-state";
+
+    let mut typed = SearchPicker::new("Branches", "None");
+    typed.set_items(vec![item.clone()]);
+    type_query(&mut typed, &format!(" {query} "));
+    assert_eq!(typed.query(), query);
+    assert_eq!(typed.selected_identity(), Some(&1));
+
+    let mut pasted = SearchPicker::new("Branches", "None");
+    pasted.set_items(vec![item]);
+    let _ = pasted.handle_event(&Event::Paste(format!(" \n{query}\t")), area);
+    assert_eq!(pasted.query(), query);
+    assert_eq!(pasted.selected_identity(), Some(&1));
+}

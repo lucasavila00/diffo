@@ -121,7 +121,7 @@ where
 
     #[must_use]
     pub fn query(&self) -> &str {
-        &self.query
+        self.query.trim()
     }
 
     #[must_use]
@@ -138,6 +138,13 @@ where
 
     pub fn handle_event(&mut self, event: &Event, area: Rect) -> SearchPickerEvent<P> {
         let (_, results) = search_picker_layout(area);
+        if let Event::Paste(text) = event {
+            self.query.push_str(text);
+            self.rank_matches();
+            self.offset = 0;
+            self.select_first_enabled();
+            return SearchPickerEvent::Consumed;
+        }
         if let Event::Mouse(mouse) = event {
             if let Some(amount) = wheel_scroll_delta(mouse.kind)
                 && results.contains((mouse.column, mouse.row).into())
@@ -222,7 +229,7 @@ where
         let inner = modal.inner(design::DIALOG_INSET);
         let sections = search_picker_sections(inner);
         frame.render_widget(
-            Paragraph::new(format!("> {}█", terminal_safe_text(&self.query)))
+            Paragraph::new(format!("> {}█", terminal_safe_text(self.query())))
                 .style(Style::default().fg(theme::TEXT)),
             sections[0],
         );
@@ -290,7 +297,7 @@ where
     }
 
     fn rank_matches(&mut self) {
-        let query = FuzzyQuery::new(&self.query);
+        let query = FuzzyQuery::new(self.query());
         let mut matches = self
             .items
             .iter()

@@ -298,6 +298,7 @@ where
 
     fn rank_matches(&mut self) {
         let query = FuzzyQuery::new(self.query());
+        let substring = self.query().to_lowercase();
         let mut matches = self
             .items
             .iter()
@@ -307,12 +308,16 @@ where
                     .preferred_match
                     .as_deref()
                     .and_then(|candidate| query.score(candidate));
+                let contains_substring = std::iter::once(item.label.as_str())
+                    .chain(item.aliases.iter().map(String::as_str))
+                    .any(|candidate| candidate.to_lowercase().contains(&substring));
                 let score = std::iter::once(item.label.as_str())
                     .chain(item.aliases.iter().map(String::as_str))
                     .filter_map(|candidate| query.score(candidate))
                     .max()?;
                 Some((
                     u8::from(preferred_score.is_some()),
+                    u8::from(contains_substring),
                     preferred_score.unwrap_or(score),
                     index,
                 ))
@@ -323,9 +328,10 @@ where
                 .0
                 .cmp(&left.0)
                 .then_with(|| right.1.cmp(&left.1))
-                .then_with(|| left.2.cmp(&right.2))
+                .then_with(|| right.2.cmp(&left.2))
+                .then_with(|| left.3.cmp(&right.3))
         });
-        self.matches = matches.into_iter().map(|(_, _, index)| index).collect();
+        self.matches = matches.into_iter().map(|(_, _, _, index)| index).collect();
     }
 
     fn matches(&self) -> Vec<&SearchItem<I, P>> {

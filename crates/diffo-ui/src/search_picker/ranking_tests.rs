@@ -88,6 +88,35 @@ fn shared_fuzzy_ranking_prefers_the_intended_contiguous_file_match() {
 }
 
 #[test]
+fn exact_path_substrings_rank_before_fuzzy_only_matches() {
+    let item = |identity, label: &str| SearchItem {
+        identity,
+        payload: identity,
+        label: label.to_owned(),
+        preferred_match: None,
+        trailing: None,
+        aliases: Vec::new(),
+        enabled: true,
+    };
+    let mut picker = SearchPicker::new("Branches", "None");
+    picker.set_items(vec![
+        item(1, "wt/track-current-codex-git-state"),
+        item(2, "origin/wt/track-codex-git-state"),
+    ]);
+    type_query(&mut picker, "wt/track-codex-git-state");
+
+    assert_eq!(picker.selected_identity(), Some(&2));
+    assert_eq!(
+        picker
+            .matches()
+            .into_iter()
+            .map(|item| item.identity)
+            .collect::<Vec<_>>(),
+        vec![2, 1]
+    );
+}
+
+#[test]
 fn preferred_match_tier_ranks_a_file_name_above_a_folder_match() {
     let item = |identity, label: &str, file_name: &str| SearchItem {
         identity,

@@ -36,6 +36,54 @@ fn sync_fetches_even_when_the_known_tips_are_the_same() {
 }
 
 #[test]
+fn sync_unshallows_a_shallow_clone_before_counting_commits() {
+    let mut repository = sync_repository();
+    let shallow_work = repository.root.path().join("shallow-work");
+    let remote = format!(
+        "file://{}",
+        repository.root.path().join("remote.git").display()
+    );
+    git(
+        repository.root.path(),
+        &["clone", "--depth=1", &remote, "shallow-work"],
+    );
+    repository.work = shallow_work;
+    git(&repository.work, &["config", "user.name", "Diffo Test"]);
+    git(
+        &repository.work,
+        &["config", "user.email", "diffo@example.invalid"],
+    );
+    git(
+        &repository.work,
+        &["commit", "--allow-empty", "-m", "Local commit"],
+    );
+
+    assert_eq!(
+        git_stdout(&repository.work, &["rev-parse", "--is-shallow-repository"]),
+        "true"
+    );
+
+    let result = confirmed_sync(&repository.work).expect("sync shallow clone");
+
+    assert!(matches!(
+        result,
+        OperationOutcome::Completed(OperationResult::Sync { plan })
+            if plan.local_only == 1 && plan.upstream_only == 0
+    ));
+    assert_eq!(
+        git_stdout(&repository.work, &["rev-parse", "--is-shallow-repository"]),
+        "false"
+    );
+    let upstream = super::super::GitRepositorySource::new(&repository.work)
+        .snapshot()
+        .expect("snapshot synced shallow clone")
+        .upstream
+        .expect("configured upstream");
+    assert_eq!(upstream.ahead, 0);
+    assert!(upstream.recent_local_commits.is_empty());
+}
+
+#[test]
 fn sync_without_an_upstream_stops_when_no_remote_exists() {
     let repository = test_repository();
     let head = git_stdout(repository.path(), &["rev-parse", "HEAD"]);

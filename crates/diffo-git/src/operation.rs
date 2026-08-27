@@ -127,12 +127,15 @@ impl GitRepositorySource {
         if let Some(context) = context {
             context.progress.progress(SyncProgress::Fetching);
         }
-        match self.run_sync_git(
-            action,
-            &["fetch", &target.remote],
-            cancellation,
-            bridge.as_ref(),
-        )? {
+        let mut fetch_args = vec!["fetch"];
+        if self
+            .is_shallow_repository()
+            .map_err(|error| operation_failure(action, FailureKind::Unknown, &error.to_string()))?
+        {
+            fetch_args.push("--unshallow");
+        }
+        fetch_args.push(&target.remote);
+        match self.run_sync_git(action, &fetch_args, cancellation, bridge.as_ref())? {
             CommandOutcome::Cancelled => return Ok(OperationOutcome::Cancelled),
             CommandOutcome::Output(output) if !output.status.success() => {
                 return Err(classify_failure(action, &output));
@@ -370,6 +373,17 @@ impl GitRepositorySource {
     pub(super) fn git_text(&self, args: &[&str]) -> anyhow::Result<String> {
         self.git(args)
             .map(|output| String::from_utf8_lossy(&output).trim().to_owned())
+    }
+
+    fn is_shallow_repository(&self) -> anyhow::Result<bool> {
+        match self
+            .git_text(&["rev-parse", "--is-shallow-repository"])?
+            .as_str()
+        {
+            "true" => Ok(true),
+            "false" => Ok(false),
+            value => anyhow::bail!("git returned an invalid shallow repository state: {value}"),
+        }
     }
 
     fn git_path(&self, name: &str) -> Option<std::path::PathBuf> {

@@ -424,10 +424,7 @@ impl Workbench {
                 GlobalAction::OpenCommandPalette => self.open_active_palette(),
                 GlobalAction::ToggleHelp => self.set_modal(Modal::Help),
                 GlobalAction::Sync => return self.execute_sync(),
-                GlobalAction::QuickOpen => {
-                    let (paths, loading) = self.explorer.quick_open_paths();
-                    self.set_modal(Modal::QuickOpen(quick_open::QuickOpen::new(paths, loading)));
-                }
+                GlobalAction::QuickOpen => self.open_quick_open(),
             }
             return Some(WorkbenchCommand::Redraw);
         }
@@ -529,6 +526,8 @@ impl Workbench {
     pub fn accept_task_result(&mut self, result: WorkbenchTaskResult) {
         match result {
             WorkbenchTaskResult::Explorer(outcome) => {
+                let paths_refreshed =
+                    matches!(&outcome, ExplorerOutcome::Paths { result: Ok(_), .. });
                 let (error, changed) = self.explorer.accept(outcome);
                 if let Some((title, detail)) = error {
                     self.show_error(title, detail);
@@ -536,12 +535,11 @@ impl Workbench {
                 if changed && self.active == Activity::Explorer {
                     self.request_redraw();
                 }
-                if changed {
-                    let (paths, loading) = self.explorer.quick_open_paths();
-                    if let Some(Modal::QuickOpen(modal)) = self.modal.as_mut() {
-                        modal.install(paths, loading);
-                        self.request_redraw();
-                    }
+                if paths_refreshed && matches!(self.modal, Some(Modal::QuickOpen(_))) {
+                    self.explorer.request_quick_open_paths();
+                }
+                if changed || paths_refreshed {
+                    self.refresh_quick_open();
                 }
             }
         }

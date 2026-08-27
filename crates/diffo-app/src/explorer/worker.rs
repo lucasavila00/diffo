@@ -19,11 +19,17 @@ use diffo_ui::terminal_safe_text;
 use diffo_ui::text_view::SyntaxCoverage;
 use ratatui::text::Line;
 
-use super::model::{ExplorerDocumentId, GutterMarker, Viewer};
+use super::{
+    ExplorerActivity,
+    model::{ExplorerDocumentId, GutterMarker, Viewer},
+};
 
 #[derive(Clone, Debug)]
 pub enum ExplorerRequest {
     Paths {
+        id: u64,
+    },
+    QuickOpenPaths {
         id: u64,
     },
     LoadFile {
@@ -48,6 +54,10 @@ pub enum ExplorerRequest {
 
 pub enum ExplorerOutcome {
     Paths {
+        id: u64,
+        result: Result<Vec<PathBuf>, String>,
+    },
+    QuickOpenPaths {
         id: u64,
         result: Result<Vec<PathBuf>, String>,
     },
@@ -76,6 +86,14 @@ struct SyntaxWindow {
     window_viewports: usize,
 }
 
+struct ExplorerThread {
+    repository: Arc<dyn Repository>,
+    request_rx: Receiver<ExplorerRequest>,
+    outcome_tx: Sender<ExplorerOutcome>,
+    latest_load: Arc<AtomicU64>,
+    latest_window: Arc<AtomicU64>,
+}
+
 impl ExplorerWorker {
     pub fn start(repository: Arc<dyn Repository>) -> Self {
         let (request_tx, request_rx) = channel::<ExplorerRequest>();
@@ -85,91 +103,14 @@ impl ExplorerWorker {
         let worker_latest_load = Arc::clone(&latest_load);
         let worker_latest_window = Arc::clone(&latest_window);
         thread::spawn(move || {
-            let highlighter = SyntaxHighlighter::new();
-            while let Ok(request) = request_rx.recv() {
-                match &request {
-                    ExplorerRequest::LoadFile { id, .. }
-                        if *id != worker_latest_load.load(Ordering::Acquire) =>
-                    {
-                        continue;
-                    }
-                    ExplorerRequest::HighlightWindow { id, .. }
-                        if *id != worker_latest_window.load(Ordering::Acquire) =>
-                    {
-                        continue;
-                    }
-                    ExplorerRequest::Paths { .. }
-                    | ExplorerRequest::LoadFile { .. }
-                    | ExplorerRequest::HighlightWindow { .. } => {}
-                }
-                let outcome = match request {
-                    ExplorerRequest::Paths { id } => ExplorerOutcome::Paths {
-                        id,
-                        result: repository
-                            .explorer_paths()
-                            .map_err(|error| error.to_string()),
-                    },
-                    ExplorerRequest::LoadFile {
-                        id,
-                        path,
-                        title,
-                        status,
-                        first_line,
-                        viewport_rows,
-                        window_viewports,
-                    } => ExplorerOutcome::FileLoaded {
-                        id,
-                        result: repository
-                            .explorer_file(&path)
-                            .map(|file| {
-                                prepare_viewer(
-                                    ExplorerDocumentId(id),
-                                    path,
-                                    title,
-                                    status,
-                                    file,
-                                    SyntaxWindow {
-                                        first_line,
-                                        viewport_rows,
-                                        window_viewports,
-                                    },
-                                    &highlighter,
-                                )
-                            })
-                            .map_err(|error| error.to_string()),
-                    },
-                    ExplorerRequest::HighlightWindow {
-                        id,
-                        document_id,
-                        path,
-                        lines,
-                        first_line,
-                        viewport_rows,
-                        window_viewports,
-                    } => ExplorerOutcome::WindowHighlighted {
-                        id,
-                        document_id,
-                        result: prepare_syntax_window(
-                            &path,
-                            &lines,
-                            SyntaxWindow {
-                                first_line,
-                                viewport_rows,
-                                window_viewports,
-                            },
-                            &highlighter,
-                        ),
-                    },
-                };
-                let stale = matches!(
-                    outcome,
-                    ExplorerOutcome::FileLoaded { id, .. }
-                        if id != worker_latest_load.load(Ordering::Acquire)
-                );
-                if !stale && outcome_tx.send(outcome).is_err() {
-                    break;
-                }
+            ExplorerThread {
+                repository,
+                request_rx,
+                outcome_tx,
+                latest_load: worker_latest_load,
+                latest_window: worker_latest_window,
             }
+            .run();
         });
         Self {
             requests: request_tx,
@@ -188,7 +129,7 @@ impl ExplorerWorker {
             ExplorerRequest::HighlightWindow { id, .. } => {
                 self.latest_window.store(*id, Ordering::Release);
             }
-            ExplorerRequest::Paths { .. } => {}
+            ExplorerRequest::Paths { .. } | ExplorerRequest::QuickOpenPaths { .. } => {}
         }
         let _ = self.requests.send(request);
     }
@@ -196,6 +137,123 @@ impl ExplorerWorker {
     #[must_use]
     pub fn try_recv(&self) -> Option<ExplorerOutcome> {
         self.outcomes.try_recv().ok()
+    }
+}
+
+impl ExplorerActivity {
+    pub fn take_request(&mut self) -> Option<ExplorerRequest> {
+        self.queued.pop_front()
+    }
+
+    #[must_use]
+    pub fn is_preparing(&self) -> bool {
+        self.paths_pending
+            || self.quick_open_paths_pending
+            || self.pending_path.is_some()
+            || self.pending_window.is_some()
+            || !self.queued.is_empty()
+    }
+}
+
+impl ExplorerThread {
+    fn run(self) {
+        let highlighter = SyntaxHighlighter::new();
+        while let Ok(request) = self.request_rx.recv() {
+            if self.request_is_stale(&request) {
+                continue;
+            }
+            let outcome = prepare_outcome(request, self.repository.as_ref(), &highlighter);
+            let stale = matches!(
+                outcome,
+                ExplorerOutcome::FileLoaded { id, .. }
+                    if id != self.latest_load.load(Ordering::Acquire)
+            );
+            if !stale && self.outcome_tx.send(outcome).is_err() {
+                break;
+            }
+        }
+    }
+
+    fn request_is_stale(&self, request: &ExplorerRequest) -> bool {
+        match request {
+            ExplorerRequest::LoadFile { id, .. } => *id != self.latest_load.load(Ordering::Acquire),
+            ExplorerRequest::HighlightWindow { id, .. } => {
+                *id != self.latest_window.load(Ordering::Acquire)
+            }
+            ExplorerRequest::Paths { .. } | ExplorerRequest::QuickOpenPaths { .. } => false,
+        }
+    }
+}
+
+fn prepare_outcome(
+    request: ExplorerRequest,
+    repository: &dyn Repository,
+    highlighter: &SyntaxHighlighter,
+) -> ExplorerOutcome {
+    match request {
+        ExplorerRequest::Paths { id } => ExplorerOutcome::Paths {
+            id,
+            result: repository
+                .explorer_paths()
+                .map_err(|error| error.to_string()),
+        },
+        ExplorerRequest::QuickOpenPaths { id } => ExplorerOutcome::QuickOpenPaths {
+            id,
+            result: repository
+                .quick_open_paths()
+                .map_err(|error| error.to_string()),
+        },
+        ExplorerRequest::LoadFile {
+            id,
+            path,
+            title,
+            status,
+            first_line,
+            viewport_rows,
+            window_viewports,
+        } => ExplorerOutcome::FileLoaded {
+            id,
+            result: repository
+                .explorer_file(&path)
+                .map(|file| {
+                    prepare_viewer(
+                        ExplorerDocumentId(id),
+                        path,
+                        title,
+                        status,
+                        file,
+                        SyntaxWindow {
+                            first_line,
+                            viewport_rows,
+                            window_viewports,
+                        },
+                        highlighter,
+                    )
+                })
+                .map_err(|error| error.to_string()),
+        },
+        ExplorerRequest::HighlightWindow {
+            id,
+            document_id,
+            path,
+            lines,
+            first_line,
+            viewport_rows,
+            window_viewports,
+        } => ExplorerOutcome::WindowHighlighted {
+            id,
+            document_id,
+            result: prepare_syntax_window(
+                &path,
+                &lines,
+                SyntaxWindow {
+                    first_line,
+                    viewport_rows,
+                    window_viewports,
+                },
+                highlighter,
+            ),
+        },
     }
 }
 

@@ -53,15 +53,17 @@ pub struct ExplorerActivity {
     picker: FilePicker<EntryId>,
     next_id: u64,
     latest_paths: u64,
+    latest_quick_open_paths: u64,
     latest_load: u64,
     latest_window: u64,
     paths_pending: bool,
+    quick_open_paths_pending: bool,
+    quick_open_paths: Vec<PathBuf>,
     queued: VecDeque<ExplorerRequest>,
     pending_path: Option<PathBuf>,
     pending_window: Option<(u64, ExplorerDocumentId)>,
     vertical_scroll: PreparedVerticalScroll,
     pending_quick_open: Option<PathBuf>,
-    has_committed_paths: bool,
     viewport_rows: usize,
     viewport_columns: usize,
     maximum_horizontal_scroll: usize,
@@ -77,15 +79,17 @@ impl ExplorerActivity {
             picker: FilePicker::default(),
             next_id: 0,
             latest_paths: 0,
+            latest_quick_open_paths: 0,
             latest_load: 0,
             latest_window: 0,
             paths_pending: false,
+            quick_open_paths_pending: false,
+            quick_open_paths: Vec::new(),
             queued: VecDeque::new(),
             pending_path: None,
             pending_window: None,
             vertical_scroll: PreparedVerticalScroll::default(),
             pending_quick_open: None,
-            has_committed_paths: false,
             viewport_rows: 1,
             viewport_columns: 1,
             maximum_horizontal_scroll: 0,
@@ -563,16 +567,11 @@ impl ExplorerActivity {
         )
     }
 
-    pub fn take_request(&mut self) -> Option<ExplorerRequest> {
-        self.queued.pop_front()
-    }
-
     pub fn accept(&mut self, outcome: ExplorerOutcome) -> (Option<(String, String)>, bool) {
         match outcome {
             ExplorerOutcome::Paths { id, result } if id == self.latest_paths => match result {
                 Ok(paths) => {
                     self.paths_pending = false;
-                    self.has_committed_paths = true;
                     let changed = self.model.install_paths(paths);
                     (None, changed)
                 }
@@ -581,6 +580,11 @@ impl ExplorerActivity {
                     (Some(("Explorer refresh failed".to_owned(), error)), true)
                 }
             },
+            ExplorerOutcome::QuickOpenPaths { id, result }
+                if id == self.latest_quick_open_paths =>
+            {
+                self.accept_quick_open_paths(result)
+            }
             ExplorerOutcome::FileLoaded { id, result } if id == self.latest_load => {
                 let requested_path = self.pending_path.take();
                 match result {
@@ -649,16 +653,10 @@ impl ExplorerActivity {
                 }
                 (None, pending_cleared || content_changed)
             }
-            ExplorerOutcome::Paths { .. } | ExplorerOutcome::FileLoaded { .. } => (None, false),
+            ExplorerOutcome::Paths { .. }
+            | ExplorerOutcome::QuickOpenPaths { .. }
+            | ExplorerOutcome::FileLoaded { .. } => (None, false),
         }
-    }
-
-    #[must_use]
-    pub fn is_preparing(&self) -> bool {
-        self.paths_pending
-            || self.pending_path.is_some()
-            || self.pending_window.is_some()
-            || !self.queued.is_empty()
     }
 
     fn pending_request_id(&self) -> Option<u64> {

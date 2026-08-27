@@ -568,6 +568,15 @@ pub trait Repository: RepositorySource {
             .collect())
     }
 
+    /// List files that can be opened through Quick Open.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when repository paths cannot be read.
+    fn quick_open_paths(&self) -> Result<Vec<PathBuf>> {
+        self.explorer_paths()
+    }
+
     /// Read one file for Explorer without adding it to the shared snapshot.
     ///
     /// # Errors

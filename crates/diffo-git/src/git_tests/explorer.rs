@@ -51,6 +51,20 @@ fn lists_regular_worktree_files_independently_of_git() {
 }
 
 #[test]
+fn omits_gitignored_files_from_quick_open() {
+    let repo = test_repository();
+    fs::write(repo.path().join(".gitignore"), "ignored.txt\n").expect("write ignore file");
+    fs::write(repo.path().join("ignored.txt"), "ignored\n").expect("write ignored file");
+    let source = GitRepositorySource::new(repo.path());
+
+    let paths = source.quick_open_paths().expect("Quick Open paths");
+
+    assert!(paths.contains(&PathBuf::from("tracked.txt")));
+    assert!(paths.contains(&PathBuf::from(".gitignore")));
+    assert!(!paths.contains(&PathBuf::from("ignored.txt")));
+}
+
+#[test]
 fn renders_ignored_files_without_a_git_change_gutter() {
     let repo = test_repository();
     fs::write(repo.path().join(".gitignore"), "ignored.txt\n").expect("write ignore file");

@@ -1,7 +1,8 @@
-The 2 different views could be the same
+Keep Diff and History as two activities with distinct data, controls, and
+actions. They should share a core renderer that supports both unified hunk and
+rich file projections.
 
-The hunk view is useful on both modes
-
-The rich view on both modes too
-
-We can replace the upper half of the current diff view that creates branches and stages stuff with one that's 1/2 list of commits and 1/2 the files of that commit on the bottom part
+Diff continues to review and stage mutable working-tree and index changes.
+History remains read-only, with commits in the upper part of its leading pane
+and the selected commit's changed files below. Both activities can show either
+their full hunk review or a selected file through the shared renderer.

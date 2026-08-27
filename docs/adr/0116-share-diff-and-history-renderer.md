@@ -4,11 +4,11 @@ This ADR changes [ADR 0115](0115-review-checkout-history.md).
 
 ## Context
 
-The Diff activity has a staging view on the right side. The `r` key changes
-this view between inline and side-by-side mode.
+The Diff activity has a staging view on the right side. The `r` key changes this
+view between inline and side-by-side mode.
 
-History needs the same right-side view. It must also show a complete commit as
-a hunk view. Do not make a new renderer for History.
+History needs the same right-side view. It must also show a complete commit as a
+hunk view. Do not make a new renderer for History.
 
 ## Decision
 
@@ -29,9 +29,9 @@ ready. Keep old data on the screen until then.
 
 ### Pull request 3: Add the History picker
 
-Add the History left-side picker. It has a commit list and a file picker for
-the selected commit. History uses the same right-side modes from pull request
-1. History is read-only. Diff keeps its staging and commit actions.
+Add the History left-side picker. It has a commit list and a file picker for the
+selected commit. History uses the same right-side modes from pull request 1.
+History is read-only. Diff keeps its staging and commit actions.
 
 ## Consequences
 

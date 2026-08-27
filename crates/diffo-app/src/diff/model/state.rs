@@ -51,6 +51,7 @@ pub enum DiffViewMode {
     #[default]
     Inline,
     SideBySide,
+    Hunk,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -111,7 +112,8 @@ impl DiffViewMode {
     pub fn toggled(self) -> Self {
         match self {
             Self::Inline => Self::SideBySide,
-            Self::SideBySide => Self::Inline,
+            Self::SideBySide => Self::Hunk,
+            Self::Hunk => Self::Inline,
         }
     }
 }

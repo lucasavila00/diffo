@@ -50,6 +50,10 @@ impl AnchorRow {
                         && side_line_matches(new.as_ref(), row.new.as_ref())
                 })
             }
+            (Self::Hunk { kind, text }, DiffViewMode::Hunk) => cache
+                .hunk
+                .get(index)
+                .is_some_and(|row| row.kind == *kind && row.text == *text),
             _ => false,
         }
     }
@@ -70,6 +74,7 @@ fn projection_len(cache: &HighlightCache, mode: DiffViewMode) -> usize {
     match mode {
         DiffViewMode::Inline => cache.inline.len(),
         DiffViewMode::SideBySide => cache.side_by_side.len(),
+        DiffViewMode::Hunk => cache.hunk.len(),
     }
 }
 
@@ -80,6 +85,7 @@ pub(super) fn first_change(cache: &HighlightCache, mode: DiffViewMode) -> Option
             .side_by_side_changes
             .first()
             .map(|change| change.first),
+        DiffViewMode::Hunk => cache.hunk_changes.first().map(|change| change.first),
     }
 }
 
@@ -98,5 +104,9 @@ fn anchor_row(cache: &HighlightCache, mode: DiffViewMode, index: usize) -> Optio
                     new: row.new.as_ref().map(|line| (line.kind, line.text.clone())),
                 })
         }
+        DiffViewMode::Hunk => cache.hunk.get(index).map(|row| AnchorRow::Hunk {
+            kind: row.kind,
+            text: row.text.clone(),
+        }),
     }
 }

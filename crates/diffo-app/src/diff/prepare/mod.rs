@@ -1,20 +1,22 @@
 use super::{
     Arc, ChangeRegion, ChangeWarningAreas, DiffBlock, DiffDocument, DiffKey, DiffViewMode,
-    HIGHLIGHT_LOOKBEHIND_LINES, HighlightCache, HighlightedDiff, MAX_HIGHLIGHT_BYTES_PER_SIDE,
-    MAX_HIGHLIGHT_FILE_LINES, MAX_SYNC_BYTES, MAX_SYNC_LINES, Model, PREPARED_BUFFER_CACHE_SIZE,
-    PrepareCommit, PrepareOutcome, PrepareRequest, ProjectionOptions, RenderLine, Renderer,
-    RowKind, ScrollAnchor, ScrollbarMetrics, Span, SyntaxHighlighter, ViewportTransition, channel,
-    inline_change_regions, inline_rows_with_options, parse_unified_patch,
-    side_by_side_change_regions, side_by_side_rows_with_options, sync_channel, terminal_safe_text,
-    thread,
+    HIGHLIGHT_LOOKBEHIND_LINES, HighlightCache, HighlightedDiff, HunkRow,
+    MAX_HIGHLIGHT_BYTES_PER_SIDE, MAX_HIGHLIGHT_FILE_LINES, MAX_SYNC_BYTES, MAX_SYNC_LINES, Model,
+    PREPARED_BUFFER_CACHE_SIZE, PrepareCommit, PrepareOutcome, PrepareRequest, ProjectionOptions,
+    RenderLine, Renderer, RowKind, ScrollAnchor, ScrollbarMetrics, Span, SyntaxHighlighter,
+    ViewportTransition, channel, inline_change_regions, inline_rows_with_options,
+    parse_unified_patch, side_by_side_change_regions, side_by_side_rows_with_options, sync_channel,
+    terminal_safe_text, thread,
 };
 use diffo_diff::SideBySideRow;
 use diffo_highlight::{HighlightWindowRequest, LineRange};
 use diffo_ui::text_view::{ScrollCommand, ViewportMetrics, centered_window};
 
 mod anchor;
+mod hunk;
 pub(in crate::diff) mod state;
 use anchor::first_change;
+use hunk::{hunk_change_regions, hunk_rows};
 
 #[derive(Clone, Copy)]
 struct ProjectionHighlightRequest {
@@ -32,6 +34,12 @@ pub(in crate::diff) fn prepare_diff(
     let options = ProjectionOptions {
         mark_conflicts: request.key.mark_conflicts,
     };
+    let hunk = if request.mode == DiffViewMode::Hunk {
+        hunk_rows(&document, request.key.mark_conflicts)
+    } else {
+        Vec::new()
+    };
+    let hunk_changes = hunk_change_regions(&hunk);
     let inline = if request.mode == DiffViewMode::Inline {
         inline_rows_with_options(&document, options)
     } else {
@@ -50,6 +58,8 @@ pub(in crate::diff) fn prepare_diff(
         &inline_changes,
         &side_by_side,
         &side_by_side_changes,
+        &hunk,
+        &hunk_changes,
         ProjectionHighlightRequest {
             viewport_rows: request.viewport_rows,
             mode: request.mode,
@@ -77,8 +87,10 @@ pub(in crate::diff) fn prepare_diff(
         document,
         inline,
         side_by_side,
+        hunk,
         inline_changes,
         side_by_side_changes,
+        hunk_changes,
         highlighted: syntax_styles,
         syntax_highlighted,
         highlighted_old_coverage: highlighted_window
@@ -105,6 +117,8 @@ fn projection_highlight_ranges(
     inline_changes: &[ChangeRegion],
     side_by_side: &[SideBySideRow],
     side_by_side_changes: &[ChangeRegion],
+    hunk: &[HunkRow],
+    hunk_changes: &[ChangeRegion],
     request: ProjectionHighlightRequest,
 ) -> (Option<LineRange>, Option<LineRange>) {
     let window_viewports = request.prefetch_viewports.max(1);
@@ -119,6 +133,11 @@ fn projection_highlight_ranges(
         .filter(|_| request.mode == DiffViewMode::SideBySide)
         .or_else(|| side_by_side_changes.first().map(|change| change.first))
         .unwrap_or(0);
+    let hunk_target = request
+        .target_scroll
+        .filter(|_| request.mode == DiffViewMode::Hunk)
+        .or_else(|| hunk_changes.first().map(|change| change.first))
+        .unwrap_or(0);
     let inline_window = centered_window(
         inline_target,
         inline.len(),
@@ -128,6 +147,12 @@ fn projection_highlight_ranges(
     let side_window = centered_window(
         side_target,
         side_by_side.len(),
+        request.viewport_rows,
+        window_viewports,
+    );
+    let hunk_window = centered_window(
+        hunk_target,
+        hunk.len(),
         request.viewport_rows,
         window_viewports,
     );
@@ -157,6 +182,16 @@ fn projection_highlight_ranges(
     {
         include_line(&mut old, row.old.as_ref().and_then(|line| line.number));
         include_line(&mut new, row.new.as_ref().and_then(|line| line.number));
+    }
+    let include_hunk = request.target_scroll.is_none() || request.mode == DiffViewMode::Hunk;
+    for row in hunk
+        .iter()
+        .skip(hunk_window.start)
+        .take(hunk_window.len())
+        .filter(|_| include_hunk)
+    {
+        include_line(&mut old, row.old_number);
+        include_line(&mut new, row.new_number);
     }
     (old, new)
 }
@@ -332,6 +367,8 @@ impl Renderer {
             &cache.inline_changes,
             &cache.side_by_side,
             &cache.side_by_side_changes,
+            &cache.hunk,
+            &cache.hunk_changes,
             ProjectionHighlightRequest {
                 viewport_rows: self.diff_viewport_rows,
                 mode,
@@ -511,6 +548,7 @@ impl Renderer {
             match mode {
                 DiffViewMode::Inline => cache.inline.len(),
                 DiffViewMode::SideBySide => cache.side_by_side.len(),
+                DiffViewMode::Hunk => cache.hunk.len(),
             }
         } else if let Some(failed) = self.failed.as_ref() {
             failed.patch.lines().count()
@@ -549,6 +587,18 @@ impl Renderer {
                     .map(|line| Span::raw(terminal_safe_text(&line.text)).width())
                     .max()
                     .unwrap_or(0),
+                DiffViewMode::Hunk => cache
+                    .hunk
+                    .iter()
+                    .skip(first_row)
+                    .take(row_count)
+                    .map(|row| {
+                        Span::raw(terminal_safe_text(&row.text))
+                            .width()
+                            .saturating_add(usize::from(row.prefix.is_some()))
+                    })
+                    .max()
+                    .unwrap_or(0),
             }
         } else if let Some(failed) = self.failed.as_ref() {
             failed
@@ -568,6 +618,7 @@ impl Renderer {
         self.highlighted.as_ref().map_or(&[], |cache| match mode {
             DiffViewMode::Inline => cache.inline_changes.as_slice(),
             DiffViewMode::SideBySide => cache.side_by_side_changes.as_slice(),
+            DiffViewMode::Hunk => cache.hunk_changes.as_slice(),
         })
     }
 }

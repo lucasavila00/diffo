@@ -360,7 +360,7 @@ mod tests {
             workbench
                 .active_help_rows()
                 .iter()
-                .any(|(_, action)| *action == "Toggle inline / side-by-side view")
+                .any(|(_, action)| *action == "Toggle inline / side-by-side / hunk view")
         );
 
         let _ = workbench.handle_event(&key(KeyCode::Tab), area);

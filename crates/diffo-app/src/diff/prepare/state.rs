@@ -36,14 +36,25 @@ pub(in crate::diff) struct HighlightCache {
     pub(in crate::diff) document: DiffDocument,
     pub(in crate::diff) inline: Vec<RenderLine>,
     pub(in crate::diff) side_by_side: Vec<SideBySideRow>,
+    pub(in crate::diff) hunk: Vec<HunkRow>,
     pub(in crate::diff) inline_changes: Vec<ChangeRegion>,
     pub(in crate::diff) side_by_side_changes: Vec<ChangeRegion>,
+    pub(in crate::diff) hunk_changes: Vec<ChangeRegion>,
     pub(in crate::diff) highlighted: HighlightedDiff,
     pub(in crate::diff) syntax_highlighted: bool,
     pub(in crate::diff) highlighted_old_coverage: SyntaxCoverage,
     pub(in crate::diff) highlighted_new_coverage: SyntaxCoverage,
     #[cfg(test)]
     pub(in crate::diff) highlighted_lines_processed: usize,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(in crate::diff) struct HunkRow {
+    pub(in crate::diff) prefix: Option<char>,
+    pub(in crate::diff) text: String,
+    pub(in crate::diff) kind: RowKind,
+    pub(in crate::diff) old_number: Option<u32>,
+    pub(in crate::diff) new_number: Option<u32>,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -79,6 +90,10 @@ pub(in crate::diff) enum AnchorRow {
     SideBySide {
         old: Option<(RowKind, String)>,
         new: Option<(RowKind, String)>,
+    },
+    Hunk {
+        kind: RowKind,
+        text: String,
     },
 }
 

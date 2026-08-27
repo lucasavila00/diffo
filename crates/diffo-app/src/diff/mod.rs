@@ -69,9 +69,9 @@ use view::style::{
 };
 
 use prepare::state::{
-    ChangeTarget, ChangeWarningAreas, DiffKey, DiffViewportMetrics, HighlightCache, MAX_SYNC_BYTES,
-    MAX_SYNC_LINES, PREPARED_BUFFER_CACHE_SIZE, PrepareCommit, PrepareOutcome, PrepareRequest,
-    ScrollAnchor, ScrollbarAxis, ScrollbarMetrics,
+    ChangeTarget, ChangeWarningAreas, DiffKey, DiffViewportMetrics, HighlightCache, HunkRow,
+    MAX_SYNC_BYTES, MAX_SYNC_LINES, PREPARED_BUFFER_CACHE_SIZE, PrepareCommit, PrepareOutcome,
+    PrepareRequest, ScrollAnchor, ScrollbarAxis, ScrollbarMetrics,
 };
 
 pub use diffo_highlight::{

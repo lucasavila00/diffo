@@ -114,17 +114,6 @@ impl ExplorerActivity {
         self.queued.push_back(ExplorerRequest::Paths { id });
     }
 
-    pub(crate) fn request_quick_open_paths(&mut self) {
-        let id = self.next_id();
-        self.latest_quick_open_paths = id;
-        self.quick_open_paths_pending = true;
-        self.quick_open_paths.clear();
-        self.queued
-            .retain(|request| !matches!(request, ExplorerRequest::QuickOpenPaths { .. }));
-        self.queued
-            .push_back(ExplorerRequest::QuickOpenPaths { id });
-    }
-
     fn request_file_load(&mut self, path: PathBuf, first_line: usize) {
         let Some((status, title)) = self
             .model
@@ -578,10 +567,6 @@ impl ExplorerActivity {
         )
     }
 
-    pub fn take_request(&mut self) -> Option<ExplorerRequest> {
-        self.queued.pop_front()
-    }
-
     pub fn accept(&mut self, outcome: ExplorerOutcome) -> (Option<(String, String)>, bool) {
         match outcome {
             ExplorerOutcome::Paths { id, result } if id == self.latest_paths => match result {
@@ -598,17 +583,7 @@ impl ExplorerActivity {
             ExplorerOutcome::QuickOpenPaths { id, result }
                 if id == self.latest_quick_open_paths =>
             {
-                self.quick_open_paths_pending = false;
-                match result {
-                    Ok(mut paths) => {
-                        paths.sort();
-                        paths.dedup();
-                        let changed = self.quick_open_paths != paths;
-                        self.quick_open_paths = paths;
-                        (None, changed)
-                    }
-                    Err(error) => (Some(("Quick Open refresh failed".to_owned(), error)), true),
-                }
+                self.accept_quick_open_paths(result)
             }
             ExplorerOutcome::FileLoaded { id, result } if id == self.latest_load => {
                 let requested_path = self.pending_path.take();
@@ -682,15 +657,6 @@ impl ExplorerActivity {
             | ExplorerOutcome::QuickOpenPaths { .. }
             | ExplorerOutcome::FileLoaded { .. } => (None, false),
         }
-    }
-
-    #[must_use]
-    pub fn is_preparing(&self) -> bool {
-        self.paths_pending
-            || self.quick_open_paths_pending
-            || self.pending_path.is_some()
-            || self.pending_window.is_some()
-            || !self.queued.is_empty()
     }
 
     fn pending_request_id(&self) -> Option<u64> {

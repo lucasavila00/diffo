@@ -1,10 +1,38 @@
 use std::path::{Path, PathBuf};
 
-use super::{EntryId, ExplorerActivity};
+use super::{EntryId, ExplorerActivity, ExplorerRequest};
 
 impl ExplorerActivity {
+    pub(crate) fn request_quick_open_paths(&mut self) {
+        let id = self.next_id();
+        self.latest_quick_open_paths = id;
+        self.quick_open_paths_pending = true;
+        self.quick_open_paths.clear();
+        self.queued
+            .retain(|request| !matches!(request, ExplorerRequest::QuickOpenPaths { .. }));
+        self.queued
+            .push_back(ExplorerRequest::QuickOpenPaths { id });
+    }
+
     pub(crate) fn quick_open_paths(&self) -> (&[PathBuf], bool) {
         (&self.quick_open_paths, self.quick_open_paths_pending)
+    }
+
+    pub(super) fn accept_quick_open_paths(
+        &mut self,
+        result: Result<Vec<PathBuf>, String>,
+    ) -> (Option<(String, String)>, bool) {
+        self.quick_open_paths_pending = false;
+        match result {
+            Ok(mut paths) => {
+                paths.sort();
+                paths.dedup();
+                let changed = self.quick_open_paths != paths;
+                self.quick_open_paths = paths;
+                (None, changed)
+            }
+            Err(error) => (Some(("Quick Open refresh failed".to_owned(), error)), true),
+        }
     }
 
     pub(crate) fn quick_open(&mut self, path: PathBuf) {

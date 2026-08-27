@@ -424,11 +424,7 @@ impl Workbench {
                 GlobalAction::OpenCommandPalette => self.open_active_palette(),
                 GlobalAction::ToggleHelp => self.set_modal(Modal::Help),
                 GlobalAction::Sync => return self.execute_sync(),
-                GlobalAction::QuickOpen => {
-                    self.explorer.request_quick_open_paths();
-                    let (paths, loading) = self.explorer.quick_open_paths();
-                    self.set_modal(Modal::QuickOpen(quick_open::QuickOpen::new(paths, loading)));
-                }
+                GlobalAction::QuickOpen => self.open_quick_open(),
             }
             return Some(WorkbenchCommand::Redraw);
         }
@@ -543,11 +539,7 @@ impl Workbench {
                     self.explorer.request_quick_open_paths();
                 }
                 if changed || paths_refreshed {
-                    let (paths, loading) = self.explorer.quick_open_paths();
-                    if let Some(Modal::QuickOpen(modal)) = self.modal.as_mut() {
-                        modal.install(paths, loading);
-                        self.request_redraw();
-                    }
+                    self.refresh_quick_open();
                 }
             }
         }

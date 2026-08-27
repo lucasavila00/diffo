@@ -1,73 +1,39 @@
-# ADR 0116: Share the renderer between Diff and History
+# ADR 0116: Add History review in three pull requests
 
-Refines [ADR 0115](0115-review-checkout-history.md),
-[ADR 0021](0021-full-file-diffs-and-change-navigation.md), and
-[ADR 0024](0024-atomic-diff-buffer-transitions.md).
+This ADR changes [ADR 0115](0115-review-checkout-history.md).
 
 ## Context
 
-Diff reviews mutable working-tree and index changes. History reviews immutable
-commits from the current checkout. They are different activities: their source
-data, leading lists, selection lifecycles, and available actions must remain
-independent.
+The Diff activity has a staging view on the right side. The `r` key changes
+this view between inline and side-by-side mode.
 
-Both activities nevertheless need the same two ways to inspect a change:
-
-- a unified hunk projection, useful for reviewing a complete change; and
-- a rich file projection, useful for understanding one file in inline or
-  side-by-side form with syntax coverage, scrolling, change navigation, and
-  rails.
-
-ADR 0115 kept History hunk-only and local to its own preparation path. That
-would make the rich projection unavailable for historical files and duplicate
-the renderer as the two activities grow.
+History needs the same right-side view. It must also show a complete commit as
+a hunk view. Do not make a new renderer for History.
 
 ## Decision
 
-Keep Diff and History as separate long-lived activities. Do not merge their
-lists, actions, state, input handling, background requests, or selection and
-scroll ownership.
+Do the work in three pull requests.
 
-Extract one shared prepared renderer and projection pipeline for their
-right-hand review surface. It accepts an activity-owned document identity and a
-prepared projection. It supports both unified hunks and rich files, including
-the fixed inline and side-by-side controls, bounded syntax coverage, scrolling,
-change navigation, scrollbar, and hunk-marker rail. Explorer remains outside
-this decision.
+### Pull request 1: Add hunk mode
 
-Diff continues to present unstaged and staged file lists and owns staging,
-unstaging, commit composition, and working-tree refresh behavior. Its data comes
-from mutable repository state.
+Add hunk mode to the current right-side staging view. The `r` key changes
+between inline, side-by-side, and hunk mode. Keep the current file picker and
+Git actions. This pull request does not add History file selection.
 
-History remains read-only. Its leading pane is split evenly between a
-newest-first list of commits reachable from `HEAD` and the changed paths of the
-selected commit. Selecting a commit initially preserves an all-files hunk review
-of that commit. Selecting one changed path opens that path through the same rich
-file projection as Diff. History resolves the commit and parent blobs on demand,
-comparing root commits with the empty tree and merge commits with their first
-parent. It does not preload history blobs or add them to repository snapshots.
+### Pull request 2: Sync file and hunk selection
 
-Each activity prepares and atomically installs its own selection, list content,
-projection, navigation targets, scroll bounds, and visible syntax coverage.
-Until a replacement is ready, it keeps its prior committed renderer state
-visible. Stale results cannot provide content, targets, or metrics. The shared
-prepared file-and-mode cache remains limited to four entries, and the strict
-10,000-line syntax boundary remains in force.
+Add one selection state for the selected file and the hunk view. When the user
+selects a file, show that file. When the user selects the complete change, show
+the hunk view. Keep the two views in sync. Do not show new data until it is
+ready. Keep old data on the screen until then.
 
-## Alternatives
+### Pull request 3: Add the History picker
 
-- Merge Diff and History into one activity. Rejected because mutable staging and
-  commit operations do not belong to checkout-history review.
-- Keep History hunk-only. Rejected because a historical file needs the same rich
-  inspection tools as a working-tree file.
-- Give History a separate rich renderer. Rejected because it duplicates the
-  projection, scrolling, syntax, rail, and atomic-transition contracts.
-- Preload every historical blob. Rejected because history is unbounded and only
-  the selected commit or path is visible.
+Add the History left-side picker. It has a commit list and a file picker for
+the selected commit. History uses the same right-side modes from pull request
+1. History is read-only. Diff keeps its staging and commit actions.
 
 ## Consequences
 
-History gains rich file review without inheriting Diff's mutable controls, and
-Diff keeps its existing workflow. The implementation must separate common
-renderer inputs from activity-specific repository queries and state, while
-preserving deterministic prepared-transition tests for both activities.
+Each pull request is small and can be checked by itself. Diff and History keep
+different data and actions. They use the same right-side review modes.

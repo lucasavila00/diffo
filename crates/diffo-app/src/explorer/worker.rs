@@ -26,6 +26,9 @@ pub enum ExplorerRequest {
     Paths {
         id: u64,
     },
+    QuickOpenPaths {
+        id: u64,
+    },
     LoadFile {
         id: u64,
         path: PathBuf,
@@ -48,6 +51,10 @@ pub enum ExplorerRequest {
 
 pub enum ExplorerOutcome {
     Paths {
+        id: u64,
+        result: Result<Vec<PathBuf>, String>,
+    },
+    QuickOpenPaths {
         id: u64,
         result: Result<Vec<PathBuf>, String>,
     },
@@ -99,6 +106,7 @@ impl ExplorerWorker {
                         continue;
                     }
                     ExplorerRequest::Paths { .. }
+                    | ExplorerRequest::QuickOpenPaths { .. }
                     | ExplorerRequest::LoadFile { .. }
                     | ExplorerRequest::HighlightWindow { .. } => {}
                 }
@@ -107,6 +115,12 @@ impl ExplorerWorker {
                         id,
                         result: repository
                             .explorer_paths()
+                            .map_err(|error| error.to_string()),
+                    },
+                    ExplorerRequest::QuickOpenPaths { id } => ExplorerOutcome::QuickOpenPaths {
+                        id,
+                        result: repository
+                            .quick_open_paths()
                             .map_err(|error| error.to_string()),
                     },
                     ExplorerRequest::LoadFile {
@@ -188,7 +202,7 @@ impl ExplorerWorker {
             ExplorerRequest::HighlightWindow { id, .. } => {
                 self.latest_window.store(*id, Ordering::Release);
             }
-            ExplorerRequest::Paths { .. } => {}
+            ExplorerRequest::Paths { .. } | ExplorerRequest::QuickOpenPaths { .. } => {}
         }
         let _ = self.requests.send(request);
     }

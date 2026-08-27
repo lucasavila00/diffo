@@ -4,7 +4,7 @@ use super::{EntryId, ExplorerActivity};
 
 impl ExplorerActivity {
     pub(crate) fn quick_open_paths(&self) -> (&[PathBuf], bool) {
-        (self.model.paths(), !self.has_committed_paths)
+        (&self.quick_open_paths, self.quick_open_paths_pending)
     }
 
     pub(crate) fn quick_open(&mut self, path: PathBuf) {

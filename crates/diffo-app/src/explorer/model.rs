@@ -129,10 +129,6 @@ impl ExplorerModel {
     pub(crate) fn file_entry(&self, path: &Path) -> Option<&TreeEntry> {
         find_entry(&self.entries, &EntryId::File(path.to_path_buf()))
     }
-
-    pub(crate) fn paths(&self) -> &[PathBuf] {
-        &self.paths
-    }
 }
 
 fn snapshot_statuses(snapshot: &RepositorySnapshot) -> HashMap<PathBuf, ChangeKind> {

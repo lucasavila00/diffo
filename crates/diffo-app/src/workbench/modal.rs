@@ -516,8 +516,8 @@ mod tests {
         let _ = workbench.handle_event(&key(KeyCode::Char('r')), area);
 
         workbench.accept_task_result(super::super::WorkbenchTaskResult::Explorer(
-            ExplorerOutcome::Paths {
-                id: 1,
+            ExplorerOutcome::QuickOpenPaths {
+                id: 2,
                 result: Ok(vec!["src/main.rs".into(), ".hidden".into()]),
             },
         ));

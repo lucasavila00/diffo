@@ -383,6 +383,28 @@ fn explorer_removes_a_deleted_file_without_showing_head_content() -> Result<()> 
 }
 
 #[test]
+fn quick_open_omits_gitignored_files() -> Result<()> {
+    let repository = TestRepository::new()?;
+    fs::write(repository.worktree.join(".gitignore"), "ignored.txt\n")?;
+    fs::write(repository.worktree.join("ignored.txt"), "IGNORED_CONTENT\n")?;
+    fs::write(
+        repository.worktree.join("available.txt"),
+        "AVAILABLE_CONTENT\n",
+    )?;
+    let mut screen = DiffoScreen::launch(diffo_binary()?, &repository.worktree)?;
+
+    screen
+        .wait_for_text("available.txt")?
+        .press(Key::Char('o'))?
+        .wait_for_text("Quick Open")?
+        .wait_for_text("available.txt")?
+        .type_text("ignored")?
+        .wait_for_text("No matching files")?;
+
+    Ok(())
+}
+
+#[test]
 fn ignored_file_rename_commits_explorer_path_and_content_atomically() -> Result<()> {
     let repository = TestRepository::new()?;
     fs::write(repository.worktree.join(".gitignore"), "*.ignored\n")?;

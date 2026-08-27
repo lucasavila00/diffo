@@ -1,6 +1,8 @@
 use std::{
     collections::BTreeSet,
     fs,
+    io::Write as _,
+    os::unix::ffi::{OsStrExt as _, OsStringExt as _},
     path::{Path, PathBuf},
     process::Command,
 };
@@ -13,6 +15,43 @@ use diffo_core::{
 use super::GitRepositorySource;
 
 impl GitRepositorySource {
+    fn ignored_paths(&self, paths: &[PathBuf]) -> Result<BTreeSet<PathBuf>> {
+        if paths.is_empty() {
+            return Ok(BTreeSet::new());
+        }
+        let mut child = Command::new("git")
+            .args(["check-ignore", "--stdin", "-z"])
+            .current_dir(&self.root)
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .spawn()
+            .context("failed to check which Quick Open paths are ignored")?;
+        let stdin = child
+            .stdin
+            .as_mut()
+            .context("git check-ignore did not accept path input")?;
+        for path in paths {
+            stdin
+                .write_all(path.as_os_str().as_bytes())
+                .context("failed to check which Quick Open paths are ignored")?;
+            stdin
+                .write_all(&[0])
+                .context("failed to check which Quick Open paths are ignored")?;
+        }
+        let output = child
+            .wait_with_output()
+            .context("failed to check which Quick Open paths are ignored")?;
+        if !output.status.success() && output.status.code() != Some(1) {
+            bail!("git failed to check which Quick Open paths are ignored");
+        }
+        Ok(output
+            .stdout
+            .split(|byte| *byte == 0)
+            .filter(|path| !path.is_empty())
+            .map(|path| PathBuf::from(std::ffi::OsString::from_vec(path.to_owned())))
+            .collect())
+    }
+
     fn explorer_paths_from(
         directory: &Path,
         worktree: &Path,
@@ -185,6 +224,15 @@ impl Repository for GitRepositorySource {
         )?;
         paths.sort();
         Ok(paths)
+    }
+
+    fn quick_open_paths(&self) -> Result<Vec<PathBuf>> {
+        let paths = self.explorer_paths()?;
+        let ignored = self.ignored_paths(&paths)?;
+        Ok(paths
+            .into_iter()
+            .filter(|path| !ignored.contains(path))
+            .collect())
     }
 
     fn explorer_file(&self, path: &Path) -> Result<ExplorerFile> {

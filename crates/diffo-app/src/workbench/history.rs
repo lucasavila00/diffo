@@ -28,9 +28,13 @@ impl Workbench {
         patch: String,
         files: Vec<CommitFile>,
     ) {
-        if self.history.accept_patch(query_id, commit_id, patch, files)
-            && self.active == Activity::History
+        let accepted = self.history.accept_patch(query_id, commit_id, patch, files);
+        if let Some(mode) = self.selected_review_mode
+            && accepted
         {
+            self.history.set_review_mode(mode);
+        }
+        if accepted && self.active == Activity::History {
             self.request_redraw();
         }
     }

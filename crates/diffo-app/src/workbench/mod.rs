@@ -5,7 +5,7 @@ use std::{
     time::Instant,
 };
 
-use crate::diff::{Effect, Message, Model, ToastKind, ToastQueue, update};
+use crate::diff::{DiffViewMode, Effect, Message, Model, ToastKind, ToastQueue, update};
 use crate::diff::{FramePreparation, Renderer, RendererEvent, toast_at_position};
 use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind};
 use diffo_core::{
@@ -103,6 +103,7 @@ pub struct Workbench {
     diff: DiffActivity,
     explorer: ExplorerActivity,
     history: HistoryActivity,
+    selected_review_mode: Option<DiffViewMode>,
     pane_split: PaneSplit,
     toasts: ToastQueue,
     toast_deadlines: HashMap<u64, Instant>,
@@ -217,6 +218,7 @@ impl Workbench {
             },
             explorer,
             history,
+            selected_review_mode: None,
             pane_split: PaneSplit::default(),
             toasts: ToastQueue::new(),
             toast_deadlines: HashMap::new(),
@@ -461,7 +463,15 @@ impl Workbench {
                 Tool::handle_event(&mut self.explorer, event, content, self.pane_split)
             }
             Activity::History => {
-                Tool::handle_event(&mut self.history, event, content, self.pane_split)
+                let mode = self.history.review_mode();
+                let command =
+                    Tool::handle_event(&mut self.history, event, content, self.pane_split);
+                if self.history.review_mode() != mode {
+                    let mode = self.history.review_mode();
+                    self.selected_review_mode = Some(mode);
+                    self.diff.model.review.diff_view_mode = mode;
+                }
+                command
             }
         }
     }
@@ -474,6 +484,7 @@ impl Workbench {
         {
             self.dismiss_active_popover();
             self.active = self.active.next();
+            self.sync_review_mode_for_active_activity();
             return true;
         }
         if let Event::Mouse(mouse) = event
@@ -485,9 +496,25 @@ impl Workbench {
             }
             self.dismiss_active_popover();
             self.active = activity;
+            self.sync_review_mode_for_active_activity();
             return true;
         }
         false
+    }
+
+    fn sync_review_mode_for_active_activity(&mut self) {
+        let Some(mode) = self.selected_review_mode else {
+            return;
+        };
+        match self.active {
+            Activity::Diff => {
+                self.diff.model.review.diff_view_mode = mode;
+            }
+            Activity::History => {
+                self.history.set_review_mode(mode);
+            }
+            Activity::Explorer => {}
+        }
     }
 
     fn dismiss_clicked_toast(&mut self, event: &Event, area: Rect) -> bool {
@@ -564,6 +591,7 @@ impl Workbench {
             self.close_modal();
             return None;
         }
+        let review_mode_changed = message == Message::ToggleDiffView;
         let preparation_owned = matches!(
             &message,
             Message::SelectFile(_)
@@ -596,6 +624,11 @@ impl Workbench {
             _ => {}
         }
         let effect = update(&mut self.diff.model, message);
+        if review_mode_changed {
+            let mode = self.diff.model.review.diff_view_mode;
+            self.selected_review_mode = Some(mode);
+            self.history.set_review_mode(mode);
+        }
         if !preparation_owned && self.diff.model != model_before {
             self.request_redraw();
         }

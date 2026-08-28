@@ -52,6 +52,27 @@ impl HistoryActivity {
     }
 
     #[must_use]
+    pub(crate) fn review_mode(&self) -> super::DiffViewMode {
+        self.pending_mode.unwrap_or(self.review.diff_view_mode)
+    }
+
+    pub(crate) fn set_review_mode(&mut self, mode: super::DiffViewMode) -> bool {
+        if self.review_mode() == mode {
+            return false;
+        }
+        let Some(super::ReviewSelection::HistoryFile { commit_id, path }) = self
+            .pending_selection
+            .as_ref()
+            .or(self.selection.as_ref())
+            .cloned()
+        else {
+            self.review.diff_view_mode = mode;
+            return true;
+        };
+        self.select_file(commit_id, &path, mode)
+    }
+
+    #[must_use]
     pub fn help_rows(&self) -> Vec<(String, &'static str)> {
         vec![
             ("j / k".to_owned(), "Previous / next commit"),

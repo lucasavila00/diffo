@@ -592,19 +592,7 @@ impl HistoryActivity {
     }
 
     fn toggle_review_mode(&mut self) -> bool {
-        let mode = self
-            .pending_mode
-            .unwrap_or(self.review.diff_view_mode)
-            .toggled();
-        let Some(ReviewSelection::HistoryFile { commit_id, path }) = self
-            .pending_selection
-            .as_ref()
-            .or(self.selection.as_ref())
-            .cloned()
-        else {
-            return false;
-        };
-        self.select_file(commit_id, &path, mode)
+        self.set_review_mode(self.review_mode().toggled())
     }
 
     fn select_file(

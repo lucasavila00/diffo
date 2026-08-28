@@ -18,6 +18,9 @@ struct HistoryFrame {
     requested_history_commit: Option<String>,
     selected_history_commit: Option<String>,
     displayed_history_commit: Option<String>,
+    requested_history_file: Option<String>,
+    selected_history_file: Option<String>,
+    displayed_history_file: Option<String>,
     text_surface: Option<ExplorerSurface>,
 }
 
@@ -97,16 +100,24 @@ fn activity_bar_clicks_select_tools_and_diff_returns_intact() -> Result<()> {
 #[test]
 fn history_commit_selection_and_patch_commit_atomically() -> Result<()> {
     let repository = TestRepository::new()?;
-    fs::write(
-        repository.worktree.join("history.rs"),
-        "pub const HISTORY_VALUE: &str = \"ALPHA\";\n",
-    )?;
+    let alpha = (0..20)
+        .map(|line| {
+            if line == 10 {
+                "pub const HISTORY_VALUE: &str = \"ALPHA\";".to_owned()
+            } else {
+                format!("// HISTORY_CONTEXT_{line:02}")
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+        + "\n";
+    fs::write(repository.worktree.join("history.rs"), &alpha)?;
     git(&repository.worktree, &["add", "history.rs"])?;
     git(&repository.worktree, &["commit", "-m", "Add history value"])?;
     let older = git_output(&repository.worktree, &["rev-parse", "HEAD"])?;
     fs::write(
         repository.worktree.join("history.rs"),
-        "pub const HISTORY_VALUE: &str = \"BRAVO\";\n",
+        alpha.replace("\"ALPHA\"", "\"BRAVO\""),
     )?;
     git(
         &repository.worktree,
@@ -125,6 +136,8 @@ fn history_commit_selection_and_patch_commit_atomically() -> Result<()> {
         .wait_for_text("History")?
         .wait_for_text("Update history value")?
         .wait_for_text("BRAVO")?
+        .press(Key::Char('r'))?
+        .wait_for_text("HISTORY_CONTEXT_00")?
         .click(&Selector::text(&older[..7]))?
         .wait_for_text("ALPHA")?
         .wait_for_text_gone("BRAVO")?
@@ -139,7 +152,8 @@ fn history_commit_selection_and_patch_commit_atomically() -> Result<()> {
         .collect::<std::result::Result<Vec<_>, _>>()?;
     assert!(
         frames.iter().all(|frame| {
-            frame.selected_history_commit == frame.displayed_history_commit
+            (frame.selected_history_commit == frame.displayed_history_commit
+                && frame.selected_history_file == frame.displayed_history_file)
                 || frame
                     .text_surface
                     .as_ref()
@@ -151,6 +165,15 @@ fn history_commit_selection_and_patch_commit_atomically() -> Result<()> {
         frame.requested_history_commit.as_deref() == Some(newest.as_str())
             && frame.selected_history_commit.as_deref() == Some(newest.as_str())
             && frame.displayed_history_commit.as_deref() == Some(newest.as_str())
+            && frame.text_surface.as_ref().is_some_and(|surface| {
+                surface.surface == "History" && surface.render_mode == "Full"
+            })
+    }));
+    assert!(frames.iter().any(|frame| {
+        frame.requested_history_commit.as_deref() == Some(newest.as_str())
+            && frame.requested_history_file.as_deref() == Some("history.rs")
+            && frame.selected_history_file.as_deref() == Some("history.rs")
+            && frame.displayed_history_file.as_deref() == Some("history.rs")
             && frame.text_surface.as_ref().is_some_and(|surface| {
                 surface.surface == "History" && surface.render_mode == "Full"
             })

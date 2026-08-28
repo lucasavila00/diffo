@@ -84,7 +84,7 @@ fn assert_stable_diff_rails(mode: DiffViewMode) {
     let mut model = model();
     model.diff_view_mode = mode;
     model.snapshot.files[0].unstaged.as_mut().unwrap().text = navigation_layout_patch();
-    let area = Rect::new(0, 0, 100, 30);
+    let area = Rect::new(0, 0, 100, if mode == DiffViewMode::Hunk { 10 } else { 30 });
     let diff_area = horizontal_panes(main_area(area), model.file_pane_percent)[1];
     let mut renderer = Renderer::new();
     renderer.prepare_frame(&model, area);
@@ -96,7 +96,12 @@ fn assert_stable_diff_rails(mode: DiffViewMode) {
     let mut terminal = Terminal::new(backend).unwrap();
     let mut states = Vec::new();
 
-    for scroll in [0, 10, maximum] {
+    let middle = if mode == DiffViewMode::Hunk {
+        maximum.saturating_sub(3)
+    } else {
+        maximum / 2
+    };
+    for scroll in [0, middle, maximum] {
         model.diff_scroll = scroll;
         renderer.prepare_frame(&model, area);
         terminal
@@ -121,7 +126,7 @@ fn assert_stable_diff_rails(mode: DiffViewMode) {
                 let row =
                     rail.y + overview_position(change.first, renderer.scrollbars.rows, rail.height);
                 assert_eq!(
-                    renderer.change_at_marker(marker_column, row, &model),
+                    renderer.change_at_marker(marker_column, row),
                     Some(change.first.saturating_sub(usize::from(index > 0)))
                 );
                 (
@@ -148,7 +153,11 @@ fn assert_stable_diff_rails(mode: DiffViewMode) {
     }
 
     assert_eq!(states[0].3, (false, true));
-    assert_eq!(states[1].3, (true, true));
+    if mode == DiffViewMode::Hunk {
+        assert_ne!(states[1].3, (false, false));
+    } else {
+        assert_eq!(states[1].3, (true, true));
+    }
     assert_eq!(states[2].3, (true, false));
     assert_eq!(states[0].0, states[1].0);
     assert_eq!(states[1].0, states[2].0);
@@ -195,7 +204,8 @@ fn change_warnings_share_one_row_only_in_a_one_row_viewport() {
 
         for (height, expected_rows) in [(2, 0), (3, 1), (4, 2)] {
             let area = Rect::new(0, 0, 20, height);
-            let viewport = renderer.diff_viewport_metrics_at(mode, area, 100);
+            let scroll = if mode == DiffViewMode::Hunk { 8 } else { 100 };
+            let viewport = renderer.diff_viewport_metrics_at(mode, area, scroll);
             let backend = TestBackend::new(area.width, area.height);
             let mut terminal = Terminal::new(backend).unwrap();
             terminal

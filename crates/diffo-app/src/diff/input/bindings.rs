@@ -137,6 +137,29 @@ pub(crate) fn help_rows() -> Vec<(String, &'static str)> {
         .collect()
 }
 
+pub(crate) fn review_help_rows() -> Vec<(String, &'static str)> {
+    std::iter::once(("f".to_owned(), "Toggle full-screen buffer"))
+        .chain(
+            KEY_BINDINGS
+                .iter()
+                .filter(|binding| super::is_review_message(&binding.message))
+                .filter(|binding| binding.message != Message::JumpToPreviousChange)
+                .map(|binding| {
+                    if binding.message == Message::JumpToNextChange {
+                        return ("n / p".to_owned(), "Next / previous change");
+                    }
+                    let keys = binding
+                        .keys
+                        .iter()
+                        .map(|key| key.label())
+                        .collect::<Vec<_>>()
+                        .join(" / ");
+                    (keys, binding.description)
+                }),
+        )
+        .collect()
+}
+
 impl KeyChord {
     fn label(self) -> String {
         let key = match self.code {

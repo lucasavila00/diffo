@@ -123,9 +123,7 @@ pub struct Model {
     pub snapshot: RepositorySnapshot,
     pub selected: Option<FileKey>,
     pub should_quit: bool,
-    pub diff_scroll: usize,
-    pub diff_horizontal_scroll: usize,
-    pub diff_view_mode: DiffViewMode,
+    pub review: crate::diff::ReviewState,
     pub file_pane_percent: u16,
     pub resizing_file_pane: bool,
     pub commit_message: String,
@@ -149,9 +147,7 @@ impl Model {
             snapshot,
             selected,
             should_quit: false,
-            diff_scroll: 0,
-            diff_horizontal_scroll: 0,
-            diff_view_mode: DiffViewMode::default(),
+            review: crate::diff::ReviewState::default(),
             file_pane_percent: 25,
             resizing_file_pane: false,
             commit_message: String::new(),
@@ -165,6 +161,20 @@ impl Model {
 
     pub(crate) fn merge_phase(&self) -> Option<MergePhase> {
         MergePhase::from_snapshot(&self.snapshot)
+    }
+}
+
+impl std::ops::Deref for Model {
+    type Target = crate::diff::ReviewState;
+
+    fn deref(&self) -> &Self::Target {
+        &self.review
+    }
+}
+
+impl std::ops::DerefMut for Model {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.review
     }
 }
 

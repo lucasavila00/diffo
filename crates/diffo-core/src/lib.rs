@@ -129,6 +129,19 @@ pub struct CheckoutHistory {
     pub commits: Vec<Commit>,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CommitFile {
+    pub path: PathBuf,
+    pub old_path: Option<PathBuf>,
+    pub kind: ChangeKind,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CommitReview {
+    pub patch: String,
+    pub files: Vec<CommitFile>,
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct UpstreamState {
     pub name: String,
@@ -515,6 +528,34 @@ pub trait Repository: RepositorySource {
     /// Returns an error when the commit does not exist or its patch cannot be read.
     fn commit_patch(&self, _commit_id: &str) -> Result<String> {
         anyhow::bail!("commit patch viewing is unavailable for this repository source")
+    }
+
+    /// Read the compact patch and changed-file list recorded by one commit.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the commit review cannot be read.
+    fn commit_review(&self, commit_id: &str) -> Result<CommitReview> {
+        Ok(CommitReview {
+            patch: self.commit_patch(commit_id)?,
+            files: Vec::new(),
+        })
+    }
+
+    /// Read one file from a commit as a full-context unified patch against its
+    /// first parent, or against the empty tree for a root commit.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the commit or path does not exist or the patch
+    /// cannot be read.
+    fn commit_file_patch(
+        &self,
+        _commit_id: &str,
+        _path: &std::path::Path,
+        _old_path: Option<&std::path::Path>,
+    ) -> Result<String> {
+        anyhow::bail!("commit file viewing is unavailable for this repository source")
     }
 
     /// List local and remote branches known to the repository.

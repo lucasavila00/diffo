@@ -7,93 +7,37 @@ use std::{
     time::Duration,
 };
 
-use diffo_core::{
-    ApplicationCommandId, CancellationHandle, Repository, RepositoryAction, RepositoryQueryId,
-    RepositoryUpdate, RepositoryUpdateKind,
-};
+use diffo_core::{Repository, RepositoryUpdate, RepositoryUpdateKind};
 
 use crate::service::{PromptBroker, RepositoryEvent};
 
 mod operation;
 mod queries;
+mod request;
 
 use operation::execute as execute_command;
 use queries::{
-    branches as collect_branches, commit_patch as collect_commit_patch, history as collect_history,
+    branches as collect_branches, commit_file as collect_commit_file,
+    commit_patch as collect_commit_patch, history as collect_history,
     merge_refs as collect_merge_refs, refresh as collect_refresh, remotes as collect_remotes,
     stashes as collect_stashes,
 };
+use request::DebouncedRequest;
+pub(super) use request::WorkerRequest;
 
 #[cfg(test)]
 use anyhow::Result;
 #[cfg(test)]
 use diffo_core::{
-    OperationFailure, OperationOutcome, OperationResult, RepositoryOperationContext,
-    RepositorySnapshot,
+    ApplicationCommandId, CancellationHandle, OperationFailure, OperationOutcome, OperationResult,
+    RepositoryAction, RepositoryOperationContext, RepositoryQueryId, RepositorySnapshot,
 };
+#[cfg(test)]
+use std::path::PathBuf;
 #[cfg(test)]
 use std::thread;
 
 const DEBOUNCE: Duration = Duration::from_millis(100);
-
-pub(super) enum WorkerRequest {
-    RefreshRequested,
-    LoadHistory {
-        query_id: RepositoryQueryId,
-    },
-    LoadCommitPatch {
-        query_id: RepositoryQueryId,
-        commit_id: String,
-    },
-    LoadBranches {
-        query_id: RepositoryQueryId,
-    },
-    LoadMergeRefs {
-        query_id: RepositoryQueryId,
-    },
-    LoadStashes {
-        query_id: RepositoryQueryId,
-    },
-    LoadRemotes {
-        query_id: RepositoryQueryId,
-    },
-    Execute {
-        id: ApplicationCommandId,
-        action: RepositoryAction,
-        cancellation: CancellationHandle,
-    },
-    WatchFailed(String),
-    Shutdown,
-}
-
-enum DebouncedRequest {
-    Refresh,
-    LoadHistory {
-        query_id: RepositoryQueryId,
-    },
-    LoadCommitPatch {
-        query_id: RepositoryQueryId,
-        commit_id: String,
-    },
-    LoadBranches {
-        query_id: RepositoryQueryId,
-    },
-    LoadMergeRefs {
-        query_id: RepositoryQueryId,
-    },
-    LoadStashes {
-        query_id: RepositoryQueryId,
-    },
-    LoadRemotes {
-        query_id: RepositoryQueryId,
-    },
-    Execute {
-        id: ApplicationCommandId,
-        action: RepositoryAction,
-        cancellation: CancellationHandle,
-    },
-    Shutdown,
-}
 
 pub(super) fn worker_loop(
     repository: &dyn Repository,
@@ -144,6 +88,18 @@ pub(super) fn worker_loop(
                 query_id,
                 commit_id,
             } => Some(collect_commit_patch(repository, query_id, commit_id)),
+            WorkerRequest::LoadCommitFile {
+                query_id,
+                commit_id,
+                path,
+                old_path,
+            } => Some(collect_commit_file(
+                repository,
+                query_id,
+                commit_id,
+                path,
+                old_path.as_deref(),
+            )),
             WorkerRequest::LoadMergeRefs { query_id } => {
                 Some(collect_merge_refs(repository, query_id))
             }
@@ -184,6 +140,12 @@ fn collect_after_debounce(
             query_id,
             commit_id,
         } => collect_commit_patch(repository, query_id, commit_id),
+        DebouncedRequest::LoadCommitFile {
+            query_id,
+            commit_id,
+            path,
+            old_path,
+        } => collect_commit_file(repository, query_id, commit_id, path, old_path.as_deref()),
         DebouncedRequest::LoadBranches { query_id } => collect_branches(repository, query_id),
         DebouncedRequest::LoadMergeRefs { query_id } => collect_merge_refs(repository, query_id),
         DebouncedRequest::LoadStashes { query_id } => collect_stashes(repository, query_id),
@@ -236,6 +198,19 @@ fn debounce(requests: &Receiver<WorkerRequest>, refresh_pending: &AtomicBool) ->
                 return DebouncedRequest::LoadCommitPatch {
                     query_id,
                     commit_id,
+                };
+            }
+            Ok(WorkerRequest::LoadCommitFile {
+                query_id,
+                commit_id,
+                path,
+                old_path,
+            }) => {
+                return DebouncedRequest::LoadCommitFile {
+                    query_id,
+                    commit_id,
+                    path,
+                    old_path,
                 };
             }
             Ok(WorkerRequest::LoadBranches { query_id }) => {
@@ -295,6 +270,15 @@ mod tests {
 
         fn commit_patch(&self, commit_id: &str) -> Result<String> {
             Ok(format!("patch for {commit_id}"))
+        }
+
+        fn commit_file_patch(
+            &self,
+            commit_id: &str,
+            path: &std::path::Path,
+            _old_path: Option<&std::path::Path>,
+        ) -> Result<String> {
+            Ok(format!("file patch for {commit_id}: {}", path.display()))
         }
 
         fn branches(&self) -> Result<Vec<diffo_core::BranchRef>> {
@@ -490,7 +474,25 @@ mod tests {
                 query_id: RepositoryQueryId(8),
                 commit_id,
                 patch,
+                ..
             } if commit_id == "abc" && patch == "patch for abc"
+        ));
+        assert!(matches!(
+            collect_commit_file(
+                &repository,
+                RepositoryQueryId(9),
+                "abc".to_owned(),
+                PathBuf::from("src/main.rs"),
+                None,
+            ),
+            RepositoryEvent::CommitFileLoaded {
+                query_id: RepositoryQueryId(9),
+                commit_id,
+                path,
+                patch,
+            } if commit_id == "abc"
+                && path == std::path::Path::new("src/main.rs")
+                && patch == "file patch for abc: src/main.rs"
         ));
     }
 

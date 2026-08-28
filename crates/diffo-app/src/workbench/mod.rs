@@ -685,7 +685,7 @@ impl Workbench {
 }
 
 mod tool_impls;
-use tool_impls::{explorer_frame_preparation, explorer_preparation, history_preparation};
+use tool_impls::{explorer_frame_preparation, explorer_preparation};
 
 #[cfg(test)]
 mod repository_update_tests;

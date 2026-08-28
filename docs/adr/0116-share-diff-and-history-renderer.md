@@ -22,18 +22,23 @@ Git actions. This pull request does not add History file selection.
 
 ### Pull request 2: Sync file and hunk selection
 
-Add one selection state for the selected file and the hunk view. When the user
-selects a file, show that file. When the user selects the complete change, show
-the hunk view. Keep the two views in sync. Do not show new data until it is
-ready. Keep old data on the screen until then.
+Add one selection state for the selected file and the hunk view. Hunk mode is
+one compact projection of every change, across every file. Selecting a file in
+that mode keeps the aggregate projection and jumps to that file's first hunk; it
+does not filter the projection. Inline and side-by-side modes show the selected
+full file. Do not show new data until it is ready. Keep old data on the screen
+until then.
 
 ### Pull request 3: Add the History picker
 
 Add the History left-side picker. It has a commit list and a file picker for the
-selected commit. History uses the same right-side modes from pull request 1.
-History is read-only. Diff keeps its staging and commit actions.
+selected commit. History and Diff use the same right-side renderer, review
+state, preparation, controls, and fixed key bindings. Only their left sides and
+data sources differ. History is read-only. Diff keeps its staging and commit
+actions.
 
 ## Consequences
 
 Each pull request is small and can be checked by itself. Diff and History keep
-different data and actions. They use the same right-side review modes.
+different data and left-side actions. Shared right-side infrastructure makes
+their review modes and interactions behave the same by construction.

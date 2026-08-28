@@ -538,7 +538,7 @@ fn hunk_markers_have_a_separate_clickable_rail_beside_the_scrollbar() {
         ),
     ));
     assert_eq!(
-        renderer.change_at_marker(renderer.scrollbars.vertical_area.x, marker_row, &model),
+        renderer.change_at_marker(renderer.scrollbars.vertical_area.x, marker_row),
         None
     );
     assert_eq!(

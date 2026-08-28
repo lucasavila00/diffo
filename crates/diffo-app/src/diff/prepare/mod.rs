@@ -1,7 +1,7 @@
 use super::{
     Arc, ChangeRegion, ChangeWarningAreas, DiffBlock, DiffDocument, DiffKey, DiffViewMode,
     HIGHLIGHT_LOOKBEHIND_LINES, HighlightCache, HighlightedDiff, HunkRow,
-    MAX_HIGHLIGHT_BYTES_PER_SIDE, MAX_HIGHLIGHT_FILE_LINES, MAX_SYNC_BYTES, MAX_SYNC_LINES, Model,
+    MAX_HIGHLIGHT_BYTES_PER_SIDE, MAX_HIGHLIGHT_FILE_LINES, MAX_SYNC_BYTES, MAX_SYNC_LINES,
     PREPARED_BUFFER_CACHE_SIZE, PrepareCommit, PrepareOutcome, PrepareRequest, ProjectionOptions,
     RenderLine, Renderer, RowKind, ScrollAnchor, ScrollbarMetrics, Span, SyntaxHighlighter,
     ViewportTransition, channel, inline_change_regions, inline_rows_with_options,
@@ -9,14 +9,14 @@ use super::{
     terminal_safe_text, thread,
 };
 use diffo_diff::SideBySideRow;
-use diffo_highlight::{HighlightWindowRequest, LineRange};
-use diffo_ui::text_view::{ScrollCommand, ViewportMetrics, centered_window};
+use diffo_highlight::{HighlightWindowRequest, HighlightedWindow, LineRange};
+use diffo_ui::text_view::centered_window;
 
 mod anchor;
 mod hunk;
 pub(in crate::diff) mod state;
 use anchor::first_change;
-use hunk::{complete_change_rows, hunk_change_regions, hunk_rows};
+use hunk::{aggregate_hunk_rows, complete_change_rows, hunk_change_regions, hunk_rows};
 
 #[derive(Clone, Copy)]
 struct ProjectionHighlightRequest {
@@ -30,14 +30,30 @@ pub(in crate::diff) fn prepare_diff(
     request: PrepareRequest,
     highlighter: &SyntaxHighlighter,
 ) -> Option<HighlightCache> {
-    let document = parse_unified_patch(&request.key.patch).ok()?;
-    let mode = request.key.selection.view_mode(request.mode);
+    let mode = request.key.mode;
+    debug_assert_eq!(request.mode, mode);
+    let (document, aggregate_hunk, hunk_targets) = if mode == DiffViewMode::Hunk
+        && let Some(segments) = request.key.hunk_segments.as_deref()
+    {
+        let aggregate = aggregate_hunk_rows(segments)?;
+        (aggregate.document, Some(aggregate.rows), aggregate.targets)
+    } else {
+        (
+            parse_unified_patch(&request.key.patch).ok()?,
+            None,
+            Vec::new(),
+        )
+    };
     let options = ProjectionOptions {
         mark_conflicts: request.key.mark_conflicts,
     };
-    let hunk = if mode == DiffViewMode::Hunk {
+    let hunk = if let Some(hunk) = aggregate_hunk {
+        hunk
+    } else if mode == DiffViewMode::Hunk {
         match &request.key.selection {
-            super::ReviewSelection::File(_) => hunk_rows(&document, request.key.mark_conflicts),
+            super::ReviewSelection::File(_) | super::ReviewSelection::HistoryFile { .. } => {
+                hunk_rows(&document, request.key.mark_conflicts)
+            }
             super::ReviewSelection::CompleteChange(_) => {
                 complete_change_rows(&request.key.patch, request.key.mark_conflicts)
             }
@@ -58,11 +74,8 @@ pub(in crate::diff) fn prepare_diff(
         Vec::new()
     };
     let side_by_side_changes = side_by_side_change_regions(&side_by_side);
-    let syntax_highlighted = request
-        .key
-        .selection
-        .file_key()
-        .is_some_and(|_| should_syntax_highlight(&document));
+    let syntax_highlighted =
+        request.key.selection.file_path().is_some() && should_syntax_highlight(&document);
     let (old_range, new_range) = projection_highlight_ranges(
         &inline,
         &inline_changes,
@@ -77,20 +90,14 @@ pub(in crate::diff) fn prepare_diff(
             prefetch_viewports: request.prefetch_viewports,
         },
     );
-    let highlighted_window = request.key.selection.file_key().and_then(|file| {
-        syntax_highlighted.then(|| {
-            highlighter.highlight_window(
-                &file.path,
-                &document,
-                HighlightWindowRequest {
-                    old: old_range,
-                    new: new_range,
-                    lookbehind_lines: HIGHLIGHT_LOOKBEHIND_LINES,
-                    maximum_bytes_per_side: MAX_HIGHLIGHT_BYTES_PER_SIDE,
-                },
-            )
-        })
-    });
+    let highlighted_window = highlight_visible_window(
+        highlighter,
+        &request.key,
+        &document,
+        syntax_highlighted,
+        old_range,
+        new_range,
+    );
     let syntax_styles = highlighted_window
         .as_ref()
         .map_or_else(HighlightedDiff::default, |window| window.styles.clone());
@@ -103,6 +110,7 @@ pub(in crate::diff) fn prepare_diff(
         inline_changes,
         side_by_side_changes,
         hunk_changes,
+        hunk_targets,
         highlighted: syntax_styles,
         syntax_highlighted,
         highlighted_old_coverage: highlighted_window
@@ -121,6 +129,30 @@ pub(in crate::diff) fn prepare_diff(
                 .old_lines_processed
                 .saturating_add(window.new_lines_processed)
         }),
+    })
+}
+
+fn highlight_visible_window(
+    highlighter: &SyntaxHighlighter,
+    key: &DiffKey,
+    document: &DiffDocument,
+    eligible: bool,
+    old: Option<LineRange>,
+    new: Option<LineRange>,
+) -> Option<HighlightedWindow> {
+    key.selection.file_path().and_then(|path| {
+        eligible.then(|| {
+            highlighter.highlight_window(
+                path,
+                document,
+                HighlightWindowRequest {
+                    old,
+                    new,
+                    lookbehind_lines: HIGHLIGHT_LOOKBEHIND_LINES,
+                    maximum_bytes_per_side: MAX_HIGHLIGHT_BYTES_PER_SIDE,
+                },
+            )
+        })
     })
 }
 
@@ -284,7 +316,7 @@ impl Renderer {
         before: Option<&DiffKey>,
         after: Option<&DiffKey>,
         anchor: Option<&ScrollAnchor>,
-        model: &Model,
+        horizontal: usize,
     ) -> ViewportTransition {
         let same_selection = before
             .zip(after)
@@ -309,47 +341,11 @@ impl Renderer {
         ViewportTransition {
             vertical,
             horizontal: if same_selection && same_mode {
-                model.diff_horizontal_scroll
+                horizontal
             } else {
                 0
             },
         }
-    }
-
-    pub(in crate::diff) fn vertical_message(
-        &mut self,
-        message: crate::diff::Message,
-        model: &crate::diff::Model,
-    ) -> crate::diff::Message {
-        let command = match message {
-            crate::diff::Message::SetDiffScroll(target) => ScrollCommand::Vertical(target),
-            crate::diff::Message::ScrollDiffUp => {
-                ScrollCommand::Lines(-diffo_ui::text_view::LINE_SCROLL_ROWS)
-            }
-            crate::diff::Message::ScrollDiffDown => {
-                ScrollCommand::Lines(diffo_ui::text_view::LINE_SCROLL_ROWS)
-            }
-            crate::diff::Message::ScrollDiffPageUp(lines) => {
-                ScrollCommand::Lines(-i64::try_from(lines).unwrap_or(i64::MAX))
-            }
-            crate::diff::Message::ScrollDiffPageDown(lines) => {
-                ScrollCommand::Lines(i64::try_from(lines).unwrap_or(i64::MAX))
-            }
-            crate::diff::Message::ScrollDiffVerticalBy(lines) => ScrollCommand::Lines(lines),
-            _ => return message,
-        };
-        let target = self
-            .vertical_scroll
-            .request(
-                command,
-                model.diff_scroll,
-                ViewportMetrics {
-                    maximum_vertical: usize::MAX,
-                    ..ViewportMetrics::default()
-                },
-            )
-            .unwrap_or(model.diff_scroll);
-        crate::diff::Message::JumpDiffToPosition(target)
     }
 
     pub(in crate::diff) fn syntax_target(
@@ -435,8 +431,8 @@ impl Renderer {
                 target_scroll: None,
             });
         }
-        if requested.patch.len() <= MAX_SYNC_BYTES
-            && requested.patch.lines().count() <= MAX_SYNC_LINES
+        if requested.workload_bytes() <= MAX_SYNC_BYTES
+            && requested.workload_lines() <= MAX_SYNC_LINES
         {
             let request = PrepareRequest {
                 key: requested.clone(),
@@ -684,6 +680,8 @@ impl Renderer {
             prepare_rx,
             submitted: Vec::new(),
             requested: None,
+            requested_selection: None,
+            displayed_selection: None,
             vertical_scroll: diffo_ui::text_view::PreparedVerticalScroll::default(),
             diff_viewport_rows: 1,
             failed: None,

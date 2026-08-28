@@ -12,6 +12,17 @@ pub(in crate::diff) mod geometry;
 pub(in crate::diff) mod overlays;
 pub(in crate::diff) mod style;
 
+#[derive(Clone, Copy)]
+pub(crate) struct ReviewRender<'a> {
+    pub(crate) mode: DiffViewMode,
+    pub(crate) vertical: usize,
+    pub(crate) horizontal: usize,
+    pub(crate) border_style: Style,
+    pub(crate) trailing_title: &'a str,
+    pub(crate) has_selection: bool,
+    pub(crate) empty_title: &'static str,
+}
+
 pub(in crate::diff) fn render_change_warning(
     frame: &mut Frame,
     area: Rect,
@@ -58,18 +69,32 @@ pub(in crate::diff) fn render_change_markers(
 
 impl Renderer {
     pub fn render_full_screen(&mut self, frame: &mut Frame, area: Rect, model: &Model) {
-        let metrics = self.full_screen_metrics(area, model.diff_scroll);
+        self.render_review_full_screen(
+            frame,
+            area,
+            model.diff_view_mode,
+            model.diff_scroll,
+            model.diff_horizontal_scroll,
+        );
+    }
+
+    pub(crate) fn render_review_full_screen(
+        &mut self,
+        frame: &mut Frame,
+        area: Rect,
+        requested_mode: DiffViewMode,
+        vertical: usize,
+        horizontal: usize,
+    ) {
+        let metrics = self.full_screen_metrics(area, vertical);
         let syntax_ready = self.failed.is_some()
-            || self.syntax_ready_for_viewport(
-                self.displayed_mode(model.diff_view_mode),
-                model.diff_scroll,
-            );
+            || self.syntax_ready_for_viewport(self.displayed_mode(requested_mode), vertical);
         let lines = if syntax_ready {
-            self.full_screen_lines(model.diff_scroll, metrics.viewport_rows)
+            self.full_screen_lines(vertical, metrics.viewport_rows)
         } else {
             Vec::new()
         };
-        render_lines(frame, metrics.area, lines, model.diff_horizontal_scroll);
+        render_lines(frame, metrics.area, lines, horizontal);
         self.scrollbar_drag = None;
         self.scrollbars = ScrollbarMetrics {
             rows: metrics.rows,
@@ -140,6 +165,15 @@ impl Renderer {
         };
         if cache.document.binary {
             return vec![Line::raw("Binary file changed.")];
+        }
+        if cache.key.selection.complete_change_id().is_some() {
+            return cache
+                .hunk
+                .iter()
+                .skip(first_row)
+                .take(row_count)
+                .map(|row| hunk_line(row, &cache.highlighted))
+                .collect();
         }
         let end = first_row.saturating_add(row_count);
         let mut index = 0_usize;
@@ -214,44 +248,76 @@ impl Renderer {
         area: ratatui::layout::Rect,
         model: &Model,
     ) {
-        let displayed_mode = self.displayed_mode(model.diff_view_mode);
-        let mode = match displayed_mode {
-            DiffViewMode::Inline => "Inline",
-            DiffViewMode::SideBySide => "Side by side",
-            DiffViewMode::Hunk => "Hunk",
-        };
-        let viewport = self.diff_viewport_metrics(displayed_mode, area, model.diff_scroll);
-        let skeleton = self.requested.as_ref() == self.displayed_key()
-            && !self.syntax_ready_for_viewport(displayed_mode, model.diff_scroll);
-        let lines = if skeleton {
-            self.diff_skeleton_lines(
-                viewport.content_area.width,
-                model.diff_scroll,
-                viewport.viewport_rows,
-            )
-        } else {
-            self.diff_lines(
-                model,
-                viewport.content_area.width,
-                model.diff_scroll,
-                viewport.viewport_rows,
-            )
-        };
-        let title = self
-            .displayed_key()
-            .map_or_else(|| Line::raw(" File Diff "), |key| key.title.clone());
         let resize_label = if model.resizing_file_pane {
             format!(" · files {}%", model.file_pane_percent)
         } else {
             String::new()
         };
+        self.render_review(
+            frame,
+            area,
+            ReviewRender {
+                mode: model.diff_view_mode,
+                vertical: model.diff_scroll,
+                horizontal: model.diff_horizontal_scroll,
+                border_style: resize_border_style(model),
+                trailing_title: &resize_label,
+                has_selection: model.selected.is_some(),
+                empty_title: "File Diff",
+            },
+        );
+    }
+
+    pub(crate) fn render_review(
+        &mut self,
+        frame: &mut Frame,
+        area: Rect,
+        review: ReviewRender<'_>,
+    ) {
+        let ReviewRender {
+            mode: requested_mode,
+            vertical,
+            horizontal,
+            border_style,
+            trailing_title,
+            has_selection,
+            empty_title,
+        } = review;
+        let displayed_mode = self.displayed_mode(requested_mode);
+        let mode = match displayed_mode {
+            DiffViewMode::Inline => "Inline",
+            DiffViewMode::SideBySide => "Side by side",
+            DiffViewMode::Hunk => "Hunk",
+        };
+        let viewport = self.diff_viewport_metrics(displayed_mode, area, vertical);
+        let skeleton = self.requested.as_ref() == self.displayed_key()
+            && !self.syntax_ready_for_viewport(displayed_mode, vertical);
+        let lines = if skeleton {
+            self.diff_skeleton_lines(
+                viewport.content_area.width,
+                vertical,
+                viewport.viewport_rows,
+            )
+        } else {
+            self.review_lines(
+                has_selection,
+                horizontal,
+                viewport.content_area.width,
+                vertical,
+                viewport.viewport_rows,
+            )
+        };
+        let title = self.displayed_key().map_or_else(
+            || Line::raw(format!(" {empty_title} ")),
+            |key| key.title.clone(),
+        );
         frame.render_widget(
             Block::default()
                 .borders(Borders::ALL)
-                .border_style(resize_border_style(model))
+                .border_style(border_style)
                 .title(title)
                 .title(
-                    Line::raw(format!(" {mode}{resize_label} ───  ")).alignment(Alignment::Right),
+                    Line::raw(format!(" {mode}{trailing_title} ───  ")).alignment(Alignment::Right),
                 ),
             area,
         );
@@ -262,11 +328,11 @@ impl Renderer {
             if displayed_mode == DiffViewMode::SideBySide {
                 0
             } else {
-                model.diff_horizontal_scroll
+                horizontal
             },
         );
         self.render_change_warnings(frame, &viewport);
-        self.render_diff_scrollbars(frame, area, &viewport, model);
+        self.render_diff_scrollbars(frame, area, &viewport, vertical, horizontal);
     }
 
     pub(in crate::diff) fn render_change_warnings(
@@ -378,7 +444,8 @@ impl Renderer {
         frame: &mut Frame,
         area: Rect,
         viewport: &DiffViewportMetrics,
-        model: &Model,
+        vertical: usize,
+        horizontal: usize,
     ) {
         self.scrollbars = ScrollbarMetrics {
             vertical_area: Rect::new(
@@ -415,8 +482,8 @@ impl Renderer {
                 ),
             },
             Viewport {
-                vertical: model.diff_scroll,
-                horizontal: model.diff_horizontal_scroll,
+                vertical,
+                horizontal,
             },
         );
         debug_assert_eq!(shared.vertical, self.scrollbars.vertical_area);
@@ -432,16 +499,34 @@ impl Renderer {
                     self.scrollbars.vertical_area,
                     changes,
                     viewport.rows,
-                    model.diff_scroll,
+                    vertical,
                     viewport.viewport_rows,
                 );
             }
         }
     }
 
+    #[cfg(test)]
     pub(in crate::diff) fn diff_lines(
         &self,
         model: &Model,
+        width: u16,
+        first_row: usize,
+        row_count: usize,
+    ) -> Vec<Line<'static>> {
+        self.review_lines(
+            model.selected.is_some(),
+            model.diff_horizontal_scroll,
+            width,
+            first_row,
+            row_count,
+        )
+    }
+
+    fn review_lines(
+        &self,
+        has_selection: bool,
+        horizontal: usize,
         width: u16,
         first_row: usize,
         row_count: usize,
@@ -456,7 +541,7 @@ impl Renderer {
                 .collect();
         }
         let Some(cache) = self.highlighted.as_ref() else {
-            if model.selected.is_some() {
+            if has_selection {
                 return Vec::new();
             }
             return vec![Line::raw("No file selected.")];
@@ -483,14 +568,7 @@ impl Renderer {
                     .iter()
                     .skip(first_row)
                     .take(row_count)
-                    .map(|row| {
-                        side_by_side_line(
-                            row,
-                            column_width,
-                            model.diff_horizontal_scroll,
-                            &cache.highlighted,
-                        )
-                    })
+                    .map(|row| side_by_side_line(row, column_width, horizontal, &cache.highlighted))
                     .collect()
             }
             DiffViewMode::Hunk => cache

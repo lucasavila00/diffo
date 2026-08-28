@@ -1,6 +1,8 @@
+#[cfg(test)]
+use crate::diff::Model;
 use crate::diff::{
-    ChangeTarget, Constraint, DiffViewMode, DiffViewportMetrics, Direction, Layout, Model, Rect,
-    Renderer, ScrollbarAxis, design,
+    ChangeTarget, Constraint, DiffViewMode, DiffViewportMetrics, Direction, Layout, Rect, Renderer,
+    ScrollbarAxis, design,
 };
 #[cfg(test)]
 pub(in crate::diff) use diffo_ui::scrollbar_position_count;
@@ -55,6 +57,22 @@ pub(in crate::diff) fn horizontal_panes(
 }
 
 impl Renderer {
+    pub(crate) fn review_change_jump(
+        &self,
+        mode: DiffViewMode,
+        area: Rect,
+        scroll: usize,
+        next: bool,
+    ) -> Option<usize> {
+        let viewport = self.diff_viewport_metrics(self.displayed_mode(mode), area, scroll);
+        if next {
+            viewport.next_change.map(|target| target.scroll)
+        } else {
+            viewport.previous_change.map(|target| target.scroll)
+        }
+    }
+
+    #[cfg(test)]
     pub(in crate::diff) fn change_jump(
         &self,
         model: &Model,
@@ -71,12 +89,7 @@ impl Renderer {
         }
     }
 
-    pub(in crate::diff) fn change_at_marker(
-        &self,
-        column: u16,
-        row: u16,
-        _model: &Model,
-    ) -> Option<usize> {
+    pub(in crate::diff) fn change_at_marker(&self, column: u16, row: u16) -> Option<usize> {
         let marker_column = self.scrollbars.vertical_area.x.saturating_add(1);
         if column != marker_column {
             return None;

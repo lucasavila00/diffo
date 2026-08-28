@@ -18,6 +18,8 @@ pub struct Renderer {
     pub(in crate::diff) prepare_rx: Receiver<PrepareOutcome>,
     pub(in crate::diff) submitted: Vec<(DiffKey, Option<usize>)>,
     pub(in crate::diff) requested: Option<DiffKey>,
+    pub(in crate::diff) requested_selection: Option<ReviewSelection>,
+    pub(in crate::diff) displayed_selection: Option<ReviewSelection>,
     pub(in crate::diff) vertical_scroll: PreparedVerticalScroll,
     pub(in crate::diff) diff_viewport_rows: usize,
     pub(in crate::diff) failed: Option<DiffKey>,
@@ -40,6 +42,7 @@ pub(in crate::diff) struct HighlightCache {
     pub(in crate::diff) inline_changes: Vec<ChangeRegion>,
     pub(in crate::diff) side_by_side_changes: Vec<ChangeRegion>,
     pub(in crate::diff) hunk_changes: Vec<ChangeRegion>,
+    pub(in crate::diff) hunk_targets: Vec<(ReviewSelection, usize)>,
     pub(in crate::diff) highlighted: HighlightedDiff,
     pub(in crate::diff) syntax_highlighted: bool,
     pub(in crate::diff) highlighted_old_coverage: SyntaxCoverage,
@@ -72,6 +75,9 @@ pub struct FramePreparation {
     pub requested_history_commit: Option<String>,
     pub selected_history_commit: Option<String>,
     pub displayed_history_commit: Option<String>,
+    pub requested_history_file: Option<std::path::PathBuf>,
+    pub selected_history_file: Option<std::path::PathBuf>,
+    pub displayed_history_file: Option<std::path::PathBuf>,
     pub text_surface: Option<TextSurfacePreparation>,
 }
 
@@ -108,17 +114,79 @@ pub(in crate::diff) struct DiffKey {
     pub(in crate::diff) patch: Arc<str>,
     pub(in crate::diff) mark_conflicts: bool,
     pub(in crate::diff) mode: crate::diff::DiffViewMode,
+    pub(in crate::diff) hunk_segments: Option<Arc<[ReviewHunkSegment]>>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct ReviewHunkSegment {
+    pub(crate) selection: ReviewSelection,
+    pub(crate) patch: Arc<str>,
+    pub(crate) mark_conflicts: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct ReviewHunkSet {
+    pub(crate) id: String,
+    pub(crate) title: Line<'static>,
+    pub(crate) segments: Arc<[ReviewHunkSegment]>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct ReviewDocument {
+    pub(crate) selection: ReviewSelection,
+    pub(crate) title: Line<'static>,
+    pub(crate) patch: Arc<str>,
+    pub(crate) mark_conflicts: bool,
+    pub(crate) hunks: ReviewHunkSet,
+}
+
+pub(in crate::diff) struct ReviewPreparation {
+    pub(in crate::diff) key: Option<DiffKey>,
+    pub(in crate::diff) selection: Option<ReviewSelection>,
+    pub(in crate::diff) area: Rect,
+    pub(in crate::diff) undecorated: bool,
+    pub(in crate::diff) mode: crate::diff::DiffViewMode,
+    pub(in crate::diff) vertical: usize,
+    pub(in crate::diff) horizontal: usize,
+}
+
+impl ReviewDocument {
+    pub(in crate::diff) fn key(&self, file_view_mode: crate::diff::DiffViewMode) -> DiffKey {
+        if file_view_mode == crate::diff::DiffViewMode::Hunk {
+            DiffKey {
+                mode: crate::diff::DiffViewMode::Hunk,
+                selection: ReviewSelection::CompleteChange(self.hunks.id.clone()),
+                title: self.hunks.title.clone(),
+                patch: Arc::from(""),
+                mark_conflicts: false,
+                hunk_segments: Some(Arc::clone(&self.hunks.segments)),
+            }
+        } else {
+            DiffKey {
+                mode: file_view_mode,
+                selection: self.selection.clone(),
+                title: self.title.clone(),
+                patch: Arc::clone(&self.patch),
+                mark_conflicts: self.mark_conflicts,
+                hunk_segments: None,
+            }
+        }
+    }
 }
 
 /// The review content currently requested by a Diff renderer.
 ///
-/// A file uses the selected file's rich projection. A complete change is always
-/// a unified hunk projection. The renderer keeps its displayed selection until
-/// the replacement selection has prepared, so callers can change either kind
-/// without exposing a partial review.
+/// File selections identify the focused file. A complete change is the internal
+/// identity of the aggregate hunk projection. The renderer keeps its displayed
+/// selection until replacement content has prepared, so callers can change
+/// either kind without exposing a partial review.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum ReviewSelection {
     File(FileKey),
+    HistoryFile {
+        commit_id: String,
+        path: std::path::PathBuf,
+    },
     CompleteChange(String),
 }
 
@@ -127,6 +195,15 @@ impl ReviewSelection {
     pub fn file_key(&self) -> Option<&FileKey> {
         match self {
             Self::File(file) => Some(file),
+            Self::HistoryFile { .. } | Self::CompleteChange(_) => None,
+        }
+    }
+
+    #[must_use]
+    pub fn file_path(&self) -> Option<&std::path::Path> {
+        match self {
+            Self::File(file) => Some(&file.path),
+            Self::HistoryFile { path, .. } => Some(path),
             Self::CompleteChange(_) => None,
         }
     }
@@ -134,20 +211,31 @@ impl ReviewSelection {
     #[must_use]
     pub fn complete_change_id(&self) -> Option<&str> {
         match self {
-            Self::File(_) => None,
+            Self::File(_) | Self::HistoryFile { .. } => None,
             Self::CompleteChange(id) => Some(id),
         }
     }
+}
 
-    #[must_use]
-    pub const fn view_mode(
-        &self,
-        file_view_mode: crate::diff::DiffViewMode,
-    ) -> crate::diff::DiffViewMode {
-        match self {
-            Self::File(_) => file_view_mode,
-            Self::CompleteChange(_) => crate::diff::DiffViewMode::Hunk,
-        }
+impl DiffKey {
+    pub(in crate::diff) fn workload_bytes(&self) -> usize {
+        self.hunk_segments
+            .as_ref()
+            .map_or(self.patch.len(), |segments| {
+                segments.iter().map(|segment| segment.patch.len()).sum()
+            })
+    }
+
+    pub(in crate::diff) fn workload_lines(&self) -> usize {
+        self.hunk_segments.as_ref().map_or_else(
+            || self.patch.lines().count(),
+            |segments| {
+                segments
+                    .iter()
+                    .map(|segment| segment.patch.lines().count())
+                    .sum()
+            },
+        )
     }
 }
 

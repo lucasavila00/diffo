@@ -153,8 +153,7 @@ impl Tool for HistoryActivity {
     }
 
     fn prepare_frame(&mut self, area: Rect, split: PaneSplit) -> FramePreparation {
-        let text_surface = HistoryActivity::prepare_frame(self, area, split);
-        history_preparation(self, text_surface)
+        HistoryActivity::prepare_frame(self, area, split)
     }
 
     fn render(&mut self, frame: &mut Frame, area: Rect, split: PaneSplit) {
@@ -167,23 +166,6 @@ impl Tool for HistoryActivity {
 
     fn help_rows(&self) -> Vec<(String, &'static str)> {
         HistoryActivity::help_rows(self)
-    }
-}
-
-pub(super) fn history_preparation(
-    history: &HistoryActivity,
-    text_surface: TextSurfacePreparation,
-) -> FramePreparation {
-    let (requested, selected, displayed) = history.document_commits();
-    FramePreparation {
-        content_revision: text_surface.document_revision,
-        preparing: text_surface.mode == TextRenderMode::TextSkeleton,
-        syntax_ready: text_surface.mode == TextRenderMode::Full,
-        requested_history_commit: requested,
-        selected_history_commit: selected,
-        displayed_history_commit: displayed,
-        text_surface: Some(text_surface),
-        ..FramePreparation::default()
     }
 }
 

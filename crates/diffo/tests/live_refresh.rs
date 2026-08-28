@@ -144,6 +144,8 @@ fn wait_for_snapshot(
                 | RepositoryEvent::HistoryLoadFailed { .. }
                 | RepositoryEvent::CommitPatchLoaded { .. }
                 | RepositoryEvent::CommitPatchLoadFailed { .. }
+                | RepositoryEvent::CommitFileLoaded { .. }
+                | RepositoryEvent::CommitFileLoadFailed { .. }
                 | RepositoryEvent::MergeRefsLoaded { .. }
                 | RepositoryEvent::MergeRefsLoadFailed { .. }
                 | RepositoryEvent::StashesLoaded { .. }

@@ -1,4 +1,5 @@
 use diffo_core::{Repository, RepositoryQueryId, RepositoryUpdate, RepositoryUpdateKind};
+use std::path::{Path, PathBuf};
 
 use crate::service::RepositoryEvent;
 
@@ -17,15 +18,39 @@ pub(super) fn commit_patch(
     query_id: RepositoryQueryId,
     commit_id: String,
 ) -> RepositoryEvent {
-    match repository.commit_patch(&commit_id) {
-        Ok(patch) => RepositoryEvent::CommitPatchLoaded {
+    match repository.commit_review(&commit_id) {
+        Ok(review) => RepositoryEvent::CommitPatchLoaded {
             query_id,
             commit_id,
-            patch,
+            patch: review.patch,
+            files: review.files,
         },
         Err(error) => RepositoryEvent::CommitPatchLoadFailed {
             query_id,
             commit_id,
+            message: error.to_string(),
+        },
+    }
+}
+
+pub(super) fn commit_file(
+    repository: &dyn Repository,
+    query_id: RepositoryQueryId,
+    commit_id: String,
+    path: PathBuf,
+    old_path: Option<&Path>,
+) -> RepositoryEvent {
+    match repository.commit_file_patch(&commit_id, &path, old_path) {
+        Ok(contents) => RepositoryEvent::CommitFileLoaded {
+            query_id,
+            commit_id,
+            path,
+            patch: contents,
+        },
+        Err(error) => RepositoryEvent::CommitFileLoadFailed {
+            query_id,
+            commit_id,
+            path,
             message: error.to_string(),
         },
     }

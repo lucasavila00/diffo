@@ -7,10 +7,7 @@ use ratatui::{
     widgets::{Clear, Paragraph},
 };
 
-use super::{
-    Activity, Workbench, WorkbenchCommand, explorer_preparation, history_preparation,
-    workbench_areas,
-};
+use super::{Activity, Workbench, WorkbenchCommand, explorer_preparation, workbench_areas};
 use crate::diff::{FramePreparation, RendererEvent};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -171,10 +168,7 @@ impl Workbench {
                 let (requested, displayed) = self.explorer.document_paths();
                 explorer_preparation(text_surface, requested, displayed)
             }
-            Activity::History => {
-                let text_surface = self.history.prepare_full_screen(buffer);
-                history_preparation(&self.history, text_surface)
-            }
+            Activity::History => self.history.prepare_full_screen(buffer),
         };
         if self.full_screen_pending && !preparation.preparing && preparation.syntax_ready {
             self.full_screen = true;

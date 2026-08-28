@@ -191,6 +191,19 @@ impl Repository for GitRepositorySource {
         self.recorded_commit_patch(commit_id)
     }
 
+    fn commit_file_patch(
+        &self,
+        commit_id: &str,
+        path: &Path,
+        old_path: Option<&Path>,
+    ) -> Result<String> {
+        self.recorded_commit_file_patch(commit_id, path, old_path)
+    }
+
+    fn commit_review(&self, commit_id: &str) -> Result<diffo_core::CommitReview> {
+        self.recorded_commit_review(commit_id)
+    }
+
     fn branches(&self) -> Result<Vec<diffo_core::BranchRef>> {
         self.branch_refs()
     }

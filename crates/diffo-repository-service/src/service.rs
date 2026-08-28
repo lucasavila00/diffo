@@ -37,10 +37,23 @@ pub enum RepositoryEvent {
         query_id: RepositoryQueryId,
         commit_id: String,
         patch: String,
+        files: Vec<diffo_core::CommitFile>,
     },
     CommitPatchLoadFailed {
         query_id: RepositoryQueryId,
         commit_id: String,
+        message: String,
+    },
+    CommitFileLoaded {
+        query_id: RepositoryQueryId,
+        commit_id: String,
+        path: std::path::PathBuf,
+        patch: String,
+    },
+    CommitFileLoadFailed {
+        query_id: RepositoryQueryId,
+        commit_id: String,
+        path: std::path::PathBuf,
         message: String,
     },
     BranchesLoaded {
@@ -371,6 +384,24 @@ impl RepositoryService {
             .send(WorkerRequest::LoadCommitPatch {
                 query_id,
                 commit_id,
+            })
+            .is_ok()
+    }
+
+    #[must_use]
+    pub fn load_commit_file(
+        &self,
+        query_id: RepositoryQueryId,
+        commit_id: String,
+        path: std::path::PathBuf,
+        old_path: Option<std::path::PathBuf>,
+    ) -> bool {
+        self.requests
+            .send(WorkerRequest::LoadCommitFile {
+                query_id,
+                commit_id,
+                path,
+                old_path,
             })
             .is_ok()
     }

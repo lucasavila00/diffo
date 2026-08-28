@@ -21,12 +21,13 @@ fn prepares_a_complete_change_as_one_hunk_selection() {
         )),
         mark_conflicts: false,
         mode: DiffViewMode::Hunk,
+        hunk_segments: None,
     };
     let cache = prepare_diff(
         PrepareRequest {
             key: key.clone(),
             viewport_rows: 20,
-            mode: DiffViewMode::Inline,
+            mode: DiffViewMode::Hunk,
             target_scroll: None,
             prefetch_viewports: 3,
         },
@@ -55,6 +56,7 @@ fn keeps_the_previous_selection_visible_until_a_complete_change_is_prepared() {
         patch: Arc::from("@@ -1 +1 @@\n-old\n+new\n"),
         mark_conflicts: false,
         mode: DiffViewMode::Hunk,
+        hunk_segments: None,
     };
     let outcome = PrepareOutcome {
         key: complete.clone(),
@@ -315,6 +317,71 @@ fn reuses_a_prepared_buffer_after_visiting_another_file() {
             .path,
         PathBuf::from("src/main.rs")
     );
+}
+
+#[test]
+fn hunk_mode_compacts_all_files_and_file_selection_only_moves_the_viewport() {
+    let mut renderer = Renderer::new();
+    let mut model = model();
+    model.diff_view_mode = DiffViewMode::Hunk;
+    model.snapshot.files[0].unstaged.as_mut().unwrap().text =
+        full_file_patch("src/main.rs", "FIRST_OLD", "FIRST_NEW");
+    model.snapshot.files.push(FileState {
+        path: PathBuf::from("src/second.rs"),
+        old_path: None,
+        kind: ChangeKind::Modified,
+        staged: None,
+        unstaged: Some(FileDiff {
+            text: full_file_patch("src/second.rs", "SECOND_OLD", "SECOND_NEW"),
+        }),
+    });
+
+    diff_lines(&mut renderer, &model, 0);
+    let cache = renderer.highlighted.as_ref().unwrap();
+    let text = cache
+        .hunk
+        .iter()
+        .map(|row| row.text.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(text.contains("FIRST_NEW"));
+    assert!(text.contains("SECOND_NEW"));
+    assert!(!text.contains("far context 050"));
+    let revision = renderer.content_revision;
+    let computations = renderer.highlight_computations;
+
+    model.select_next();
+    let transition = renderer
+        .prepare_frame(&model, Rect::new(0, 0, 100, 30))
+        .viewport_transition
+        .expect("file focus should prepare a hunk target");
+
+    assert!(transition.vertical > 0);
+    assert_eq!(renderer.content_revision, revision);
+    assert!(
+        renderer
+            .highlighted
+            .as_ref()
+            .unwrap()
+            .hunk
+            .iter()
+            .any(|row| { row.text.contains("FIRST_NEW") })
+    );
+    assert_eq!(renderer.highlight_computations, computations);
+}
+
+fn full_file_patch(path: &str, old: &str, new: &str) -> String {
+    let mut contents =
+        format!("diff --git a/{path} b/{path}\n--- a/{path}\n+++ b/{path}\n@@ -1,100 +1,100 @@\n");
+    for line in 1..=100 {
+        if line == 75 {
+            writeln!(contents, "-{old}").unwrap();
+            writeln!(contents, "+{new}").unwrap();
+        } else {
+            writeln!(contents, " far context {line:03}").unwrap();
+        }
+    }
+    contents
 }
 
 #[test]

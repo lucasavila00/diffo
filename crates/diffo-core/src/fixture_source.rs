@@ -308,6 +308,61 @@ impl Repository for MutableFixtureRepository {
             .join(""))
     }
 
+    fn commit_file_patch(
+        &self,
+        commit_id: &str,
+        path: &std::path::Path,
+        _old_path: Option<&std::path::Path>,
+    ) -> Result<String> {
+        let snapshot = self.snapshot.lock().expect("mock snapshot mutex poisoned");
+        if !snapshot
+            .recent_commits
+            .iter()
+            .any(|commit| commit.id == commit_id)
+        {
+            bail!("mock repository has no commit {commit_id}");
+        }
+        snapshot
+            .files
+            .iter()
+            .find(|file| file.path == path)
+            .and_then(|file| file.staged.as_ref().or(file.unstaged.as_ref()))
+            .map(|diff| diff.text.clone())
+            .with_context(|| format!("mock commit has no file {}", path.display()))
+    }
+
+    fn commit_review(&self, commit_id: &str) -> Result<crate::CommitReview> {
+        let snapshot = self.snapshot.lock().expect("mock snapshot mutex poisoned");
+        if !snapshot
+            .recent_commits
+            .iter()
+            .any(|commit| commit.id == commit_id)
+        {
+            bail!("mock repository has no commit {commit_id}");
+        }
+        Ok(crate::CommitReview {
+            patch: snapshot
+                .files
+                .iter()
+                .filter_map(|file| file.staged.as_ref().or(file.unstaged.as_ref()))
+                .take(2)
+                .map(|diff| diff.text.as_str())
+                .collect::<Vec<_>>()
+                .join(""),
+            files: snapshot
+                .files
+                .iter()
+                .filter(|file| file.staged.is_some() || file.unstaged.is_some())
+                .take(2)
+                .map(|file| crate::CommitFile {
+                    path: file.path.clone(),
+                    old_path: file.old_path.clone(),
+                    kind: file.kind,
+                })
+                .collect(),
+        })
+    }
+
     fn apply(
         &self,
         action: &RepositoryAction,
@@ -456,6 +511,25 @@ mod tests {
             .expect("fixture file");
         assert!(file.staged.is_none());
         assert!(file.unstaged.is_some());
+    }
+
+    #[test]
+    fn mock_commit_review_files_match_its_aggregate_patch() {
+        let fixture = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("fixtures")
+            .join("repository-state.ron");
+        let repository = MutableFixtureRepository::new(fixture).expect("fixture should load");
+        let snapshot = repository.snapshot().expect("mock snapshot");
+        let commit = &snapshot.recent_commits[0];
+
+        let review = repository
+            .commit_review(&commit.id)
+            .expect("mock commit review");
+
+        assert_eq!(
+            review.files.len(),
+            review.patch.matches("diff --git ").count()
+        );
     }
 
     #[test]

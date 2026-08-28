@@ -5,14 +5,14 @@ composes them.
 
 The Diff activity owns its pure model, terminal input mapping, background buffer
 preparation, and rendering. Explorer owns its tree, file viewer, and
-file-loading worker. History owns its flat checkout commit list, selected
-hunk-only patch, and bounded background patch preparation. The workbench owns
-activity selection, global command lifecycle (including serialized application
-updates), the shared repository footer, persistent update results, and the
-single active modal slot. Searchable checkout and merge, missing-upstream remote
-selection, protected-branch push confirmation, and activity modals use that slot
-without activities coordinating with one another. Passive update discovery uses
-a persistent toast and never takes focus.
+file-loading worker. History owns its commit and file pickers and uses Diff's
+shared renderer for aggregate compact hunks and full-context file reviews. The
+workbench owns activity selection, global command lifecycle (including
+serialized application updates), the shared repository footer, persistent update
+results, and the single active modal slot. Searchable checkout and merge,
+missing-upstream remote selection, protected-branch push confirmation, and
+activity modals use that slot without activities coordinating with one another.
+Passive update discovery uses a persistent toast and never takes focus.
 
 State, input, preparation, rendering, and external work remain separate modules.
 State transitions stay independent of terminal rendering and repository I/O so

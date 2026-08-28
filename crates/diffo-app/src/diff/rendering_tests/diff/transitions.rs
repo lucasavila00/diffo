@@ -1,47 +1,7 @@
 use super::*;
-use crate::diff::ReviewSelection;
-use diffo_highlight::SyntaxHighlighter;
+use crate::diff::{FileKey, ReviewSelection};
 use ratatui::text::Line;
 use std::sync::Arc;
-
-#[test]
-fn prepares_a_complete_change_as_one_hunk_selection() {
-    let key = DiffKey {
-        selection: ReviewSelection::CompleteChange("commit:aaaaaaaa".to_owned()),
-        title: Line::raw(" aaaaaaa · change both "),
-        patch: Arc::from(concat!(
-            "diff --git a/src/a.rs b/src/a.rs\n",
-            "@@ -1 +1 @@\n",
-            "-fn old() {}\n",
-            "+fn new() {}\n",
-            "diff --git a/README.md b/README.md\n",
-            "@@ -1 +1 @@\n",
-            "-old\n",
-            "+new\n",
-        )),
-        mark_conflicts: false,
-        mode: DiffViewMode::Hunk,
-    };
-    let cache = prepare_diff(
-        PrepareRequest {
-            key: key.clone(),
-            viewport_rows: 20,
-            mode: DiffViewMode::Inline,
-            target_scroll: None,
-            prefetch_viewports: 3,
-        },
-        &SyntaxHighlighter::new(),
-    )
-    .expect("complete change should prepare");
-
-    assert_eq!(cache.key, key);
-    assert!(!cache.syntax_highlighted);
-    assert_eq!(cache.hunk.len(), 8);
-    assert_eq!(cache.hunk[0].text, "diff --git a/src/a.rs b/src/a.rs");
-    assert_eq!(cache.hunk[4].text, "diff --git a/README.md b/README.md");
-    assert!(cache.inline.is_empty());
-    assert!(cache.side_by_side.is_empty());
-}
 
 #[test]
 fn keeps_the_previous_selection_visible_until_a_complete_change_is_prepared() {
@@ -49,18 +9,28 @@ fn keeps_the_previous_selection_visible_until_a_complete_change_is_prepared() {
     let mut renderer = Renderer::new();
     renderer.prepare_frame(&model, Rect::new(0, 0, 100, 30));
     let previous = renderer.displayed_key().cloned().expect("initial file");
+    let patch = Arc::<str>::from("@@ -1 +1 @@\n-old\n+new\n");
     let complete = DiffKey {
         selection: ReviewSelection::CompleteChange("commit:aaaaaaaa".to_owned()),
         title: Line::raw(" aaaaaaa · complete change "),
-        patch: Arc::from("@@ -1 +1 @@\n-old\n+new\n"),
+        empty_message: "Commit contains no file changes.",
+        patch: Arc::clone(&patch),
         mark_conflicts: false,
         mode: DiffViewMode::Hunk,
+        hunk_segments: Some(Arc::from([crate::diff::ReviewHunkSegment {
+            selection: ReviewSelection::File(FileKey {
+                path: PathBuf::from("file.txt"),
+                area: ChangeArea::Unstaged,
+            }),
+            patch,
+            mark_conflicts: false,
+        }])),
     };
     let outcome = PrepareOutcome {
         key: complete.clone(),
         target_scroll: None,
         cache: prepare_diff(
-            PrepareRequest {
+            &PrepareRequest {
                 key: complete.clone(),
                 viewport_rows: 20,
                 mode: DiffViewMode::Hunk,
@@ -113,7 +83,7 @@ fn discards_a_stale_prepared_buffer_before_committing_the_latest() {
         PrepareOutcome {
             key,
             target_scroll: None,
-            cache: prepare_diff(request, &renderer.highlighter),
+            cache: prepare_diff(&request, &renderer.highlighter),
         }
     };
     let stale = outcome(stale_key.clone());
@@ -315,6 +285,202 @@ fn reuses_a_prepared_buffer_after_visiting_another_file() {
             .path,
         PathBuf::from("src/main.rs")
     );
+}
+
+#[test]
+fn hunk_mode_compacts_all_files_and_file_selection_only_moves_the_viewport() {
+    let mut renderer = Renderer::new();
+    let mut model = model();
+    model.diff_view_mode = DiffViewMode::Hunk;
+    model.snapshot.files[0].unstaged.as_mut().unwrap().text =
+        full_file_patch("src/main.rs", "FIRST_OLD", "FIRST_NEW");
+    model.snapshot.files.push(FileState {
+        path: PathBuf::from("src/second.rs"),
+        old_path: None,
+        kind: ChangeKind::Modified,
+        staged: None,
+        unstaged: Some(FileDiff {
+            text: full_file_patch("src/second.rs", "SECOND_OLD", "SECOND_NEW"),
+        }),
+    });
+
+    diff_lines(&mut renderer, &model, 0);
+    let cache = renderer.highlighted.as_ref().unwrap();
+    let text = cache
+        .hunk
+        .iter()
+        .map(|row| row.text.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(text.contains("FIRST_NEW"));
+    assert!(text.contains("SECOND_NEW"));
+    assert!(!text.contains("far context 050"));
+    assert!(cache.syntax_highlighted);
+    assert!(
+        cache
+            .hunk_highlighted
+            .iter()
+            .any(|highlighted| !highlighted.new.is_empty())
+    );
+    let revision = renderer.content_revision;
+    let computations = renderer.highlight_computations;
+
+    model.select_next();
+    let selection = ReviewSelection::File(model.selected.clone().unwrap());
+    let target = renderer
+        .highlighted
+        .as_ref()
+        .unwrap()
+        .hunk_targets
+        .iter()
+        .find_map(|(candidate, range)| (candidate == &selection).then_some(range.start))
+        .expect("selected file should have a hunk target");
+    let transition = renderer
+        .prepare_frame(&model, Rect::new(0, 0, 100, 30))
+        .viewport_transition
+        .expect("file focus should prepare a hunk target");
+
+    assert_eq!(transition.vertical, target);
+    assert_eq!(renderer.content_revision, revision);
+    assert!(
+        renderer
+            .highlighted
+            .as_ref()
+            .unwrap()
+            .hunk
+            .iter()
+            .any(|row| { row.text.contains("FIRST_NEW") })
+    );
+    assert_eq!(renderer.highlight_computations, computations);
+}
+
+#[test]
+fn far_hunk_file_focus_waits_for_target_syntax_before_moving_the_viewport() {
+    let mut renderer = Renderer::new();
+    let mut model = model();
+    model.diff_view_mode = DiffViewMode::Hunk;
+    model.snapshot.files[0].unstaged.as_mut().unwrap().text = compact_rust_patch("src/main.rs", 0);
+    for index in 1..100 {
+        let path = format!("src/file_{index:03}.rs");
+        model.snapshot.files.push(FileState {
+            path: PathBuf::from(&path),
+            old_path: None,
+            kind: ChangeKind::Modified,
+            staged: None,
+            unstaged: Some(FileDiff {
+                text: compact_rust_patch(&path, index),
+            }),
+        });
+    }
+    diff_lines(&mut renderer, &model, 0);
+    for _ in 1..100 {
+        model.select_next();
+    }
+    let selection = ReviewSelection::File(model.selected.clone().unwrap());
+    let target = crate::diff::review_document::hunk_focus_target(
+        renderer.highlighted.as_ref().unwrap(),
+        &selection,
+    )
+    .expect("last file should have a hunk target");
+    assert!(!renderer.syntax_ready_for_viewport(DiffViewMode::Hunk, target));
+
+    let pending = renderer.prepare_frame(&model, Rect::new(0, 0, 100, 30));
+    assert!(pending.viewport_transition.is_none());
+    assert!(pending.preparing);
+    let requested = renderer.requested.clone().unwrap();
+    assert_eq!(renderer.submitted, vec![(requested.clone(), Some(target))]);
+
+    let outcome = renderer
+        .prepare_rx
+        .recv_timeout(PREPARATION_TIMEOUT)
+        .expect("target syntax preparation should complete");
+    assert_eq!(outcome.target_scroll, Some(target));
+    renderer
+        .accept_prepared_outcome(Some(&requested), outcome)
+        .expect("target syntax should commit");
+    assert_ne!(renderer.displayed_selection, renderer.requested_selection);
+
+    let ready = renderer.prepare_frame(&model, Rect::new(0, 0, 100, 30));
+    assert_eq!(ready.viewport_transition.unwrap().vertical, target);
+    assert!(ready.syntax_ready);
+    assert!(!ready.preparing);
+    assert!(renderer.submitted.is_empty());
+}
+
+#[test]
+fn hunk_focus_for_a_metadata_only_file_stays_inside_its_segment() {
+    let mut renderer = Renderer::new();
+    let mut model = model();
+    model.diff_view_mode = DiffViewMode::Hunk;
+    model.snapshot.files.push(FileState {
+        path: PathBuf::from("src/renamed.rs"),
+        old_path: Some(PathBuf::from("src/old.rs")),
+        kind: ChangeKind::Renamed,
+        staged: None,
+        unstaged: Some(FileDiff {
+            text: concat!(
+                "diff --git a/src/old.rs b/src/renamed.rs\n",
+                "similarity index 100%\n",
+                "rename from src/old.rs\n",
+                "rename to src/renamed.rs\n",
+            )
+            .to_owned(),
+        }),
+    });
+    model.snapshot.files.push(FileState {
+        path: PathBuf::from("src/third.rs"),
+        old_path: None,
+        kind: ChangeKind::Modified,
+        staged: None,
+        unstaged: Some(FileDiff {
+            text: "@@ -1 +1 @@\n-old third\n+new third\n".to_owned(),
+        }),
+    });
+    diff_lines(&mut renderer, &model, 0);
+    model.select_next();
+    let selection = ReviewSelection::File(model.selected.clone().unwrap());
+    let cache = renderer.highlighted.as_ref().unwrap();
+    let range = cache
+        .hunk_targets
+        .iter()
+        .find_map(|(candidate, range)| (candidate == &selection).then_some(range.clone()))
+        .unwrap();
+
+    assert_eq!(
+        crate::diff::review_document::hunk_focus_target(cache, &selection),
+        Some(range.start)
+    );
+    assert!(
+        cache
+            .hunk_changes
+            .iter()
+            .all(|change| change.first < range.start || change.first >= range.end)
+    );
+    let transition = renderer
+        .prepare_frame(&model, Rect::new(0, 0, 100, 30))
+        .viewport_transition
+        .expect("metadata-only file should have a focus target");
+    assert_eq!(transition.vertical, range.start);
+}
+
+fn full_file_patch(path: &str, old: &str, new: &str) -> String {
+    let mut contents =
+        format!("diff --git a/{path} b/{path}\n--- a/{path}\n+++ b/{path}\n@@ -1,100 +1,100 @@\n");
+    for line in 1..=100 {
+        if line == 75 {
+            writeln!(contents, "-{old}").unwrap();
+            writeln!(contents, "+{new}").unwrap();
+        } else {
+            writeln!(contents, " far context {line:03}").unwrap();
+        }
+    }
+    contents
+}
+
+fn compact_rust_patch(path: &str, index: usize) -> String {
+    format!(
+        "diff --git a/{path} b/{path}\n--- a/{path}\n+++ b/{path}\n@@ -1 +1 @@\n-fn old_{index}() {{}}\n+fn new_{index}() {{}}\n"
+    )
 }
 
 #[test]

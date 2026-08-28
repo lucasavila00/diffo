@@ -531,24 +531,11 @@ fn dispatch_effect(
 
 fn drain_repository_events(repository_service: &RepositoryService, workbench: &mut Workbench) {
     while let Ok(Some(event)) = repository_service.try_recv() {
+        let Some(event) = history_requests::accept_event(workbench, event) else {
+            continue;
+        };
         match event {
             RepositoryEvent::WorktreeChanged => workbench.filesystem_changed(),
-            RepositoryEvent::HistoryLoaded { query_id, history } => {
-                workbench.history_loaded(query_id, history);
-            }
-            RepositoryEvent::HistoryLoadFailed { query_id, message } => {
-                workbench.history_load_failed(query_id, &message);
-            }
-            RepositoryEvent::CommitPatchLoaded {
-                query_id,
-                commit_id,
-                patch,
-            } => workbench.commit_patch_loaded(query_id, commit_id, patch),
-            RepositoryEvent::CommitPatchLoadFailed {
-                query_id,
-                commit_id,
-                message,
-            } => workbench.commit_patch_load_failed(query_id, &commit_id, &message),
             RepositoryEvent::BranchesLoaded { query_id, branches } => {
                 workbench.branches_loaded(query_id, branches);
             }
@@ -589,6 +576,7 @@ fn drain_repository_events(repository_service: &RepositoryService, workbench: &m
             RepositoryEvent::Update(update) => {
                 let _ = workbench.accept_repository_update(update);
             }
+            _ => unreachable!("history events were handled above"),
         }
     }
 }

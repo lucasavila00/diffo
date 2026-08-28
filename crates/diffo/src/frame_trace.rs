@@ -12,6 +12,10 @@ use diffo_app::FramePreparation;
 use diffo_app::Model;
 use serde::Serialize;
 
+fn path_string(path: Option<&PathBuf>) -> Option<String> {
+    path.map(|path| path.display().to_string())
+}
+
 pub fn input_events(events: &[crossterm::event::Event], redact: bool) -> Vec<String> {
     if redact {
         return events
@@ -48,6 +52,9 @@ pub struct FrameRecord {
     requested_history_commit: Option<String>,
     selected_history_commit: Option<String>,
     displayed_history_commit: Option<String>,
+    requested_history_file: Option<String>,
+    selected_history_file: Option<String>,
+    displayed_history_file: Option<String>,
     content_revision: u64,
     preparing: bool,
     syntax_ready: bool,
@@ -160,6 +167,9 @@ impl FrameRecord {
             requested_history_commit: preparation.requested_history_commit.clone(),
             selected_history_commit: preparation.selected_history_commit.clone(),
             displayed_history_commit: preparation.displayed_history_commit.clone(),
+            requested_history_file: path_string(preparation.requested_history_file.as_ref()),
+            selected_history_file: path_string(preparation.selected_history_file.as_ref()),
+            displayed_history_file: path_string(preparation.displayed_history_file.as_ref()),
             content_revision: preparation.content_revision,
             preparing: preparation.preparing,
             syntax_ready: preparation.syntax_ready,

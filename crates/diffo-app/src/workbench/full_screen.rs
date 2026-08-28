@@ -7,10 +7,7 @@ use ratatui::{
     widgets::{Clear, Paragraph},
 };
 
-use super::{
-    Activity, Workbench, WorkbenchCommand, explorer_preparation, history_preparation,
-    workbench_areas,
-};
+use super::{Activity, Workbench, WorkbenchCommand, explorer_preparation, workbench_areas};
 use crate::diff::{FramePreparation, RendererEvent};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -155,15 +152,7 @@ impl Workbench {
                     .diff
                     .renderer
                     .prepare_full_screen(&self.diff.model, buffer);
-                if let Some(viewport) = preparation.viewport_transition {
-                    self.diff
-                        .model
-                        .set_diff_viewport(viewport.vertical, viewport.horizontal);
-                }
-                self.diff.model.clamp_diff_scroll(
-                    preparation.maximum_vertical_scroll,
-                    preparation.maximum_horizontal_scroll,
-                );
+                self.diff.model.review.apply_preparation(&preparation);
                 preparation
             }
             Activity::Explorer => {
@@ -171,10 +160,7 @@ impl Workbench {
                 let (requested, displayed) = self.explorer.document_paths();
                 explorer_preparation(text_surface, requested, displayed)
             }
-            Activity::History => {
-                let text_surface = self.history.prepare_full_screen(buffer);
-                history_preparation(&self.history, text_surface)
-            }
+            Activity::History => self.history.prepare_full_screen(buffer),
         };
         if self.full_screen_pending && !preparation.preparing && preparation.syntax_ready {
             self.full_screen = true;

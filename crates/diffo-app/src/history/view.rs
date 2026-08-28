@@ -1,32 +1,30 @@
-use diffo_core::Commit;
+use diffo_core::{ChangeKind, Commit, CommitFile};
 use diffo_ui::{
-    PaneSplit, design,
-    file_picker::{Document, FilePicker, Row},
-    terminal_safe_text,
-    text_view::{Viewport, ViewportMetrics, render_lines, render_scrollbars, viewport_metrics},
-    theme, tool_areas,
+    PaneSplit, change_kind_style, file_icons,
+    file_picker::{Document, Row},
+    terminal_safe_text, theme, tool_areas,
 };
 use ratatui::{
-    Frame,
-    layout::Rect,
+    layout::{Constraint, Layout, Rect},
     style::Style,
     text::{Line, Span},
-    widgets::{Block, Borders, Clear, Paragraph},
 };
 
-use super::prepare::PreparedPatch;
-
+#[derive(Clone, Copy)]
 pub(super) struct HistoryAreas {
     pub(super) commits: Rect,
-    pub(super) patch: Rect,
+    pub(super) files: Rect,
+    pub(super) review: Rect,
 }
 
 pub(super) fn areas(area: Rect, split: PaneSplit) -> HistoryAreas {
-    let content = tool_areas(area).content;
-    let panes = split.areas(content);
+    let panes = split.areas(tool_areas(area).content);
+    let leading = Layout::vertical([Constraint::Percentage(50), Constraint::Percentage(50)])
+        .split(panes.leading);
     HistoryAreas {
-        commits: panes.leading,
-        patch: panes.trailing,
+        commits: leading[0],
+        files: leading[1],
+        review: panes.trailing,
     }
 }
 
@@ -64,87 +62,47 @@ pub(super) fn commit_document(
     document
 }
 
-pub(super) fn patch_metrics(
-    area: Rect,
-    patch: Option<&PreparedPatch>,
-    scroll: usize,
-) -> ViewportMetrics {
-    let inner = area.inner(design::PANEL_INSET);
-    let text = Rect::new(
-        inner.x,
-        inner.y,
-        inner.width.saturating_sub(design::BORDER_WIDTH),
-        inner.height,
-    );
-    patch.map_or_else(
-        || viewport_metrics(text, &[], scroll, true),
-        |patch| viewport_metrics(text, &patch.widths, scroll, true),
+pub(super) fn file_document(
+    files: &[CommitFile],
+    border_style: Style,
+) -> Document<std::path::PathBuf> {
+    let rows = files
+        .iter()
+        .map(|file| {
+            let marker = match file.kind {
+                ChangeKind::Added | ChangeKind::Untracked => "A",
+                ChangeKind::Modified => "M",
+                ChangeKind::Deleted => "D",
+                ChangeKind::Renamed => "R",
+                ChangeKind::Copied => "C",
+                ChangeKind::Conflicted => "U",
+            };
+            Row::flat(
+                file.path.clone(),
+                Line::styled(
+                    terminal_safe_text(&format!(
+                        "{marker} {}{}",
+                        file_icons::file_icon(&file.path),
+                        file.path.display()
+                    )),
+                    change_kind_style(file.kind),
+                ),
+            )
+        })
+        .collect();
+    let mut document = Document::flat("Files", rows);
+    document.border_style = border_style;
+    "No files in this commit.".clone_into(&mut document.empty_message);
+    document
+}
+
+pub(super) fn file_title(file: &CommitFile) -> Line<'static> {
+    Line::styled(
+        terminal_safe_text(&format!(
+            " {}{} ",
+            file_icons::file_icon(&file.path),
+            file.path.display()
+        )),
+        change_kind_style(file.kind),
     )
-}
-
-pub(super) fn render(
-    frame: &mut Frame,
-    area: Rect,
-    split: PaneSplit,
-    picker: &FilePicker<String>,
-    patch: Option<&PreparedPatch>,
-    scroll: usize,
-    horizontal: usize,
-) {
-    frame.render_widget(Clear, area);
-    let areas = areas(area, split);
-    picker.render(frame, patch.is_some());
-    let title = patch.map_or_else(|| Line::raw(" Commit Diff "), PreparedPatch::title);
-    frame.render_widget(
-        Block::default()
-            .borders(Borders::ALL)
-            .border_style(split.border_style())
-            .title(title),
-        areas.patch,
-    );
-    let inner = areas.patch.inner(design::PANEL_INSET);
-    let Some(patch) = patch else {
-        frame.render_widget(Paragraph::new("Select a commit to review it."), inner);
-        return;
-    };
-    if patch.lines.is_empty() {
-        frame.render_widget(Paragraph::new("Commit contains no file changes."), inner);
-        return;
-    }
-    let metrics = patch_metrics(areas.patch, Some(patch), scroll);
-    let lines = patch
-        .lines
-        .iter()
-        .skip(scroll)
-        .take(metrics.viewport_rows)
-        .cloned()
-        .collect();
-    render_lines(frame, metrics.area, lines, horizontal);
-    render_scrollbars(
-        frame,
-        inner,
-        metrics,
-        Viewport {
-            vertical: scroll,
-            horizontal,
-        },
-    );
-}
-
-pub(super) fn render_full_screen(
-    frame: &mut Frame,
-    area: Rect,
-    patch: &PreparedPatch,
-    scroll: usize,
-    horizontal: usize,
-) {
-    let metrics = viewport_metrics(area, &patch.widths, scroll, true);
-    let lines = patch
-        .lines
-        .iter()
-        .skip(scroll)
-        .take(metrics.viewport_rows)
-        .cloned()
-        .collect();
-    render_lines(frame, metrics.area, lines, horizontal);
 }

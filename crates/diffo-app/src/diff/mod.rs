@@ -18,13 +18,13 @@ use std::{
 use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind};
 use diffo_core::{ChangeKind, FileState, HeadState, RepositorySnapshot};
 use diffo_diff::{
-    ChangeRegion, DiffBlock, DiffDocument, ProjectionOptions, RenderLine, RowKind, SideBySideRow,
+    ChangeRegion, DiffBlock, ProjectionOptions, RenderLine, RowKind, SideBySideRow,
     inline_change_regions, inline_rows_with_options, parse_unified_patch,
     side_by_side_change_regions, side_by_side_rows_with_options,
 };
 use diffo_highlight::{HighlightedDiff, HighlightedLine, Rgb, StyledSpan, SyntaxHighlighter};
-use diffo_ui::file_picker::{Navigation as PickerNavigation, Outcome as PickerOutcome};
-use diffo_ui::{design, maximum_scroll, tool_areas};
+use diffo_ui::file_picker::Navigation as PickerNavigation;
+use diffo_ui::{design, tool_areas};
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
@@ -35,13 +35,16 @@ use ratatui::{
 
 mod input;
 mod prepare;
+mod review;
+mod review_document;
+mod review_prepare;
 mod view;
 
-pub(crate) use input::{help_rows, map_commit_event};
+pub(crate) use input::{help_rows, map_commit_event, review_help_rows};
+pub(crate) use view::ReviewRender;
 pub(crate) use view::files::{FooterControl, footer_control_at_position, render_status};
 pub(crate) use view::overlays::render_commit_editor;
 
-#[cfg(test)]
 #[cfg(test)]
 use prepare::{diff_file_lines, should_syntax_highlight};
 #[cfg(test)]
@@ -71,19 +74,23 @@ use view::style::{
 use prepare::state::{
     ChangeTarget, ChangeWarningAreas, DiffKey, DiffViewportMetrics, HighlightCache, HunkRow,
     MAX_SYNC_BYTES, MAX_SYNC_LINES, PREPARED_BUFFER_CACHE_SIZE, PrepareCommit, PrepareOutcome,
-    PrepareRequest, ScrollAnchor, ScrollbarAxis, ScrollbarMetrics,
+    PrepareRequest, ReviewPreparation, ScrollAnchor, ScrollbarAxis, ScrollbarMetrics,
 };
 
 pub use diffo_highlight::{
     HIGHLIGHT_LOOKBEHIND_LINES, MAX_HIGHLIGHT_BYTES_PER_SIDE, MAX_HIGHLIGHT_FILE_LINES,
 };
 use diffo_ui::text_view::{
-    LINE_SCROLL_ROWS, TextRenderMode, TextSurface, TextSurfacePreparation,
-    syntax_prefetch_viewports,
+    TextRenderMode, TextSurface, TextSurfacePreparation, syntax_prefetch_viewports,
 };
 pub use diffo_ui::{change_kind_style, plain_syntax_spans, terminal_safe_text};
-pub(crate) use prepare::state::ReviewSelection;
+use input::picker_event;
 pub use prepare::state::{FramePreparation, Renderer, ViewportTransition};
+pub(crate) use prepare::state::{
+    ReviewDocument, ReviewHunkSegment, ReviewHunkSet, ReviewSelection,
+};
+pub use review::ReviewState;
+use review_document::worktree_hunks;
 
 pub use input::map_event;
 
@@ -97,7 +104,25 @@ pub enum RendererEvent {
     },
 }
 
+#[derive(Clone, Copy)]
+struct ReviewFramePreparation {
+    maximum_vertical: usize,
+    maximum_horizontal: usize,
+    syntax_ready: bool,
+    viewport_transition: Option<ViewportTransition>,
+    rendered_vertical: usize,
+    target_scroll: Option<usize>,
+}
+
 impl Renderer {
+    pub(crate) fn displayed_review_selection(&self) -> Option<&ReviewSelection> {
+        self.displayed_selection.as_ref()
+    }
+
+    pub(crate) fn displayed_review_mode(&self) -> Option<DiffViewMode> {
+        self.displayed_key().map(|key| key.mode)
+    }
+
     #[must_use]
     pub fn has_open_picker_menu(&self) -> bool {
         self.staged_picker.has_open_menu() || self.unstaged_picker.has_open_menu()
@@ -142,51 +167,100 @@ impl Renderer {
     pub fn prepare_frame(&mut self, model: &Model, area: Rect) -> FramePreparation {
         let panes = horizontal_panes(main_area(area), model.file_pane_percent);
         self.prepare_file_pickers(model, panes[0]);
-        self.prepare_buffer(model, panes[1], false)
+        let requested = self.requested_key(model);
+        let selection = model.selected.clone().map(ReviewSelection::File);
+        self.prepare_buffer(ReviewPreparation {
+            key: requested,
+            selection,
+            area: panes[1],
+            undecorated: false,
+            mode: model.diff_view_mode,
+            vertical: model.diff_scroll,
+            horizontal: model.diff_horizontal_scroll,
+        })
     }
 
     pub fn prepare_full_screen(&mut self, model: &Model, area: Rect) -> FramePreparation {
-        self.prepare_buffer(model, area, true)
+        let requested = self.requested_key(model);
+        let selection = model.selected.clone().map(ReviewSelection::File);
+        self.prepare_buffer(ReviewPreparation {
+            key: requested,
+            selection,
+            area,
+            undecorated: true,
+            mode: model.diff_view_mode,
+            vertical: model.diff_scroll,
+            horizontal: model.diff_horizontal_scroll,
+        })
     }
 
-    fn prepare_buffer(
+    pub(crate) fn prepare_review(
         &mut self,
-        model: &Model,
-        diff_area: Rect,
+        document: Option<&ReviewDocument>,
+        area: Rect,
         undecorated: bool,
+        mode: DiffViewMode,
+        vertical: usize,
+        horizontal: usize,
     ) -> FramePreparation {
-        let requested = self.requested_key(model);
+        self.prepare_buffer(ReviewPreparation {
+            key: document.map(|document| document.key(mode)),
+            selection: document.map(|document| document.selection.clone()),
+            area,
+            undecorated,
+            mode,
+            vertical,
+            horizontal,
+        })
+    }
+
+    fn prepare_buffer(&mut self, review: ReviewPreparation) -> FramePreparation {
+        let ReviewPreparation {
+            key: requested,
+            selection: requested_selection,
+            area: diff_area,
+            undecorated,
+            mode: requested_mode,
+            vertical,
+            horizontal,
+        } = review;
         self.requested.clone_from(&requested);
+        self.requested_selection.clone_from(&requested_selection);
+        let focus_changed = self.requested_selection != self.displayed_selection;
+        if focus_changed {
+            self.vertical_scroll.clear();
+        }
         if self.vertical_scroll.requested().is_some() && requested.as_ref() != self.displayed_key()
         {
             self.vertical_scroll.clear();
         }
         let displayed_before = self.displayed_key().cloned();
-        let anchor = requested.as_ref().and_then(|requested| {
-            self.highlighted
-                .as_ref()
-                .filter(|cache| cache.key.selection == requested.selection)
-                .map(|cache| ScrollAnchor::capture(cache, cache.key.mode, model.diff_scroll))
-        });
+        let anchor = self.review_anchor(requested.as_ref(), vertical);
         self.diff_viewport_rows = if undecorated {
             usize::from(diff_area.height)
         } else {
             usize::from(design::panel_content_extent(diff_area.height))
         };
-        let target_scroll = self
-            .navigation_preparation_target(requested.as_ref(), model.diff_view_mode)
-            .or_else(|| {
-                self.syntax_target(requested.as_ref(), model.diff_view_mode, model.diff_scroll)
-            });
+        let focus_target = self.focus_target(
+            focus_changed,
+            requested.as_ref(),
+            requested_selection.as_ref(),
+        );
+        let target_scroll = self.review_preparation_target(
+            requested.as_ref(),
+            requested_mode,
+            vertical,
+            focus_target,
+        );
         let prefetch_viewports = syntax_prefetch_viewports(
-            model.diff_scroll,
-            target_scroll.unwrap_or(model.diff_scroll),
+            vertical,
+            target_scroll.unwrap_or(vertical),
             self.diff_viewport_rows,
         );
         let commit = self.prepare_requested(
             requested.as_ref(),
             self.diff_viewport_rows,
-            model.diff_view_mode,
+            requested_mode,
             target_scroll,
             prefetch_viewports,
         );
@@ -194,66 +268,52 @@ impl Renderer {
             .as_ref()
             .is_some_and(|commit| commit.target_scroll.is_none());
         let displayed_after = self.displayed_key().cloned();
-        let navigation_transition = self.commit_ready_navigation(
-            requested.as_ref(),
-            model.diff_view_mode,
-            model.diff_horizontal_scroll,
-        );
-        let viewport_transition = if navigation_transition.is_some() {
-            navigation_transition
-        } else {
-            document_committed.then(|| {
-                self.document_viewport_transition(
-                    displayed_before.as_ref(),
-                    displayed_after.as_ref(),
-                    anchor.as_ref(),
-                    model,
-                )
-            })
-        };
-        let rendered_vertical_scroll = viewport_transition
-            .map_or(model.diff_scroll, |viewport| viewport.vertical)
-            .min(self.displayed_rows(self.displayed_mode(model.diff_view_mode)));
-        let displayed_mode = self.displayed_mode(model.diff_view_mode);
-        let (maximum_vertical_scroll, maximum_horizontal_scroll) = if undecorated {
-            let viewport = self.full_screen_metrics(diff_area, rendered_vertical_scroll);
-            (viewport.maximum_vertical, viewport.maximum_horizontal)
-        } else {
-            let viewport =
-                self.diff_viewport_metrics(displayed_mode, diff_area, rendered_vertical_scroll);
-            (
-                viewport.maximum_vertical_scroll,
-                maximum_scroll(viewport.columns, viewport.viewport_columns),
+        let document_transition = document_committed.then(|| {
+            self.document_viewport_transition(
+                displayed_before.as_ref(),
+                displayed_after.as_ref(),
+                anchor.as_ref(),
+                horizontal,
             )
-        };
+        });
+        let (viewport_transition, focus_committed) = self.prepared_viewport_transition(
+            requested.as_ref(),
+            requested_mode,
+            horizontal,
+            focus_target,
+            document_transition,
+        );
+        if ((document_committed && focus_target.is_none()) || focus_committed)
+            && self.requested.as_ref() == self.displayed_key()
+        {
+            self.displayed_selection.clone_from(&requested_selection);
+        }
+        if requested.is_none() {
+            self.displayed_selection = None;
+        }
+        let rendered_vertical_scroll = viewport_transition
+            .map_or(vertical, |viewport| viewport.vertical)
+            .min(self.displayed_rows(self.displayed_mode(requested_mode)));
+        let displayed_mode = self.displayed_mode(requested_mode);
+        let (maximum_vertical, maximum_horizontal) = self.review_scroll_bounds(
+            diff_area,
+            undecorated,
+            displayed_mode,
+            rendered_vertical_scroll,
+        );
         let syntax_ready = self.failed.is_some()
             || self.syntax_ready_for_viewport(displayed_mode, rendered_vertical_scroll);
-        FramePreparation {
-            maximum_vertical_scroll,
-            maximum_horizontal_scroll,
-            content_revision: self.content_revision,
-            preparing: self.requested.as_ref() != self.displayed_key(),
-            syntax_ready,
-            viewport_transition,
-            requested_file: self
-                .requested
-                .as_ref()
-                .and_then(|key| key.selection.file_key().cloned()),
-            displayed_file: self
-                .displayed_key()
-                .and_then(|key| key.selection.file_key().cloned()),
-            requested_explorer_file: None,
-            displayed_explorer_file: None,
-            requested_history_commit: None,
-            selected_history_commit: None,
-            displayed_history_commit: None,
-            text_surface: Some(self.text_surface_preparation(
-                rendered_vertical_scroll,
+        self.frame_preparation(
+            requested.as_ref(),
+            ReviewFramePreparation {
+                maximum_vertical,
+                maximum_horizontal,
                 syntax_ready,
+                viewport_transition,
+                rendered_vertical: rendered_vertical_scroll,
                 target_scroll,
-                requested.as_ref(),
-            )),
-        }
+            },
+        )
     }
 
     fn requested_key(&self, model: &Model) -> Option<DiffKey> {
@@ -277,14 +337,15 @@ impl Renderer {
                 || Arc::<str>::from(diff.text.as_str()),
                 |key| key.patch.clone(),
             );
-        let selection = ReviewSelection::File(selected.clone());
-        Some(DiffKey {
-            mode: selection.view_mode(model.diff_view_mode),
-            selection,
+        let document = ReviewDocument {
+            selection: ReviewSelection::File(selected.clone()),
             title: file_label(file),
+            empty_message: "No changes in this file.",
             patch,
             mark_conflicts: file.kind == ChangeKind::Conflicted,
-        })
+            hunks: worktree_hunks(model),
+        };
+        Some(document.key(model.diff_view_mode))
     }
 
     #[must_use]
@@ -298,16 +359,70 @@ impl Renderer {
         model: &Model,
         area: Rect,
     ) -> Option<RendererEvent> {
+        if let Some(event) = self.map_review_event(event, &model.review, area) {
+            return Some(event);
+        }
+        let Event::Key(key) = event else {
+            return None;
+        };
+        (key.kind == KeyEventKind::Press
+            && (matches!(key.code, KeyCode::Char('q') | KeyCode::Esc)
+                || (key.code == KeyCode::Char('c')
+                    && key.modifiers.contains(KeyModifiers::CONTROL))))
+        .then_some(RendererEvent::Message(Message::Quit))
+    }
+
+    pub(crate) fn map_review_event(
+        &mut self,
+        event: &Event,
+        state: &ReviewState,
+        area: Rect,
+    ) -> Option<RendererEvent> {
         if let Event::Mouse(mouse) = event {
-            if mouse.kind == MouseEventKind::Up(MouseButton::Left) && self.scrollbar_drag.is_some()
+            if mouse.kind == MouseEventKind::Up(MouseButton::Left)
+                && self.scrollbar_drag.take().is_some()
             {
-                self.scrollbar_drag = None;
                 return Some(RendererEvent::Consumed);
             }
             if matches!(
                 mouse.kind,
                 MouseEventKind::Down(MouseButton::Left) | MouseEventKind::Drag(MouseButton::Left)
             ) {
+                if mouse.kind == MouseEventKind::Down(MouseButton::Left) {
+                    let position = (mouse.column, mouse.row).into();
+                    let next = if self
+                        .change_warnings
+                        .previous
+                        .is_some_and(|target| target.contains(position))
+                    {
+                        Some(false)
+                    } else if self
+                        .change_warnings
+                        .next
+                        .is_some_and(|target| target.contains(position))
+                    {
+                        Some(true)
+                    } else {
+                        None
+                    };
+                    if let Some(next) = next
+                        && let Some(target) = self.review_change_jump(
+                            state.diff_view_mode,
+                            area,
+                            state.diff_scroll,
+                            next,
+                        )
+                    {
+                        return Some(RendererEvent::Message(
+                            self.vertical_message(Message::SetDiffScroll(target), state),
+                        ));
+                    }
+                    if let Some(target) = self.change_at_marker(mouse.column, mouse.row) {
+                        return Some(RendererEvent::Message(
+                            self.vertical_message(Message::SetDiffScroll(target), state),
+                        ));
+                    }
+                }
                 let axis = if mouse.kind == MouseEventKind::Down(MouseButton::Left) {
                     self.scrollbar_at(mouse.column, mouse.row)
                 } else {
@@ -317,45 +432,28 @@ impl Renderer {
                     self.scrollbar_drag = Some(axis);
                     let message = self.scrollbar_message(axis, mouse.column, mouse.row);
                     return Some(RendererEvent::Message(
-                        self.vertical_message(message, model),
+                        self.vertical_message(message, state),
                     ));
                 }
             }
         }
-        let page_rows = usize::from(
-            area.height
-                .saturating_sub(u16::from(!self.scrollbars.horizontal_area.is_empty())),
-        )
-        .max(1);
-        let message = match event {
-            Event::Key(key)
-                if key.kind == KeyEventKind::Press && key.modifiers == KeyModifiers::NONE =>
-            {
-                match key.code {
-                    KeyCode::Up => Message::ScrollDiffVerticalBy(-LINE_SCROLL_ROWS),
-                    KeyCode::Down => Message::ScrollDiffVerticalBy(LINE_SCROLL_ROWS),
-                    KeyCode::PageUp => Message::ScrollDiffPageUp(page_rows),
-                    KeyCode::PageDown => Message::ScrollDiffPageDown(page_rows),
-                    KeyCode::Left => Message::ScrollDiffHorizontalBy(-LINE_SCROLL_ROWS),
-                    KeyCode::Right => Message::ScrollDiffHorizontalBy(LINE_SCROLL_ROWS),
-                    KeyCode::Char('q') | KeyCode::Esc => Message::Quit,
-                    _ => return None,
-                }
+        let message = match input::map_review_event(event, area)? {
+            Message::ScrollDiffPageUp(_) => Message::ScrollDiffPageUp(self.diff_viewport_rows),
+            Message::ScrollDiffPageDown(_) => Message::ScrollDiffPageDown(self.diff_viewport_rows),
+            Message::JumpToPreviousChange => {
+                let target =
+                    self.review_change_jump(state.diff_view_mode, area, state.diff_scroll, false)?;
+                Message::SetDiffScroll(target)
             }
-            Event::Key(key)
-                if key.kind == KeyEventKind::Press
-                    && key.code == KeyCode::Char('c')
-                    && key.modifiers.contains(KeyModifiers::CONTROL) =>
-            {
-                Message::Quit
+            Message::JumpToNextChange => {
+                let target =
+                    self.review_change_jump(state.diff_view_mode, area, state.diff_scroll, true)?;
+                Message::SetDiffScroll(target)
             }
-            Event::Mouse(mouse) if area.contains((mouse.column, mouse.row).into()) => {
-                input::wheel_message(mouse.kind)?
-            }
-            _ => return None,
+            message => message,
         };
         Some(RendererEvent::Message(
-            self.vertical_message(message, model),
+            self.vertical_message(message, state),
         ))
     }
 
@@ -396,10 +494,12 @@ impl Renderer {
         requested: Option<&DiffKey>,
     ) -> TextSurfacePreparation {
         let coverage = self.highlighted.as_ref().and_then(|cache| {
-            cache
-                .highlighted_new_coverage
-                .last()
-                .map(|range| (range.start, range.end))
+            let coverage = if cache.key.hunk_segments.is_some() {
+                &cache.highlighted_hunk_coverage
+            } else {
+                &cache.highlighted_new_coverage
+            };
+            coverage.last().map(|range| (range.start, range.end))
         });
         TextSurfacePreparation {
             surface: TextSurface::Diff,
@@ -424,7 +524,9 @@ impl Renderer {
 
     #[must_use]
     pub fn is_preparing(&self) -> bool {
-        self.requested.as_ref() != self.displayed_key() || !self.submitted.is_empty()
+        self.requested.as_ref() != self.displayed_key()
+            || self.requested_selection != self.displayed_selection
+            || !self.submitted.is_empty()
     }
 
     pub fn map_event(&mut self, event: &Event, model: &Model, area: Rect) -> Option<RendererEvent> {
@@ -434,77 +536,9 @@ impl Renderer {
         if let Some(outcome) = self.map_picker_input(event, model, area) {
             return Some(outcome);
         }
-        if let Event::Mouse(mouse) = event {
-            if mouse.kind == MouseEventKind::Up(MouseButton::Left) {
-                self.scrollbar_drag = None;
-            } else if matches!(
-                mouse.kind,
-                MouseEventKind::Down(MouseButton::Left) | MouseEventKind::Drag(MouseButton::Left)
-            ) {
-                if mouse.kind == MouseEventKind::Down(MouseButton::Left) {
-                    let position = (mouse.column, mouse.row).into();
-                    let next = if self
-                        .change_warnings
-                        .previous
-                        .is_some_and(|area| area.contains(position))
-                    {
-                        Some(false)
-                    } else if self
-                        .change_warnings
-                        .next
-                        .is_some_and(|area| area.contains(position))
-                    {
-                        Some(true)
-                    } else {
-                        None
-                    };
-                    if let Some(next) = next {
-                        return self.change_jump(model, area, next).map(|target| {
-                            RendererEvent::Message(self.vertical_message(
-                                crate::diff::Message::SetDiffScroll(target),
-                                model,
-                            ))
-                        });
-                    }
-                }
-                if mouse.kind == MouseEventKind::Down(MouseButton::Left)
-                    && let Some(change) = self.change_at_marker(mouse.column, mouse.row, model)
-                {
-                    return Some(RendererEvent::Message(self.vertical_message(
-                        crate::diff::Message::SetDiffScroll(change),
-                        model,
-                    )));
-                }
-                let axis = if mouse.kind == MouseEventKind::Down(MouseButton::Left) {
-                    self.scrollbar_at(mouse.column, mouse.row)
-                } else {
-                    self.scrollbar_drag
-                };
-                if let Some(axis) = axis {
-                    self.scrollbar_drag = Some(axis);
-                    let message = self.scrollbar_message(axis, mouse.column, mouse.row);
-                    return Some(RendererEvent::Message(
-                        self.vertical_message(message, model),
-                    ));
-                }
-            }
-        }
-        let message = match input::map_event(event, model, area) {
-            Some(crate::diff::Message::JumpToPreviousChange) => {
-                self.change_jump(model, area, false).map(|target| {
-                    self.vertical_message(crate::diff::Message::SetDiffScroll(target), model)
-                })
-            }
-            Some(crate::diff::Message::JumpToNextChange) => {
-                self.change_jump(model, area, true).map(|target| {
-                    self.vertical_message(crate::diff::Message::SetDiffScroll(target), model)
-                })
-            }
-            message => message,
-        }?;
-        Some(RendererEvent::Message(
-            self.vertical_message(message, model),
-        ))
+        let review_area = horizontal_panes(main_area(area), model.file_pane_percent)[1];
+        self.map_review_event(event, &model.review, review_area)
+            .or_else(|| input::map_event(event, model, area).map(RendererEvent::Message))
     }
 
     fn map_open_picker_menu(&mut self, event: &Event, area: Rect) -> Option<RendererEvent> {
@@ -619,30 +653,6 @@ impl Renderer {
             }
         };
         Some(picker_event(outcome, area))
-    }
-}
-
-fn picker_event(outcome: PickerOutcome<FileKey>, area: ChangeArea) -> RendererEvent {
-    match outcome {
-        PickerOutcome::Consumed => RendererEvent::Consumed,
-        PickerOutcome::Selected(file) | PickerOutcome::Activated(file) => {
-            RendererEvent::Message(crate::diff::Message::SelectFile(file))
-        }
-        PickerOutcome::RowAction(file) => RendererEvent::Message(match file.area {
-            ChangeArea::Staged => crate::diff::Message::UnstageFile(file.path),
-            ChangeArea::Unstaged => crate::diff::Message::StageFile(file.path),
-        }),
-        PickerOutcome::PanelAction => RendererEvent::Message(match area {
-            ChangeArea::Staged => crate::diff::Message::UnstageAll,
-            ChangeArea::Unstaged => crate::diff::Message::StageAll,
-        }),
-        PickerOutcome::CopyPath { id, absolute } => RendererEvent::CopyPath {
-            path: id.path,
-            absolute,
-        },
-        PickerOutcome::DestructiveAction(file) => {
-            RendererEvent::Message(crate::diff::Message::RequestDiscardFile(file.path))
-        }
     }
 }
 

@@ -67,24 +67,26 @@ pub fn update(model: &mut Model, message: Message) -> Option<Effect> {
     match message {
         Message::Quit => model.should_quit = true,
         Message::SelectFile(file) => model.select_file(&file),
-        Message::ScrollDiffUp => model.scroll_diff_up(),
-        Message::ScrollDiffDown => model.scroll_diff_down(),
-        Message::ScrollDiffPageUp(lines) => model.scroll_diff_up_by(lines),
-        Message::ScrollDiffPageDown(lines) => model.scroll_diff_down_by(lines),
-        Message::ScrollDiffVerticalBy(lines) => model.scroll_diff_vertical_by(lines),
-        Message::SetDiffScroll(position) => model.diff_scroll = position,
-        Message::SetDiffHorizontalScroll(position) => model.diff_horizontal_scroll = position,
-        Message::ScrollDiffLeft => model.scroll_diff_left(),
-        Message::ScrollDiffRight => model.scroll_diff_right(),
-        Message::ScrollDiffHorizontalBy(columns) => model.scroll_diff_horizontal_by(columns),
-        Message::JumpDiffToPosition(_)
+        message @ (Message::ScrollDiffUp
+        | Message::ScrollDiffDown
+        | Message::ScrollDiffPageUp(_)
+        | Message::ScrollDiffPageDown(_)
+        | Message::ScrollDiffVerticalBy(_)
+        | Message::SetDiffScroll(_)
+        | Message::SetDiffHorizontalScroll(_)
+        | Message::ScrollDiffLeft
+        | Message::ScrollDiffRight
+        | Message::ScrollDiffHorizontalBy(_)
+        | Message::JumpDiffToPosition(_)
         | Message::JumpToPreviousChange
         | Message::JumpToNextChange
-        | Message::FocusCommitInput
+        | Message::ToggleDiffView) => {
+            model.review.update(&message);
+        }
+        Message::FocusCommitInput
         | Message::BlurCommitInput
         | Message::ExecuteAiCommit
         | Message::RequestDiscardFile(_) => {}
-        Message::ToggleDiffView => model.toggle_diff_view(),
         Message::BeginFilePaneResize => model.begin_file_pane_resize(),
         Message::ResizeFilePane(percent) => model.resize_file_pane(percent),
         Message::EndFilePaneResize => model.end_file_pane_resize(),

@@ -1,4 +1,6 @@
-use diffo_core::{CheckoutHistory, RepositoryQueryId};
+use std::path::Path;
+
+use diffo_core::{CheckoutHistory, CommitFile, RepositoryQueryId};
 
 use super::{Activity, HistoryRequest, Workbench};
 
@@ -22,11 +24,17 @@ impl Workbench {
     pub fn commit_patch_loaded(
         &mut self,
         query_id: RepositoryQueryId,
-        commit_id: String,
+        commit_id: &str,
         patch: String,
+        files: Vec<CommitFile>,
     ) {
-        if self.history.accept_patch(query_id, commit_id, patch) && self.active == Activity::History
+        let accepted = self.history.accept_patch(query_id, commit_id, patch, files);
+        if let Some(mode) = self.selected_review_mode
+            && accepted
         {
+            self.history.set_review_mode(mode);
+        }
+        if accepted && self.active == Activity::History {
             self.request_redraw();
         }
     }
@@ -39,6 +47,34 @@ impl Workbench {
     ) {
         if self.history.patch_failed(query_id, commit_id) {
             self.show_error("Could not open commit", message);
+        }
+    }
+
+    pub fn commit_file_loaded(
+        &mut self,
+        query_id: RepositoryQueryId,
+        commit_id: &str,
+        path: &Path,
+        contents: String,
+    ) {
+        if self
+            .history
+            .accept_file(query_id, commit_id, path, contents)
+            && self.active == Activity::History
+        {
+            self.request_redraw();
+        }
+    }
+
+    pub fn commit_file_load_failed(
+        &mut self,
+        query_id: RepositoryQueryId,
+        commit_id: &str,
+        path: &Path,
+        message: &str,
+    ) {
+        if self.history.file_failed(query_id, commit_id, path) {
+            self.show_error("Could not open commit file", message);
         }
     }
 }

@@ -60,14 +60,7 @@ impl Tool for DiffActivity {
 
     fn prepare_frame(&mut self, area: Rect, _split: PaneSplit) -> FramePreparation {
         let preparation = self.renderer.prepare_frame(&self.model, area);
-        if let Some(viewport) = preparation.viewport_transition {
-            self.model
-                .set_diff_viewport(viewport.vertical, viewport.horizontal);
-        }
-        self.model.clamp_diff_scroll(
-            preparation.maximum_vertical_scroll,
-            preparation.maximum_horizontal_scroll,
-        );
+        self.model.review.apply_preparation(&preparation);
         preparation
     }
 
@@ -153,8 +146,7 @@ impl Tool for HistoryActivity {
     }
 
     fn prepare_frame(&mut self, area: Rect, split: PaneSplit) -> FramePreparation {
-        let text_surface = HistoryActivity::prepare_frame(self, area, split);
-        history_preparation(self, text_surface)
+        HistoryActivity::prepare_frame(self, area, split)
     }
 
     fn render(&mut self, frame: &mut Frame, area: Rect, split: PaneSplit) {
@@ -167,23 +159,6 @@ impl Tool for HistoryActivity {
 
     fn help_rows(&self) -> Vec<(String, &'static str)> {
         HistoryActivity::help_rows(self)
-    }
-}
-
-pub(super) fn history_preparation(
-    history: &HistoryActivity,
-    text_surface: TextSurfacePreparation,
-) -> FramePreparation {
-    let (requested, selected, displayed) = history.document_commits();
-    FramePreparation {
-        content_revision: text_surface.document_revision,
-        preparing: text_surface.mode == TextRenderMode::TextSkeleton,
-        syntax_ready: text_surface.mode == TextRenderMode::Full,
-        requested_history_commit: requested,
-        selected_history_commit: selected,
-        displayed_history_commit: displayed,
-        text_surface: Some(text_surface),
-        ..FramePreparation::default()
     }
 }
 

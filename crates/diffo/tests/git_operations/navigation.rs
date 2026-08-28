@@ -72,6 +72,78 @@ fn mouse_click_selects_a_file() -> Result<()> {
 }
 
 #[test]
+fn clicking_a_file_in_hunk_view_places_its_hunk_header_at_the_top() -> Result<()> {
+    let repository = TestRepository::new()?;
+    fs::write(
+        repository.worktree.join("first-hunk.txt"),
+        hunk_file("FIRST_BASE", 20)?,
+    )?;
+    fs::write(
+        repository.worktree.join("second-hunk.txt"),
+        hunk_file("SECOND_BASE", 20)?,
+    )?;
+    git(
+        &repository.worktree,
+        &["add", "first-hunk.txt", "second-hunk.txt"],
+    )?;
+    git(
+        &repository.worktree,
+        &["commit", "-m", "Add hunk selection fixtures"],
+    )?;
+    fs::write(
+        repository.worktree.join("first-hunk.txt"),
+        hunk_file("FIRST_CHANGED", 20)?,
+    )?;
+    fs::write(
+        repository.worktree.join("second-hunk.txt"),
+        hunk_file("HUNK_SECOND", 20)?,
+    )?;
+    let trace_path = repository.root.path().join("hunk-file-click-frames.ronl");
+    let mut screen = DiffoScreen::launch_with_env(
+        diffo_binary()?,
+        &repository.worktree,
+        &[("DIFFO_TRACE_FRAMES", trace_path.as_os_str())],
+    )?;
+
+    screen
+        .press(Key::Char('r'))?
+        .press(Key::Char('r'))?
+        .wait_for_text("Hunk")?
+        .click(&Selector::text("second-hunk.txt"))?
+        .wait_for(&Selector::selected_row("second-hunk.txt"))?
+        .wait_for_text("HUNK_SECOND")?
+        .press(Key::Char('q'))?
+        .wait_for_exit()?;
+    drop(screen);
+
+    let trace = fs::read_to_string(&trace_path).context("read hunk file-click frame trace")?;
+    let frames = trace
+        .lines()
+        .map(ron::from_str::<BufferFrame>)
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+    let click = frames
+        .iter()
+        .position(|frame| {
+            frame
+                .input_events
+                .iter()
+                .any(|event| event.contains("Down(Left)"))
+        })
+        .with_context(|| format!("trace has no file-click frame:\n{trace}"))?;
+    let committed = frames[click..]
+        .iter()
+        .find(|frame| frame.viewport_transition.is_some())
+        .with_context(|| format!("file click has no viewport commit:\n{trace}"))?;
+
+    // Four metadata rows plus the first file's hunk header and forty changed rows,
+    // then the second file's four metadata rows.
+    assert_eq!(committed.viewport_transition, Some((49, 0)));
+    assert_eq!(committed.first_rendered_row, 49);
+    assert_eq!(committed.scroll_after, (49, 0));
+    Ok(())
+}
+
+#[test]
 fn view_toggle_renders_immediately() -> Result<()> {
     let repository = TestRepository::new()?;
     fs::write(repository.worktree.join("tracked.txt"), "changed\n")?;

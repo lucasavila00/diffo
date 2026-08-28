@@ -35,62 +35,6 @@ impl Model {
         }
     }
 
-    pub fn scroll_diff_down(&mut self) {
-        self.scroll_diff_down_by(4);
-    }
-
-    pub fn scroll_diff_up(&mut self) {
-        self.scroll_diff_up_by(4);
-    }
-
-    pub fn scroll_diff_down_by(&mut self, lines: usize) {
-        self.diff_scroll = self.diff_scroll.saturating_add(lines);
-    }
-
-    pub fn scroll_diff_up_by(&mut self, lines: usize) {
-        self.diff_scroll = self.diff_scroll.saturating_sub(lines);
-    }
-
-    pub fn scroll_diff_vertical_by(&mut self, lines: i64) {
-        let magnitude = usize::try_from(lines.unsigned_abs()).unwrap_or(usize::MAX);
-        if lines >= 0 {
-            self.diff_scroll = self.diff_scroll.saturating_add(magnitude);
-        } else {
-            self.diff_scroll = self.diff_scroll.saturating_sub(magnitude);
-        }
-    }
-
-    pub fn scroll_diff_right(&mut self) {
-        self.diff_horizontal_scroll = self.diff_horizontal_scroll.saturating_add(4);
-    }
-
-    pub fn scroll_diff_left(&mut self) {
-        self.diff_horizontal_scroll = self.diff_horizontal_scroll.saturating_sub(4);
-    }
-
-    pub fn scroll_diff_horizontal_by(&mut self, columns: i64) {
-        let magnitude = usize::try_from(columns.unsigned_abs()).unwrap_or(usize::MAX);
-        if columns >= 0 {
-            self.diff_horizontal_scroll = self.diff_horizontal_scroll.saturating_add(magnitude);
-        } else {
-            self.diff_horizontal_scroll = self.diff_horizontal_scroll.saturating_sub(magnitude);
-        }
-    }
-
-    pub fn clamp_diff_scroll(&mut self, maximum_row: usize, maximum_column: usize) {
-        self.diff_scroll = self.diff_scroll.min(maximum_row);
-        self.diff_horizontal_scroll = self.diff_horizontal_scroll.min(maximum_column);
-    }
-
-    pub fn set_diff_viewport(&mut self, vertical: usize, horizontal: usize) {
-        self.diff_scroll = vertical;
-        self.diff_horizontal_scroll = horizontal;
-    }
-
-    pub fn toggle_diff_view(&mut self) {
-        self.diff_view_mode = self.diff_view_mode.toggled();
-    }
-
     pub fn begin_file_pane_resize(&mut self) {
         self.resizing_file_pane = true;
     }

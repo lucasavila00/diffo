@@ -1,4 +1,84 @@
 use super::*;
+use crate::diff::ReviewSelection;
+use diffo_highlight::SyntaxHighlighter;
+use ratatui::text::Line;
+use std::sync::Arc;
+
+#[test]
+fn prepares_a_complete_change_as_one_hunk_selection() {
+    let key = DiffKey {
+        selection: ReviewSelection::CompleteChange("commit:aaaaaaaa".to_owned()),
+        title: Line::raw(" aaaaaaa · change both "),
+        patch: Arc::from(concat!(
+            "diff --git a/src/a.rs b/src/a.rs\n",
+            "@@ -1 +1 @@\n",
+            "-fn old() {}\n",
+            "+fn new() {}\n",
+            "diff --git a/README.md b/README.md\n",
+            "@@ -1 +1 @@\n",
+            "-old\n",
+            "+new\n",
+        )),
+        mark_conflicts: false,
+        mode: DiffViewMode::Hunk,
+    };
+    let cache = prepare_diff(
+        PrepareRequest {
+            key: key.clone(),
+            viewport_rows: 20,
+            mode: DiffViewMode::Inline,
+            target_scroll: None,
+            prefetch_viewports: 3,
+        },
+        &SyntaxHighlighter::new(),
+    )
+    .expect("complete change should prepare");
+
+    assert_eq!(cache.key, key);
+    assert!(!cache.syntax_highlighted);
+    assert_eq!(cache.hunk.len(), 8);
+    assert_eq!(cache.hunk[0].text, "diff --git a/src/a.rs b/src/a.rs");
+    assert_eq!(cache.hunk[4].text, "diff --git a/README.md b/README.md");
+    assert!(cache.inline.is_empty());
+    assert!(cache.side_by_side.is_empty());
+}
+
+#[test]
+fn keeps_the_previous_selection_visible_until_a_complete_change_is_prepared() {
+    let model = model();
+    let mut renderer = Renderer::new();
+    renderer.prepare_frame(&model, Rect::new(0, 0, 100, 30));
+    let previous = renderer.displayed_key().cloned().expect("initial file");
+    let complete = DiffKey {
+        selection: ReviewSelection::CompleteChange("commit:aaaaaaaa".to_owned()),
+        title: Line::raw(" aaaaaaa · complete change "),
+        patch: Arc::from("@@ -1 +1 @@\n-old\n+new\n"),
+        mark_conflicts: false,
+        mode: DiffViewMode::Hunk,
+    };
+    let outcome = PrepareOutcome {
+        key: complete.clone(),
+        target_scroll: None,
+        cache: prepare_diff(
+            PrepareRequest {
+                key: complete.clone(),
+                viewport_rows: 20,
+                mode: DiffViewMode::Hunk,
+                target_scroll: None,
+                prefetch_viewports: 3,
+            },
+            &renderer.highlighter,
+        ),
+    };
+    renderer.requested = Some(complete.clone());
+    renderer.submitted = vec![(complete.clone(), None)];
+
+    assert_eq!(renderer.displayed_key(), Some(&previous));
+    renderer
+        .accept_prepared_outcome(Some(&complete), outcome)
+        .expect("complete change should commit atomically");
+    assert_eq!(renderer.displayed_key(), Some(&complete));
+}
 
 #[test]
 fn discards_a_stale_prepared_buffer_before_committing_the_latest() {
@@ -224,7 +304,15 @@ fn reuses_a_prepared_buffer_after_visiting_another_file() {
 
     assert_eq!(renderer.highlight_computations, 2);
     assert_eq!(
-        renderer.highlighted.as_ref().unwrap().key.file.path,
+        renderer
+            .highlighted
+            .as_ref()
+            .unwrap()
+            .key
+            .selection
+            .file_key()
+            .unwrap()
+            .path,
         PathBuf::from("src/main.rs")
     );
 }

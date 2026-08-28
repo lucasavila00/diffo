@@ -82,6 +82,7 @@ use diffo_ui::text_view::{
     syntax_prefetch_viewports,
 };
 pub use diffo_ui::{change_kind_style, plain_syntax_spans, terminal_safe_text};
+pub(crate) use prepare::state::ReviewSelection;
 pub use prepare::state::{FramePreparation, Renderer, ViewportTransition};
 
 pub use input::map_event;
@@ -164,7 +165,7 @@ impl Renderer {
         let anchor = requested.as_ref().and_then(|requested| {
             self.highlighted
                 .as_ref()
-                .filter(|cache| cache.key.file == requested.file)
+                .filter(|cache| cache.key.selection == requested.selection)
                 .map(|cache| ScrollAnchor::capture(cache, cache.key.mode, model.diff_scroll))
         });
         self.diff_viewport_rows = if undecorated {
@@ -234,8 +235,13 @@ impl Renderer {
             preparing: self.requested.as_ref() != self.displayed_key(),
             syntax_ready,
             viewport_transition,
-            requested_file: self.requested.as_ref().map(|key| key.file.clone()),
-            displayed_file: self.displayed_key().map(|key| key.file.clone()),
+            requested_file: self
+                .requested
+                .as_ref()
+                .and_then(|key| key.selection.file_key().cloned()),
+            displayed_file: self
+                .displayed_key()
+                .and_then(|key| key.selection.file_key().cloned()),
             requested_explorer_file: None,
             displayed_explorer_file: None,
             requested_history_commit: None,
@@ -264,17 +270,20 @@ impl Renderer {
         let patch = self
             .requested
             .as_ref()
-            .filter(|key| key.file == *selected && key.patch.as_ref() == diff.text)
+            .filter(|key| {
+                key.selection.file_key() == Some(selected) && key.patch.as_ref() == diff.text
+            })
             .map_or_else(
                 || Arc::<str>::from(diff.text.as_str()),
                 |key| key.patch.clone(),
             );
+        let selection = ReviewSelection::File(selected.clone());
         Some(DiffKey {
-            file: selected.clone(),
+            mode: selection.view_mode(model.diff_view_mode),
+            selection,
             title: file_label(file),
             patch,
             mark_conflicts: file.kind == ChangeKind::Conflicted,
-            mode: model.diff_view_mode,
         })
     }
 

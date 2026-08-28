@@ -103,11 +103,52 @@ pub(in crate::diff) struct ScrollAnchor {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(in crate::diff) struct DiffKey {
-    pub(in crate::diff) file: FileKey,
+    pub(in crate::diff) selection: ReviewSelection,
     pub(in crate::diff) title: Line<'static>,
     pub(in crate::diff) patch: Arc<str>,
     pub(in crate::diff) mark_conflicts: bool,
     pub(in crate::diff) mode: crate::diff::DiffViewMode,
+}
+
+/// The review content currently requested by a Diff renderer.
+///
+/// A file uses the selected file's rich projection. A complete change is always
+/// a unified hunk projection. The renderer keeps its displayed selection until
+/// the replacement selection has prepared, so callers can change either kind
+/// without exposing a partial review.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) enum ReviewSelection {
+    File(FileKey),
+    CompleteChange(String),
+}
+
+impl ReviewSelection {
+    #[must_use]
+    pub fn file_key(&self) -> Option<&FileKey> {
+        match self {
+            Self::File(file) => Some(file),
+            Self::CompleteChange(_) => None,
+        }
+    }
+
+    #[must_use]
+    pub fn complete_change_id(&self) -> Option<&str> {
+        match self {
+            Self::File(_) => None,
+            Self::CompleteChange(id) => Some(id),
+        }
+    }
+
+    #[must_use]
+    pub const fn view_mode(
+        &self,
+        file_view_mode: crate::diff::DiffViewMode,
+    ) -> crate::diff::DiffViewMode {
+        match self {
+            Self::File(_) => file_view_mode,
+            Self::CompleteChange(_) => crate::diff::DiffViewMode::Hunk,
+        }
+    }
 }
 
 pub(in crate::diff) struct PrepareRequest {

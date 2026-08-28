@@ -13,6 +13,7 @@ use std::{
     thread,
 };
 
+use crate::diff::ReviewSelection;
 use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind};
 use diffo_core::{CheckoutHistory, Commit, HeadState, RepositoryQueryId, RepositorySnapshot};
 use diffo_highlight::SyntaxHighlighter;
@@ -51,7 +52,8 @@ pub struct HistoryActivity {
     pending_commits: Option<Vec<Commit>>,
     picker: FilePicker<String>,
     patch: Option<PreparedPatch>,
-    pending_commit: Option<String>,
+    selection: Option<ReviewSelection>,
+    pending_selection: Option<ReviewSelection>,
     queued: VecDeque<HistoryRequest>,
     next_id: u64,
     latest_history: u64,
@@ -98,7 +100,8 @@ impl HistoryActivity {
             pending_commits: None,
             picker: FilePicker::default(),
             patch: None,
-            pending_commit: None,
+            selection: None,
+            pending_selection: None,
             queued: VecDeque::new(),
             next_id: 0,
             latest_history: 0,
@@ -142,7 +145,7 @@ impl HistoryActivity {
         self.latest_patch = id;
         self.latest_prepare = id;
         self.latest_prepare_id.store(id, Ordering::Release);
-        self.pending_commit = Some(commit_id.clone());
+        self.pending_selection = Some(ReviewSelection::CompleteChange(commit_id.clone()));
         self.patch_pending = true;
         self.prepare_pending = false;
         self.queued
@@ -183,7 +186,7 @@ impl HistoryActivity {
         }
         self.head_commit = head;
         self.pending_commits = None;
-        self.pending_commit = None;
+        self.pending_selection = None;
         self.patch_pending = false;
         self.prepare_pending = false;
         let prepare_id = self.next_id();
@@ -206,7 +209,8 @@ impl HistoryActivity {
             let changed = !self.commits.is_empty() || self.patch.is_some();
             self.commits.clear();
             self.pending_commits = None;
-            self.pending_commit = None;
+            self.selection = None;
+            self.pending_selection = None;
             self.patch = None;
             self.scroll = 0;
             self.horizontal = 0;
@@ -216,9 +220,9 @@ impl HistoryActivity {
             return changed;
         }
         let target = self
-            .patch
+            .selection
             .as_ref()
-            .map(|patch| patch.commit_id.as_str())
+            .and_then(ReviewSelection::complete_change_id)
             .filter(|selected| history.commits.iter().any(|commit| commit.id == *selected))
             .map_or_else(|| history.commits[0].id.clone(), str::to_owned);
         if self
@@ -253,7 +257,11 @@ impl HistoryActivity {
         patch: String,
     ) -> bool {
         if query_id.0 != self.latest_patch
-            || self.pending_commit.as_deref() != Some(commit_id.as_str())
+            || self
+                .pending_selection
+                .as_ref()
+                .and_then(ReviewSelection::complete_change_id)
+                != Some(commit_id.as_str())
         {
             return false;
         }
@@ -266,11 +274,17 @@ impl HistoryActivity {
     }
 
     pub fn patch_failed(&mut self, query_id: RepositoryQueryId, commit_id: &str) -> bool {
-        if query_id.0 != self.latest_patch || self.pending_commit.as_deref() != Some(commit_id) {
+        if query_id.0 != self.latest_patch
+            || self
+                .pending_selection
+                .as_ref()
+                .and_then(ReviewSelection::complete_change_id)
+                != Some(commit_id)
+        {
             return false;
         }
         self.patch_pending = false;
-        self.pending_commit = None;
+        self.pending_selection = None;
         self.pending_commits = None;
         true
     }
@@ -296,9 +310,12 @@ impl HistoryActivity {
         if outcome.id != self.latest_prepare {
             return false;
         }
-        let selection_ready =
-            self.pending_commit.as_deref() == Some(outcome.prepared.commit_id.as_str());
-        let scroll_ready = self.pending_commit.is_none()
+        let selection_ready = self
+            .pending_selection
+            .as_ref()
+            .and_then(ReviewSelection::complete_change_id)
+            == Some(outcome.prepared.commit_id.as_str());
+        let scroll_ready = self.pending_selection.is_none()
             && self
                 .patch
                 .as_ref()
@@ -311,7 +328,7 @@ impl HistoryActivity {
             if let Some(commits) = self.pending_commits.take() {
                 self.commits = commits;
             }
-            self.pending_commit = None;
+            self.selection = self.pending_selection.take();
             self.horizontal = 0;
         }
         self.scroll = outcome.prepared.target_scroll;
@@ -333,7 +350,12 @@ impl HistoryActivity {
                 split.border_style(),
                 self.history_pending || (self.commits.is_empty() && self.pending_commits.is_some()),
             ),
-            self.patch.as_ref().map(|patch| &patch.commit_id),
+            self.selection
+                .as_ref()
+                .and_then(|selection| match selection {
+                    ReviewSelection::File(_) => None,
+                    ReviewSelection::CompleteChange(id) => Some(id),
+                }),
         );
         let metrics = view::patch_metrics(areas.patch, self.patch.as_ref(), self.scroll);
         self.finish_preparation(metrics)
@@ -353,7 +375,7 @@ impl HistoryActivity {
             if ready {
                 self.scroll = self.vertical_scroll.take_ready(true).unwrap_or(self.scroll);
             } else if !self.prepare_pending
-                && self.pending_commit.is_none()
+                && self.pending_selection.is_none()
                 && let Some(patch) = self.patch.as_ref()
             {
                 let commit_id = patch.commit_id.clone();
@@ -596,11 +618,21 @@ impl HistoryActivity {
     #[must_use]
     pub fn document_commits(&self) -> (Option<String>, Option<String>, Option<String>) {
         (
-            self.pending_commit
-                .clone()
-                .or_else(|| self.patch.as_ref().map(|patch| patch.commit_id.clone())),
+            self.pending_selection
+                .as_ref()
+                .and_then(ReviewSelection::complete_change_id)
+                .map(str::to_owned)
+                .or_else(|| {
+                    self.selection
+                        .as_ref()
+                        .and_then(ReviewSelection::complete_change_id)
+                        .map(str::to_owned)
+                }),
             self.picker.selected().cloned(),
-            self.patch.as_ref().map(|patch| patch.commit_id.clone()),
+            self.selection
+                .as_ref()
+                .and_then(ReviewSelection::complete_change_id)
+                .map(str::to_owned),
         )
     }
 

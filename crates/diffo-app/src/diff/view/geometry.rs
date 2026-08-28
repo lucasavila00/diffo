@@ -85,6 +85,7 @@ impl Renderer {
         let changes = match cache.key.mode {
             DiffViewMode::Inline => &cache.inline_changes,
             DiffViewMode::SideBySide => &cache.side_by_side_changes,
+            DiffViewMode::Hunk => &cache.hunk_changes,
         };
         changes.iter().enumerate().find_map(|(index, change)| {
             let marker_row = self

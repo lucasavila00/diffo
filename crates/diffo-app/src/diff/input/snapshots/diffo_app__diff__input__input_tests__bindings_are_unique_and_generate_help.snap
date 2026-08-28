@@ -14,7 +14,7 @@ expression: help
     "Page Down: Scroll down one page",
     "←: Scroll diff left by four columns",
     "→: Scroll diff right by four columns",
-    "r: Toggle inline / side-by-side view",
+    "r: Toggle inline / side-by-side / hunk view",
     "m: Edit commit message",
     "i: AI commit staged changes",
     "Enter: Commit staged changes or complete merge",

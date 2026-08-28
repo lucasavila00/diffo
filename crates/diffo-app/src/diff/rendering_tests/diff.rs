@@ -6,7 +6,7 @@ use crate::diff::prepare::{
 
 const PREPARATION_TIMEOUT: Duration = Duration::from_secs(5);
 
-fn diff_lines(
+pub(super) fn diff_lines(
     renderer: &mut Renderer,
     model: &Model,
     first_row: usize,

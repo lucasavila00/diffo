@@ -119,7 +119,7 @@ impl Renderer {
                 if cache.document.binary {
                     1
                 } else {
-                    cache.inline.len()
+                    cache.hunk.len()
                 }
             },
         )
@@ -218,6 +218,7 @@ impl Renderer {
         let mode = match displayed_mode {
             DiffViewMode::Inline => "Inline",
             DiffViewMode::SideBySide => "Side by side",
+            DiffViewMode::Hunk => "Hunk",
         };
         let viewport = self.diff_viewport_metrics(displayed_mode, area, model.diff_scroll);
         let skeleton = self.requested.as_ref() == self.displayed_key()
@@ -258,10 +259,10 @@ impl Renderer {
             frame,
             viewport.content_area,
             lines,
-            if displayed_mode == DiffViewMode::Inline {
-                model.diff_horizontal_scroll
-            } else {
+            if displayed_mode == DiffViewMode::SideBySide {
                 0
+            } else {
+                model.diff_horizontal_scroll
             },
         );
         self.render_change_warnings(frame, &viewport);
@@ -362,6 +363,7 @@ impl Renderer {
                     };
                     primary.or(fallback).map(|line| line.kind)
                 }),
+                DiffViewMode::Hunk => cache.hunk.get(row).map(|row| row.kind),
             });
         match kind {
             Some(kind @ (RowKind::Added | RowKind::Removed | RowKind::Conflict)) => {
@@ -422,6 +424,7 @@ impl Renderer {
             let changes = self.highlighted.as_ref().map(|cache| match cache.key.mode {
                 DiffViewMode::Inline => cache.inline_changes.as_slice(),
                 DiffViewMode::SideBySide => cache.side_by_side_changes.as_slice(),
+                DiffViewMode::Hunk => cache.hunk_changes.as_slice(),
             });
             if let Some(changes) = changes {
                 render_change_markers(
@@ -490,6 +493,13 @@ impl Renderer {
                     })
                     .collect()
             }
+            DiffViewMode::Hunk => cache
+                .hunk
+                .iter()
+                .skip(first_row)
+                .take(row_count)
+                .map(|row| hunk_line(row, &cache.highlighted))
+                .collect(),
         }
     }
 
@@ -523,8 +533,28 @@ impl Renderer {
                     .map(|row| side_by_side_skeleton_line(row, column_width))
                     .collect()
             }
+            DiffViewMode::Hunk => cache
+                .hunk
+                .iter()
+                .skip(first_row)
+                .take(row_count)
+                .map(|row| raw_hunk_line(row.prefix, &row.text, row.kind, None))
+                .collect(),
         }
     }
+}
+
+fn hunk_line(row: &super::HunkRow, highlighted: &super::HighlightedDiff) -> Line<'static> {
+    let syntax = match row.kind {
+        RowKind::Removed => row
+            .old_number
+            .and_then(|number| highlighted.old.get(&number)),
+        RowKind::Added | RowKind::Context | RowKind::Changed => row
+            .new_number
+            .and_then(|number| highlighted.new.get(&number)),
+        RowKind::Header | RowKind::Conflict | RowKind::Meta => None,
+    };
+    raw_hunk_line(row.prefix, &row.text, row.kind, syntax)
 }
 
 fn raw_hunk_kind(text: &str, fallback: RowKind, mark_conflicts: bool) -> RowKind {

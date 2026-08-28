@@ -76,7 +76,7 @@ pub(super) static KEY_BINDINGS: &[KeyBinding] = &[
     KeyBinding {
         keys: &[KeyChord::plain(KeyCode::Char('r'))],
         message: Message::ToggleDiffView,
-        description: "Toggle inline / side-by-side view",
+        description: "Toggle inline / side-by-side / hunk view",
     },
     KeyBinding {
         keys: &[KeyChord::plain(KeyCode::Char('m'))],

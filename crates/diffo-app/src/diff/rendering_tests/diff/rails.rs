@@ -1,6 +1,27 @@
 use super::*;
 
 #[test]
+fn hunk_view_uses_the_unified_projection() {
+    let mut model = model();
+    model.diff_view_mode = DiffViewMode::Hunk;
+    let mut renderer = Renderer::new();
+
+    let lines = diff_lines(&mut renderer, &model, 0);
+
+    assert!(lines.iter().any(|line| line.to_string().starts_with("@@ ")));
+    assert!(lines.iter().any(|line| line.to_string().starts_with('-')));
+    assert!(lines.iter().any(|line| line.to_string().starts_with('+')));
+    assert!(
+        !renderer
+            .highlighted
+            .as_ref()
+            .unwrap()
+            .hunk_changes
+            .is_empty()
+    );
+}
+
+#[test]
 fn whole_block_navigation_uses_projection_specific_region_bounds() {
     let mut patch = String::from("@@ -1,20 +1,20 @@\n context\n");
     for line in 0..10 {
@@ -50,7 +71,11 @@ fn whole_block_navigation_uses_projection_specific_region_bounds() {
 
 #[test]
 fn change_warning_availability_does_not_move_the_diff_rails() {
-    for mode in [DiffViewMode::Inline, DiffViewMode::SideBySide] {
+    for mode in [
+        DiffViewMode::Inline,
+        DiffViewMode::SideBySide,
+        DiffViewMode::Hunk,
+    ] {
         assert_stable_diff_rails(mode);
     }
 }
@@ -87,6 +112,7 @@ fn assert_stable_diff_rails(mode: DiffViewMode) {
             DiffViewMode::SideBySide => {
                 &renderer.highlighted.as_ref().unwrap().side_by_side_changes
             }
+            DiffViewMode::Hunk => &renderer.highlighted.as_ref().unwrap().hunk_changes,
         };
         let marker_cells = changes
             .iter()
@@ -140,7 +166,11 @@ fn diff_content_uses_the_full_inner_area_in_narrow_layouts() {
     renderer.prepare_frame(&model, Rect::new(0, 0, 100, 30));
     wait_for_syntax_ready(&mut renderer, &model);
 
-    for mode in [DiffViewMode::Inline, DiffViewMode::SideBySide] {
+    for mode in [
+        DiffViewMode::Inline,
+        DiffViewMode::SideBySide,
+        DiffViewMode::Hunk,
+    ] {
         for height in 0..=4 {
             let area = Rect::new(7, 9, 20, height);
             let viewport = renderer.diff_viewport_metrics_at(mode, area, 0);
@@ -151,7 +181,11 @@ fn diff_content_uses_the_full_inner_area_in_narrow_layouts() {
 
 #[test]
 fn change_warnings_share_one_row_only_in_a_one_row_viewport() {
-    for mode in [DiffViewMode::Inline, DiffViewMode::SideBySide] {
+    for mode in [
+        DiffViewMode::Inline,
+        DiffViewMode::SideBySide,
+        DiffViewMode::Hunk,
+    ] {
         let mut model = model();
         model.diff_view_mode = mode;
         model.snapshot.files[0].unstaged.as_mut().unwrap().text = navigation_layout_patch();

@@ -124,13 +124,10 @@ fn review_view_mode_stays_in_sync_between_changes_and_history() -> Result<()> {
         .press(Key::Tab)?
         .wait_for_text("History")?
         .wait_for_text("Side by side")?
-        .wait_for_quiet(Duration::from_millis(100))?
-        .press(Key::Char('r'))?
-        .wait_for_text("Hunk")?
         .press(Key::Tab)?
         .press(Key::Tab)?
         .wait_for_text("Changes")?
-        .wait_for_text("Hunk")?;
+        .wait_for_text("Side by side")?;
     Ok(())
 }
 

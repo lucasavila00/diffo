@@ -91,6 +91,24 @@ fn tab_cycles_activities_without_changing_diff_state() {
 }
 
 #[test]
+fn history_view_mode_selection_updates_changes() {
+    let mut workbench = Workbench::new(RepositorySnapshot::default());
+    let area = Rect::new(0, 0, 100, 30);
+    workbench.active = Activity::History;
+
+    let _ = workbench.handle_events(&[key(KeyCode::Char('r'))], area);
+
+    assert_eq!(
+        workbench.history.review_mode(),
+        crate::diff::DiffViewMode::SideBySide
+    );
+    assert_eq!(
+        workbench.diff.model.diff_view_mode,
+        crate::diff::DiffViewMode::SideBySide
+    );
+}
+
+#[test]
 fn every_activity_renders_the_same_repository_footer() {
     let snapshot = RepositorySnapshot {
         head: diffo_core::HeadState::Named {

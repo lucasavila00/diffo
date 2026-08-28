@@ -18,7 +18,7 @@ use std::{
 use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind};
 use diffo_core::{ChangeKind, FileState, HeadState, RepositorySnapshot};
 use diffo_diff::{
-    ChangeRegion, DiffBlock, DiffDocument, ProjectionOptions, RenderLine, RowKind, SideBySideRow,
+    ChangeRegion, DiffBlock, ProjectionOptions, RenderLine, RowKind, SideBySideRow,
     inline_change_regions, inline_rows_with_options, parse_unified_patch,
     side_by_side_change_regions, side_by_side_rows_with_options,
 };
@@ -45,7 +45,6 @@ pub(crate) use view::ReviewRender;
 pub(crate) use view::files::{FooterControl, footer_control_at_position, render_status};
 pub(crate) use view::overlays::render_commit_editor;
 
-#[cfg(test)]
 #[cfg(test)]
 use prepare::{diff_file_lines, should_syntax_highlight};
 #[cfg(test)]
@@ -236,20 +235,23 @@ impl Renderer {
             self.vertical_scroll.clear();
         }
         let displayed_before = self.displayed_key().cloned();
-        let anchor = requested.as_ref().and_then(|requested| {
-            self.highlighted
-                .as_ref()
-                .filter(|cache| cache.key.selection == requested.selection)
-                .map(|cache| ScrollAnchor::capture(cache, cache.key.mode, vertical))
-        });
+        let anchor = self.review_anchor(requested.as_ref(), vertical);
         self.diff_viewport_rows = if undecorated {
             usize::from(diff_area.height)
         } else {
             usize::from(design::panel_content_extent(diff_area.height))
         };
-        let target_scroll = self
-            .navigation_preparation_target(requested.as_ref(), requested_mode)
-            .or_else(|| self.syntax_target(requested.as_ref(), requested_mode, vertical));
+        let focus_target = self.focus_target(
+            focus_changed,
+            requested.as_ref(),
+            requested_selection.as_ref(),
+        );
+        let target_scroll = self.review_preparation_target(
+            requested.as_ref(),
+            requested_mode,
+            vertical,
+            focus_target,
+        );
         let prefetch_viewports = syntax_prefetch_viewports(
             vertical,
             target_scroll.unwrap_or(vertical),
@@ -266,24 +268,22 @@ impl Renderer {
             .as_ref()
             .is_some_and(|commit| commit.target_scroll.is_none());
         let displayed_after = self.displayed_key().cloned();
-        let focus_transition = self.focus_transition(focus_changed, requested_selection.as_ref());
-        let navigation_transition =
-            self.commit_ready_navigation(requested.as_ref(), requested_mode, horizontal);
-        let viewport_transition = if focus_transition.is_some() {
-            focus_transition
-        } else if navigation_transition.is_some() {
-            navigation_transition
-        } else {
-            document_committed.then(|| {
-                self.document_viewport_transition(
-                    displayed_before.as_ref(),
-                    displayed_after.as_ref(),
-                    anchor.as_ref(),
-                    horizontal,
-                )
-            })
-        };
-        if (document_committed || focus_transition.is_some())
+        let document_transition = document_committed.then(|| {
+            self.document_viewport_transition(
+                displayed_before.as_ref(),
+                displayed_after.as_ref(),
+                anchor.as_ref(),
+                horizontal,
+            )
+        });
+        let (viewport_transition, focus_committed) = self.prepared_viewport_transition(
+            requested.as_ref(),
+            requested_mode,
+            horizontal,
+            focus_target,
+            document_transition,
+        );
+        if (document_committed || focus_committed)
             && self.requested.as_ref() == self.displayed_key()
         {
             self.displayed_selection.clone_from(&requested_selection);
@@ -340,6 +340,7 @@ impl Renderer {
         let document = ReviewDocument {
             selection: ReviewSelection::File(selected.clone()),
             title: file_label(file),
+            empty_message: "No changes in this file.",
             patch,
             mark_conflicts: file.kind == ChangeKind::Conflicted,
             hunks: worktree_hunks(model),
@@ -493,10 +494,12 @@ impl Renderer {
         requested: Option<&DiffKey>,
     ) -> TextSurfacePreparation {
         let coverage = self.highlighted.as_ref().and_then(|cache| {
-            cache
-                .highlighted_new_coverage
-                .last()
-                .map(|range| (range.start, range.end))
+            let coverage = if cache.key.hunk_segments.is_some() {
+                &cache.highlighted_hunk_coverage
+            } else {
+                &cache.highlighted_new_coverage
+            };
+            coverage.last().map(|range| (range.start, range.end))
         });
         TextSurfacePreparation {
             surface: TextSurface::Diff,

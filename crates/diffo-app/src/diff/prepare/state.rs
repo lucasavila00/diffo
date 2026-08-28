@@ -42,17 +42,22 @@ pub(in crate::diff) struct HighlightCache {
     pub(in crate::diff) inline_changes: Vec<ChangeRegion>,
     pub(in crate::diff) side_by_side_changes: Vec<ChangeRegion>,
     pub(in crate::diff) hunk_changes: Vec<ChangeRegion>,
-    pub(in crate::diff) hunk_targets: Vec<(ReviewSelection, usize)>,
+    pub(in crate::diff) hunk_targets: Vec<(ReviewSelection, std::ops::Range<usize>)>,
     pub(in crate::diff) highlighted: HighlightedDiff,
+    pub(in crate::diff) hunk_highlighted: Vec<HighlightedDiff>,
     pub(in crate::diff) syntax_highlighted: bool,
     pub(in crate::diff) highlighted_old_coverage: SyntaxCoverage,
     pub(in crate::diff) highlighted_new_coverage: SyntaxCoverage,
+    pub(in crate::diff) highlighted_hunk_coverage: SyntaxCoverage,
+    pub(in crate::diff) hunk_old_coverage: Vec<SyntaxCoverage>,
+    pub(in crate::diff) hunk_new_coverage: Vec<SyntaxCoverage>,
     #[cfg(test)]
     pub(in crate::diff) highlighted_lines_processed: usize,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(in crate::diff) struct HunkRow {
+    pub(in crate::diff) segment: Option<usize>,
     pub(in crate::diff) prefix: Option<char>,
     pub(in crate::diff) text: String,
     pub(in crate::diff) kind: RowKind,
@@ -111,6 +116,7 @@ pub(in crate::diff) struct ScrollAnchor {
 pub(in crate::diff) struct DiffKey {
     pub(in crate::diff) selection: ReviewSelection,
     pub(in crate::diff) title: Line<'static>,
+    pub(in crate::diff) empty_message: &'static str,
     pub(in crate::diff) patch: Arc<str>,
     pub(in crate::diff) mark_conflicts: bool,
     pub(in crate::diff) mode: crate::diff::DiffViewMode,
@@ -135,6 +141,7 @@ pub(crate) struct ReviewHunkSet {
 pub(crate) struct ReviewDocument {
     pub(crate) selection: ReviewSelection,
     pub(crate) title: Line<'static>,
+    pub(crate) empty_message: &'static str,
     pub(crate) patch: Arc<str>,
     pub(crate) mark_conflicts: bool,
     pub(crate) hunks: ReviewHunkSet,
@@ -157,6 +164,7 @@ impl ReviewDocument {
                 mode: crate::diff::DiffViewMode::Hunk,
                 selection: ReviewSelection::CompleteChange(self.hunks.id.clone()),
                 title: self.hunks.title.clone(),
+                empty_message: self.empty_message,
                 patch: Arc::from(""),
                 mark_conflicts: false,
                 hunk_segments: Some(Arc::clone(&self.hunks.segments)),
@@ -166,6 +174,7 @@ impl ReviewDocument {
                 mode: file_view_mode,
                 selection: self.selection.clone(),
                 title: self.title.clone(),
+                empty_message: self.empty_message,
                 patch: Arc::clone(&self.patch),
                 mark_conflicts: self.mark_conflicts,
                 hunk_segments: None,

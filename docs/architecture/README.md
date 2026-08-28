@@ -46,8 +46,8 @@ x86_64 Linux update channel rather than the executable's linked libc. Ubuntu
 
 - `diffo-app::diff`: Diff state, input, buffer preparation, and drawing.
 - `diffo-app::explorer`: repository tree and file viewer.
-- `diffo-app::history`: flat checkout history and selected hunk-only commit
-  patch.
+- `diffo-app::history`: checkout commit and file pickers backed by Diff's shared
+  right-side review renderer.
 - `diffo-app::workbench`: joins screens and owns global behavior.
 - `diffo-ui::command_palette`: command palette.
 - `diffo-ui::file_picker`: shared file list and tree picker.
@@ -70,10 +70,11 @@ This avoids half-built frames and stale data.
 
 ## Shared file-picker controls
 
-Diff, Explorer, and History use the same fixed file-picker movement controls.
-Lowercase `j` selects the previous row and lowercase `k` or `l` selects the next
-row. Diff and Explorer use lowercase `c` and right-click for contextual menus;
-History commit rows have no contextual menu.
+Diff and Explorer use the shared fixed file-picker movement controls: lowercase
+`j` selects the previous row and lowercase `k` or `l` selects the next row. They
+use lowercase `c` and right-click for contextual menus. History has two
+read-only pickers, so lowercase `j` / `k` move between commits and lowercase `h`
+/ `l` move between files; its rows have no contextual menu.
 
 ## Diff change navigation
 

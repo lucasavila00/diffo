@@ -367,10 +367,7 @@ fn horizontal_scrollbar_tracks_only_the_visible_vertical_slice() {
         model.diff_scroll = 0;
         let top_again = renderer.prepare_frame(&model, area);
         assert_eq!(top_again.maximum_horizontal_scroll, 0);
-        model.clamp_diff_scroll(
-            top_again.maximum_vertical_scroll,
-            top_again.maximum_horizontal_scroll,
-        );
+        model.review.apply_preparation(&top_again);
         assert_eq!(model.diff_horizontal_scroll, 0);
     }
 }
@@ -403,7 +400,7 @@ fn side_by_side_horizontal_pan_keeps_gutters_and_divider_fixed() {
         "x".repeat(80),
         "y".repeat(80),
     );
-    model.toggle_diff_view();
+    model.review.update(&crate::diff::Message::ToggleDiffView);
     let mut renderer = Renderer::new();
     diff_lines(&mut renderer, &model, 0);
     let area = Rect::new(0, 0, 100, 30);
@@ -457,7 +454,9 @@ fn uncached_scroll_keeps_the_committed_viewport_until_syntax_is_ready_in_both_di
         let initial = initial
             .viewport_transition
             .unwrap_or_else(|| wait_for_viewport_transition(&mut renderer, &model));
-        model.set_diff_viewport(initial.vertical, initial.horizontal);
+        model
+            .review
+            .set_viewport(initial.vertical, initial.horizontal);
         if target == 100 {
             assert!(initial.vertical > target);
         } else {

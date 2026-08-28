@@ -72,7 +72,7 @@ pub(super) fn accept_event(
             commit_id,
             path,
             patch,
-        } => workbench.commit_file_loaded(query_id, &commit_id, path, patch),
+        } => workbench.commit_file_loaded(query_id, &commit_id, &path, patch),
         RepositoryEvent::CommitFileLoadFailed {
             query_id,
             commit_id,

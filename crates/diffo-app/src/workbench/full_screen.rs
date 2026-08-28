@@ -152,15 +152,7 @@ impl Workbench {
                     .diff
                     .renderer
                     .prepare_full_screen(&self.diff.model, buffer);
-                if let Some(viewport) = preparation.viewport_transition {
-                    self.diff
-                        .model
-                        .set_diff_viewport(viewport.vertical, viewport.horizontal);
-                }
-                self.diff.model.clamp_diff_scroll(
-                    preparation.maximum_vertical_scroll,
-                    preparation.maximum_horizontal_scroll,
-                );
+                self.diff.model.review.apply_preparation(&preparation);
                 preparation
             }
             Activity::Explorer => {

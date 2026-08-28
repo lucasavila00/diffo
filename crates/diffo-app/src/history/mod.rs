@@ -27,11 +27,6 @@ use document::{
     commit_title, selection_commit_id, selection_target, snapshot_head, split_file_patches,
 };
 
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
-pub(super) enum HistoryTarget {
-    File(PathBuf),
-}
-
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum HistoryRequest {
     Commits {
@@ -59,12 +54,12 @@ pub struct HistoryActivity {
     commits: Vec<Commit>,
     pending_commits: Option<Vec<Commit>>,
     commit_picker: FilePicker<String>,
-    file_picker: FilePicker<HistoryTarget>,
+    file_picker: FilePicker<PathBuf>,
     files: Vec<CommitFile>,
     pending_files: Option<Vec<CommitFile>>,
     hunks: Option<ReviewHunkSet>,
     pending_hunks: Option<ReviewHunkSet>,
-    file_patches: HashMap<PathBuf, Arc<str>>,
+    file_patches: HashMap<(String, PathBuf), Arc<str>>,
     document: Option<ReviewDocument>,
     pending_document: Option<ReviewDocument>,
     selection: Option<ReviewSelection>,
@@ -192,19 +187,21 @@ impl HistoryActivity {
         patch: String,
         files: Vec<CommitFile>,
     ) -> bool {
-        if query_id.0 != self.latest_patch
-            || self
-                .pending_selection
-                .as_ref()
-                .and_then(selection_commit_id)
-                != Some(commit_id)
+        if query_id.0 != self.latest_patch {
+            return false;
+        }
+        self.patch_pending = false;
+        if self
+            .pending_selection
+            .as_ref()
+            .and_then(selection_commit_id)
+            != Some(commit_id)
         {
             return false;
         }
         let Some(summary) = self.commit_summary(commit_id).map(str::to_owned) else {
             return false;
         };
-        self.patch_pending = false;
         let patch = Arc::<str>::from(patch);
         let file_patches = split_file_patches(&patch);
         let mut segments = files
@@ -244,6 +241,7 @@ impl HistoryActivity {
         self.pending_document = Some(ReviewDocument {
             selection: selection.clone(),
             title,
+            empty_message: "Commit contains no file changes.",
             patch: Arc::from(""),
             mark_conflicts: false,
             hunks: hunks.clone(),
@@ -256,16 +254,18 @@ impl HistoryActivity {
     }
 
     pub fn patch_failed(&mut self, query_id: RepositoryQueryId, commit_id: &str) -> bool {
-        if query_id.0 != self.latest_patch
-            || self
-                .pending_selection
-                .as_ref()
-                .and_then(selection_commit_id)
-                != Some(commit_id)
-        {
+        if query_id.0 != self.latest_patch {
             return false;
         }
         self.patch_pending = false;
+        if self
+            .pending_selection
+            .as_ref()
+            .and_then(selection_commit_id)
+            != Some(commit_id)
+        {
+            return false;
+        }
         self.pending_commits = None;
         self.pending_selection = None;
         self.pending_document = None;
@@ -279,14 +279,18 @@ impl HistoryActivity {
         &mut self,
         query_id: RepositoryQueryId,
         commit_id: &str,
-        path: PathBuf,
+        path: &std::path::Path,
         contents: String,
     ) -> bool {
         let expected = ReviewSelection::HistoryFile {
             commit_id: commit_id.to_owned(),
-            path: path.clone(),
+            path: path.to_path_buf(),
         };
-        if query_id.0 != self.latest_file || self.pending_selection.as_ref() != Some(&expected) {
+        if query_id.0 != self.latest_file {
+            return false;
+        }
+        self.file_pending = false;
+        if self.pending_selection.as_ref() != Some(&expected) {
             return false;
         }
         let Some(file) = self
@@ -298,15 +302,18 @@ impl HistoryActivity {
         else {
             return false;
         };
-        self.file_pending = false;
         let contents = Arc::<str>::from(contents);
-        self.file_patches.insert(path, Arc::clone(&contents));
+        self.file_patches.insert(
+            (commit_id.to_owned(), path.to_path_buf()),
+            Arc::clone(&contents),
+        );
         let Some(hunks) = self.pending_hunks.as_ref().or(self.hunks.as_ref()).cloned() else {
             return false;
         };
         self.pending_document = Some(ReviewDocument {
             selection: expected,
             title: view::file_title(file),
+            empty_message: "Commit contains no file changes.",
             patch: contents,
             mark_conflicts: false,
             hunks,
@@ -324,10 +331,13 @@ impl HistoryActivity {
             commit_id: commit_id.to_owned(),
             path: path.to_path_buf(),
         };
-        if query_id.0 != self.latest_file || self.pending_selection.as_ref() != Some(&expected) {
+        if query_id.0 != self.latest_file {
             return false;
         }
         self.file_pending = false;
+        if self.pending_selection.as_ref() != Some(&expected) {
+            return false;
+        }
         self.pending_selection = None;
         self.pending_document = None;
         self.pending_mode = None;
@@ -381,40 +391,16 @@ impl HistoryActivity {
 
     pub fn prepare_frame(&mut self, area: Rect, split: PaneSplit) -> FramePreparation {
         let areas = view::areas(area, split);
-        let requested = self.pending_document.as_ref().or(self.document.as_ref());
-        let requested_mode = self
-            .pending_document
-            .as_ref()
-            .map_or(self.review.diff_view_mode, |_| {
-                self.pending_mode.unwrap_or(self.review.diff_view_mode)
-            });
-        let mut preparation = self.reviewer.prepare_review(
-            requested,
-            areas.review,
-            false,
-            requested_mode,
-            self.review.diff_scroll,
-            self.review.diff_horizontal_scroll,
-        );
-        self.review.apply_preparation(&preparation);
-        self.promote_ready_selection();
+        let preparation = self.prepare_review_frame(areas.review, false);
         self.prepare_pickers(areas, split);
-        preparation.preparing |= self.history_pending || self.patch_pending || self.file_pending;
-        let (requested_commit, selected_commit, displayed_commit) = self.document_commits();
-        preparation.requested_history_commit = requested_commit;
-        preparation.selected_history_commit = selected_commit;
-        preparation.displayed_history_commit = displayed_commit;
-        let (requested_file, selected_file, displayed_file) = self.document_files();
-        preparation.requested_history_file = requested_file;
-        preparation.selected_history_file = selected_file;
-        preparation.displayed_history_file = displayed_file;
-        if let Some(surface) = preparation.text_surface.as_mut() {
-            surface.surface = TextSurface::History;
-        }
         preparation
     }
 
     pub fn prepare_full_screen(&mut self, area: Rect) -> FramePreparation {
+        self.prepare_review_frame(area, true)
+    }
+
+    fn prepare_review_frame(&mut self, area: Rect, undecorated: bool) -> FramePreparation {
         let requested = self.pending_document.as_ref().or(self.document.as_ref());
         let requested_mode = self
             .pending_document
@@ -425,7 +411,7 @@ impl HistoryActivity {
         let mut preparation = self.reviewer.prepare_review(
             requested,
             area,
-            true,
+            undecorated,
             requested_mode,
             self.review.diff_scroll,
             self.review.diff_horizontal_scroll,
@@ -573,7 +559,19 @@ impl HistoryActivity {
         }
     }
 
-    fn handle_file_outcome(&mut self, outcome: PickerOutcome<HistoryTarget>) -> bool {
+    fn handle_file_outcome(&mut self, outcome: PickerOutcome<PathBuf>) -> bool {
+        let pending_commit = self
+            .pending_selection
+            .as_ref()
+            .and_then(selection_commit_id);
+        let displayed_commit = self.selection.as_ref().and_then(selection_commit_id);
+        if self.patch_pending
+            || pending_commit
+                .zip(displayed_commit)
+                .is_some_and(|ids| ids.0 != ids.1)
+        {
+            return false;
+        }
         let target = match outcome {
             PickerOutcome::Selected(target) | PickerOutcome::Activated(target) => target,
             PickerOutcome::Consumed => return true,
@@ -590,8 +588,7 @@ impl HistoryActivity {
         else {
             return false;
         };
-        let HistoryTarget::File(path) = target;
-        self.select_file(commit_id, &path, self.review.diff_view_mode)
+        self.select_file(commit_id, &target, self.review.diff_view_mode)
     }
 
     fn toggle_review_mode(&mut self) -> bool {
@@ -616,6 +613,11 @@ impl HistoryActivity {
         path: &std::path::Path,
         mode: DiffViewMode,
     ) -> bool {
+        let selection = ReviewSelection::HistoryFile {
+            commit_id: commit_id.clone(),
+            path: path.to_path_buf(),
+        };
+        self.supersede_pending_selection(&selection);
         let Some(file) = self
             .pending_files
             .as_deref()
@@ -626,12 +628,9 @@ impl HistoryActivity {
         else {
             return false;
         };
-        let selection = ReviewSelection::HistoryFile {
-            commit_id: commit_id.clone(),
-            path: path.to_path_buf(),
-        };
         self.pending_mode = Some(mode);
-        if mode != DiffViewMode::Hunk && !self.file_patches.contains_key(path) {
+        let cache_key = (commit_id.clone(), path.to_path_buf());
+        if mode != DiffViewMode::Hunk && !self.file_patches.contains_key(&cache_key) {
             self.request_file(commit_id, &file);
             return true;
         }
@@ -642,9 +641,10 @@ impl HistoryActivity {
         self.pending_document = Some(ReviewDocument {
             selection,
             title: view::file_title(&file),
+            empty_message: "Commit contains no file changes.",
             patch: self
                 .file_patches
-                .get(path)
+                .get(&cache_key)
                 .cloned()
                 .unwrap_or_else(|| Arc::from("")),
             mark_conflicts: false,

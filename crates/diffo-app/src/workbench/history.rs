@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use diffo_core::{CheckoutHistory, CommitFile, RepositoryQueryId};
 
@@ -50,7 +50,7 @@ impl Workbench {
         &mut self,
         query_id: RepositoryQueryId,
         commit_id: &str,
-        path: PathBuf,
+        path: &Path,
         contents: String,
     ) {
         if self

@@ -6,7 +6,7 @@ use diffo_core::{
     SyncPlan,
 };
 use ratatui::{Terminal, backend::TestBackend, buffer::Buffer, style::Color};
-use std::time::Duration;
+use std::{fmt::Write as _, time::Duration};
 
 mod command_queue;
 mod momentum;
@@ -171,15 +171,17 @@ fn activity_bar_click_selects_and_consumes_the_activity() {
 
 #[test]
 fn full_screen_diff_renders_styled_raw_hunks_and_x_closes_it() {
+    let mut patch = String::from("@@ -1,12 +1,12 @@\n-let old = true;\n+let new = false;\n");
+    for line in 2..=12 {
+        writeln!(patch, " context {line:02}").unwrap();
+    }
     let snapshot = RepositorySnapshot {
         files: vec![FileState {
             path: "src/main.rs".into(),
             old_path: None,
             kind: ChangeKind::Modified,
             staged: None,
-            unstaged: Some(FileDiff {
-                text: "@@ -1 +1 @@\n-let old = true;\n+let new = false;\n".to_owned(),
-            }),
+            unstaged: Some(FileDiff { text: patch }),
         }],
         ..RepositorySnapshot::default()
     };
@@ -225,11 +227,12 @@ fn full_screen_diff_renders_styled_raw_hunks_and_x_closes_it() {
         terminal.backend().buffer()[(area.right().saturating_sub(1), 0)].symbol(),
         diffo_ui::icons::DISMISS,
     );
-    assert!(row(1).starts_with("@@ -1 +1 @@"));
-    assert!(row(2).starts_with("-let old = true;"));
-    assert!(row(3).starts_with("+let new = false;"));
-    assert_eq!(terminal.backend().buffer()[(0, 2)].bg, Color::Indexed(52));
-    assert_eq!(terminal.backend().buffer()[(0, 3)].bg, Color::Indexed(22));
+    assert_eq!(workbench.diff.model.diff_scroll, 1);
+    assert!(row(1).starts_with("-let old = true;"));
+    assert!(row(2).starts_with("+let new = false;"));
+    assert!(row(3).starts_with(" context 02"));
+    assert_eq!(terminal.backend().buffer()[(0, 1)].bg, Color::Indexed(52));
+    assert_eq!(terminal.backend().buffer()[(0, 2)].bg, Color::Indexed(22));
     assert!(!row(0).contains("File Diff"));
     assert!(
         (0..area.height)
@@ -237,6 +240,17 @@ fn full_screen_diff_renders_styled_raw_hunks_and_x_closes_it() {
             .collect::<String>()
             .contains("Commands")
     );
+
+    let _ = workbench.handle_event(&key(KeyCode::Down), area);
+    workbench.prepare_frame(area);
+    assert_eq!(workbench.diff.model.diff_scroll, 5);
+    let backend = TestBackend::new(area.width, area.height);
+    let mut scrolled = Terminal::new(backend).unwrap();
+    scrolled.draw(|frame| workbench.render(frame)).unwrap();
+    let first_content_row = (0..area.width)
+        .map(|column| scrolled.backend().buffer()[(column, 1)].symbol())
+        .collect::<String>();
+    assert!(first_content_row.starts_with(" context 04"));
 
     let _ = workbench.handle_event(&key(KeyCode::Char('F')), area);
     assert!(workbench.full_screen());

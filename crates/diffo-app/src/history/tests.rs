@@ -10,7 +10,7 @@ use diffo_core::{
 use diffo_ui::PaneSplit;
 use ratatui::{Terminal, backend::TestBackend, layout::Rect};
 
-use super::{HistoryActivity, HistoryRequest, HistoryTarget, ReviewSelection};
+use super::{HistoryActivity, HistoryRequest, ReviewSelection};
 
 const AREA: Rect = Rect::new(0, 0, 100, 30);
 const PATCH: &str = concat!(
@@ -168,9 +168,9 @@ fn hunk_file_selection_stays_aggregate_and_r_loads_the_full_file_atomically() {
     install_pending_patch(&mut activity);
 
     assert!(
-        activity.handle_file_outcome(diffo_ui::file_picker::Outcome::Selected(
-            HistoryTarget::File(PathBuf::from("src/main.rs")),
-        ))
+        activity.handle_file_outcome(diffo_ui::file_picker::Outcome::Selected(PathBuf::from(
+            "src/main.rs"
+        ),))
     );
     assert!(activity.take_request().is_none());
     let hunk_revision = activity
@@ -210,7 +210,7 @@ fn hunk_file_selection_stays_aggregate_and_r_loads_the_full_file_atomically() {
         hunk_revision
     );
 
-    assert!(activity.accept_file(query_id, &commit_id, path, FILE_PATCH.to_owned()));
+    assert!(activity.accept_file(query_id, &commit_id, &path, FILE_PATCH.to_owned()));
     assert_eq!(activity.review.diff_view_mode, super::DiffViewMode::Hunk);
 
     let preparation = activity.prepare_frame(AREA, PaneSplit::default());
@@ -243,9 +243,9 @@ fn selecting_another_history_file_jumps_within_the_same_aggregate_hunk() {
     let revision = first.content_revision;
 
     assert!(
-        activity.handle_file_outcome(diffo_ui::file_picker::Outcome::Selected(
-            HistoryTarget::File(PathBuf::from("src/second.rs")),
-        ))
+        activity.handle_file_outcome(diffo_ui::file_picker::Outcome::Selected(PathBuf::from(
+            "src/second.rs"
+        ),))
     );
     assert!(activity.take_request().is_none());
     let second = activity.prepare_frame(area, split);
@@ -259,6 +259,107 @@ fn selecting_another_history_file_jumps_within_the_same_aggregate_hunk() {
             path: PathBuf::from("src/second.rs"),
         })
     );
+}
+
+#[test]
+fn full_file_cache_is_scoped_to_the_commit() {
+    let split = PaneSplit::default();
+    let mut activity = HistoryActivity::new(&snapshot("aaaaaaaa"));
+    load_history(&mut activity);
+    install_pending_patch(&mut activity);
+
+    assert!(activity.toggle_review_mode());
+    let Some(HistoryRequest::File {
+        query_id,
+        commit_id,
+        path,
+        ..
+    }) = activity.take_request()
+    else {
+        panic!("expected first file request");
+    };
+    assert!(activity.accept_file(
+        query_id,
+        &commit_id,
+        &path,
+        FILE_PATCH.replace("new", "first_commit"),
+    ));
+    activity.prepare_frame(AREA, split);
+
+    assert!(
+        activity.handle_commit_outcome(diffo_ui::file_picker::Outcome::Selected(
+            "bbbbbbbb".to_owned(),
+        ))
+    );
+    let Some(HistoryRequest::Patch {
+        query_id,
+        commit_id,
+    }) = activity.take_request()
+    else {
+        panic!("expected second commit patch request");
+    };
+    assert!(activity.accept_patch(query_id, &commit_id, PATCH.to_owned(), files()));
+    assert!(activity.toggle_review_mode());
+    assert!(matches!(
+        activity.take_request(),
+        Some(HistoryRequest::File { commit_id, .. }) if commit_id == "bbbbbbbb"
+    ));
+}
+
+#[test]
+fn superseded_history_requests_do_not_leave_the_activity_preparing() {
+    let split = PaneSplit::default();
+    let mut activity = HistoryActivity::new(&snapshot("aaaaaaaa"));
+    load_history(&mut activity);
+    let Some(HistoryRequest::Patch {
+        query_id,
+        commit_id,
+    }) = activity.take_request()
+    else {
+        panic!("expected initial patch request");
+    };
+    assert!(activity.accept_patch(query_id, &commit_id, TWO_FILE_PATCH.to_owned(), two_files(),));
+    activity.prepare_frame(AREA, split);
+
+    assert!(activity.toggle_review_mode());
+    let Some(HistoryRequest::File {
+        query_id,
+        commit_id,
+        path,
+        ..
+    }) = activity.take_request()
+    else {
+        panic!("expected file request");
+    };
+    assert!(
+        activity.handle_file_outcome(diffo_ui::file_picker::Outcome::Selected(PathBuf::from(
+            "src/second.rs"
+        ),))
+    );
+    assert!(!activity.accept_file(query_id, &commit_id, &path, FILE_PATCH.to_owned()));
+    activity.prepare_frame(AREA, split);
+    assert!(!activity.is_preparing());
+
+    assert!(
+        activity.handle_commit_outcome(diffo_ui::file_picker::Outcome::Selected(
+            "bbbbbbbb".to_owned(),
+        ))
+    );
+    let Some(HistoryRequest::Patch {
+        query_id,
+        commit_id,
+    }) = activity.take_request()
+    else {
+        panic!("expected superseded patch request");
+    };
+    assert!(
+        !activity.handle_file_outcome(diffo_ui::file_picker::Outcome::Selected(PathBuf::from(
+            "src/main.rs"
+        ),))
+    );
+    assert!(activity.accept_patch(query_id, &commit_id, PATCH.to_owned(), files()));
+    activity.prepare_frame(AREA, split);
+    assert!(!activity.is_preparing());
 }
 
 #[test]
@@ -289,7 +390,7 @@ fn stale_history_patch_and_file_results_cannot_replace_committed_state() {
     assert!(!activity.accept_file(
         RepositoryQueryId(0),
         "aaaaaaaa",
-        PathBuf::from("src/main.rs"),
+        Path::new("src/main.rs"),
         String::new(),
     ));
     assert_eq!(
@@ -377,4 +478,34 @@ fn renders_commit_and_file_pickers_with_compact_complete_change() {
         .unwrap();
 
     insta::assert_debug_snapshot!(terminal.backend().buffer());
+}
+
+#[test]
+fn empty_commit_explains_that_it_has_no_file_changes() {
+    let split = PaneSplit::default();
+    let mut activity = HistoryActivity::new(&snapshot("aaaaaaaa"));
+    load_history(&mut activity);
+    let Some(HistoryRequest::Patch {
+        query_id,
+        commit_id,
+    }) = activity.take_request()
+    else {
+        panic!("expected patch request");
+    };
+    assert!(activity.accept_patch(query_id, &commit_id, String::new(), Vec::new()));
+    activity.prepare_frame(AREA, split);
+    let backend = TestBackend::new(AREA.width, AREA.height);
+    let mut terminal = Terminal::new(backend).unwrap();
+
+    terminal
+        .draw(|frame| activity.render(frame, AREA, split))
+        .unwrap();
+    let rendered = terminal
+        .backend()
+        .buffer()
+        .content
+        .iter()
+        .map(ratatui::buffer::Cell::symbol)
+        .collect::<String>();
+    assert!(rendered.contains("Commit contains no file changes."));
 }

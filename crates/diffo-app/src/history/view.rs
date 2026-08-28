@@ -10,8 +10,6 @@ use ratatui::{
     text::{Line, Span},
 };
 
-use super::HistoryTarget;
-
 #[derive(Clone, Copy)]
 pub(super) struct HistoryAreas {
     pub(super) commits: Rect,
@@ -64,7 +62,10 @@ pub(super) fn commit_document(
     document
 }
 
-pub(super) fn file_document(files: &[CommitFile], border_style: Style) -> Document<HistoryTarget> {
+pub(super) fn file_document(
+    files: &[CommitFile],
+    border_style: Style,
+) -> Document<std::path::PathBuf> {
     let rows = files
         .iter()
         .map(|file| {
@@ -77,7 +78,7 @@ pub(super) fn file_document(files: &[CommitFile], border_style: Style) -> Docume
                 ChangeKind::Conflicted => "U",
             };
             Row::flat(
-                HistoryTarget::File(file.path.clone()),
+                file.path.clone(),
                 Line::styled(
                     terminal_safe_text(&format!(
                         "{marker} {}{}",

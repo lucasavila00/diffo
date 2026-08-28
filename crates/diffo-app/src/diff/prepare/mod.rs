@@ -1,45 +1,133 @@
 use super::{
-    Arc, ChangeRegion, ChangeWarningAreas, DiffBlock, DiffDocument, DiffKey, DiffViewMode,
-    HIGHLIGHT_LOOKBEHIND_LINES, HighlightCache, HighlightedDiff, HunkRow,
-    MAX_HIGHLIGHT_BYTES_PER_SIDE, MAX_HIGHLIGHT_FILE_LINES, MAX_SYNC_BYTES, MAX_SYNC_LINES,
-    PREPARED_BUFFER_CACHE_SIZE, PrepareCommit, PrepareOutcome, PrepareRequest, ProjectionOptions,
-    RenderLine, Renderer, RowKind, ScrollAnchor, ScrollbarMetrics, Span, SyntaxHighlighter,
-    ViewportTransition, channel, inline_change_regions, inline_rows_with_options,
-    parse_unified_patch, side_by_side_change_regions, side_by_side_rows_with_options, sync_channel,
-    terminal_safe_text, thread,
+    Arc, ChangeRegion, ChangeWarningAreas, DiffKey, DiffViewMode, HighlightCache, HighlightedDiff,
+    MAX_SYNC_BYTES, MAX_SYNC_LINES, PREPARED_BUFFER_CACHE_SIZE, PrepareCommit, PrepareOutcome,
+    PrepareRequest, ProjectionOptions, Renderer, ScrollAnchor, ScrollbarMetrics, Span,
+    SyntaxHighlighter, ViewportTransition, channel, inline_change_regions,
+    inline_rows_with_options, parse_unified_patch, side_by_side_change_regions,
+    side_by_side_rows_with_options, sync_channel, terminal_safe_text, thread,
 };
-use diffo_diff::SideBySideRow;
-use diffo_highlight::{HighlightWindowRequest, HighlightedWindow, LineRange};
-use diffo_ui::text_view::centered_window;
+use diffo_diff::DiffDocument;
+use diffo_highlight::LineRange;
+use diffo_ui::text_view::{SyntaxCoverage, centered_window};
 
 mod anchor;
 mod hunk;
+mod hunk_syntax;
 pub(in crate::diff) mod state;
+mod syntax;
 use anchor::first_change;
-use hunk::{aggregate_hunk_rows, complete_change_rows, hunk_change_regions, hunk_rows};
-
-#[derive(Clone, Copy)]
-struct ProjectionHighlightRequest {
-    viewport_rows: usize,
-    mode: DiffViewMode,
-    target_scroll: Option<usize>,
-    prefetch_viewports: usize,
-}
+use hunk::{aggregate_hunk_rows, hunk_change_regions};
+use hunk_syntax::highlight_aggregate;
+use syntax::{ProjectionHighlightRequest, highlight_visible_window, projection_highlight_ranges};
+pub(in crate::diff) use syntax::{diff_file_lines, should_syntax_highlight};
 
 pub(in crate::diff) fn prepare_diff(
-    request: PrepareRequest,
+    request: &PrepareRequest,
     highlighter: &SyntaxHighlighter,
 ) -> Option<HighlightCache> {
     let mode = request.key.mode;
     debug_assert_eq!(request.mode, mode);
-    let (document, aggregate_hunk, hunk_targets) = if mode == DiffViewMode::Hunk
-        && let Some(segments) = request.key.hunk_segments.as_deref()
-    {
-        let aggregate = aggregate_hunk_rows(segments)?;
-        (aggregate.document, Some(aggregate.rows), aggregate.targets)
+    let (mut cache, aggregate_documents) = prepare_rows(request)?;
+    let highlight_request = ProjectionHighlightRequest {
+        viewport_rows: request.viewport_rows,
+        mode,
+        target_scroll: request.target_scroll,
+        prefetch_viewports: request.prefetch_viewports,
+    };
+    let file_syntax_eligible =
+        request.key.selection.file_path().is_some() && should_syntax_highlight(&cache.document);
+    let (old_range, new_range) = projection_highlight_ranges(
+        &cache.inline,
+        &cache.inline_changes,
+        &cache.side_by_side,
+        &cache.side_by_side_changes,
+        &cache.hunk,
+        &cache.hunk_changes,
+        highlight_request,
+    );
+    let aggregate_syntax = request
+        .key
+        .hunk_segments
+        .as_deref()
+        .zip(aggregate_documents.as_deref())
+        .map(|(segments, documents)| {
+            highlight_aggregate(
+                highlighter,
+                segments,
+                documents,
+                &cache.hunk,
+                &cache.hunk_changes,
+                highlight_request,
+            )
+        });
+    let syntax_highlighted = aggregate_syntax
+        .as_ref()
+        .map_or(file_syntax_eligible, |syntax| syntax.enabled);
+    let highlighted_window = aggregate_syntax
+        .is_none()
+        .then(|| {
+            highlight_visible_window(
+                highlighter,
+                &request.key,
+                &cache.document,
+                syntax_highlighted,
+                old_range,
+                new_range,
+            )
+        })
+        .flatten();
+    cache.highlighted = highlighted_window
+        .as_ref()
+        .map_or_else(HighlightedDiff::default, |window| window.styles.clone());
+    cache.hunk_highlighted = aggregate_syntax
+        .as_ref()
+        .map_or_else(Vec::new, |syntax| syntax.styles.clone());
+    cache.syntax_highlighted = syntax_highlighted;
+    cache.highlighted_old_coverage = highlighted_window
+        .as_ref()
+        .and_then(|window| window.old_coverage)
+        .into_iter()
+        .collect();
+    cache.highlighted_new_coverage = highlighted_window
+        .as_ref()
+        .and_then(|window| window.new_coverage)
+        .into_iter()
+        .collect();
+    if let Some(syntax) = aggregate_syntax {
+        cache.highlighted_hunk_coverage = syntax.row_coverage;
+        cache.hunk_old_coverage = syntax.old_coverage;
+        cache.hunk_new_coverage = syntax.new_coverage;
+        #[cfg(test)]
+        {
+            cache.highlighted_lines_processed = syntax.lines_processed;
+        }
+    } else {
+        #[cfg(test)]
+        {
+            cache.highlighted_lines_processed = highlighted_window.as_ref().map_or(0, |window| {
+                window
+                    .old_lines_processed
+                    .saturating_add(window.new_lines_processed)
+            });
+        }
+    }
+    Some(cache)
+}
+
+fn prepare_rows(request: &PrepareRequest) -> Option<(HighlightCache, Option<Vec<DiffDocument>>)> {
+    let mode = request.key.mode;
+    let (document, hunk, documents, hunk_targets) = if mode == DiffViewMode::Hunk {
+        let aggregate = aggregate_hunk_rows(request.key.hunk_segments.as_deref()?)?;
+        (
+            aggregate.document,
+            aggregate.rows,
+            Some(aggregate.documents),
+            aggregate.targets,
+        )
     } else {
         (
             parse_unified_patch(&request.key.patch).ok()?,
+            Vec::new(),
             None,
             Vec::new(),
         )
@@ -47,237 +135,38 @@ pub(in crate::diff) fn prepare_diff(
     let options = ProjectionOptions {
         mark_conflicts: request.key.mark_conflicts,
     };
-    let hunk = if let Some(hunk) = aggregate_hunk {
-        hunk
-    } else if mode == DiffViewMode::Hunk {
-        match &request.key.selection {
-            super::ReviewSelection::File(_) | super::ReviewSelection::HistoryFile { .. } => {
-                hunk_rows(&document, request.key.mark_conflicts)
-            }
-            super::ReviewSelection::CompleteChange(_) => {
-                complete_change_rows(&request.key.patch, request.key.mark_conflicts)
-            }
-        }
-    } else {
-        Vec::new()
-    };
-    let hunk_changes = hunk_change_regions(&hunk);
     let inline = if mode == DiffViewMode::Inline {
         inline_rows_with_options(&document, options)
     } else {
         Vec::new()
     };
-    let inline_changes = inline_change_regions(&inline);
     let side_by_side = if mode == DiffViewMode::SideBySide {
         side_by_side_rows_with_options(&document, options)
     } else {
         Vec::new()
     };
-    let side_by_side_changes = side_by_side_change_regions(&side_by_side);
-    let syntax_highlighted =
-        request.key.selection.file_path().is_some() && should_syntax_highlight(&document);
-    let (old_range, new_range) = projection_highlight_ranges(
-        &inline,
-        &inline_changes,
-        &side_by_side,
-        &side_by_side_changes,
-        &hunk,
-        &hunk_changes,
-        ProjectionHighlightRequest {
-            viewport_rows: request.viewport_rows,
-            mode,
-            target_scroll: request.target_scroll,
-            prefetch_viewports: request.prefetch_viewports,
-        },
-    );
-    let highlighted_window = highlight_visible_window(
-        highlighter,
-        &request.key,
-        &document,
-        syntax_highlighted,
-        old_range,
-        new_range,
-    );
-    let syntax_styles = highlighted_window
-        .as_ref()
-        .map_or_else(HighlightedDiff::default, |window| window.styles.clone());
-    Some(HighlightCache {
-        key: request.key,
+    let cache = HighlightCache {
+        key: request.key.clone(),
         document,
+        inline_changes: inline_change_regions(&inline),
+        side_by_side_changes: side_by_side_change_regions(&side_by_side),
+        hunk_changes: hunk_change_regions(&hunk),
         inline,
         side_by_side,
         hunk,
-        inline_changes,
-        side_by_side_changes,
-        hunk_changes,
         hunk_targets,
-        highlighted: syntax_styles,
-        syntax_highlighted,
-        highlighted_old_coverage: highlighted_window
-            .as_ref()
-            .and_then(|window| window.old_coverage)
-            .into_iter()
-            .collect(),
-        highlighted_new_coverage: highlighted_window
-            .as_ref()
-            .and_then(|window| window.new_coverage)
-            .into_iter()
-            .collect(),
+        highlighted: HighlightedDiff::default(),
+        hunk_highlighted: Vec::new(),
+        syntax_highlighted: false,
+        highlighted_old_coverage: SyntaxCoverage::default(),
+        highlighted_new_coverage: SyntaxCoverage::default(),
+        highlighted_hunk_coverage: SyntaxCoverage::default(),
+        hunk_old_coverage: Vec::new(),
+        hunk_new_coverage: Vec::new(),
         #[cfg(test)]
-        highlighted_lines_processed: highlighted_window.as_ref().map_or(0, |window| {
-            window
-                .old_lines_processed
-                .saturating_add(window.new_lines_processed)
-        }),
-    })
-}
-
-fn highlight_visible_window(
-    highlighter: &SyntaxHighlighter,
-    key: &DiffKey,
-    document: &DiffDocument,
-    eligible: bool,
-    old: Option<LineRange>,
-    new: Option<LineRange>,
-) -> Option<HighlightedWindow> {
-    key.selection.file_path().and_then(|path| {
-        eligible.then(|| {
-            highlighter.highlight_window(
-                path,
-                document,
-                HighlightWindowRequest {
-                    old,
-                    new,
-                    lookbehind_lines: HIGHLIGHT_LOOKBEHIND_LINES,
-                    maximum_bytes_per_side: MAX_HIGHLIGHT_BYTES_PER_SIDE,
-                },
-            )
-        })
-    })
-}
-
-fn projection_highlight_ranges(
-    inline: &[RenderLine],
-    inline_changes: &[ChangeRegion],
-    side_by_side: &[SideBySideRow],
-    side_by_side_changes: &[ChangeRegion],
-    hunk: &[HunkRow],
-    hunk_changes: &[ChangeRegion],
-    request: ProjectionHighlightRequest,
-) -> (Option<LineRange>, Option<LineRange>) {
-    let window_viewports = request.prefetch_viewports.max(1);
-    debug_assert_eq!(window_viewports % 2, 1);
-    let inline_target = request
-        .target_scroll
-        .filter(|_| request.mode == DiffViewMode::Inline)
-        .or_else(|| inline_changes.first().map(|change| change.first))
-        .unwrap_or(0);
-    let side_target = request
-        .target_scroll
-        .filter(|_| request.mode == DiffViewMode::SideBySide)
-        .or_else(|| side_by_side_changes.first().map(|change| change.first))
-        .unwrap_or(0);
-    let hunk_target = request
-        .target_scroll
-        .filter(|_| request.mode == DiffViewMode::Hunk)
-        .or_else(|| hunk_changes.first().map(|change| change.first))
-        .unwrap_or(0);
-    let inline_window = centered_window(
-        inline_target,
-        inline.len(),
-        request.viewport_rows,
-        window_viewports,
-    );
-    let side_window = centered_window(
-        side_target,
-        side_by_side.len(),
-        request.viewport_rows,
-        window_viewports,
-    );
-    let hunk_window = centered_window(
-        hunk_target,
-        hunk.len(),
-        request.viewport_rows,
-        window_viewports,
-    );
-    let mut old = None;
-    let mut new = None;
-    let include_inline = request.target_scroll.is_none() || request.mode == DiffViewMode::Inline;
-    for row in inline
-        .iter()
-        .skip(inline_window.start)
-        .take(inline_window.len())
-        .filter(|_| include_inline)
-    {
-        match row.kind {
-            RowKind::Removed => include_line(&mut old, row.number),
-            RowKind::Added | RowKind::Context | RowKind::Changed | RowKind::Conflict => {
-                include_line(&mut new, row.number);
-            }
-            RowKind::Header | RowKind::Meta => {}
-        }
-    }
-    let include_side = request.target_scroll.is_none() || request.mode == DiffViewMode::SideBySide;
-    for row in side_by_side
-        .iter()
-        .skip(side_window.start)
-        .take(side_window.len())
-        .filter(|_| include_side)
-    {
-        include_line(&mut old, row.old.as_ref().and_then(|line| line.number));
-        include_line(&mut new, row.new.as_ref().and_then(|line| line.number));
-    }
-    let include_hunk = request.target_scroll.is_none() || request.mode == DiffViewMode::Hunk;
-    for row in hunk
-        .iter()
-        .skip(hunk_window.start)
-        .take(hunk_window.len())
-        .filter(|_| include_hunk)
-    {
-        include_line(&mut old, row.old_number);
-        include_line(&mut new, row.new_number);
-    }
-    (old, new)
-}
-
-fn include_line(range: &mut Option<LineRange>, line: Option<u32>) {
-    let Some(line) = line else {
-        return;
+        highlighted_lines_processed: 0,
     };
-    match range {
-        Some(range) => {
-            range.start = range.start.min(line);
-            range.end = range.end.max(line);
-        }
-        None => *range = Some(LineRange::new(line, line)),
-    }
-}
-
-pub(in crate::diff) fn should_syntax_highlight(document: &DiffDocument) -> bool {
-    diff_file_lines(document) < MAX_HIGHLIGHT_FILE_LINES
-}
-
-pub(in crate::diff) fn diff_file_lines(document: &DiffDocument) -> usize {
-    let mut maximum = 0;
-    let mut include = |line: &diffo_diff::DiffLine| {
-        maximum = maximum.max(
-            line.old_number
-                .into_iter()
-                .chain(line.new_number)
-                .max()
-                .map_or(0, |number| number as usize),
-        );
-    };
-    for block in document.hunks.iter().flat_map(|hunk| &hunk.blocks) {
-        match block {
-            DiffBlock::Context(lines) => lines.iter().for_each(&mut include),
-            DiffBlock::Change { removed, added, .. } => {
-                removed.iter().chain(added).for_each(&mut include);
-            }
-            DiffBlock::Meta(_) => {}
-        }
-    }
-    maximum
+    Some((cache, documents))
 }
 
 impl Renderer {
@@ -370,6 +259,16 @@ impl Renderer {
         if !cache.syntax_highlighted {
             return true;
         }
+        if mode == DiffViewMode::Hunk && cache.key.hunk_segments.is_some() {
+            let window = centered_window(target, cache.hunk.len(), self.diff_viewport_rows, 1);
+            let needed = (!window.is_empty()).then(|| {
+                LineRange::new(
+                    u32::try_from(window.start).unwrap_or(u32::MAX),
+                    u32::try_from(window.end.saturating_sub(1)).unwrap_or(u32::MAX),
+                )
+            });
+            return cache.highlighted_hunk_coverage.covers(needed);
+        }
         let (old, new) = projection_highlight_ranges(
             &cache.inline,
             &cache.inline_changes,
@@ -444,7 +343,7 @@ impl Renderer {
             let outcome = PrepareOutcome {
                 key: requested.clone(),
                 target_scroll,
-                cache: prepare_diff(request, &self.highlighter),
+                cache: prepare_diff(&request, &self.highlighter),
             };
             self.install_outcome(outcome);
             return Some(PrepareCommit { target_scroll });
@@ -506,6 +405,36 @@ impl Renderer {
         {
             current.highlighted.old.append(&mut cache.highlighted.old);
             current.highlighted.new.append(&mut cache.highlighted.new);
+            for (index, mut highlighted) in cache.hunk_highlighted.into_iter().enumerate() {
+                let Some(current_highlighted) = current.hunk_highlighted.get_mut(index) else {
+                    continue;
+                };
+                current_highlighted.old.append(&mut highlighted.old);
+                current_highlighted.new.append(&mut highlighted.new);
+                if let Some(coverage) = current.hunk_old_coverage.get_mut(index) {
+                    coverage.merge(
+                        cache
+                            .hunk_old_coverage
+                            .get(index)
+                            .into_iter()
+                            .flat_map(|coverage| coverage.iter().copied()),
+                    );
+                    coverage.retain_styles(&mut current_highlighted.old);
+                }
+                if let Some(coverage) = current.hunk_new_coverage.get_mut(index) {
+                    coverage.merge(
+                        cache
+                            .hunk_new_coverage
+                            .get(index)
+                            .into_iter()
+                            .flat_map(|coverage| coverage.iter().copied()),
+                    );
+                    coverage.retain_styles(&mut current_highlighted.new);
+                }
+            }
+            current
+                .highlighted_hunk_coverage
+                .merge(cache.highlighted_hunk_coverage.iter().copied());
             current
                 .highlighted_old_coverage
                 .merge(cache.highlighted_old_coverage.iter().copied());
@@ -658,7 +587,7 @@ impl Renderer {
                     }
                     let key = request.key.clone();
                     let target_scroll = request.target_scroll;
-                    let cache = prepare_diff(request, &worker_highlighter);
+                    let cache = prepare_diff(&request, &worker_highlighter);
                     if results
                         .send(PrepareOutcome {
                             key,

@@ -60,14 +60,7 @@ impl Tool for DiffActivity {
 
     fn prepare_frame(&mut self, area: Rect, _split: PaneSplit) -> FramePreparation {
         let preparation = self.renderer.prepare_frame(&self.model, area);
-        if let Some(viewport) = preparation.viewport_transition {
-            self.model
-                .set_diff_viewport(viewport.vertical, viewport.horizontal);
-        }
-        self.model.clamp_diff_scroll(
-            preparation.maximum_vertical_scroll,
-            preparation.maximum_horizontal_scroll,
-        );
+        self.model.review.apply_preparation(&preparation);
         preparation
     }
 

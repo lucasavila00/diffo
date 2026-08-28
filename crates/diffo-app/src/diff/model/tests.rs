@@ -255,8 +255,8 @@ fn resizes_the_file_pane() {
 fn toggles_diff_view_mode() {
     let mut model = model();
     assert_eq!(model.diff_view_mode, DiffViewMode::Inline);
-    model.scroll_diff_down();
-    model.scroll_diff_right();
+    update(&mut model, Message::ScrollDiffDown);
+    update(&mut model, Message::ScrollDiffRight);
 
     update(&mut model, Message::ToggleDiffView);
     assert_eq!(model.diff_view_mode, DiffViewMode::SideBySide);

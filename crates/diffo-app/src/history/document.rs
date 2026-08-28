@@ -4,7 +4,7 @@ use diffo_core::{HeadState, RepositorySnapshot};
 use diffo_ui::terminal_safe_text;
 use ratatui::text::Line;
 
-use super::{HistoryActivity, HistoryTarget, ReviewSelection};
+use super::{HistoryActivity, ReviewSelection};
 
 impl HistoryActivity {
     #[must_use]
@@ -72,10 +72,10 @@ pub(super) fn selection_commit_id(selection: &ReviewSelection) -> Option<&str> {
     }
 }
 
-pub(super) fn selection_target(selection: &ReviewSelection) -> Option<HistoryTarget> {
+pub(super) fn selection_target(selection: &ReviewSelection) -> Option<PathBuf> {
     match selection {
         ReviewSelection::File(_) | ReviewSelection::CompleteChange(_) => None,
-        ReviewSelection::HistoryFile { path, .. } => Some(HistoryTarget::File(path.clone())),
+        ReviewSelection::HistoryFile { path, .. } => Some(path.clone()),
     }
 }
 

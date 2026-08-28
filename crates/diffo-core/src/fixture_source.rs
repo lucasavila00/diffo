@@ -353,6 +353,7 @@ impl Repository for MutableFixtureRepository {
                 .files
                 .iter()
                 .filter(|file| file.staged.is_some() || file.unstaged.is_some())
+                .take(2)
                 .map(|file| crate::CommitFile {
                     path: file.path.clone(),
                     old_path: file.old_path.clone(),
@@ -510,6 +511,25 @@ mod tests {
             .expect("fixture file");
         assert!(file.staged.is_none());
         assert!(file.unstaged.is_some());
+    }
+
+    #[test]
+    fn mock_commit_review_files_match_its_aggregate_patch() {
+        let fixture = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("fixtures")
+            .join("repository-state.ron");
+        let repository = MutableFixtureRepository::new(fixture).expect("fixture should load");
+        let snapshot = repository.snapshot().expect("mock snapshot");
+        let commit = &snapshot.recent_commits[0];
+
+        let review = repository
+            .commit_review(&commit.id)
+            .expect("mock commit review");
+
+        assert_eq!(
+            review.files.len(),
+            review.patch.matches("diff --git ").count()
+        );
     }
 
     #[test]

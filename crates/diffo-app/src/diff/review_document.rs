@@ -38,15 +38,15 @@ pub(super) fn hunk_focus_target(
     cache: &HighlightCache,
     selection: &ReviewSelection,
 ) -> Option<usize> {
-    let target = cache
+    let range = cache
         .hunk_targets
         .iter()
-        .find_map(|(candidate, row)| (candidate == selection).then_some(*row))?;
+        .find_map(|(candidate, range)| (candidate == selection).then_some(range))?;
     Some(
         cache
             .hunk_changes
             .iter()
-            .find(|change| change.first >= target)
-            .map_or(target, |change| change.first),
+            .find(|change| change.first >= range.start && change.first < range.end)
+            .map_or(range.start, |change| change.first),
     )
 }

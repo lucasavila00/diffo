@@ -143,8 +143,28 @@ impl Renderer {
             |cache| {
                 if cache.document.binary {
                     1
+                } else if cache.key.selection.complete_change_id().is_some() {
+                    cache.hunk.len().max(1)
                 } else {
-                    cache.hunk.len()
+                    cache
+                        .document
+                        .hunks
+                        .iter()
+                        .map(|hunk| {
+                            1 + hunk
+                                .blocks
+                                .iter()
+                                .map(|block| match block {
+                                    DiffBlock::Context(rows) => rows.len(),
+                                    DiffBlock::Change { removed, added, .. } => {
+                                        removed.len().saturating_add(added.len())
+                                    }
+                                    DiffBlock::Meta(_) => 1,
+                                })
+                                .sum::<usize>()
+                        })
+                        .sum::<usize>()
+                        .max(1)
                 }
             },
         )
@@ -166,13 +186,16 @@ impl Renderer {
         if cache.document.binary {
             return vec![Line::raw("Binary file changed.")];
         }
+        if cache.document.hunks.is_empty() && cache.hunk.is_empty() {
+            return vec![Line::raw(cache.key.empty_message)];
+        }
         if cache.key.selection.complete_change_id().is_some() {
             return cache
                 .hunk
                 .iter()
                 .skip(first_row)
                 .take(row_count)
-                .map(|row| hunk_line(row, &cache.highlighted))
+                .map(|row| hunk_line(row, cache))
                 .collect();
         }
         let end = first_row.saturating_add(row_count);
@@ -549,6 +572,9 @@ impl Renderer {
         if cache.document.binary {
             return vec![Line::raw("Binary file changed.")];
         }
+        if self.displayed_rows(cache.key.mode) == 0 {
+            return vec![Line::raw(cache.key.empty_message)];
+        }
 
         match cache.key.mode {
             DiffViewMode::Inline => cache
@@ -576,7 +602,7 @@ impl Renderer {
                 .iter()
                 .skip(first_row)
                 .take(row_count)
-                .map(|row| hunk_line(row, &cache.highlighted))
+                .map(|row| hunk_line(row, cache))
                 .collect(),
         }
     }
@@ -622,7 +648,11 @@ impl Renderer {
     }
 }
 
-fn hunk_line(row: &super::HunkRow, highlighted: &super::HighlightedDiff) -> Line<'static> {
+fn hunk_line(row: &super::HunkRow, cache: &super::HighlightCache) -> Line<'static> {
+    let highlighted = row
+        .segment
+        .and_then(|segment| cache.hunk_highlighted.get(segment))
+        .unwrap_or(&cache.highlighted);
     let syntax = match row.kind {
         RowKind::Removed => row
             .old_number

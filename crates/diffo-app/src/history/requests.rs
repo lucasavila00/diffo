@@ -59,4 +59,29 @@ impl HistoryActivity {
             old_path: file.old_path.clone(),
         });
     }
+
+    pub(super) fn supersede_pending_selection(&mut self, selection: &ReviewSelection) {
+        let Some(pending) = self.pending_selection.as_ref() else {
+            return;
+        };
+        if pending == selection {
+            return;
+        }
+        let changes_commit =
+            super::selection_commit_id(pending) != super::selection_commit_id(selection);
+        self.file_pending = false;
+        self.queued
+            .retain(|request| !matches!(request, HistoryRequest::File { .. }));
+        if !changes_commit {
+            return;
+        }
+        self.patch_pending = false;
+        self.queued
+            .retain(|request| !matches!(request, HistoryRequest::Patch { .. }));
+        self.pending_commits = None;
+        self.pending_document = None;
+        self.pending_files = None;
+        self.pending_hunks = None;
+        self.pending_mode = None;
+    }
 }

@@ -85,7 +85,13 @@ fn history_and_patch_selection_commit_atomically() {
 
     assert!(activity.commits.is_empty());
     assert!(activity.patch.is_none());
-    assert_eq!(activity.pending_commit.as_deref(), Some("aaaaaaaa"));
+    assert_eq!(
+        activity
+            .pending_selection
+            .as_ref()
+            .and_then(super::ReviewSelection::complete_change_id),
+        Some("aaaaaaaa")
+    );
 
     install_pending_patch(&mut activity);
 
@@ -95,6 +101,13 @@ fn history_and_patch_selection_commit_atomically() {
             .patch
             .as_ref()
             .map(|patch| patch.commit_id.as_str()),
+        Some("aaaaaaaa")
+    );
+    assert_eq!(
+        activity
+            .selection
+            .as_ref()
+            .and_then(super::ReviewSelection::complete_change_id),
         Some("aaaaaaaa")
     );
 }
@@ -175,7 +188,13 @@ fn clicking_a_commit_keeps_the_previous_row_and_patch_until_ready() {
             .map(|patch| patch.commit_id.as_str()),
         Some("aaaaaaaa")
     );
-    assert_eq!(activity.pending_commit.as_deref(), Some("bbbbbbbb"));
+    assert_eq!(
+        activity
+            .pending_selection
+            .as_ref()
+            .and_then(super::ReviewSelection::complete_change_id),
+        Some("bbbbbbbb")
+    );
 }
 
 #[test]

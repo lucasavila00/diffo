@@ -16,7 +16,7 @@ mod anchor;
 mod hunk;
 pub(in crate::diff) mod state;
 use anchor::first_change;
-use hunk::{hunk_change_regions, hunk_rows};
+use hunk::{complete_change_rows, hunk_change_regions, hunk_rows};
 
 #[derive(Clone, Copy)]
 struct ProjectionHighlightRequest {
@@ -31,28 +31,38 @@ pub(in crate::diff) fn prepare_diff(
     highlighter: &SyntaxHighlighter,
 ) -> Option<HighlightCache> {
     let document = parse_unified_patch(&request.key.patch).ok()?;
+    let mode = request.key.selection.view_mode(request.mode);
     let options = ProjectionOptions {
         mark_conflicts: request.key.mark_conflicts,
     };
-    let hunk = if request.mode == DiffViewMode::Hunk {
-        hunk_rows(&document, request.key.mark_conflicts)
+    let hunk = if mode == DiffViewMode::Hunk {
+        match &request.key.selection {
+            super::ReviewSelection::File(_) => hunk_rows(&document, request.key.mark_conflicts),
+            super::ReviewSelection::CompleteChange(_) => {
+                complete_change_rows(&request.key.patch, request.key.mark_conflicts)
+            }
+        }
     } else {
         Vec::new()
     };
     let hunk_changes = hunk_change_regions(&hunk);
-    let inline = if request.mode == DiffViewMode::Inline {
+    let inline = if mode == DiffViewMode::Inline {
         inline_rows_with_options(&document, options)
     } else {
         Vec::new()
     };
     let inline_changes = inline_change_regions(&inline);
-    let side_by_side = if request.mode == DiffViewMode::SideBySide {
+    let side_by_side = if mode == DiffViewMode::SideBySide {
         side_by_side_rows_with_options(&document, options)
     } else {
         Vec::new()
     };
     let side_by_side_changes = side_by_side_change_regions(&side_by_side);
-    let syntax_highlighted = should_syntax_highlight(&document);
+    let syntax_highlighted = request
+        .key
+        .selection
+        .file_key()
+        .is_some_and(|_| should_syntax_highlight(&document));
     let (old_range, new_range) = projection_highlight_ranges(
         &inline,
         &inline_changes,
@@ -62,22 +72,24 @@ pub(in crate::diff) fn prepare_diff(
         &hunk_changes,
         ProjectionHighlightRequest {
             viewport_rows: request.viewport_rows,
-            mode: request.mode,
+            mode,
             target_scroll: request.target_scroll,
             prefetch_viewports: request.prefetch_viewports,
         },
     );
-    let highlighted_window = syntax_highlighted.then(|| {
-        highlighter.highlight_window(
-            &request.key.file.path,
-            &document,
-            HighlightWindowRequest {
-                old: old_range,
-                new: new_range,
-                lookbehind_lines: HIGHLIGHT_LOOKBEHIND_LINES,
-                maximum_bytes_per_side: MAX_HIGHLIGHT_BYTES_PER_SIDE,
-            },
-        )
+    let highlighted_window = request.key.selection.file_key().and_then(|file| {
+        syntax_highlighted.then(|| {
+            highlighter.highlight_window(
+                &file.path,
+                &document,
+                HighlightWindowRequest {
+                    old: old_range,
+                    new: new_range,
+                    lookbehind_lines: HIGHLIGHT_LOOKBEHIND_LINES,
+                    maximum_bytes_per_side: MAX_HIGHLIGHT_BYTES_PER_SIDE,
+                },
+            )
+        })
     });
     let syntax_styles = highlighted_window
         .as_ref()
@@ -274,19 +286,19 @@ impl Renderer {
         anchor: Option<&ScrollAnchor>,
         model: &Model,
     ) -> ViewportTransition {
-        let same_file = before
+        let same_selection = before
             .zip(after)
-            .is_some_and(|(before, after)| before.file == after.file);
+            .is_some_and(|(before, after)| before.selection == after.selection);
         let same_mode = before
             .zip(after)
             .is_some_and(|(before, after)| before.mode == after.mode);
-        let vertical = if same_file && same_mode {
+        let vertical = if same_selection && same_mode {
             self.highlighted.as_ref().and_then(|cache| {
                 anchor
                     .and_then(|anchor| anchor.resolve(cache, cache.key.mode))
                     .or_else(|| first_change(cache, cache.key.mode))
             })
-        } else if same_file {
+        } else if same_selection {
             Some(0)
         } else {
             self.highlighted
@@ -296,7 +308,7 @@ impl Renderer {
         .unwrap_or(0);
         ViewportTransition {
             vertical,
-            horizontal: if same_file && same_mode {
+            horizontal: if same_selection && same_mode {
                 model.diff_horizontal_scroll
             } else {
                 0

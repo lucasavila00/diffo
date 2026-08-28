@@ -15,12 +15,14 @@ struct ExplorerSurface {
 
 #[derive(Deserialize)]
 struct HistoryFrame {
+    input_events: Vec<String>,
     requested_history_commit: Option<String>,
     selected_history_commit: Option<String>,
     displayed_history_commit: Option<String>,
     requested_history_file: Option<String>,
     selected_history_file: Option<String>,
     displayed_history_file: Option<String>,
+    viewport_transition: Option<(usize, usize)>,
     text_surface: Option<ExplorerSurface>,
 }
 
@@ -186,6 +188,81 @@ fn history_commit_selection_and_patch_commit_atomically() -> Result<()> {
                 surface.surface == "History" && surface.render_mode == "Full"
             })
     }));
+    Ok(())
+}
+
+#[test]
+fn clicking_a_history_file_in_hunk_view_places_its_hunk_header_at_the_top() -> Result<()> {
+    let repository = TestRepository::new()?;
+    fs::write(
+        repository.worktree.join("first-h.txt"),
+        hunk_file("FIRST_BASE", 20)?,
+    )?;
+    fs::write(
+        repository.worktree.join("second-h.txt"),
+        hunk_file("SECOND_BASE", 20)?,
+    )?;
+    git(
+        &repository.worktree,
+        &["add", "first-h.txt", "second-h.txt"],
+    )?;
+    git(
+        &repository.worktree,
+        &["commit", "-m", "Add history hunk selection fixtures"],
+    )?;
+    fs::write(
+        repository.worktree.join("first-h.txt"),
+        hunk_file("FIRST_CHANGED", 20)?,
+    )?;
+    fs::write(
+        repository.worktree.join("second-h.txt"),
+        hunk_file("HISTORY_HUNK_SECOND", 20)?,
+    )?;
+    git(
+        &repository.worktree,
+        &["commit", "-am", "Update history hunk selection fixtures"],
+    )?;
+    let trace_path = repository
+        .root
+        .path()
+        .join("history-hunk-file-click-frames.ronl");
+    let mut screen = DiffoScreen::launch_with_env(
+        diffo_binary()?,
+        &repository.worktree,
+        &[("DIFFO_TRACE_FRAMES", trace_path.as_os_str())],
+    )?;
+
+    screen
+        .press(Key::Tab)?
+        .wait_for_text("History")?
+        .wait_for_text("FIRST_CHANGED")?
+        .click(&Selector::text("second-h.txt"))?
+        .wait_for(&Selector::selected_row("second-h.txt"))?
+        .wait_for_text("HISTORY_HUNK_SECOND")?
+        .press(Key::Char('q'))?
+        .wait_for_exit()?;
+    drop(screen);
+
+    let trace = fs::read_to_string(&trace_path).context("read History hunk file-click trace")?;
+    let frames = trace
+        .lines()
+        .map(ron::from_str::<HistoryFrame>)
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+    let click = frames
+        .iter()
+        .position(|frame| {
+            frame
+                .input_events
+                .iter()
+                .any(|event| event.contains("Down(Left)"))
+        })
+        .with_context(|| format!("trace has no History file-click frame:\n{trace}"))?;
+    let committed = frames[click..]
+        .iter()
+        .find(|frame| frame.selected_history_file.as_deref() == Some("second-h.txt"))
+        .with_context(|| format!("History file click has no viewport commit:\n{trace}"))?;
+
+    assert_eq!(committed.viewport_transition, Some((49, 0)));
     Ok(())
 }
 

@@ -42,11 +42,5 @@ pub(super) fn hunk_focus_target(
         .hunk_targets
         .iter()
         .find_map(|(candidate, range)| (candidate == selection).then_some(range))?;
-    Some(
-        cache
-            .hunk_changes
-            .iter()
-            .find(|change| change.first >= range.start && change.first < range.end)
-            .map_or(range.start, |change| change.first),
-    )
+    Some(range.start)
 }

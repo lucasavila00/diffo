@@ -60,6 +60,14 @@ pub(super) fn navigation_file(changed: bool) -> Result<String> {
     Ok(contents)
 }
 
+pub(super) fn hunk_file(prefix: &str, lines: usize) -> Result<String> {
+    let mut contents = String::new();
+    for line in 0..lines {
+        writeln!(contents, "{prefix}_{line:02}").context("build hunk selection fixture")?;
+    }
+    Ok(contents)
+}
+
 pub(super) fn large_syntax_file(changed: bool) -> Result<String> {
     let mut contents = String::new();
     for line in 1..10_000 {

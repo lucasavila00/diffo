@@ -283,7 +283,7 @@ impl Renderer {
             focus_target,
             document_transition,
         );
-        if (document_committed || focus_committed)
+        if ((document_committed && focus_target.is_none()) || focus_committed)
             && self.requested.as_ref() == self.displayed_key()
         {
             self.displayed_selection.clone_from(&requested_selection);

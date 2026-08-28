@@ -326,12 +326,21 @@ fn hunk_mode_compacts_all_files_and_file_selection_only_moves_the_viewport() {
     let computations = renderer.highlight_computations;
 
     model.select_next();
+    let selection = ReviewSelection::File(model.selected.clone().unwrap());
+    let target = renderer
+        .highlighted
+        .as_ref()
+        .unwrap()
+        .hunk_targets
+        .iter()
+        .find_map(|(candidate, range)| (candidate == &selection).then_some(range.start))
+        .expect("selected file should have a hunk target");
     let transition = renderer
         .prepare_frame(&model, Rect::new(0, 0, 100, 30))
         .viewport_transition
         .expect("file focus should prepare a hunk target");
 
-    assert!(transition.vertical > 0);
+    assert_eq!(transition.vertical, target);
     assert_eq!(renderer.content_revision, revision);
     assert!(
         renderer

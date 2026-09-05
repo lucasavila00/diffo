@@ -15,8 +15,8 @@ Diff and Explorer also had separate code for syntax coverage and cache eviction.
 
 ## Decision
 
-- A file load reads Git once and creates a document ID and immutable line
-  buffer.
+- A file load reads filesystem content and Git patch metadata through the
+  repository source, then creates a document ID and immutable line buffer.
 - A syntax-window job uses that ID and buffer. It does not read Git or rebuild
   the viewer.
 - Results from an old document ID are ignored.
@@ -35,8 +35,8 @@ This extends [ADR 0086](0086-one-prepared-text-scrolling-state.md).
 ## Result
 
 Cold Explorer scrolling does bounded syntax work on text already in memory. It
-does not reload the file. Diff and Explorer use the same scrolling and coverage
-rules.
+does not reload the file or its Git metadata. Diff and Explorer use the same
+scrolling and coverage rules.
 
 Tests cover file-read counts, stale results, watcher events, shared coverage
 behavior, and cold scrolling in both directions. The five-second PTY guard stays

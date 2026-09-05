@@ -20,23 +20,22 @@ it from Diff or Explorer. Document `o: Quick Open` in the help interface. Do not
 add a CLI option, configuration setting, environment variable, alternate
 uppercase shortcut, or configurable binding.
 
-Quick Open lists the regular files and file symlinks in Explorer's latest
-committed filesystem path set. It therefore follows ADR 0080's inclusion and
-exclusion rules, including ignored and hidden files, and does not run a second
-filesystem walk or a Git query. Show worktree-relative paths and match the typed
-query fuzzily against both the file name and the whole relative path. Rank any
-file-name match above a path-only match, then compare fuzzy score, and use path
-order to break equal scores. A query containing a path separator naturally
-matches only the whole relative path. Select the first match. An empty query
-shows every file in path order. Reuse `diffo-ui`'s searchable picker behavior
-and semantic modal layout for text input, selection, scrolling, mouse
-activation, Enter, and Esc.
+Quick Open requests its own asynchronous worktree path discovery when the modal
+opens. The repository source lists regular files and file symlinks, then filters
+Git-ignored paths; hidden non-ignored files remain eligible. Install only the
+newest result and never walk the filesystem or query Git on the UI thread. Show
+worktree-relative paths and match the typed query fuzzily against both the file
+name and the whole relative path. Rank any file-name match above a path-only
+match, then compare fuzzy score, and use path order to break equal scores. A
+query containing a path separator naturally matches only the whole relative
+path. Select the first match. An empty query shows every file in path order.
+Reuse `diffo-ui`'s searchable picker behavior and semantic modal layout for text
+input, selection, scrolling, mouse activation, Enter, and Esc.
 
-While the initial Explorer path scan has no committed result, open the modal
-immediately with a loading state. Install only the newest completed path result
-and retain the user's query when it arrives. Filesystem refreshes replace the
-available items without closing the modal; reconcile selection by stable
-relative path and reject stale results.
+Open the modal immediately with a loading state and retain the user's query when
+the path result arrives. A later request replaces available items without
+closing the modal; reconcile selection by stable relative path and reject stale
+results.
 
 Activating a result closes Quick Open, switches to Explorer, expands the file's
 ancestors, selects and reveals its row, and requests that file for the Explorer
@@ -53,19 +52,18 @@ typing `o` in a command or searchable picker does not open Quick Open.
 
 ## Alternatives
 
-- Search only tracked files or changed files. Rejected because Quick Open
-  navigates the filesystem-backed Explorer, whose file membership is defined by
-  ADR 0080.
+- Include ignored files. Rejected because generated and dependency trees make
+  the global result set noisy and expensive.
 - Open a file directly inside Diff. Rejected because Explorer owns full-file
   reads, viewing, and filesystem navigation; Diff remains a view of Git changes.
-- Start a filesystem scan each time the modal opens. Rejected because Explorer
-  already owns an asynchronously refreshed authoritative path set.
+- Reuse Explorer's tree snapshot. Rejected because Quick Open needs an
+  independently requested flat, ignored-filtered result and must not couple its
+  modal lifetime to Explorer's committed tree.
 
 ## Consequences
 
-Any committed worktree file is reachable without manually traversing the
-Explorer tree, and Quick Open has the same view of the filesystem as Explorer.
-Opening a result always makes the destination and ownership visible by switching
-to Explorer.
+Any non-ignored worktree file is reachable without manually traversing the
+Explorer tree. Opening a result always makes the destination and ownership
+visible by switching to Explorer.
 
 Quick Open adds the otherwise-unassigned `o` global shortcut.

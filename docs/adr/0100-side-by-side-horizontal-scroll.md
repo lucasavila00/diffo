@@ -2,7 +2,7 @@
 
 ## Problem
 
-ADR 0025 kept side-by-side diffs fitted to the viewport. Each code cell was
+Side-by-side diffs were originally fitted to the viewport. Each code cell was
 clipped before rendering, the projection reported no horizontal overflow, and
 every horizontal input was clamped to zero. Long old or new lines could not be
 reviewed.
@@ -19,9 +19,11 @@ Apply visible-slice horizontal scrolling to side-by-side diffs:
   existing horizontal viewport state.
 - Hide the scrollbar and clamp the offset to zero when the visible slice fits.
 
+Inline mode follows the same visible-slice contract. Measure only rows in the
+vertical position committed for that frame, derive the maximum from them, and
+hide and clamp the scrollbar atomically when they fit. The control may appear or
+disappear during vertical scrolling because it describes only visible content.
+
 One shared controller is intentional. Independent offsets would make paired
 lines harder to compare and require extra state without improving access to
 either side.
-
-This supersedes ADR 0025's side-by-side fitted-width exception. Its
-visible-slice rules remain unchanged for inline diffs.

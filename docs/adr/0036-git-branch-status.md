@@ -67,9 +67,9 @@ repository-state label and file counts from the same immutable
 `RepositorySnapshot`; do not run Git from the renderer and do not maintain a
 second status cache.
 
-The branch segment is a mouse target. Clicking it opens the same checkout picker
-as the `Git: Checkout to...` palette command defined by
-[ADR 0037](0037-git-checkout-to.md). It does not add a keyboard shortcut.
+The branch segment is read-only. Checkout remains available through
+`Git: Checkout to...`; static footer content never masquerades as a mouse
+target.
 
 ## Rendering and refresh
 
@@ -81,9 +81,9 @@ complete snapshot are installed together.
 
 At narrow widths, preserve the head label first. Truncate a long branch name
 with a single ellipsis, then omit divergence, the state label, command help, and
-transient detail in that order. Errors may replace command help but must not
-replace the head label. Keep all clipping inside the footer; it must not change
-the pane layout.
+transient detail in that order. Errors use the acknowledgement modal and must
+not replace the head label. Keep all clipping inside the footer; it must not
+change the pane layout.
 
 ## Alternatives
 

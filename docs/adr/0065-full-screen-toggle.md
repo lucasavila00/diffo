@@ -1,6 +1,6 @@
 # ADR 0065: Full-screen buffer toggle
 
-Refines [ADR 0043](0043-shared-text-buffer-view.md).
+Refines [ADR 0086](0086-one-prepared-text-scrolling-state.md).
 
 ## Goal
 

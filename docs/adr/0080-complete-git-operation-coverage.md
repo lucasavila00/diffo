@@ -37,36 +37,32 @@ can inspect the fetched tips and apply one fixed policy. Adding `Git: Pull`
 beside Sync would provide a second, configuration-dependent route to the same
 state and would contradict ADR 0070.
 
-The real gaps are abandoning or shelving work, correcting the latest local
-commit, reversing published history safely, renaming a branch, and publishing a
-newly created branch. In particular, Diffo currently creates an untracked branch
-that Sync then rejects because it has no upstream.
+The remaining operations below complete that loop. They are implemented under
+the fixed behavior and safety constraints in this record.
 
 ## Decision
 
-Define complete operation coverage as the following matrix. Existing rows
-remain. Every missing row is required before Diffo claims complete everyday Git
-coverage.
+Define complete operation coverage as the following matrix.
 
 | Area     | Required outcome                                                 | Product action                        | Coverage |
 | -------- | ---------------------------------------------------------------- | ------------------------------------- | -------- |
 | Inspect  | Refresh status, diffs, commits, and branches                     | Automatic repository refresh          | Existing |
 | Index    | Stage or unstage one file or all files                           | Existing file and group actions       | Existing |
-| Worktree | Abandon unstaged work in one file                                | `Discard Changes` file action         | Missing  |
-| Worktree | Abandon all unstaged and untracked work                          | `Git: Discard All Changes...`         | Missing  |
-| Shelf    | Put tracked and untracked work aside                             | `Git: Stash Changes...`               | Missing  |
-| Shelf    | Restore a saved state without deleting it                        | `Git: Apply Stash...`                 | Missing  |
-| Shelf    | Delete a saved state                                             | `Git: Drop Stash...`                  | Missing  |
+| Worktree | Abandon unstaged work in one file                                | `Discard Changes` file action         | Existing |
+| Worktree | Abandon all unstaged and untracked work                          | `Git: Discard All Changes...`         | Existing |
+| Shelf    | Put tracked and untracked work aside                             | `Git: Stash Changes...`               | Existing |
+| Shelf    | Restore a saved state without deleting it                        | `Git: Apply Stash...`                 | Existing |
+| Shelf    | Delete a saved state                                             | `Git: Drop Stash...`                  | Existing |
 | Commit   | Create a commit                                                  | Existing Commit control               | Existing |
-| Commit   | Replace the latest unpublished commit                            | `Git: Amend Last Commit...`           | Missing  |
-| Commit   | Remove the latest unpublished commit but keep its changes staged | `Git: Undo Last Commit...`            | Missing  |
-| Commit   | Reverse one published non-merge commit with a new commit         | `Git: Revert Commit...`               | Missing  |
+| Commit   | Replace the latest unpublished commit                            | `Git: Amend Last Commit...`           | Existing |
+| Commit   | Remove the latest unpublished commit but keep its changes staged | `Git: Undo Last Commit...`            | Existing |
+| Commit   | Reverse one published non-merge commit with a new commit         | `Git: Revert Commit...`               | Existing |
 | Branch   | Check out an existing branch                                     | `Git: Checkout to...`                 | Existing |
 | Branch   | Create and check out a branch                                    | Existing Create Branch commands       | Existing |
-| Branch   | Rename the current local branch                                  | `Git: Rename Branch...`               | Missing  |
+| Branch   | Rename the current local branch                                  | `Git: Rename Branch...`               | Existing |
 | Branch   | Delete a local branch                                            | `Git: Delete Branch...`               | Existing |
 | Remote   | Refresh remote-tracking refs without integrating                 | `Git: Fetch`                          | Existing |
-| Remote   | Create the current branch on a remote and set its upstream       | `Git: Publish Branch...`              | Missing  |
+| Remote   | Create the current branch on a remote and set its upstream       | Existing Sync control and `Git: Sync` | Existing |
 | Remote   | Reconcile and publish a tracked branch                           | Existing Sync control and `Git: Sync` | Existing |
 
 These are product outcomes, not promises to invoke a same-named Git porcelain
@@ -148,20 +144,11 @@ delete any remote branch. The result therefore cannot make a later Sync silently
 push the new local name to the old remote name. The user may publish the renamed
 branch explicitly.
 
-`Git: Publish Branch...` is available only on an existing local branch with no
-upstream. If the repository has one remote, show that remote in the
-confirmation. If it has more than one, open a searchable remote picker. With no
-remotes, fail without mutation and explain that Diffo does not create remotes.
-
-Publish performs one normal push from the captured local tip to a same-named
-branch on the selected remote and sets that branch as the upstream only after
-the push succeeds. It never overwrites a non-fast-forward remote ref. Apply the
-protected `main` and `master` confirmation from
-[ADR 0079](0079-confirm-protected-branch-pushes.md) to the destination. A failed
-or cancelled publish leaves local branch configuration unchanged.
-
-Do not add a standalone Push action. Sync is the push path for tracked branches;
-Publish is the one-time path that creates the upstream required by Sync.
+Sync publishes a branch without an upstream under ADRs 0081 and 0085. It selects
+the remote, pushes the captured tip to a same-named branch, and writes upstream
+configuration only after success. It never overwrites a non-fast-forward remote
+ref and applies the protected-branch confirmation from ADR 0079. Do not add a
+standalone Push or Publish action.
 
 ## Shared operation rules
 
@@ -173,22 +160,20 @@ Every added action follows the existing command architecture:
   arguments, never shell text or display labels;
 - discover picker data on the repository query lane, identify it by immutable
   Git object or ref identity, and reject stale selections;
-- serialize mutations through `CommandQueue`, support cancellation where Git can
-  be stopped safely, and keep input and rendering responsive;
+- serialize mutations through the workbench intent queue, support cancellation
+  where Git can be stopped safely, and keep input and rendering responsive;
 - install each successful result and its complete repository snapshot
   atomically;
 - keep the previously committed snapshot on a failure that makes no repository
   change, and install the resulting snapshot when Git reports a partial state
   such as a conflicted stash apply;
-- use persistent errors and explicit confirmations for data loss or history
+- use acknowledged errors and explicit confirmations for data loss or history
   changes; confirmations always select Cancel first; and
 - never force-push, delete a remote ref, overwrite an existing branch, or
   discard ignored files.
 
 Detailed interaction or failure policy that does not fit these rules requires a
-follow-up ADR before that operation is implemented. Operations may land
-separately, but the coverage claim remains incomplete until every Missing row is
-implemented and verified.
+follow-up ADR before that operation is implemented.
 
 ## Boundaries
 
@@ -199,10 +184,10 @@ standalone Push for tracked branches.
 This coverage boundary excludes clone, init, remote creation or editing,
 remote-branch deletion, force-push, tags, notes, submodules, worktrees, sparse
 checkout, Git LFS, bisect, blame, patch and email workflows, reflog editing,
-arbitrary reset, interactive rebase, cherry-pick, local merge, general rebase,
-and sequencer Continue or Abort commands. Diffo's branch-and-pull-request
-workflow does not require those operations. They remain available through Git
-itself and need a new ADR to enter the product.
+arbitrary reset, interactive rebase, cherry-pick, general rebase, and sequencer
+Continue or Abort commands. Diffo's branch-and-pull-request workflow does not
+require those operations. They remain available through Git itself and need a
+new ADR to enter the product.
 
 External merge, rebase, cherry-pick, or revert states remain visible as
 repository state. Diffo may stage conflict resolutions, but it does not own

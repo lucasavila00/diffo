@@ -2,7 +2,7 @@
 
 ## Problem
 
-Diffo needs Explorer, Search, and Diff activities. Each activity has different
+Diffo needs Explorer, Diff, and History activities. Each activity has different
 state, input, rendering, and background work. One large model would couple them.
 Rebuilding an activity on every switch would lose its state.
 

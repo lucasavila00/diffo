@@ -30,9 +30,9 @@ Diffo button or control.
   control.
 - Prefer stable labels and clear control geometry for discoverability.
 
-This supersedes the hover styling, hover state, and hover test requirements in
-[ADR 0022](0022-large-hunk-navigation-targets.md). Its hunk-button placement,
-visibility, click behavior, and keyboard navigation decisions remain in force.
+This removes the earlier hover styling, hover state, and hover-test
+requirements. Current change-navigation placement and interaction are
+consolidated in [ADR 0114](0114-clickable-change-navigation-links.md).
 
 ## Consequences
 

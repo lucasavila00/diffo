@@ -1,7 +1,7 @@
 # ADR 0077: Create and check out branches from the command palette
 
 Builds on [ADR 0037](0037-git-checkout-to.md),
-[ADR 0055](0055-command-queue.md), and
+[ADR 0110](0110-queue-command-intents.md), and
 [ADR 0076](0076-recent-checkout-branches.md).
 
 ## Context
@@ -58,8 +58,8 @@ duplicate local names. The explicit-base command shows the checkout picker's
 existing loading state and carries its loaded branch list into the name modal
 without a second query. Give every load a query ID, ignore stale results, and
 drop loaded data when its modal closes. A load failure closes the modal and
-shows a persistent error toast. This discovery is not a command and has no
-progress or success toast.
+shows the shared acknowledgement modal. This discovery is not a command and has
+no progress or success toast.
 
 Submitting a valid name closes the modal and enqueues one `Create branch`
 repository action through `CommandQueue`. For the current-`HEAD` command,

@@ -24,7 +24,7 @@ The palette has exactly two commands:
 Enter runs the selected command. Run Git through the serialized repository
 service worker. Do not block input or rendering or give Git the terminal.
 Network prompts use the typed askpass path from ADR 0053. Refresh the snapshot
-after the command. Show failures in the status bar.
+after the command. Show failures in the shared acknowledgement modal.
 
 ## File actions
 
@@ -34,7 +34,7 @@ Show an action at the right of every writable file row:
 - `[-]` unstages a staged file.
 
 Clicking the action does not depend on selection. Clicking the rest of the row
-only selects it. Hide actions in read-only mode.
+only selects it.
 
 The Changes header shows `[+] Stage All`. Only `+` is clickable. The Staged
 header shows `[-] Unstage All`. Only `-` is clickable. Labels and brackets are

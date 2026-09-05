@@ -27,10 +27,18 @@ their full-screen modes.
 - A document or projection replacement cancels its pending target.
 - Rendering never uses a syntax skeleton as a scrolling fallback.
 - One shared centered-window function places bounded syntax coverage. Equal
-  movement magnitude selects equal odd window sizes in either direction.
+  movement magnitude selects equal odd window sizes in either direction: three
+  viewports for nearby work, seven for medium jumps, and thirteen for far jumps.
 - One shared `SyntaxCoverage` abstraction owns coverage readiness,
   adjacent-window merging, the eight-window bound, and matching style eviction
   for every syntax-backed text surface.
+
+Syntax work retains a fixed 256-line parser look-behind and 512 KiB per-side
+budget, and stops before a 10,000-line file. Coverage merges useful results from
+the same document even when their original target became stale, coalesces worker
+requests, and evicts spans with their matching window. The shared text component
+owns viewport math and pure committed rendering; activities own document I/O and
+mapping.
 
 Diff and Explorer continue to own document-specific syntax readiness, worker
 requests, stale result rejection, and rendering. Their document models may use
@@ -38,10 +46,8 @@ one coverage instance for plain text or one per diff side, but they may not
 reimplement the shared target state, coverage cache, window placement, or atomic
 commit policy.
 
-This realizes the shared text-surface ownership in ADR 0043, extends the common
-scroll core in ADR 0050, and supersedes ADR 0044's allowance for interim
-scrolling skeletons. ADR 0066 retains the direction-neutral prefetch sizes and
-is generalized by this decision to every text viewer.
+This extends the common scroll core in ADR 0050 and applies the same prepared
+surface contract to every text viewer.
 
 ## Consequences
 

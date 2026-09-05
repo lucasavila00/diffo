@@ -1,7 +1,5 @@
 # ADR 0012: Live repository refresh
 
-Supersedes [ADR 0005](0005-filesystem-watch.md).
-
 ## Problem
 
 Diffo reads Git once at startup. It reads again only after its own stage action.
@@ -26,8 +24,8 @@ worktree or Git event -> debounce -> collect full snapshot -> app message -> ren
   more.
 - Number requests and results. Never apply an older result after a newer result.
 - Send only complete `RepositorySnapshot` values to `diffo-app`.
-- Keep the last good snapshot when collection fails. Show the error in the
-  status bar.
+- Keep the last good snapshot when collection fails. Present the failure through
+  the shared acknowledgement modal from ADR 0084.
 - Stop and join the watcher and worker during normal shutdown.
 
 Use `diffo-repository-service` for the filesystem watcher adapter, debounce,

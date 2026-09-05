@@ -2,16 +2,10 @@
 
 ## Decision
 
-The UI reads one immutable `RepositorySnapshot`:
-
-```rust
-struct RepositorySnapshot {
-    branch: BranchState,
-    files: Vec<FileState>,
-    recent_commits: Vec<Commit>,
-    upstream: Option<UpstreamState>,
-}
-```
+The UI reads one immutable `RepositorySnapshot`. It carries explicit head and
+repository-operation state, staged and unstaged file state, recent commits, and
+upstream information. Keep the concrete Rust shape in `diffo-core`; do not copy
+it into this ADR as a second schema.
 
 Each file has separate staged and unstaged diffs. A file can have both.
 

@@ -1,8 +1,7 @@
 # ADR 0065: Propagate Git colors through Explorer folders
 
 Refines the status-color contract now consolidated in
-[ADR 0119](0119-separate-navigation-and-status-colors.md) and
-[ADR 0064](0064-separate-diff-status-and-tree-disclosure-columns.md).
+[ADR 0119](0119-separate-navigation-and-status-colors.md).
 
 ## Context
 
@@ -17,8 +16,13 @@ configuration, or work to the rendering loop.
 ## Decision
 
 Color changed files in the Explorer picker with the existing fixed Git styles.
-File rows retain the conflict-specific bold modifier. Deleted paths are absent
-from Explorer as required by ADR 0035.
+Semantic state does not add bold. Deleted paths are absent from Explorer as
+required by ADR 0035.
+
+Diff flat rows reserve a two-cell Git-status column followed by the file icon
+and path. Explorer rows reserve two indentation cells per depth and a two-cell
+disclosure column: collapsed/expanded glyphs for folders and spaces for files.
+Explorer shows no status letters; icons stay adjacent to names.
 
 Propagate status recursively to every ancestor directory while building the
 complete Explorer tree. A directory stores the strongest descendant status using
@@ -43,8 +47,8 @@ Explorer viewer titles remain neutral. Git letters remain exclusive to Diff, and
 viewer gutter markers remain unchanged. No themes, settings, runtime detection,
 or background tasks are added.
 
-This replaces ADR 0064's prohibition on Git-status colors in Explorer while
-keeping its compact disclosure layout and its ban on Explorer status letters.
+This keeps compact disclosure and the ban on Explorer status letters while
+restoring Git-status colors as navigation aids.
 
 ## Consequences
 

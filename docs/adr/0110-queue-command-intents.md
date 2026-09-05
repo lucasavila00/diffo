@@ -1,10 +1,17 @@
 # ADR 0110: Queue command intents
 
-Refines [ADR 0055](0055-command-queue.md) and
-[ADR 0056](0056-own-deferred-execution-dependencies.md). Builds on the AI commit
-flow in [PR #2](https://github.com/lucasavila00/diffo/pull/2).
+Refines [ADR 0056](0056-own-deferred-execution-dependencies.md). Builds on the
+AI commit flow in [PR #2](https://github.com/lucasavila00/diffo/pull/2).
 
 ## Decision
+
+The workbench owns the only application command queue. Commands have stable IDs,
+goal labels, one cancellation handle, and terminal results. It dispatches one at
+a time in FIFO order to the repository service's single serialized worker lane;
+watcher refreshes cannot race those mutations. Askpass, AI, Git children, and
+cleanup remain scoped to the active command, and the next command cannot start
+until cancellation or completion is acknowledged and its final snapshot is
+installed.
 
 Let people enter the next few commands while one is still running. We expect
 these queues to be short, usually two or three commands. For example, `a`, `i`,
@@ -48,3 +55,8 @@ command ID and cancellation handle while its phase changes.
 Use this queue for all user-started asynchronous repository, AI, and update
 commands. Keep read-only background preparation and picker queries on their
 existing schedulers.
+
+The queue is the source of command progress. A slow active command may animate
+the application border after the established delay, but that animation is a
+projection rather than a second lifecycle. Successful and informational results
+flow to the shared bounded toast queue; failures use the acknowledgement modal.

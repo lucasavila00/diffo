@@ -1,8 +1,7 @@
 # ADR 0063: Use one-cell Unicode file icons
 
-Refines [ADR 0049](0049-shared-file-picker.md),
-[ADR 0118](0118-use-terminal-defaults-for-ui-surfaces.md), and
-[ADR 0061](0061-align-explorer-tree-names.md).
+Refines [ADR 0049](0049-shared-file-picker.md) and
+[ADR 0118](0118-use-terminal-defaults-for-ui-surfaces.md).
 
 ## Goal
 
@@ -44,10 +43,9 @@ No separator space.
 
 - Files use a language or file-type icon.
 - Unknown files use a generic file icon.
-- Closed and open folders use different folder icons.
-- The folder icon replaces `▸` and `▾`. It shows both entry kind and expansion
+- Folders use one fixed folder icon. A separate disclosure glyph shows expansion
   state.
-- Git-status letters stay. Icons do not replace status.
+- Git-status letters stay in Diff. Explorer uses status color without letters.
 - Names at the same tree depth stay aligned.
 - Icons inherit the row foreground. No language-specific colors.
 - Diff and Explorer use the same icon lookup.

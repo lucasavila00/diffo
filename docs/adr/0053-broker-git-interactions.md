@@ -33,7 +33,8 @@ accepts no arguments.
 For each Fetch, Pull, or Push:
 
 - keep stdin closed and `GIT_TERMINAL_PROMPT=0`;
-- point `GIT_ASKPASS` and `SSH_ASKPASS` at Diffo's absolute executable path;
+- point `GIT_ASKPASS` and `SSH_ASKPASS` at the running image's procfs path from
+  ADR 0062;
 - set `SSH_ASKPASS_REQUIRE=force`; and
 - pass the internal askpass marker and a fresh Unix-socket path in the child
   environment.
@@ -116,7 +117,8 @@ Show the prompt as a modal over every activity. While it is open:
 
 - modal input wins over all other input;
 - the network operation stays pending; and
-- other repository actions stay disabled.
+- later repository intents may queue, but no second command starts until the
+  prompted command finishes.
 
 Use normal text input for a username. Mask secrets. Keep a secret only in the
 modal and the response being sent to the helper. Never clone, debug-print,

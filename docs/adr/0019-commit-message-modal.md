@@ -23,8 +23,7 @@ nothing. Clicking outside the modal closes it, same as Esc. Closing keeps the
 draft so the user can reopen it. A successful commit clears the draft.
 
 Repository watcher refreshes must not close the modal, move its cursor, or
-change its draft. Read-only mode may show the message but cannot open an
-editable modal.
+change its draft.
 
 ## State
 

@@ -3,7 +3,7 @@
 Depends on [ADR 0036](0036-git-branch-status.md). Refines
 [ADR 0013](0013-command-and-file-actions.md),
 [ADR 0039](0039-independent-app-modes.md), and
-[ADR 0055](0055-command-queue.md).
+[ADR 0110](0110-queue-command-intents.md).
 
 ## Context
 

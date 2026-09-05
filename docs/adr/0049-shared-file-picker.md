@@ -7,7 +7,7 @@ menus.
 
 ## Decision
 
-All file panels use `diffo-file-picker`. It owns:
+All file panels use `diffo-ui::file_picker`. It owns:
 
 - selection and navigation;
 - offset, bounds, wheel, and scrollbar math;
@@ -29,7 +29,7 @@ Scrolling follows ADR 0050.
 Prepare rows, selection, offsets, bounds, and hit targets together. Render
 committed state only. Stale Explorer results cannot change the picker.
 
-`diffo-file-picker` may depend on `diffo-ui`, Ratatui, and Crossterm. Not Diff,
-Explorer, Git, or app models.
+The shared picker lives in `diffo-ui` and depends on Ratatui and Crossterm, not
+Diff, Explorer, Git, or app models.
 
 Replaces picker ownership in ADRs 0033 and 0035.

@@ -1,7 +1,7 @@
-# ADR 0070: Publish and self-update Diffo from GitHub Releases
+# ADR 0070: Publish and self-update Diffo
 
 Builds on [ADR 0039](0039-independent-app-modes.md),
-[ADR 0055](0055-command-queue.md), and
+[ADR 0110](0110-queue-command-intents.md), and
 [ADR 0062](0062-use-procfs-image-for-askpass.md).
 
 ## Context
@@ -16,17 +16,23 @@ wrong-platform bytes.
 ### Releases
 
 Use `https://github.com/lucasavila00/diffo` as the public canonical repository
-and GitHub Releases as the fixed release and update authority. Publish stable
-releases from immutable `<major>.<minor>.<patch>` tags, using the tag as the
-release version. Ignore drafts and prereleases.
+and its tagless `release` branch as the fixed publication and update authority.
+Publish every validated push to `main`; do not create or require release tags.
+Derive the stable version as
+`<workspace-major>.<workspace-minor>.<first-parent-main-commit-count>` and embed
+both that version and the validated source SHA.
 
-Support only Debian stable and Ubuntu 24.04 or newer on x86_64 GNU/Linux. Other
-Linux distributions and architectures are unsupported. Compile exactly one
-production `x86_64-unknown-linux-gnu` executable on Ubuntu 24.04 for both
-distributions. Publish only that executable, unsigned schema-1 update metadata,
-and `SHA256SUMS`. The release workflow does not repeat tests or the full
-`make all` suite owned by repository CI. Installation documentation tells users
-to verify the binary and place it at any path they choose.
+CI owns publication. Its `checks` (`make all`) and `stress` jobs must both pass
+before the publish job invokes the reusable release workflow with that exact
+SHA. Serialize publication and skip an older validated commit if a newer one is
+already published.
+
+Build one statically linked `x86_64-unknown-linux-musl` executable supporting
+Ubuntu 22.04 and newer. Preserve the legacy `diffo-x86_64-unknown-linux-gnu`
+asset name and `x86_64-unknown-linux-gnu` manifest target so existing clients
+stay on the same compatibility channel. Publish only that executable, unsigned
+schema-1 update metadata, and `SHA256SUMS` as the root of a parentless commit,
+then atomically force-update `release`. Other architectures are unsupported.
 
 `DIFFO_E2E_BINARY` is a developer and test hook, not user configuration. When
 unset, local `make all` keeps its normal development-profile behavior.
@@ -54,11 +60,11 @@ diffo-x86_64-unknown-linux-gnu
 SHA256SUMS
 ```
 
-Fetch metadata through GitHub's permanent latest-release URLs. The manifest
-contains its schema, Diffo version, and each asset's name, length, target, and
-SHA-256 digest. HTTPS protects the metadata and asset in transit, and the
-manifest digest detects a corrupt or unexpected asset. This protocol does not
-provide publisher authenticity independent of GitHub and HTTPS.
+Fetch metadata through the fixed raw-content URL for the `release` branch. The
+manifest contains its schema, Diffo version, and each asset's name, length,
+target, and SHA-256 digest. HTTPS protects the metadata and asset in transit,
+and the manifest digest detects a corrupt or unexpected asset. This protocol
+does not provide publisher authenticity independent of GitHub and HTTPS.
 
 Schema 1 is permanent. Ignore additive fields and publish incompatible protocols
 alongside it. Future releases must retain schema-1 metadata and raw assets so
@@ -90,13 +96,9 @@ code in memory or restart automatically.
 
 ### Interface
 
-After the first frame, perform one background manifest check per process without
-blocking startup or rendering. Store no check or dismissal state. Network and
-verification failures during this passive check are silent.
-
-For a verified newer version, show one persistent informational toast naming
-both versions without taking focus. Add `Application: Update Diffo` to the
-shared F1 palette in every activity; the palette command is the only in-TUI way
-to start the update. Run updates in a separate process through the workbench
-command queue. Show persistent success, verification, network, and permission
-results. Success tells the user to quit and relaunch.
+Do not perform passive update checks or show availability notices. Updating is
+always deliberate: use the fixed launcher argument or
+`Application: Update
+Diffo` from the shared command palette. Explicit updates
+run outside the input loop through the workbench queue and remain cancellable.
+Their result stays visible; success tells the user to quit and relaunch.

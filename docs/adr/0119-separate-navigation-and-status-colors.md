@@ -58,7 +58,6 @@ foregrounds, while deletion strikethrough and persistent symbols remain.
 
 In particular, previous/next change links and hunk-marker rails remain colored
 by their target's change kind under
-[ADR 0079](0079-color-change-navigation-by-target.md) and
 [ADR 0114](0114-clickable-change-navigation-links.md). Those colors describe the
 destination's Git meaning. Their clickable styling comes from the shared control
 affordance, not from replacing the semantic color with navigation blue.

@@ -1,7 +1,7 @@
 # ADR 0101: Merge branches and tags
 
 Builds on [ADR 0037](0037-git-checkout-to.md) and
-[ADR 0055](0055-command-queue.md). Replaces the local-merge exclusion in
+[ADR 0110](0110-queue-command-intents.md). Replaces the local-merge exclusion in
 [ADR 0080](0080-complete-git-operation-coverage.md).
 
 ## Context

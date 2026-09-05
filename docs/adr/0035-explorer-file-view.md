@@ -11,17 +11,16 @@ front would make startup slow and couple Explorer to Diff.
 Keep Explorer as its own tool with its own tree, selection, expansion, scroll,
 file viewer, and background requests.
 
-Load the tree from tracked paths that still exist in the worktree and from
-non-ignored untracked paths. Merge Git status only onto those paths. Do not
-synthesize Explorer entries from changed paths in the shared Diff snapshot.
-Removed paths belong to Diff and do not appear in Explorer. Do not add unchanged
-paths or file contents to the shared Diff snapshot.
+Load the tree from the filesystem under ADR 0080, including ignored files, and
+merge Git status only as decoration. Do not synthesize Explorer entries from
+changed paths in the shared Diff snapshot. Removed paths belong to Diff and do
+not appear in Explorer. Do not add unchanged paths or file contents to the
+shared Diff snapshot.
 
 Use a left tree and a right read-only file viewer. Match the Diff activity's
 text, spacing, borders, and change colors. Changed tree entries use the existing
-Git status colors. Unchanged files and directories use white and gray. The
-terminal owns the font and font size; Explorer uses the same terminal cell
-styles as Diff.
+Git status colors. Unchanged labels and chrome use terminal-default styles under
+ADR 0118. The terminal owns the font and font size.
 
 Read only the selected file. Also request its HEAD-to-worktree patch. Project
 that patch onto file line numbers and draw a one-cell change gutter:

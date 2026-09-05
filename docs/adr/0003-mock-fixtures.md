@@ -2,7 +2,7 @@
 
 ## Decision
 
-Mock state uses JSON or RON files that deserialize into `RepositorySnapshot`.
+Mock state uses checked-in RON files that deserialize into `RepositorySnapshot`.
 
 A fixture can contain:
 

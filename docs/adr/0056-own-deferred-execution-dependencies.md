@@ -1,10 +1,8 @@
 # ADR 0056: Own dependencies used after deferred execution
 
-Refined by [ADR 0060](0060-lazy-askpass-image.md), which retains an open startup
-executable and delays private-path materialization until askpass is first
-needed. The askpass-specific implementation is superseded by
-[ADR 0062](0062-use-procfs-image-for-askpass.md); the general owned-dependency
-rule remains in force.
+The askpass-specific implementation is defined by
+[ADR 0062](0062-use-procfs-image-for-askpass.md); this record owns the general
+dependency-lifetime rule.
 
 Refines [ADR 0053](0053-broker-git-interactions.md).
 
@@ -45,27 +43,6 @@ same identity. Existence checks and repeated canonicalization narrow no
 meaningful race.
 
 ## Decision
-
-### Prepare an owned askpass image at startup
-
-Acquire the running executable while startup still owns a valid reference to it.
-Copy from that opened reference into a unique, mode-0700 runtime directory and
-publish a mode-0700 private askpass image. The copy, not the install or build
-path, is the executable given to Git and SSH.
-
-Keep the runtime-directory guard alive until every Git command and askpass child
-has been terminated and reaped. Do not rediscover, recanonicalize, or replace
-the image during a network operation. Startup fails with dependency-specific
-context if the image cannot be opened, materialized, protected, or executed; do
-not defer a generic operating-system error until Push.
-
-Copy rather than hard-link. A hard link survives rename and unlink, but it still
-shares an inode that another process can modify in place. A private copy fixes
-both the bytes and the pathname for the lifetime in which Git may invoke it.
-
-This is a runtime copy of the one shipped Diffo binary, not a second installed
-program or a user-configurable helper. It preserves ADR 0053's single-binary
-boundary.
 
 ### Treat locators and owned dependencies as different types
 

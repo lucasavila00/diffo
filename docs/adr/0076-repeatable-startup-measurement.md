@@ -65,10 +65,9 @@ inspect every raw sample for instability.
 
 The measurement is deliberately black-box: it includes repository discovery, Git
 subprocesses, allocation, model construction, and terminal drawing performed by
-the shipped binary. Diffo intentionally performs one initial application draw,
-so `first_output_ms` and `ready_ms` should remain close. A large gap is evidence
-of extra terminal commits or partial startup presentation and should be
-investigated.
+the shipped binary. On fast launches `first_output_ms` and `ready_ms` should
+remain close. After three seconds, ADR 0110 permits progress on stderr, so a
+slow run's first output can legitimately precede its ready frame.
 
 The 500-file workload starts many real Git commands and is diagnostic developer
 work, not part of `make all`. Changing its sizes, milestone definitions,

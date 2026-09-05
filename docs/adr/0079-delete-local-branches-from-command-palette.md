@@ -1,8 +1,9 @@
 # ADR 0079: Delete local branches from the command palette
 
 Builds on [ADR 0037](0037-git-checkout-to.md),
-[ADR 0055](0055-command-queue.md), [ADR 0076](0076-recent-checkout-branches.md),
-and [ADR 0077](0077-create-branch-from-command-palette.md).
+[ADR 0110](0110-queue-command-intents.md),
+[ADR 0076](0076-recent-checkout-branches.md), and
+[ADR 0077](0077-create-branch-from-command-palette.md).
 
 ## Context
 
@@ -36,8 +37,8 @@ cancels without an operation.
 
 Load branches through the existing repository query lane. Give every load a
 query ID, ignore stale results, and discard its data when the picker closes. A
-load failure closes the picker and shows a persistent error toast. Discovery is
-not a command and has no progress or success toast.
+load failure closes the picker and shows the shared acknowledgement modal.
+Discovery is not a command and has no progress or success toast.
 
 Store the selected branch's name, full `refs/heads/...` ref, and object ID,
 never its display text. Selecting a branch enqueues one non-forced

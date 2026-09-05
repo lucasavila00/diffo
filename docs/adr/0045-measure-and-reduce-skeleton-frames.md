@@ -40,14 +40,8 @@ and Explorer fixtures, and fixed slow wheel, fast wheel, page, scrollbar-drag,
 and hunk jump workloads. Print raw counts and medians. Do not add a flaky CI
 timing limit.
 
-Then improve in this order:
-
-1. Keep parsed text and Diff projections across syntax-only requests.
-2. Accumulate bounded syntax coverage windows instead of replacing one range.
-3. Coalesce queued work to the newest viewport. Stop useful stale work early.
-4. Prefetch ahead of direction and speed, with a smaller window behind.
-5. Reuse prepared spans when revisiting a viewport.
-
-Keep memory, parser look-behind, byte budgets, the 10,000-line boundary, and
-render work bounded. Do not highlight full files. Do not block the input or
-render loop. Skeleton behavior remains the fallback.
+Use these measurements diagnostically when changing the prepared text pipeline.
+ADR 0086 owns its current centered windows, retained coverage, coalescing, and
+no-skeleton commit policy. Keep memory, parser look-behind, byte budgets, the
+10,000-line boundary, and render work bounded. Do not highlight full files or
+block the input or render loop.

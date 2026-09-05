@@ -1,7 +1,6 @@
 # ADR 0069: Use Nerd Font glyphs for all interface icons
 
-Builds on [ADR 0063](0063-terminal-native-file-type-badges.md) and refines
-[ADR 0064](0064-separate-diff-status-and-tree-disclosure-columns.md).
+Builds on [ADR 0063](0063-terminal-native-file-type-badges.md).
 
 ## Context
 

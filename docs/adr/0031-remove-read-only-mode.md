@@ -9,4 +9,4 @@ Diffo repositories are always actionable.
 - Always load mock fixtures through the mutable in-memory repository.
 - Treat rejected actions as operation failures, not a product mode.
 
-This supersedes the read-only clauses in ADRs 0007, 0013, 0016, 0017, and 0019.
+Mock fixtures enter through the same mutable in-memory repository boundary.

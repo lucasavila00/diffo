@@ -1,6 +1,6 @@
 ---
 source: crates/diffo-ui/tests/theme_contract.rs
-expression: "([(\"navigation\", theme::NAVIGATION), (\"information\", theme::INFORMATION),\n(\"success\", theme::SUCCESS), (\"warning\", theme::WARNING),\n(\"danger\", theme::DANGER),\n(\"conflict foreground\", theme::CONFLICT_FOREGROUND),\n(\"conflict background\", theme::CONFLICT_BACKGROUND),\n(\"code foreground\", theme::CODE_FOREGROUND),\n(\"code background\", theme::CODE_BACKGROUND),],\n[theme::text_style(), theme::chrome_style(), theme::selection_style(),\ntheme::code_style(), command_progress_style(0), command_progress_style(4),],)"
+expression: "([(\"navigation\", theme::NAVIGATION), (\"information\", theme::INFORMATION),\n(\"success\", theme::SUCCESS), (\"warning\", theme::WARNING),\n(\"danger\", theme::DANGER),\n(\"conflict foreground\", theme::CONFLICT_FOREGROUND),\n(\"conflict background\", theme::CONFLICT_BACKGROUND),\n(\"code foreground\", theme::CODE_FOREGROUND),\n(\"code background\", theme::CODE_BACKGROUND),\n(\"diff added foreground\", theme::DIFF_ADDED_FOREGROUND),\n(\"diff removed foreground\", theme::DIFF_REMOVED_FOREGROUND),],\n[theme::text_style(), theme::chrome_style(), theme::selection_style(),\ntheme::code_style(), command_progress_style(0), command_progress_style(4),],)"
 ---
 (
     [
@@ -47,6 +47,14 @@ expression: "([(\"navigation\", theme::NAVIGATION), (\"information\", theme::INF
             Indexed(
                 235,
             ),
+        ),
+        (
+            "diff added foreground",
+            LightGreen,
+        ),
+        (
+            "diff removed foreground",
+            LightRed,
         ),
     ],
     [

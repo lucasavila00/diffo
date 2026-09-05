@@ -37,6 +37,8 @@ pub mod theme {
     pub const CONFLICT_BACKGROUND: Color = Color::Indexed(58);
     pub const CODE_BACKGROUND: Color = Color::Indexed(235);
     pub const CODE_FOREGROUND: Color = Color::Rgb(248, 248, 242);
+    pub const DIFF_ADDED_FOREGROUND: Color = Color::LightGreen;
+    pub const DIFF_REMOVED_FOREGROUND: Color = Color::LightRed;
 
     #[must_use]
     pub fn text_style() -> Style {
@@ -557,7 +559,7 @@ mod tests {
     }
 
     #[test]
-    fn shared_syntax_spans_use_only_the_token_foreground() {
+    fn shared_syntax_spans_use_the_token_foreground_on_the_code_surface() {
         let spans = plain_syntax_spans(&HighlightedLine {
             spans: vec![StyledSpan {
                 text: "value".to_owned(),

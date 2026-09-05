@@ -307,8 +307,8 @@ pub(in crate::diff) fn pad_to_width(
 
 pub(in crate::diff) fn gutter_style(kind: RowKind) -> Style {
     match kind {
-        RowKind::Removed => Style::default().fg(theme::DANGER),
-        RowKind::Added => Style::default().fg(theme::SUCCESS),
+        RowKind::Removed => Style::default().fg(theme::DIFF_REMOVED_FOREGROUND),
+        RowKind::Added => Style::default().fg(theme::DIFF_ADDED_FOREGROUND),
         RowKind::Conflict => Style::default().fg(theme::CONFLICT_FOREGROUND),
         RowKind::Header | RowKind::Context | RowKind::Changed | RowKind::Meta => {
             theme::code_style().add_modifier(ratatui::style::Modifier::DIM)

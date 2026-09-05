@@ -33,9 +33,15 @@ pub(in crate::diff) fn render_change_warning(
     frame.render_widget(
         Paragraph::new(label)
             .alignment(Alignment::Center)
-            .style(mouse_target_style().patch(background)),
+            .style(change_warning_style(background)),
         area,
     );
+}
+
+pub(in crate::diff) fn change_warning_style(background: Style) -> Style {
+    mouse_target_style()
+        .fg(theme::CODE_FOREGROUND)
+        .patch(background)
 }
 
 pub(in crate::diff) fn render_change_markers(

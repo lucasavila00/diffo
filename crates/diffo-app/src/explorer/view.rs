@@ -275,9 +275,9 @@ fn viewer_code(number: usize, text: &str, viewer: &super::model::Viewer) -> Line
 
 fn marker_style(marker: Option<GutterMarker>) -> Style {
     match marker {
-        Some(GutterMarker::Added) => Style::default().fg(theme::SUCCESS),
+        Some(GutterMarker::Added) => Style::default().fg(theme::DIFF_ADDED_FOREGROUND),
         Some(GutterMarker::Modified) => Style::default().fg(theme::WARNING),
-        Some(GutterMarker::Deleted) => Style::default().fg(theme::DANGER),
+        Some(GutterMarker::Deleted) => Style::default().fg(theme::DIFF_REMOVED_FOREGROUND),
         Some(GutterMarker::Conflict) => Style::default()
             .fg(theme::CONFLICT_FOREGROUND)
             .bg(theme::CONFLICT_BACKGROUND),

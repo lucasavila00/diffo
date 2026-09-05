@@ -15,6 +15,8 @@ fn semantic_palette_is_fixed() {
             ("conflict background", theme::CONFLICT_BACKGROUND),
             ("code foreground", theme::CODE_FOREGROUND),
             ("code background", theme::CODE_BACKGROUND),
+            ("diff added foreground", theme::DIFF_ADDED_FOREGROUND),
+            ("diff removed foreground", theme::DIFF_REMOVED_FOREGROUND),
         ],
         [
             theme::text_style(),

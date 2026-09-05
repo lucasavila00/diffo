@@ -15,6 +15,6 @@ Buffer {
         x: 6, y: 1, fg: Rgb(248, 248, 242), bg: Indexed(235), underline: Reset, modifier: NONE,
         x: 28, y: 1, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
         x: 1, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
-        x: 28, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 3, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
     ]
 }

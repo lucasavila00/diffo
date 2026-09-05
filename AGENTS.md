@@ -127,10 +127,11 @@ Each utility lives in its own package under `crates/`.
 ## TUI conventions
 
 - Always restore the terminal before returning from the application.
-- Use the semantic layout and dark-gray chrome tokens from `diffo-ui` for
-  structural borders, dividers, scrollbars, selection backgrounds, dimensions,
-  gaps, and overlay bounds. Keep meaning-specific colors for semantic content,
-  diffs, and syntax highlighting.
+- Use the semantic layout and terminal-default chrome styles from `diffo-ui` for
+  structural borders, dividers, scrollbars, reversed selections, dimensions,
+  gaps, and overlay bounds. Keep meaning-specific colors for semantic content
+  and diffs. Render syntax-highlighted code on the shared explicit dark surface
+  so its fixed Monokai foregrounds remain readable in light terminal themes.
 - Design for SSH use and treat terminal input, redraw work, and output as
   network costs at all times. Do not add hover-driven visual changes, hover-only
   state, passive mouse-movement handling solely for hover feedback, or redraws

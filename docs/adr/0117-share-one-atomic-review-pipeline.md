@@ -1,16 +1,14 @@
 # ADR 0117: Share one atomic review pipeline
 
-Changes [ADR 0115](0115-review-checkout-history.md), refines
-[ADR 0116](0116-share-diff-and-history-renderer.md), and extends the atomic
-transition contract in [ADR 0024](0024-atomic-diff-buffer-transitions.md).
+Extends the atomic transition contract in
+[ADR 0024](0024-atomic-diff-buffer-transitions.md).
 
 ## Context
 
-ADR 0115 gave History a local hunk-only renderer and preparation path. ADR 0116
-introduced the same three review modes in Diff and History, but did not define
-which state and behavior had to be shared. Separate right-side implementations
-could still drift in rendering, shortcuts, scrolling, syntax preparation,
-full-screen behavior, and asynchronous transitions.
+History originally had a local hunk-only renderer before adopting the same three
+review modes as Diff. Separate right-side implementations could still drift in
+rendering, shortcuts, scrolling, syntax preparation, full-screen behavior, and
+asynchronous transitions.
 
 Hunk mode also combines changes from several files. Flattening those patches
 without retaining file identity loses the information needed to focus a selected
@@ -36,6 +34,12 @@ selection types. Diff supplies working-tree and index patches. History supplies
 the selected commit and its files. History loads full-file context lazily when
 Inline or side-by-side mode needs it, and identifies cached file content by both
 commit ID and path.
+
+History is the third activity after Explorer and Diff. It lists commits
+reachable from the current checkout, compares each commit with its first parent
+(or the empty tree for a root commit), and remains read-only. History and patch
+queries run on demand outside `RepositorySnapshot`. A refresh preserves a
+still-reachable selection and rejects results for obsolete commits.
 
 Hunk mode is one compact aggregate projection containing every changed file.
 Selecting a file changes only the focus within that projection; it never filters

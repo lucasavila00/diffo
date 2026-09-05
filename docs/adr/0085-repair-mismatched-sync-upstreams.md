@@ -1,7 +1,7 @@
 # ADR 0085: Repair mismatched sync upstreams
 
 Refines the sync target in [ADR 0070](0070-rebase-unpushed-work-when-syncing.md)
-and supersedes the mismatched-name behavior in
+and the protected-destination check in
 [ADR 0079](0079-confirm-protected-branch-pushes.md).
 
 ## Problem

@@ -2,7 +2,7 @@
 
 ## Problem
 
-Diffo needs Explorer, Search, and Diff activities. Each activity has different
+Diffo needs Explorer, Diff, and History activities. Each activity has different
 state, input, rendering, and background work. One large model would couple them.
 Rebuilding an activity on every switch would lose its state.
 
@@ -14,7 +14,7 @@ The runtime owns the terminal, event loop, repository watcher, task execution,
 and shutdown. It does not own screen state.
 
 The workbench owns the active activity and one instance of each tool. It handles
-the activity bar and global input. The bar order is Explorer, Search, Diff.
+the activity bar and global input. The bar order is Explorer, Diff, History.
 `Tab` follows that order and wraps. Quit is also global. All other input goes
 only to the active tool.
 
@@ -23,7 +23,7 @@ workbench asks only the active tool to prepare and draw a frame. Switching
 activity does not create, drop, reset, or copy tool state.
 
 Keep the current diff model and renderer inside the Diff tool. Wrap them at the
-tool boundary. Do not merge Explorer or Search state into them.
+tool boundary. Do not merge Explorer or History state into them.
 
 Tools return commands to the workbench. The runtime executes commands and
 returns results to the tool that created them. Repository snapshots are shared

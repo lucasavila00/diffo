@@ -1,9 +1,7 @@
 # ADR 0118: Use terminal defaults for UI surfaces
 
-Changes the dark-only color decision in
-[ADR 0052](0052-semantic-chrome-colors.md) and refines
-[ADR 0054](0054-readable-tree-labels-and-controls.md). Changes selected-label
-styling from [ADR 0050](0050-file-picker-status-colors.md) and
+Consolidates Diffo's structural style, readable-control, and selection
+decisions. Refines Explorer status propagation in
 [ADR 0065](0065-propagate-explorer-git-colors.md).
 
 ## Context
@@ -39,13 +37,23 @@ Express shared roles as styles, including modifiers, rather than requiring every
 role to be a color constant. Keep their ownership in `diffo-ui` alongside the
 existing layout tokens.
 
+`diffo-ui` owns the structural design system. Its `theme` module owns semantic
+styles and colors, while `design` owns shared geometry: borders, row heights,
+insets, gaps, activity-rail and control dimensions, overlay bounds, pane seams,
+and scrollbar and marker-rail widths. Renderers consume those roles rather than
+choosing raw structural colors, modifiers, margins, or dimensions. Content
+formatting such as line-number widths and syntax-work budgets remains local.
+
 Primary text uses the default foreground. Enabled controls use that foreground
 with the existing bold emphasis and persistent affordance. Secondary text and
 disabled controls may use `DIM`; essential labels, enabled controls, scrollbar
 thumbs, and resize affordances must not become dim merely because they are
-unfocused. Structural lines use default colors, with dim emphasis only where
-their geometry remains understandable. Glyphs distinguish scrollbar tracks and
-thumbs without depending on gray levels.
+unfocused. Every discrete mouse target keeps a visible marker or label inside
+its hit geometry; blank or clipped layout space is inert. File and directory
+labels have equal baseline readability, while disclosure and indentation carry
+tree structure. Structural lines use default colors, with dim emphasis only
+where their geometry remains understandable. Glyphs distinguish scrollbar tracks
+and thumbs without depending on gray levels.
 
 Text, list, picker, and form selections reverse terminal defaults. Explicitly
 reset both colors and remove inherited dim styling on the selected label before
@@ -85,15 +93,15 @@ remains a separate, deferred limitation.
 The shell history also contains improvements that do not require a second Diffo
 implementation:
 
-| WT change                                                         | Disposition in Diffo                                                                                                                                                                                                |
-| ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `20575646`, distinguish navbar states                             | Carry over the distinction between passive structure and actionable controls through shared styles; do not copy WT's dim playback bar onto Diffo's enabled controls. ADR 0054 already requires visible affordances. |
-| `6935c700`, enlarge navigation targets                            | ADR 0054 already ties visible labels to exact hit geometry; retain it rather than importing world navigation controls.                                                                                              |
-| `834d19cd`, modal mouse and keyboard fixes                        | The commit explicitly aligned WT with Diffo conventions. Diffo already owns modal input and shared prompt geometry; this is not evidence for replacing its input model.                                             |
-| `1b8dcd79` and `7640b087`, card scrollbars and viewport scrolling | Diffo already has shared scrollbars and independent viewport state. WT's card grid is not a replacement for file and text navigation.                                                                               |
-| `86888e05`, remove activity frames                                | A WT dashboard layout choice. Diffo's pane seams carry resizing and navigation geometry, so removing them does not follow from theme safety.                                                                        |
-| `3c19c918` and WT ADR 0075, contextual world actions              | Diffo already has contextual file/folder actions. Preserve the separate menu hit target and confirmation boundaries; do not introduce world-card UI.                                                                |
-| `f37540b7`, remove buffer debug snapshots                         | Not adopted. Diffo's style snapshots and theme-contract tests expose precisely the hardcoded colors being changed.                                                                                                  |
+| WT change                                                         | Disposition in Diffo                                                                                                                                                                                             |
+| ----------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `20575646`, distinguish navbar states                             | Carry over the distinction between passive structure and actionable controls through shared styles; do not copy WT's dim playback bar onto Diffo's enabled controls. This decision requires visible affordances. |
+| `6935c700`, enlarge navigation targets                            | This decision ties visible labels to exact hit geometry; retain it rather than importing world navigation controls.                                                                                              |
+| `834d19cd`, modal mouse and keyboard fixes                        | The commit explicitly aligned WT with Diffo conventions. Diffo already owns modal input and shared prompt geometry; this is not evidence for replacing its input model.                                          |
+| `1b8dcd79` and `7640b087`, card scrollbars and viewport scrolling | Diffo already has shared scrollbars and independent viewport state. WT's card grid is not a replacement for file and text navigation.                                                                            |
+| `86888e05`, remove activity frames                                | A WT dashboard layout choice. Diffo's pane seams carry resizing and navigation geometry, so removing them does not follow from theme safety.                                                                     |
+| `3c19c918` and WT ADR 0075, contextual world actions              | Diffo already has contextual file/folder actions. Preserve the separate menu hit target and confirmation boundaries; do not introduce world-card UI.                                                             |
+| `f37540b7`, remove buffer debug snapshots                         | Not adopted. Diffo's style snapshots and theme-contract tests expose precisely the hardcoded colors being changed.                                                                                               |
 
 WT's
 [ADR 0003](https://github.com/lucasavila00/wt/blob/734053ab825335a50d9948614da144e1dea4cd38/docs/adr/0003-refresh-terminal-theme-through-byobu.md)
@@ -110,7 +118,7 @@ retain unnecessary application ownership of terminal appearance.
 
 ## Consequences
 
-The shared style contract replaces ADR 0052's intentional lack of light-theme
+The shared style contract replaces the former intentional lack of light-theme
 support for chrome. Layout, fixed controls, SSH input costs, and content
 ownership remain as before. Existing color-only call sites must consume whole
 styles so dim and reversed behavior cannot drift between activities.

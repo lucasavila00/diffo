@@ -1,11 +1,7 @@
 # ADR 0080: Navigate between whole change blocks
 
-Refines [ADR 0021](0021-full-file-diffs-and-change-navigation.md),
-[ADR 0022](0022-large-hunk-navigation-targets.md), and
-[ADR 0067](0067-viewport-aware-change-navigation.md), and
-[ADR 0079](0079-color-change-navigation-by-target.md). Supersedes the rules in
-ADRs 0067 and 0079 for moving and coloring one viewport at a time within a
-viewport-spanning change.
+Refines [ADR 0021](0021-full-file-diffs-and-change-navigation.md) by treating a
+viewport-spanning change as one navigation target rather than paging within it.
 
 ## Context
 

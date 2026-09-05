@@ -1,7 +1,7 @@
 # ADR 0077: Create and check out branches from the command palette
 
 Builds on [ADR 0037](0037-git-checkout-to.md),
-[ADR 0055](0055-command-queue.md), and
+[ADR 0110](0110-queue-command-intents.md), and
 [ADR 0076](0076-recent-checkout-branches.md).
 
 ## Context
@@ -58,14 +58,14 @@ duplicate local names. The explicit-base command shows the checkout picker's
 existing loading state and carries its loaded branch list into the name modal
 without a second query. Give every load a query ID, ignore stale results, and
 drop loaded data when its modal closes. A load failure closes the modal and
-shows a persistent error toast. This discovery is not a command and has no
-progress or success toast.
+shows the shared acknowledgement modal. This discovery is not a command and has
+no progress or success toast.
 
 Submitting a valid name closes the modal and enqueues one `Create branch`
-repository action through `CommandQueue`. For the current-`HEAD` command,
-capture the committed `HEAD` identity and object ID shown when the name modal
-becomes ready. For the explicit-base command, capture the selected branch kind,
-full ref, and object ID. The worker must recheck the captured start point
+repository action through the workbench command queue. For the current-`HEAD`
+command, capture the committed `HEAD` identity and object ID shown when the name
+modal becomes ready. For the explicit-base command, capture the selected branch
+kind, full ref, and object ID. The worker must recheck the captured start point
 immediately before mutation and fail without changing the repository if it
 moved. An unborn `HEAD` cannot supply a base commit for the current-`HEAD`
 command. Detached `HEAD` is valid there.
@@ -86,8 +86,8 @@ While queued or running, label the command `Creating branch <name>`. Allow
 normal command cancellation. On success, return the created local name and
 complete repository snapshot together, show `Created and checked out <name>`,
 and commit the new branch, content, projections, and scroll bounds in one frame.
-Failure keeps the previous committed snapshot and shows a persistent error.
-Successful cancellation shows no result toast.
+Failure keeps the previous committed snapshot and uses the shared
+acknowledgement modal. Successful cancellation shows no result toast.
 
 Put shared action and result types in `diffo-core`. Keep modal state and
 validation presentation in the workbench, Git validation and mutation in

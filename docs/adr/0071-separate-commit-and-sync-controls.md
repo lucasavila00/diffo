@@ -7,7 +7,7 @@ Commit and Sync are different actions.
 One changing primary button hides Sync. Commit + Push mixes local and remote
 work. Commit-message editing has no key. Sync has no direct global key.
 
-## Proposal
+## Decision
 
 Remove the changing primary button.
 
@@ -46,5 +46,4 @@ registry.
 Commit creates a local commit. Sync reconciles and publishes under
 [ADR 0070](0070-rebase-unpushed-work-when-syncing.md). No Commit + Push action.
 
-If accepted, this replaces the one-primary-button part of
-[ADR 0017](0017-commit-composer-and-primary-action.md).
+This replaces the former changing-primary-button design.

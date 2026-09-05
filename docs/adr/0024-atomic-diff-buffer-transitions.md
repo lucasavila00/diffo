@@ -55,6 +55,6 @@ buffer or a delayed first-change jump. The file-list selection may lead the diff
 pane while preparation runs; the pane itself remains internally consistent.
 
 Frame traces record requested and displayed identities plus the viewport
-transition. A developer-only delay hook makes the asynchronous boundary
-deterministic in PTY tests. This decision refines the background preparation in
-ADR 0009 and the frame transaction in ADR 0014.
+transition. Tests create deterministic causal boundaries with controlled worker
+results, never timing delays. This decision refines the background preparation
+in ADR 0009 and the frame transaction in ADR 0014.

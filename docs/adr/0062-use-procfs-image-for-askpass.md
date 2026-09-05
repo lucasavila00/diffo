@@ -3,8 +3,7 @@
 Refined by [ADR 0063](0063-real-loopback-askpass-e2e.md), which verifies this
 path through real Git and OpenSSH processes.
 
-Supersedes [ADR 0060](0060-lazy-askpass-image.md) and refines
-[ADR 0053](0053-broker-git-interactions.md) and
+Refines [ADR 0053](0053-broker-git-interactions.md) and
 [ADR 0056](0056-own-deferred-execution-dependencies.md).
 
 ## Context
@@ -16,9 +15,9 @@ path instead of starting the TUI.
 The installed pathname is not a stable reference to the launched image. A build
 or upgrade can unlink it or replace it with a different Diffo version while the
 TUI is still running. ADR 0056 fixed that race by copying the executable, and
-ADR 0060 moved the copy from startup to the first prompted network operation.
-The copy is safe, but it duplicates the full executable for a helper path that
-uses only a small part of it.
+Moving the copy to the first prompted network operation avoided startup work,
+but still duplicated the full executable for a helper path that uses only a
+small part of it.
 
 Diffo targets Linux only. Linux already exposes a lifetime-bearing pathname for
 the exact executable image of a running process: `/proc/<pid>/exe`.

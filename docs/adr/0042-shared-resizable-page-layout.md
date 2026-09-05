@@ -44,7 +44,7 @@ The workbench divides its content into the shared panes and passes the committed
 pane rectangles to the active tool for frame preparation, rendering, and local
 hit testing. A tool decides what appears in each pane, but it does not recompute
 the horizontal split. Diff renders files and the diff in those rectangles;
-Explorer renders its tree and viewer in them; Search and future activities use
+Explorer renders its tree and viewer in them; History and future activities use
 the same contract even when one pane is temporarily empty. Status rows and
 overlays remain outside the pane primitive.
 

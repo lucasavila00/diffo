@@ -2,14 +2,14 @@
 
 Refines [ADR 0019](0019-commit-message-modal.md),
 [ADR 0020](0020-operation-toasts.md),
-[ADR 0051](0051-workbench-operation-toasts.md), and
 [ADR 0071](0071-separate-commit-and-sync-controls.md).
 
 ## Problem
 
-Diffo reports errors as persistent toasts. A toast is appropriate for a
-transient success or informational result, but an error requires the user to
-notice it, understand it, and acknowledge it before continuing.
+Before this decision, Diffo reported errors as persistent toasts. A toast is
+appropriate for a transient success or informational result, but an error
+requires the user to notice it, understand it, and acknowledge it before
+continuing.
 
 The failed-commit flow also reopens the commit-message editor. Commit failures
 can come from the repository, environment, or hooks and do not reliably mean the
@@ -33,12 +33,15 @@ Clicking outside does not dismiss it. Global quit remains available. All other
 input is captured while the modal is open.
 
 Keep success and informational results as non-blocking, automatically expiring
-toasts. Remove `Error` from the toast kinds and route every existing error-toast
-producer through the shared error-modal state. This includes repository command
-failures, application-update failures, Explorer and picker failures, validation
-failures that currently become toasts, and other workbench errors. Inline
-validation that is part of an open form remains inline until submission; it is
-not a separate reported error.
+toasts. The workbench owns their state and deadlines across activity switches,
+keeps at most three, replaces the oldest when full, expires ordinary results
+after three seconds, and lets a click dismiss them. Watcher refreshes and Stage
+or Unstage success remain silent. Remove `Error` from the toast kinds and route
+every existing error-toast producer through the shared error-modal state. This
+includes repository command failures, application-update failures, Explorer and
+picker failures, validation failures that currently become toasts, and other
+workbench errors. Inline validation that is part of an open form remains inline
+until submission; it is not a separate reported error.
 
 Keep at most one error modal visible. If another error arrives before it is
 dismissed, append it to a FIFO pending-error queue. Dismissing an error

@@ -14,8 +14,7 @@ must be usable and discoverable without a mouse.
 ### Use Shift+N
 
 This visually pairs with `n`, but adds modifier friction and is easy to miss in
-help. Diffo also keeps uppercase letters unbound unless there is a strong
-reason.
+help. Diffo does not assign uppercase character shortcuts.
 
 ### Use an arrow key
 
@@ -33,9 +32,8 @@ and `p` form a simple next/previous pair. Chosen.
 - `p` jumps to the previous change.
 - Keep both in the binding registry so the help popup is generated from the real
   controls.
-- Label the large change buttons `Previous change (p)` and `Next change (n)`.
-  These controls have ample width and should teach the keyboard path instead of
-  leaving that space unused.
+- Label the overlaid change links `Previous change (p)` and `Next change (n)` so
+  the pointer affordance also teaches the keyboard path.
 - Before adding a shortcut, check the complete registry for conflicts.
 - When a keyboard navigation action has a natural opposite, provide and test
   both directions.

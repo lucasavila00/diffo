@@ -1,12 +1,10 @@
 # ADR 0072: Test asynchronous transitions without timing delays
 
 Builds on [ADR 0024](0024-atomic-diff-buffer-transitions.md),
-[ADR 0044](0044-single-frame-position-changes.md), and
-[ADR 0045](0045-measure-and-reduce-skeleton-frames.md).
+[ADR 0045](0045-measure-and-reduce-skeleton-frames.md), and
+[ADR 0086](0086-one-prepared-text-scrolling-state.md).
 
-This supersedes the developer delay hook and delayed-PTY-test requirements in
-[ADR 0024](0024-atomic-diff-buffer-transitions.md) and
-[ADR 0066](0066-direction-neutral-diff-syntax-prefetch.md).
+This rejects the former developer delay-hook and delayed-PTY-test requirements.
 
 ## Problem
 

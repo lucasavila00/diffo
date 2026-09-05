@@ -1,7 +1,7 @@
 # ADR 0107: Create AI commits with Codex
 
-Refines [ADR 0017](0017-commit-composer-and-primary-action.md),
-[ADR 0019](0019-commit-message-modal.md), [ADR 0055](0055-command-queue.md), and
+Refines [ADR 0019](0019-commit-message-modal.md),
+[ADR 0110](0110-queue-command-intents.md), and
 [ADR 0056](0056-own-deferred-execution-dependencies.md).
 
 ## Context
@@ -35,28 +35,25 @@ Add `i` as the fixed lowercase `AI commit staged changes` shortcut. It never
 opens the commit-message modal. `m` continues to edit a manual message and Enter
 continues to submit it, so the existing manual workflow remains unchanged.
 
-`i` queues one composite application command with two visible phases:
-`Writing commit message` and `Committing`. The existing workbench command queue
-remains the single scheduler and owns progress, cancellation, and exclusivity
-across both phases. Pressing `i` again cancels a queued or generating AI commit.
-The existing progress-toast cancel target remains available, and cancellation
-during Git execution uses the repository service's existing best-effort path.
+`i` submits one ordinary queued intent whose composite command has two visible
+phases: `Writing commit message` and `Committing`. The workbench intent queue is
+the single scheduler and owns progress, cancellation, and serialization across
+both phases. The fixed queue panel exposes cancellation; cancelling a waiting
+row removes it and every dependent intent behind it, while cancelling the active
+row uses the shared command cancellation path.
 
-Support the fast `a`, `i` sequence. When Stage All is already queued or running
-and the committed snapshot has no staged files yet, remember one deferred
-AI-commit request. After Stage All succeeds and installs its new snapshot,
-enqueue the AI commit from that snapshot. A failed or cancelled Stage All drops
-the deferred request and reports that no AI commit was created. Without staged
-files or a pending Stage All, `i` reports
+The fast `a`, `i` sequence is two queued intents. Bind the AI request to the
+fresh committed snapshot only when it reaches the head of the queue, after Stage
+All succeeds and installs its result. A failed or cancelled prerequisite removes
+dependent intents. An activated AI intent with no staged files reports
 `Stage changes before creating an AI commit`.
 
-While the AI command is active, repository mutations, manual message editing,
-and manual commit submission are unavailable; diff review and navigation remain
-available. A valid generated subject replaces the current draft only when
-generation succeeds, immediately before the Git phase. A successful commit
-clears it and reports `Committed <hash> — <subject>`. A Git failure retains the
-generated subject for manual recovery. A generation failure retains the previous
-draft.
+Later repository mutations and commits may queue while the AI command is active;
+diff review and navigation remain available. A valid generated subject replaces
+the current draft only when generation succeeds, immediately before the Git
+phase. A successful commit clears it and reports `Committed <hash> — <subject>`.
+A Git failure retains the generated subject for manual recovery. A generation
+failure retains the previous draft.
 
 Codex is an optional runtime dependency. Resolve `codex` only when the action
 starts: first from the inherited `PATH`, then through `command -v` in the user's

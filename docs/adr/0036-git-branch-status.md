@@ -23,8 +23,8 @@ transient operation and error text in the middle and command help on the right.
 Examples:
 
 ```text
-branch main · clean                         1/f1: commands  2/f2: help
-branch feature/search · changes · ↓1 ↑2    Pulling…
+main · a1b2c3d · clean                     1/f1: commands  2/f2: help
+feature/search · d4e5f6a · changes · ↓1 ↑2 Sync — Fetching
 detached a1b2c3d · conflicts               Checkout failed: local changes
 ```
 
@@ -67,9 +67,9 @@ repository-state label and file counts from the same immutable
 `RepositorySnapshot`; do not run Git from the renderer and do not maintain a
 second status cache.
 
-The branch segment is a mouse target. Clicking it opens the same checkout picker
-as the `Git: Checkout to...` palette command defined by
-[ADR 0037](0037-git-checkout-to.md). It does not add a keyboard shortcut.
+The branch segment is read-only. Checkout remains available through
+`Git: Checkout to...`; static footer content never masquerades as a mouse
+target.
 
 ## Rendering and refresh
 
@@ -81,9 +81,9 @@ complete snapshot are installed together.
 
 At narrow widths, preserve the head label first. Truncate a long branch name
 with a single ellipsis, then omit divergence, the state label, command help, and
-transient detail in that order. Errors may replace command help but must not
-replace the head label. Keep all clipping inside the footer; it must not change
-the pane layout.
+transient detail in that order. Errors use the acknowledgement modal and must
+not replace the head label. Keep all clipping inside the footer; it must not
+change the pane layout.
 
 ## Alternatives
 

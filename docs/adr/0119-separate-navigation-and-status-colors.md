@@ -1,7 +1,7 @@
 # ADR 0119: Separate navigation and status colors
 
-Extends [ADR 0118](0118-use-terminal-defaults-for-ui-surfaces.md) and refines
-[ADR 0052](0052-semantic-chrome-colors.md).
+Extends [ADR 0118](0118-use-terminal-defaults-for-ui-surfaces.md) and
+consolidates the application and Git-status color palette.
 
 ## Context
 
@@ -47,9 +47,17 @@ Git distinctions, including deletion strikethrough, conflict symbols, and status
 columns. Do not turn every yellow or red span blue merely because it can be
 clicked.
 
+The shared file picker preserves caller-provided line styles while composing
+selection markers, disclosure, indentation, spacing, and row actions. Added and
+untracked paths use green; modified paths use yellow; deleted paths use red with
+strikethrough; renamed and copied paths use cyan; conflicts use red with their
+conflict emphasis. Diff retains status letters as the non-color signal. Explorer
+omits those letters and propagates the strongest descendant status to folder
+foregrounds under ADR 0065. Reversed selection resets these semantic
+foregrounds, while deletion strikethrough and persistent symbols remain.
+
 In particular, previous/next change links and hunk-marker rails remain colored
 by their target's change kind under
-[ADR 0079](0079-color-change-navigation-by-target.md) and
 [ADR 0114](0114-clickable-change-navigation-links.md). Those colors describe the
 destination's Git meaning. Their clickable styling comes from the shared control
 affordance, not from replacing the semantic color with navigation blue.

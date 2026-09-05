@@ -38,9 +38,9 @@ x86_64 Linux update channel rather than the executable's linked libc. Ubuntu
 5. Each screen updates its own state and draws itself.
 6. The event loop sends terminal input in and draws committed state out.
 7. On exit, `diffo` restores the terminal.
-8. `diffo-update` verifies and atomically installs signed GitHub release assets.
-   The TUI checks in the background after its first frame and runs installation
-   in a separate process through the shared command queue.
+8. The launcher's explicit `update` maintenance path verifies schema-1 metadata
+   and atomically installs the published executable. The TUI performs no passive
+   update check.
 
 ## Main parts
 
@@ -58,7 +58,8 @@ x86_64 Linux update channel rather than the executable's linked libc. Ubuntu
 - `diffo-core`: shared repository data and interfaces.
 - `diffo-git`: real Git implementation.
 - `diffo-repository-service`: background repository worker.
-- `diffo-update`: signed discovery and atomic executable replacement.
+- `diffo-update`: unsigned schema-1 discovery with length/digest verification
+  and atomic executable replacement.
 - `diffo-e2e` and `diffo-measure`: test and performance tools.
 
 ## Important rule

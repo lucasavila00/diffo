@@ -1,7 +1,7 @@
 # ADR 0058: Match file buffer titles to picker labels
 
-Refines [ADR 0049](0049-shared-file-picker.md) and
-[ADR 0050](0050-file-picker-status-colors.md).
+Refines [ADR 0049](0049-shared-file-picker.md) and the status-style contract in
+[ADR 0119](0119-separate-navigation-and-status-colors.md).
 
 ## Context
 

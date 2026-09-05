@@ -1,7 +1,6 @@
 # ADR 0076: Order checkout branches by recent commit
 
-Refines [ADR 0037](0037-git-checkout-to.md) and supersedes its branch ordering
-decision.
+Defines the branch ordering used by [ADR 0037](0037-git-checkout-to.md).
 
 ## Context
 
@@ -25,11 +24,10 @@ the timestamp as branch metadata; it is informational and must never be used as
 part of a checkout target.
 
 Order the unfiltered checkout list by descending tip committer timestamp across
-local and remote branches. This replaces the local-first grouping. Put branches
-without a usable timestamp after dated branches. Break equal-timestamp ties by
-putting local branches before remote branches, then by branch name. The current
-branch and its tracked remote remain visible but disabled, and the first enabled
-row remains selected.
+local and remote branches. Put branches without a usable timestamp after dated
+branches. Break equal-timestamp ties by putting local branches before remote
+branches, then by branch name. The current branch and its tracked remote remain
+visible but disabled, and the first enabled row remains selected.
 
 Fuzzy-match score remains the primary order while the user has entered search
 text. Use the recency order to break equal search scores, so an empty query and

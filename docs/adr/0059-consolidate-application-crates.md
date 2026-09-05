@@ -1,9 +1,6 @@
 # ADR 0059: Consolidate application crates
 
-Refines [ADR 0028](0028-split-diffo-app-model.md),
-[ADR 0030](0030-split-diffo-tui-input.md),
-[ADR 0039](0039-independent-app-modes.md),
-[ADR 0043](0043-shared-text-buffer-view.md),
+Refines [ADR 0039](0039-independent-app-modes.md),
 [ADR 0049](0049-shared-file-picker.md), and
 [ADR 0051](0051-crate-documentation.md).
 
@@ -23,7 +20,7 @@ workspace overhead.
 
 ## Decision
 
-Reduce the workspace from sixteen packages to ten. Keep crates around system
+Reduce the workspace package count and keep crates only around system
 boundaries, independently useful processing, and separate developer programs.
 Consolidate product composition into `diffo-app` and shared terminal components
 into `diffo-ui`.
@@ -50,6 +47,9 @@ Keep these packages:
 - `diffo-highlight`: bounded syntax preparation.
 - `diffo-e2e`: reusable pseudo-terminal test support.
 - `diffo-measure`: performance measurement program.
+- `diffo-update`: update protocol and atomic installation.
+- `diffo-ai-config`: fixed AI commit policy shared with test tooling.
+- `codex-mock`: deterministic Codex subprocess used by tests.
 
 Do not keep compatibility shim crates for removed packages. Nothing outside this
 workspace is a supported consumer. Move callers to the new module paths, then
@@ -102,6 +102,7 @@ diffo-app
 │   ├── input          Explorer keyboard and mouse routing
 │   ├── worker         file loading and bounded syntax preparation
 │   └── view           tree and file rendering
+├── history            checkout history and shared review orchestration
 └── workbench
     ├── activity_bar   activity selection and layout
     ├── command_queue  FIFO command lifecycle and cancellation

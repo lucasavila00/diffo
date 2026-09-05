@@ -1,6 +1,6 @@
 # ADR 0047: Bound terminal wheel momentum for SSH
 
-Refines ADR 0014. Syntax-readiness work is specified by ADRs 0045 and 0046.
+Refines ADR 0014. Syntax-readiness work is specified by ADRs 0045 and 0086.
 
 ## Context
 

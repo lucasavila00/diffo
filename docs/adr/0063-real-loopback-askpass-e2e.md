@@ -45,10 +45,10 @@ implementation details.
 
 Do not load serialized repository fixtures or substitute Git/SSH commands in
 this black-box suite. Construct rename and failure states with real Git commands
-and real missing or rejected remotes. Keep deterministic delay and frame-trace
-hooks only for contracts whose subject is cancellation ordering, atomic
-presentation, timing, or secret non-leakage; these hooks control observation and
-scheduling but do not replace Git, SSH, the repository, or the compiled
+and real missing or rejected remotes. Use deterministic causal boundaries and
+frame traces for cancellation ordering, atomic presentation, timing, and secret
+non-leakage. Do not use sleeps or delay environment hooks to create those
+boundaries, and do not replace Git, SSH, the repository, or the compiled
 application.
 
 Make `make e2e` run the `diffo-e2e` snapshot package and the compiled black-box

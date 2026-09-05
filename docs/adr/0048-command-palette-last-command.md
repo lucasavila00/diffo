@@ -11,7 +11,7 @@ searching for it again or navigating back to its row. Command palettes such as
 VS Code's make this common repetition faster by presenting recent commands
 first.
 
-Diffo has no configuration or user-state file. Its Diff, Explorer, and Search
+Diffo has no configuration or user-state file. Its Diff, Explorer, and History
 activities each keep a separate, long-lived command palette so switching
 activities does not copy or reset tool state.
 
@@ -34,7 +34,7 @@ option, full most-recently-used list, or cross-activity synchronization.
 
 ## Consequences
 
-Repeating the last command in an activity requires only F1 and Enter. Search
+Repeating the last command in an activity requires only F1 and Enter. Filtered
 results remain stable and continue to reflect relevance rather than prior use.
 History is lost when Diffo exits, and a command used in one activity does not
 reorder another activity's independent palette.

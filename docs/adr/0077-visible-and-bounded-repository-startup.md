@@ -68,8 +68,9 @@ bounded concurrency preserves the already-tested per-file semantics.
 Make the Diff model the workbench's sole owner of the complete repository
 snapshot. Explorer derives and retains only a `path -> ChangeKind` map. Initial
 construction and repository updates pass the snapshot to Explorer by reference.
-Explorer rebuilds its tree and requests paths only when that status map changes;
-a diff-body-only update no longer duplicates content or invalidates the tree.
+Explorer rebuilds Git decoration when that status map changes. Filesystem events
+independently refresh its filesystem-backed tree under ADR 0080; a
+diff-body-only update no longer duplicates content or invalidates the tree.
 
 The mutable mock repository and the Diff model still require separate owned
 snapshots under the current `Repository` interface. Changing that interface or

@@ -10,7 +10,7 @@ Keep parsing, projection, and syntax work out of the input loop for large diffs.
 - Send larger patches to one bounded worker.
 - Keep the last finished diff visible while the next diff loads.
 - Show an empty pane when the first large diff loads. Do not flash loading text.
-- Poll every 16 ms while work is pending. Poll every 250 ms when idle.
+- Poll every 16 ms while work is pending. Poll every 50 ms when idle.
 - Render only visible rows. Build the active view projection and cache up to
   four recently prepared file-and-mode buffers; prepare the other mode only when
   asked.

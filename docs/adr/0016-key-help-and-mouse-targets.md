@@ -7,7 +7,7 @@ Each key binding stores:
 - Actual `KeyChord` values.
 - App message.
 - Action description.
-- Read-only availability.
+- Availability in the current committed state.
 
 Generate shortcut labels from `KeyChord`. Do not parse help strings. The help
 popup is a two-column Shortcut / Action table built from this registry.

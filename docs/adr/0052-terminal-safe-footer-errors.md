@@ -3,14 +3,13 @@
 ## Context
 
 Repository watcher, file-loading, and operation errors cross system boundaries
-as arbitrary strings. They render in the Diff footer, the Explorer error panel,
-or a workbench toast. The Diff footer currently places its error directly in a
-Ratatui span, and toasts currently treat embedded newlines as layout delimiters.
-A line feed can therefore turn a one-line status into multiline content or
-inject an extra toast row. Terminal controls such as escape, carriage return,
-and backspace can also move the cursor or alter unrelated cells. Width
-calculation and truncation then operate on different content from what the
-terminal interprets.
+as arbitrary strings. They render in Explorer or in the shared acknowledgement
+modal. Multiline content can otherwise be mistaken for renderer-owned layout. A
+line feed can therefore turn a one-line status into multiline content or inject
+an extra toast row. Terminal controls such as escape, carriage return, and
+backspace can also move the cursor or alter unrelated cells. Width calculation
+and truncation then operate on different content from what the terminal
+interprets.
 
 Diffo already uses `diffo_ui::terminal_safe_text` for repository file content,
 paths, and Explorer errors. It expands tabs to a fixed width, renders C0
@@ -20,14 +19,13 @@ characters. The resulting string contains no terminal control characters.
 ## Decision
 
 Treat every error field as untrusted at the terminal rendering boundary. Before
-creating a footer span, Explorer paragraph, or toast title or detail, pass the
-complete field through `terminal_safe_text`. Perform display-width measurement,
-wrapping, sizing, and truncation only after that conversion.
+creating an Explorer paragraph or modal title or detail, pass the complete field
+through `terminal_safe_text`. Perform display-width measurement, wrapping,
+sizing, and truncation only after that conversion.
 
-The footer remains a single `Line` and a single terminal row. In particular, an
-embedded line feed inside any error field is shown as `␊`; it never creates
-another rendered line. Toasts may still put a title and a separately modeled
-detail on different rows; that separator is renderer-owned rather than
+An embedded line feed inside a single modeled error field is shown as `␊`; it
+never creates another rendered line. The modal may put a title and a separately
+modeled detail on different rows; that separator is renderer-owned rather than
 content-owned. Escape sequences, carriage returns, backspaces, tabs, and other
 controls are visible or replaced but are never executed. The renderer supplies
 error styles, so error content cannot supply terminal styling.
@@ -59,7 +57,5 @@ place; that flow is specified separately by
 ## Consequences
 
 Multiline and control-bearing failures can no longer change cursor position or
-error-view geometry. Users still see where control characters occurred, and
-existing footer truncation rules continue to preserve the current head before
-transient detail. Explicit toast title/detail structure continues to provide
-intentional multiline presentation.
+error-view geometry. Users still see where control characters occurred, and the
+shared acknowledgement modal retains intentional title/detail presentation.

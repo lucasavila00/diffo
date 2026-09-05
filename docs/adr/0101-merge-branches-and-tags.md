@@ -1,7 +1,7 @@
 # ADR 0101: Merge branches and tags
 
-Builds on [ADR 0037](0037-git-checkout-to.md) and
-[ADR 0055](0055-command-queue.md). Replaces the local-merge exclusion in
+Builds on [ADR 0037](0037-git-checkout-to.md),
+[ADR 0110](0110-queue-command-intents.md), and the operation boundary in
 [ADR 0080](0080-complete-git-operation-coverage.md).
 
 ## Context
@@ -32,7 +32,7 @@ Store the selected full ref and object ID, not its label. Also capture `HEAD`.
 Recheck both immediately before running the merge so a moved ref or changed
 destination fails without mutation.
 
-Run the merge through `CommandQueue`, equivalent to:
+Enqueue the merge through the workbench command queue, equivalent to:
 
 ```text
 git merge --no-edit <selected-full-ref>
@@ -47,9 +47,9 @@ instead of treating it as an ordinary failure. The user resolves and stages
 files, then finishes through the existing Commit control.
 
 Show `Git: Abort Merge` only while `MERGE_HEAD` exists, including for merges
-started outside Diffo. Run `git merge --abort` through `CommandQueue`, install
-the resulting snapshot, and show `Merge aborted`. A failed abort leaves the
-actual repository state visible and uses the shared error modal.
+started outside Diffo. Enqueue `git merge --abort` through the workbench command
+queue, install the resulting snapshot, and show `Merge aborted`. A failed abort
+leaves the actual repository state visible and uses the shared error modal.
 
 Always install the state Git actually left behind after a conflict, failure, or
 late cancellation. Cancellation must never imply an automatic abort.

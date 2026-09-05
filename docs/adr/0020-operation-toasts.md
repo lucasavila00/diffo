@@ -1,17 +1,18 @@
-# ADR 0020: Operation toasts
+# ADR 0020: Structured operation results
 
 ## Goal
 
-Show short results after repository actions.
+Produce truthful structured results after repository actions. ADR 0084 owns
+their current toast or acknowledgement-modal presentation.
 
 Examples:
 
-- `Pulled 3 commits`
+- `Sync complete`
 - `Already up to date`
-- `Pushed a1b2c3d to origin/main`
+- `Synced a1b2c3d to origin/main`
 - `Committed a1b2c3d`
 - `Fetch complete`
-- `Pull failed: no network`
+- `Sync failed: no network`
 
 ## Operation results
 
@@ -23,10 +24,10 @@ Change repository actions from `Result<()>` to a structured result:
 OperationResult
   Commit { hash }
   Fetch { updated_refs }
-  Pull { commits }
-  Push { hash, upstream }
+  Sync { plan }
   Stage
   Unstage
+  ...one typed variant per supported repository action
 ```
 
 Stage and Unstage results do not create toasts. Their effect is already
@@ -35,15 +36,13 @@ immediate and visible in the file lists.
 Failures are also structured:
 
 ```text
-OperationFailure { action: RepositoryAction, kind, summary, detail }
+OperationFailure { action: RepositoryAction, kind, detail }
 
 FailureKind
-  PullRequired
-  Diverged
   PushRejected
   Authentication
   Network
-  MergeConflict
+  RebaseConflict
   DirtyWorktree
   HookRejected
   NoRemote
@@ -53,7 +52,7 @@ FailureKind
 Git gets this data with stable commands after the action:
 
 - `git rev-parse HEAD` for the commit hash;
-- `git rev-list --count OLD..NEW` for pulled commit count;
+- the selected sync plan for local and upstream commit counts;
 - configured upstream data for remote and branch;
 - refs before and after Fetch to count updates.
 
@@ -63,74 +62,31 @@ detail for unknown failures.
 
 Use short seven-character hashes in the UI. Keep full hashes in the result.
 
-The refresh service must return separate events:
+The refresh service must distinguish watcher snapshots from command outcomes:
 
 ```text
-RepositoryChanged(snapshot)
-ActionCompleted(result, snapshot)
-ActionFailed(failure, snapshot)
+Snapshot(snapshot)
+CommandCompleted(id, action, result, snapshot)
+CommandFailed(id, failure, optional_snapshot)
+CommandCancelled(id, action, snapshot)
 ```
 
 A watcher refresh never creates a toast.
 
 ## Blocked and failed actions
 
-Do not silently ignore a primary action.
+Do not silently ignore an action. Classify known failures, keep the action name,
+and sanitize every diagnostic. Never expose credentials, credential-bearing
+URLs, tokens, secret-sensitive streams, or environment values. Preserve stderr
+and stdout separately and apply the bounded diagnostic contract in ADR 0105.
 
-- Ahead and behind: `Push blocked: pull and merge required`.
-- Behind: `Push blocked: pull required`.
-- Non-fast-forward rejection after a remote race:
-  `Push rejected: remote changed`.
-- Merge conflict during Pull: `Pull stopped: resolve conflicts`.
-- Missing credentials: `Push failed: authentication required`.
-- Missing remote: `Fetch failed: no remote configured`.
-- Remote hook rejection: `Push rejected by remote` plus safe detail.
-- Network failure: `Pull failed: network unavailable`.
-
-Never run `--force`, `--force-with-lease`, an automatic merge, or conflict
-resolution. A failure toast explains the next required user action.
-
-`Push + Pull` remains a blocked state for now. Clicking it creates the
-divergence toast and performs no repository mutation. The same rule applies if
-Push is requested from another UI path while the branch is behind.
-
-Sanitize failure detail. Never show credentials, credential-bearing URLs,
-tokens, or environment values.
-
-## Toast state
-
-Keep toast state in `diffo-app`:
-
-```text
-Toast { id, kind, title, detail }
-ToastKind = Success | Info | Error
-```
-
-Keep at most three toasts. New toasts go on top. Duplicate messages replace the
-older copy.
-
-The runtime owns time. It sends `DismissToast(id)` after three seconds. The pure
-model does not read the clock. Errors and blocked-action toasts stay until
-dismissed or replaced.
-
-## UI
-
-Render toasts above the footer in the bottom-right corner.
-
-- Success: green border.
-- Info: cyan border.
-- Error: red border.
-- Keep the current diff visible behind them.
-- Click a toast or press Esc when it is focused to dismiss it.
-- Network loading remains visible until the action result arrives. Then replace
-  it with the result toast.
-
-Long text wraps inside a fixed maximum width. Toasts must not change pane
-layout. Use xterm-256 colors over SSH.
+Sync owns fetch/rebase/push planning and divergence handling under ADRs 0070,
+0081, and 0085. Never force-push, retry a rejected push automatically, stash
+implicitly, or resolve conflicts without an explicit product decision.
 
 ## Failures
 
-Keep the action name in every failure: `Push failed: ...`. Never show success
+Keep the action name in every failure: `Sync failed: ...`. Never show success
 before both the Git command and result-data collection succeed. If result
-metadata cannot be collected, show a generic success such as `Push complete`; do
+metadata cannot be collected, show a generic success such as `Sync complete`; do
 not report a false hash or count.

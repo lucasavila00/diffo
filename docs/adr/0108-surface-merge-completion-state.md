@@ -1,7 +1,7 @@
 # ADR 0108: Show unfinished merges
 
 Refines [ADR 0036](0036-git-branch-status.md),
-[ADR 0082](0082-unpushed-commits-panel.md), and
+[ADR 0102](0102-treat-commits-without-an-upstream-as-unpushed.md), and
 [ADR 0101](0101-merge-branches-and-tags.md).
 
 ## Problem

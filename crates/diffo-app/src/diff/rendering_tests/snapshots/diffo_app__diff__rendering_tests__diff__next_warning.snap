@@ -8,6 +8,6 @@ Buffer {
         "                            Next change (n)                           ",
     ],
     styles: [
-        x: 0, y: 0, fg: White, bg: Indexed(52), underline: Reset, modifier: BOLD,
+        x: 0, y: 0, fg: Reset, bg: Indexed(52), underline: Reset, modifier: BOLD,
     ]
 }

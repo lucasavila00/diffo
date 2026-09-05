@@ -8,6 +8,6 @@ Buffer {
         "                          Previous change (p)                         ",
     ],
     styles: [
-        x: 0, y: 0, fg: White, bg: Indexed(22), underline: Reset, modifier: BOLD,
+        x: 0, y: 0, fg: Reset, bg: Indexed(22), underline: Reset, modifier: BOLD,
     ]
 }

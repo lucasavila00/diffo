@@ -132,14 +132,14 @@ where
                 || {
                     Line::styled(
                         format!(" {} ", terminal_safe_text(&self.document.title)),
-                        Style::default().fg(theme::TEXT),
+                        theme::text_style(),
                     )
                 },
                 |action| {
                     Line::from(vec![
                         Span::styled(
                             format!(" {} ", terminal_safe_text(&self.document.title)),
-                            Style::default().fg(theme::TEXT),
+                            theme::text_style(),
                         ),
                         Span::styled(
                             format!("{} ", terminal_safe_text(action)),
@@ -151,7 +151,7 @@ where
         } else {
             Line::styled(
                 format!(" {} ", terminal_safe_text(&self.document.title)),
-                Style::default().fg(theme::TEXT),
+                theme::text_style(),
             )
         };
         let mut block = Block::default()
@@ -191,8 +191,7 @@ where
             .skip(self.metrics.offset)
             .take(usize::from(self.metrics.list_area.height))
             .map(|index| self.list_item(&self.document.rows[*index]));
-        let list =
-            List::new(items).highlight_style(Style::default().bg(theme::SELECTION_BACKGROUND));
+        let list = List::new(items).highlight_style(theme::selection_style());
         let mut state = ListState::default().with_selected(selected);
         frame.render_stateful_widget(list, self.metrics.list_area, &mut state);
         if self.metrics.maximum_offset > 0 && !self.metrics.scrollbar_area.is_empty() {
@@ -203,7 +202,7 @@ where
                 self.visible.len(),
                 usize::from(self.metrics.list_area.height),
                 self.metrics.offset,
-                Style::default().fg(theme::CHROME),
+                theme::chrome_style(),
             );
         }
     }

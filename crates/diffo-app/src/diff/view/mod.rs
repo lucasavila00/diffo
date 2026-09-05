@@ -57,11 +57,11 @@ pub(in crate::diff) fn render_change_markers(
             1,
         );
         frame.render_widget(
-            Paragraph::new(icons::CHANGE_MARKER).style(Style::default().fg(if visible {
-                theme::TEXT
+            Paragraph::new(icons::CHANGE_MARKER).style(if visible {
+                theme::text_style()
             } else {
-                theme::CHROME
-            })),
+                theme::chrome_style()
+            }),
             marker,
         );
     }
@@ -86,6 +86,7 @@ impl Renderer {
         vertical: usize,
         horizontal: usize,
     ) {
+        frame.render_widget(Block::default().style(theme::code_style()), area);
         let metrics = self.full_screen_metrics(area, vertical);
         let syntax_ready = self.failed.is_some()
             || self.syntax_ready_for_viewport(self.displayed_mode(requested_mode), vertical);
@@ -333,6 +334,10 @@ impl Renderer {
         let title = self.displayed_key().map_or_else(
             || Line::raw(format!(" {empty_title} ")),
             |key| key.title.clone(),
+        );
+        frame.render_widget(
+            Block::default().style(theme::code_style()),
+            viewport.content_area,
         );
         frame.render_widget(
             Block::default()

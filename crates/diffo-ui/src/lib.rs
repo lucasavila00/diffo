@@ -26,17 +26,42 @@ use ratatui::{
 /// Renderers use these roles instead of choosing terminal colors locally. Diff
 /// content and syntax highlighting keep their separate, content-specific palettes.
 pub mod theme {
-    use ratatui::style::Color;
+    use ratatui::style::{Color, Modifier, Style};
 
-    pub const TEXT: Color = Color::White;
-    pub const CHROME: Color = Color::DarkGray;
-    pub const INFORMATION: Color = Color::LightCyan;
-    pub const SELECTION_BACKGROUND: Color = CHROME;
-    pub const SUCCESS: Color = Color::LightGreen;
+    pub const NAVIGATION: Color = Color::Blue;
+    pub const INFORMATION: Color = Color::Cyan;
+    pub const SUCCESS: Color = Color::Green;
     pub const WARNING: Color = Color::Yellow;
-    pub const DANGER: Color = Color::LightRed;
+    pub const DANGER: Color = Color::Red;
     pub const CONFLICT_FOREGROUND: Color = Color::LightYellow;
     pub const CONFLICT_BACKGROUND: Color = Color::Indexed(58);
+    pub const CODE_BACKGROUND: Color = Color::Indexed(235);
+    pub const CODE_FOREGROUND: Color = Color::Rgb(248, 248, 242);
+
+    #[must_use]
+    pub fn text_style() -> Style {
+        Style::default()
+            .fg(Color::Reset)
+            .bg(Color::Reset)
+            .remove_modifier(Modifier::DIM)
+    }
+
+    #[must_use]
+    pub fn chrome_style() -> Style {
+        text_style().add_modifier(Modifier::DIM)
+    }
+
+    #[must_use]
+    pub fn selection_style() -> Style {
+        text_style()
+            .remove_modifier(Modifier::DIM)
+            .add_modifier(Modifier::REVERSED)
+    }
+
+    #[must_use]
+    pub fn code_style() -> Style {
+        Style::default().fg(CODE_FOREGROUND).bg(CODE_BACKGROUND)
+    }
 }
 
 /// Fixed Nerd Font icons used by Diffo's interface.
@@ -174,7 +199,7 @@ pub fn modal_block(title: impl Into<String>) -> Block<'static> {
     let title = terminal_safe_text(&title.into());
     Block::default()
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(theme::CHROME))
+        .border_style(theme::chrome_style())
         .title(format!(" {title} "))
 }
 
@@ -339,7 +364,7 @@ impl PaneSplit {
 
     #[must_use]
     pub fn border_style(self) -> Style {
-        Style::default().fg(theme::CHROME)
+        theme::chrome_style()
     }
 }
 
@@ -378,15 +403,13 @@ pub fn change_kind_style(kind: ChangeKind) -> Style {
 /// Returns the fixed style for a visible mouse target.
 #[must_use]
 pub fn mouse_target_style() -> Style {
-    Style::default()
-        .fg(theme::TEXT)
-        .add_modifier(Modifier::BOLD)
+    theme::text_style().add_modifier(Modifier::BOLD)
 }
 
 /// Returns the fixed style for a visible control that cannot currently activate.
 #[must_use]
 pub fn disabled_control_style() -> Style {
-    Style::default().fg(theme::CHROME)
+    theme::chrome_style()
 }
 
 #[must_use]
@@ -396,11 +419,13 @@ pub fn plain_syntax_spans(line: &HighlightedLine) -> Vec<Span<'static>> {
         .map(|span| {
             Span::styled(
                 terminal_safe_text(&span.text),
-                Style::default().fg(Color::Rgb(
-                    span.foreground.red,
-                    span.foreground.green,
-                    span.foreground.blue,
-                )),
+                Style::default()
+                    .fg(Color::Rgb(
+                        span.foreground.red,
+                        span.foreground.green,
+                        span.foreground.blue,
+                    ))
+                    .bg(theme::CODE_BACKGROUND),
             )
         })
         .collect()

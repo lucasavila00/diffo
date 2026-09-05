@@ -46,7 +46,7 @@ impl ErrorDialog {
         frame.render_widget(
             Paragraph::new("Enter / Esc: close")
                 .alignment(Alignment::Center)
-                .style(Style::default().fg(theme::CHROME)),
+                .style(theme::chrome_style()),
             layout.footer,
         );
     }

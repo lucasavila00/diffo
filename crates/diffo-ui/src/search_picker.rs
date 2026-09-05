@@ -7,7 +7,6 @@ use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, 
 use ratatui::{
     Frame,
     layout::{Constraint, Layout, Rect},
-    style::Style,
     text::{Line, Span},
     widgets::{Clear, List, ListItem, ListState, Paragraph, ScrollbarOrientation},
 };
@@ -230,12 +229,11 @@ where
         let sections = search_picker_sections(inner);
         frame.render_widget(
             Paragraph::new(format!("> {}█", terminal_safe_text(self.query())))
-                .style(Style::default().fg(theme::TEXT)),
+                .style(theme::text_style()),
             sections[0],
         );
         frame.render_widget(
-            Paragraph::new("─".repeat(usize::from(sections[1].width)))
-                .style(Style::default().fg(theme::CHROME)),
+            Paragraph::new("─".repeat(usize::from(sections[1].width))).style(theme::chrome_style()),
             sections[1],
         );
         let viewport = usize::from(results.height);
@@ -265,9 +263,9 @@ where
                 .collect()
         };
         let list = List::new(items)
-            .style(Style::default().fg(theme::TEXT))
+            .style(theme::text_style())
             .highlight_symbol(icons::SELECTION)
-            .highlight_style(Style::default().bg(theme::SELECTION_BACKGROUND));
+            .highlight_style(theme::selection_style());
         let mut state = ListState::default().with_selected(selected);
         frame.render_stateful_widget(list, results, &mut state);
         if maximum > 0 && results.width > 0 {
@@ -284,13 +282,13 @@ where
                 matches.len(),
                 viewport,
                 self.offset,
-                Style::default().fg(theme::CHROME),
+                theme::chrome_style(),
             );
         }
         frame.render_widget(
             Paragraph::new(Line::styled(
                 "↑/↓ select · Enter choose · Esc close",
-                Style::default().fg(theme::CHROME),
+                theme::chrome_style(),
             )),
             sections[3],
         );
@@ -404,7 +402,7 @@ fn search_item_line<I, P>(item: &SearchItem<I, P>, width: usize) -> Line<'static
     Line::from(vec![
         Span::raw(label),
         Span::raw(" ".repeat(spacing)),
-        Span::styled(trailing, Style::default().fg(theme::CHROME)),
+        Span::styled(trailing, theme::chrome_style()),
     ])
 }
 
@@ -634,7 +632,7 @@ mod tests {
         let wide = render_picker(&picker(), wide_area);
         let (_, wide_results) = search_picker_layout(wide_area);
         let age_cell = &wide[(wide_results.right() - 7, wide_results.y)];
-        assert_eq!(age_cell.style().fg, Some(theme::CHROME));
+        assert_eq!(age_cell.style().fg, Some(ratatui::style::Color::Reset));
         insta::assert_debug_snapshot!("trailing_metadata_wide", modal_lines(&wide, wide_area));
 
         let narrow_area = Rect::new(0, 0, 16, 12);

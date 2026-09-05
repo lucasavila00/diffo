@@ -3,12 +3,12 @@ source: crates/diffo-app/src/diff/rendering_tests.rs
 expression: "status_line(&model, 0, 80)"
 ---
 Line::from_iter([
-    Span::from(" main · 1234567").white(),
-    Span::from(" · clean").dark_gray(),
+    Span::from(" main · 1234567").fg(Color::Reset).bg(Color::Reset).not_dim(),
+    Span::from(" · clean").fg(Color::Reset).bg(Color::Reset).dim(),
     Span::default(),
-    Span::from("[ Commands (1 / F1) ]").white().bold(),
+    Span::from("[ Commands (1 / F1) ]").fg(Color::Reset).bg(Color::Reset).bold().not_dim(),
     Span::from(" "),
-    Span::from("[ Help (2 / F2) ]").white().bold(),
+    Span::from("[ Help (2 / F2) ]").fg(Color::Reset).bg(Color::Reset).bold().not_dim(),
     Span::from(" "),
-    Span::from("[ Sync (9 / F9) ]").white().bold(),
+    Span::from("[ Sync (9 / F9) ]").fg(Color::Reset).bg(Color::Reset).bold().not_dim(),
 ])

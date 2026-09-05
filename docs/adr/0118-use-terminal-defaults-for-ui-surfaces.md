@@ -51,14 +51,13 @@ Text, list, picker, and form selections reverse terminal defaults. Explicitly
 reset both colors and remove inherited dim styling on the selected label before
 applying `REVERSED`; adding reversal to a colored foreground or a diff
 background does not reverse terminal defaults. Keep selection markers visible.
-Git-status symbols and row actions remain separate semantic spans outside the
-reversed label, so selection cannot invert their meaning-specific colors into
-unreadable backgrounds. File names in the selected label use default reversed
-text and retain deletion strikethrough. Diff retains its status symbols.
-Explorer keeps its existing compact layout without status letters; its
-file/folder icon stays outside the reversed name and retains the status
-foreground, while Diff remains the complete textual status view. Unselected file
-labels retain Git-status coloring.
+Selection applies to the complete row, including its persistent action, and
+resets semantic foregrounds before reversing the terminal defaults. File names
+retain deletion strikethrough. Diff retains its status symbols, so selected-row
+meaning does not depend on color. Explorer keeps its existing compact layout
+without status letters; selected Explorer rows rely on their existing file and
+folder identity plus repository context, while Diff remains the complete textual
+status view. Unselected file labels retain Git-status coloring.
 
 Framed content uses a navigation accent on its boundary or marker, not reversal
 across the content. This preserves embedded syntax and status styles, following

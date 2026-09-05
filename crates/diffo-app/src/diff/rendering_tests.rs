@@ -39,13 +39,13 @@ fn line_text(line: &ratatui::text::Line<'_>) -> String {
 #[test]
 fn file_picker_renders_every_git_change_kind_with_its_status_color() {
     let kinds = [
-        (ChangeKind::Added, Color::LightGreen),
+        (ChangeKind::Added, Color::Green),
         (ChangeKind::Modified, Color::Yellow),
-        (ChangeKind::Deleted, Color::LightRed),
-        (ChangeKind::Renamed, Color::LightCyan),
-        (ChangeKind::Copied, Color::LightCyan),
-        (ChangeKind::Untracked, Color::LightGreen),
-        (ChangeKind::Conflicted, Color::LightRed),
+        (ChangeKind::Deleted, Color::Red),
+        (ChangeKind::Renamed, Color::Cyan),
+        (ChangeKind::Copied, Color::Cyan),
+        (ChangeKind::Untracked, Color::Green),
+        (ChangeKind::Conflicted, Color::Red),
     ];
     let files = kinds
         .iter()

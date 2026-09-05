@@ -117,7 +117,7 @@ impl<K> Document<K> {
                 .collect(),
             panel_action: None,
             empty_message: "No files.".to_owned(),
-            border_style: Style::default().fg(theme::CHROME),
+            border_style: theme::chrome_style(),
         }
     }
 
@@ -132,7 +132,7 @@ impl<K> Document<K> {
             rows,
             panel_action: None,
             empty_message: "No files.".to_owned(),
-            border_style: Style::default().fg(theme::CHROME),
+            border_style: theme::chrome_style(),
         }
     }
 }

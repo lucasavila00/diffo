@@ -5,7 +5,6 @@ use diffo_highlight::LineRange;
 use ratatui::{
     Frame,
     layout::Rect,
-    style::Style,
     text::Line,
     widgets::{Paragraph, ScrollbarOrientation},
 };
@@ -239,7 +238,7 @@ pub fn render_scrollbars(
     viewport: Viewport,
 ) -> ScrollbarAreas {
     let areas = scrollbar_areas(outer, metrics);
-    let style = Style::default().fg(theme::CHROME);
+    let style = theme::chrome_style();
     if metrics.maximum_vertical > 0 {
         render_scrollbar(
             frame,

@@ -17,7 +17,7 @@ use diffo_ui::text_view::{TextRenderMode, TextSurfacePreparation};
 use diffo_ui::{PaneSplit, tool_areas};
 use ratatui::{Frame, layout::Rect};
 
-use crate::explorer::{ExplorerActivity, ExplorerEvent, ExplorerOutcome, ExplorerRequest};
+use crate::explorer::{ExplorerActivity, ExplorerEvent, ExplorerOutcome};
 use crate::history::{HistoryActivity, HistoryEvent, HistoryRequest};
 mod activity_bar;
 mod ai_commit;
@@ -39,6 +39,7 @@ mod prompt;
 mod quick_open;
 mod repository_update;
 mod sync_remote;
+mod types;
 
 use bindings::GlobalAction;
 use error_dialog::ErrorDialog;
@@ -56,47 +57,8 @@ pub(crate) use command_queue::CommandIntent;
 pub use command_queue::{
     ApplicationAction, ApplicationCommand, CommandQueue, CommandResult, CommandState,
 };
-
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub enum Activity {
-    #[default]
-    Diff,
-    Explorer,
-    History,
-}
-
-enum WorkbenchCommand {
-    Diff(Message),
-    Effect(WorkbenchEffect),
-    Redraw,
-}
-
-#[derive(Debug, Eq, PartialEq)]
-pub enum WorkbenchEffect {
-    CopyPath {
-        path: std::path::PathBuf,
-        absolute: bool,
-    },
-    Prompt {
-        command_id: ApplicationCommandId,
-        prompt_id: PromptId,
-        response: PromptResponse,
-    },
-}
-
-pub enum PromptResponse {
-    Text(String),
-    Confirm,
-    Cancel,
-}
-
-pub enum WorkbenchTask {
-    Explorer(ExplorerRequest),
-}
-
-pub enum WorkbenchTaskResult {
-    Explorer(ExplorerOutcome),
-}
+use types::WorkbenchCommand;
+pub use types::{Activity, PromptResponse, WorkbenchEffect, WorkbenchTask, WorkbenchTaskResult};
 
 pub struct Workbench {
     active: Activity,

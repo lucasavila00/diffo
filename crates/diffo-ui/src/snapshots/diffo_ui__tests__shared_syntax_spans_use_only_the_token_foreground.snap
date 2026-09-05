@@ -3,5 +3,5 @@ source: crates/diffo-ui/src/lib.rs
 expression: spans
 ---
 [
-    Span::from("value").fg(Color::Rgb(1, 2, 3)),
+    Span::from("value").fg(Color::Rgb(1, 2, 3)).bg(Color::Indexed(235)),
 ]

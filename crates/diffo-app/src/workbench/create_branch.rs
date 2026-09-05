@@ -200,9 +200,7 @@ impl CreateBranchModal {
 
         let validation = self.validation();
         let (message, style) = match validation {
-            Validation::Empty | Validation::Ready(None) => {
-                (String::new(), Style::default().fg(theme::CHROME))
-            }
+            Validation::Empty | Validation::Ready(None) => (String::new(), theme::chrome_style()),
             Validation::Ready(Some(message)) => (
                 terminal_safe_text(&message),
                 Style::default().fg(theme::INFORMATION),
@@ -216,7 +214,7 @@ impl CreateBranchModal {
 
         let field = Block::default()
             .borders(Borders::ALL)
-            .border_style(Style::default().fg(theme::CHROME));
+            .border_style(theme::chrome_style());
         let inner = field.inner(layout.input);
         let width = usize::from(inner.width);
         let empty = self.input.is_empty();
@@ -227,11 +225,11 @@ impl CreateBranchModal {
             self.input.chars().skip(start).take(width).collect()
         };
         frame.render_widget(
-            Paragraph::new(terminal_safe_text(&value)).style(Style::default().fg(if empty {
-                theme::CHROME
+            Paragraph::new(terminal_safe_text(&value)).style(if empty {
+                theme::chrome_style()
             } else {
-                theme::TEXT
-            })),
+                theme::text_style()
+            }),
             inner,
         );
         frame.render_widget(field, layout.input);
@@ -249,7 +247,7 @@ impl CreateBranchModal {
         frame.render_widget(
             Paragraph::new("Enter: create and checkout · Esc: cancel")
                 .alignment(Alignment::Center)
-                .style(Style::default().fg(theme::CHROME)),
+                .style(theme::chrome_style()),
             layout.footer,
         );
     }

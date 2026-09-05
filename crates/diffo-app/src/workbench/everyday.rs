@@ -324,7 +324,7 @@ impl InputModal {
         }
         let field = Block::default()
             .borders(Borders::ALL)
-            .border_style(Style::default().fg(theme::CHROME));
+            .border_style(theme::chrome_style());
         let inner = field.inner(layout.input);
         let width = usize::from(inner.width);
         let empty = self.input.is_empty();
@@ -335,11 +335,11 @@ impl InputModal {
             self.input.chars().skip(start).take(width).collect()
         };
         frame.render_widget(
-            Paragraph::new(terminal_safe_text(&value)).style(Style::default().fg(if empty {
-                theme::CHROME
+            Paragraph::new(terminal_safe_text(&value)).style(if empty {
+                theme::chrome_style()
             } else {
-                theme::TEXT
-            })),
+                theme::text_style()
+            }),
             inner,
         );
         frame.render_widget(field, layout.input);
@@ -354,7 +354,7 @@ impl InputModal {
         frame.render_widget(
             Paragraph::new("Enter: continue · Esc: cancel")
                 .alignment(Alignment::Center)
-                .style(Style::default().fg(theme::CHROME)),
+                .style(theme::chrome_style()),
             layout.footer,
         );
     }
@@ -548,7 +548,7 @@ impl ConfirmationModal {
         frame.render_widget(
             Paragraph::new("Arrows: select · Enter: choose · Esc: cancel")
                 .alignment(Alignment::Center)
-                .style(Style::default().fg(theme::CHROME)),
+                .style(theme::chrome_style()),
             layout.footer,
         );
     }

@@ -51,7 +51,10 @@ pub(crate) fn raw_hunk_line(
     if let Some(highlighted) = highlighted {
         spans.extend(syntax_spans(highlighted, background, kind));
     } else {
-        spans.push(Span::styled(terminal_safe_text(text), background));
+        spans.push(Span::styled(
+            terminal_safe_text(text),
+            code_text_style(kind),
+        ));
     }
     Line::from(spans)
 }
@@ -80,7 +83,7 @@ pub(in crate::diff) fn side_by_side_skeleton_line(
     Line::from(vec![
         number(row.old.as_ref()),
         Span::raw(" ".repeat(column_width.saturating_sub(4))),
-        Span::styled(" │ ", Style::default().fg(theme::CHROME)),
+        Span::styled(" │ ", theme::chrome_style()),
         number(row.new.as_ref()),
     ])
 }
@@ -92,7 +95,7 @@ pub(in crate::diff) fn side_by_side_line(
     highlighted: &HighlightedDiff,
 ) -> Line<'static> {
     let mut spans = format_cell(row.old.as_ref(), column_width, horizontal, highlighted);
-    spans.push(Span::styled(" │ ", Style::default().fg(theme::CHROME)));
+    spans.push(Span::styled(" │ ", theme::chrome_style()));
     spans.extend(format_cell(
         row.new.as_ref(),
         column_width,
@@ -111,7 +114,7 @@ pub(in crate::diff) fn format_cell(
     let gutter_width = usize::from(diffo_ui::design::SIDE_BY_SIDE_GUTTER_WIDTH);
     let code_width = width.saturating_sub(gutter_width);
     let Some(line) = line else {
-        return vec![Span::raw(" ".repeat(width))];
+        return vec![Span::styled(" ".repeat(width), theme::code_style())];
     };
     let number = line
         .number
@@ -150,7 +153,12 @@ pub(in crate::diff) fn code_spans(
     });
     let background = diff_background(row.kind);
     highlighted_line.map_or_else(
-        || vec![Span::styled(terminal_safe_text(&row.text), background)],
+        || {
+            vec![Span::styled(
+                terminal_safe_text(&row.text),
+                code_text_style(row.kind),
+            )]
+        },
         |line| syntax_spans(line, background, row.kind),
     )
 }
@@ -298,13 +306,15 @@ pub(in crate::diff) fn pad_to_width(
 }
 
 pub(in crate::diff) fn gutter_style(kind: RowKind) -> Style {
-    let foreground = match kind {
-        RowKind::Removed => theme::DANGER,
-        RowKind::Added => theme::SUCCESS,
-        RowKind::Conflict => theme::CONFLICT_FOREGROUND,
-        RowKind::Header | RowKind::Context | RowKind::Changed | RowKind::Meta => theme::CHROME,
-    };
-    Style::default().fg(foreground).patch(diff_background(kind))
+    match kind {
+        RowKind::Removed => Style::default().fg(theme::DANGER),
+        RowKind::Added => Style::default().fg(theme::SUCCESS),
+        RowKind::Conflict => Style::default().fg(theme::CONFLICT_FOREGROUND),
+        RowKind::Header | RowKind::Context | RowKind::Changed | RowKind::Meta => {
+            theme::code_style().add_modifier(ratatui::style::Modifier::DIM)
+        }
+    }
+    .patch(diff_background(kind))
 }
 
 pub(in crate::diff) fn diff_background(kind: RowKind) -> Style {
@@ -314,7 +324,9 @@ pub(in crate::diff) fn diff_background(kind: RowKind) -> Style {
         RowKind::Removed => Style::default().bg(Color::Indexed(52)),
         RowKind::Added => Style::default().bg(Color::Indexed(22)),
         RowKind::Conflict => Style::default().bg(theme::CONFLICT_BACKGROUND),
-        RowKind::Header | RowKind::Context | RowKind::Changed | RowKind::Meta => Style::default(),
+        RowKind::Header | RowKind::Context | RowKind::Changed | RowKind::Meta => {
+            Style::default().bg(theme::CODE_BACKGROUND)
+        }
     }
 }
 
@@ -341,13 +353,16 @@ pub(in crate::diff) fn diff_background_rgb(kind: RowKind) -> Option<Rgb> {
 
 pub(in crate::diff) fn row_style(kind: RowKind) -> Style {
     match kind {
-        RowKind::Header => Style::default().fg(theme::TEXT),
+        RowKind::Header | RowKind::Context | RowKind::Changed => theme::code_style(),
         RowKind::Removed => Style::default().fg(Color::Red),
         RowKind::Added => Style::default().fg(Color::Green),
         RowKind::Conflict => Style::default()
             .fg(theme::CONFLICT_FOREGROUND)
             .bg(theme::CONFLICT_BACKGROUND),
-        RowKind::Meta => Style::default().fg(theme::WARNING),
-        RowKind::Context | RowKind::Changed => Style::default(),
+        RowKind::Meta => theme::code_style().fg(theme::WARNING),
     }
+}
+
+fn code_text_style(kind: RowKind) -> Style {
+    theme::code_style().patch(diff_background(kind))
 }

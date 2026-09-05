@@ -23,5 +23,5 @@ expression: "(rendered, selected_style)"
         "│ ↑/↓ select · Enter run · Esc close                                 │",
         "└────────────────────────────────────────────────────────────────────┘",
     ],
-    Style::new().white().on_dark_gray().underline_color(Color::Reset).bold(),
+    Style::new().fg(Color::Reset).bg(Color::Reset).underline_color(Color::Reset).bold().reversed(),
 )

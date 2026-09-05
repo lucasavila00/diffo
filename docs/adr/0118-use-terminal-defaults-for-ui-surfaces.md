@@ -32,10 +32,12 @@ scrollbars. Replacing a few local colors would leave the shared contract wrong.
 
 ## Decision
 
-Use terminal-default foreground and background for ordinary text and structural
-surfaces throughout Diffo. Express shared roles as styles, including modifiers,
-rather than requiring every role to be a color constant. Keep their ownership in
-`diffo-ui` alongside the existing layout tokens.
+Use terminal-default foreground and background for ordinary UI text and
+structural surfaces throughout Diffo. Code-view content uses the explicit dark
+surfaces defined in [ADR 0120](0120-render-code-on-explicit-dark-surfaces.md).
+Express shared roles as styles, including modifiers, rather than requiring every
+role to be a color constant. Keep their ownership in `diffo-ui` alongside the
+existing layout tokens.
 
 Primary text uses the default foreground. Enabled controls use that foreground
 with the existing bold emphasis and persistent affordance. Secondary text and
@@ -74,8 +76,10 @@ prompts, and that behavior remains part of the surface contract.
 The terminal owns light/dark switching. Diffo adds no theme setting,
 command-line option, environment configuration, palette query, theme polling, or
 redraw trigger for these styles. Already displayed default and reversed cells
-follow the terminal's defaults. Source syntax and fixed diff surfaces require
-the separate decision in [ADR 0120](0120-use-terminal-palette-syntax.md).
+follow the terminal's defaults. Code views retain Monokai colors on explicit
+dark backgrounds under
+[ADR 0120](0120-render-code-on-explicit-dark-surfaces.md). Light-mode syntax
+remains a separate, deferred limitation.
 
 ## Related WT improvements
 
@@ -114,5 +118,5 @@ styles so dim and reversed behavior cannot drift between activities.
 
 Appearance follows the user's terminal palette, including its limitations. `DIM`
 and accent contrast vary between terminals; text, symbols, and geometry
-therefore continue to carry essential meaning. This change alone does not make
-Monokai source text readable on a light background.
+therefore continue to carry essential meaning. Light-mode support is limited to
+the surrounding UI; code views remain dark to preserve Monokai readability.

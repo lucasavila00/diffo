@@ -1,8 +1,9 @@
 # ADR 0055: Application command queue
 
 Refines [ADR 0018](0018-network-operation-feedback.md),
-[ADR 0051](0051-workbench-operation-toasts.md), and
-[ADR 0052](0052-semantic-chrome-colors.md).
+[ADR 0051](0051-workbench-operation-toasts.md), and the structural style
+contract now consolidated in
+[ADR 0118](0118-use-terminal-defaults-for-ui-surfaces.md).
 
 ## Decision
 
@@ -46,5 +47,5 @@ committed repository snapshot; only successful command completion installs a
 replacement snapshot.
 
 This restores ADR 0018's border gradient as the default loading presentation for
-every queued command and replaces ADR 0052's prohibition on that transient
-progress color. Idle structural chrome remains fixed dark gray.
+every queued command. Idle structural chrome remains terminal-default and dim as
+defined by ADR 0118.

@@ -1,6 +1,7 @@
 # ADR 0065: Propagate Git colors through Explorer folders
 
-Refines [ADR 0050](0050-file-picker-status-colors.md) and
+Refines the status-color contract now consolidated in
+[ADR 0119](0119-separate-navigation-and-status-colors.md) and
 [ADR 0064](0064-separate-diff-status-and-tree-disclosure-columns.md).
 
 ## Context

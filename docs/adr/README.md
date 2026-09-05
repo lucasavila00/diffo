@@ -13,8 +13,9 @@ design, start with the [living architecture documentation](../architecture/).
 3. Do not add status fields, acceptance criteria, test or verification plans,
    implementation task lists, or migration checklists. A merged ADR records the
    decision; code, tests, and CI record its implementation and verification.
-4. Preserve merged records as history. Record a changed choice in a new ADR and
-   link the related records.
+4. Keep the log compact. When a new decision replaces an older record, carry
+   forward any still-current constraints, delete the obsolete record, and repair
+   links from related ADRs.
 5. Update the relevant page under [`docs/architecture/`](../architecture/) when
    the implemented system changes.
 

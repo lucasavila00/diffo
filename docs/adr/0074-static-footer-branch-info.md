@@ -1,7 +1,7 @@
 # ADR 0074: Reserve bold for mouse targets
 
-Refines [ADR 0052](0052-semantic-chrome-colors.md) and
-[ADR 0054](0054-readable-tree-labels-and-controls.md). Supersedes the
+Refines the structural and control-style contract now consolidated in
+[ADR 0118](0118-use-terminal-defaults-for-ui-surfaces.md). Supersedes the
 interaction decision in [ADR 0036](0036-git-branch-status.md) and the wording
 examples in [ADR 0069](0069-show-commit-hash-in-footer.md).
 

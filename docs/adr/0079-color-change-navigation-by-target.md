@@ -2,7 +2,7 @@
 
 Refines [ADR 0008](0008-diff-colors.md),
 [ADR 0038](0038-remove-button-hover-changes.md),
-[ADR 0054](0054-readable-tree-labels-and-controls.md), and
+[ADR 0118](0118-use-terminal-defaults-for-ui-surfaces.md), and
 [ADR 0067](0067-viewport-aware-change-navigation.md).
 
 ## Context
@@ -42,14 +42,14 @@ projection. When a viewport-spanning change moves one screen at a time, use the
 changed content at the edge being revealed by that specific move.
 
 Fill the complete button row with the semantic background, including the padding
-around the centered label. Keep the arrow and label bold with the primary white
-text foreground. The control has one stable style while visible. Pointer
+around the centered label. Keep the arrow and label bold with the explicit light
+code-surface foreground. The control has one stable style while visible. Pointer
 movement, focus, and the input method do not change it. Hide the control when
 its directional action is unavailable, as before.
 
 The semantic background communicates the kind of destination diff content rather
-than control state. The white foreground continues to satisfy ADR 0054's
-enabled- control rule. This decision does not introduce a general facility for
+than control state. The explicit foreground satisfies ADR 0118's readable
+enabled-control rule. This decision does not introduce a general facility for
 caller-styled controls, a new palette role, configuration, animation, or hover
 handling.
 

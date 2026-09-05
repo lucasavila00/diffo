@@ -1,7 +1,8 @@
 # ADR 0064: Separate Diff status and Explorer disclosure columns
 
-Refines [ADR 0050](0050-file-picker-status-colors.md),
-[ADR 0054](0054-readable-tree-labels-and-controls.md),
+Refines the status and control contracts now consolidated in
+[ADR 0119](0119-separate-navigation-and-status-colors.md) and
+[ADR 0118](0118-use-terminal-defaults-for-ui-surfaces.md), plus
 [ADR 0061](0061-align-explorer-tree-names.md), and
 [ADR 0063](0063-terminal-native-file-type-badges.md).
 
@@ -48,9 +49,9 @@ every row reserves the same disclosure width. Selection, row hit targets,
 context menus, truncation, and fixed actions do not change. No hover behavior or
 configuration is added.
 
-This replaces ADR 0054's flat-row dot, ADR 0061's Explorer status column, and
-ADR 0063's open and closed folder icons. It narrows ADR 0050's status decoration
-rule to Diff's flat pickers.
+This replaces the former flat-row dot, ADR 0061's Explorer status column, and
+ADR 0063's open and closed folder icons. It narrows status decoration to Diff's
+flat pickers.
 
 ## Consequences
 

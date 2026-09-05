@@ -1,9 +1,8 @@
 # ADR 0120: Render code on explicit dark surfaces
 
-Refines the dark-background assumption in [ADR 0008](0008-diff-colors.md) and
-preserves the Monokai syntax contract in
-[ADR 0057](0057-consistent-code-view-syntax-style.md). Defines the code-view
-exception to [ADR 0118](0118-use-terminal-defaults-for-ui-surfaces.md).
+Refines and consolidates the syntax and dark-background decisions in
+[ADR 0008](0008-diff-colors.md). Defines the code-view exception to
+[ADR 0118](0118-use-terminal-defaults-for-ui-surfaces.md).
 
 ## Context
 
@@ -24,6 +23,11 @@ Keep Monokai Extended and the existing foreground-only syntax contract. Render
 source and diff content on an explicit fixed dark background in Explorer and
 every Diff and History projection, including full-screen views. This applies
 even when the surrounding terminal and application chrome use a light theme.
+
+All code views interpret syntax identically at the shared boundary: keep each
+Monokai token's foreground and discard theme backgrounds, bold, italic,
+underline, and other modifiers. Renderer-specific font attributes must not make
+the same source differ between Explorer, Diff, and History.
 
 The code surface owns its background and fallback foreground as a pair. Use a
 fixed dark RGB or extended xterm color compatible with Monokai, not the

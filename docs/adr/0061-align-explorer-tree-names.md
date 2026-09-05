@@ -1,8 +1,8 @@
 # ADR 0061: Align Explorer tree names with a fixed status column
 
 Refines [ADR 0035](0035-explorer-file-view.md),
-[ADR 0049](0049-shared-file-picker.md), and
-[ADR 0050](0050-file-picker-status-colors.md).
+[ADR 0049](0049-shared-file-picker.md), and the status-style contract now in
+[ADR 0119](0119-separate-navigation-and-status-colors.md).
 
 ## Context
 

@@ -1,7 +1,7 @@
 # ADR 0063: Use one-cell Unicode file icons
 
 Refines [ADR 0049](0049-shared-file-picker.md),
-[ADR 0054](0054-readable-tree-labels-and-controls.md), and
+[ADR 0118](0118-use-terminal-defaults-for-ui-surfaces.md), and
 [ADR 0061](0061-align-explorer-tree-names.md).
 
 ## Goal

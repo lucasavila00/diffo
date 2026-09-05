@@ -2,7 +2,7 @@
 
 Refines [ADR 0022](0022-large-hunk-navigation-targets.md),
 [ADR 0038](0038-remove-button-hover-changes.md),
-[ADR 0054](0054-readable-tree-labels-and-controls.md), and
+[ADR 0118](0118-use-terminal-defaults-for-ui-surfaces.md), and
 [ADR 0108](0108-overlay-change-warnings-and-scrollbars.md).
 
 ## Context
@@ -13,9 +13,9 @@ moved from dedicated rows onto diff content. They look like navigation controls
 and retain large, stable rectangles, yet pointer users must switch to the
 keyboard to activate them.
 
-Diffo already uses bold white text as the fixed affordance for clickable text
-controls. Reusing that style makes the labels' behavior legible without hover
-state or another palette role.
+Diffo already uses bold text as the fixed affordance for clickable text
+controls. Reusing that affordance with an explicit light foreground makes the
+labels legible on their dark diff backgrounds without hover state.
 
 ## Decision
 

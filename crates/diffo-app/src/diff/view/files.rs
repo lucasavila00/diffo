@@ -35,9 +35,9 @@ pub(in crate::diff) fn render_commit_composer(frame: &mut Frame, area: Rect, mod
     frame.render_widget(
         Paragraph::new(message)
             .style(if empty {
-                Style::default().fg(theme::CHROME)
+                theme::chrome_style()
             } else {
-                Style::default().fg(theme::TEXT)
+                theme::text_style()
             })
             .block(
                 Block::default()
@@ -305,7 +305,7 @@ pub(in crate::diff) fn status_line(
                     icons::CHANGE_PREVIOUS,
                     upstream.ahead
                 ),
-                Style::default().fg(theme::TEXT),
+                theme::text_style(),
             )
         })
     });
@@ -399,7 +399,7 @@ fn transient_status(model: &Model, _animation_tick: usize) -> Option<Span<'stati
                 "Resizing file pane: {}% · release mouse to finish",
                 model.file_pane_percent
             ),
-            Style::default().fg(theme::TEXT),
+            theme::text_style(),
         ))
     } else {
         None
@@ -433,7 +433,7 @@ impl RepositoryStatus {
             Self::MergeConflicts | Self::Conflicts => Style::default().fg(theme::DANGER),
             Self::MergeReady | Self::Staged => Style::default().fg(theme::SUCCESS),
             Self::Changes => Style::default().fg(theme::WARNING),
-            Self::Clean => Style::default().fg(theme::CHROME),
+            Self::Clean => theme::chrome_style(),
         }
     }
 }
@@ -476,7 +476,7 @@ fn short_commit(commit: &str) -> String {
 }
 
 fn head_style() -> Style {
-    Style::default().fg(theme::TEXT)
+    theme::text_style()
 }
 
 fn status_width(
@@ -557,7 +557,7 @@ fn truncate_width(value: &str, width: usize) -> String {
 }
 
 pub(in crate::diff) fn resize_border_style(_model: &Model) -> Style {
-    Style::default().fg(theme::CHROME)
+    theme::chrome_style()
 }
 
 pub(in crate::diff) fn unstaged_files(

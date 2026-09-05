@@ -1,28 +1,20 @@
 ---
 source: crates/diffo-ui/tests/theme_contract.rs
-expression: "([(\"text\", theme::TEXT), (\"chrome\", theme::CHROME),\n(\"information\", theme::INFORMATION),\n(\"selection background\", theme::SELECTION_BACKGROUND),\n(\"success\", theme::SUCCESS), (\"warning\", theme::WARNING),\n(\"danger\", theme::DANGER),\n(\"conflict foreground\", theme::CONFLICT_FOREGROUND),\n(\"conflict background\", theme::CONFLICT_BACKGROUND),],\n[command_progress_style(0), command_progress_style(4)],)"
+expression: "([(\"navigation\", theme::NAVIGATION), (\"information\", theme::INFORMATION),\n(\"success\", theme::SUCCESS), (\"warning\", theme::WARNING),\n(\"danger\", theme::DANGER),\n(\"conflict foreground\", theme::CONFLICT_FOREGROUND),\n(\"conflict background\", theme::CONFLICT_BACKGROUND),\n(\"code foreground\", theme::CODE_FOREGROUND),\n(\"code background\", theme::CODE_BACKGROUND),\n(\"diff added foreground\", theme::DIFF_ADDED_FOREGROUND),\n(\"diff removed foreground\", theme::DIFF_REMOVED_FOREGROUND),],\n[theme::text_style(), theme::chrome_style(), theme::selection_style(),\ntheme::code_style(), command_progress_style(0), command_progress_style(4),],)"
 ---
 (
     [
         (
-            "text",
-            White,
-        ),
-        (
-            "chrome",
-            DarkGray,
+            "navigation",
+            Blue,
         ),
         (
             "information",
-            LightCyan,
-        ),
-        (
-            "selection background",
-            DarkGray,
+            Cyan,
         ),
         (
             "success",
-            LightGreen,
+            Green,
         ),
         (
             "warning",
@@ -30,7 +22,7 @@ expression: "([(\"text\", theme::TEXT), (\"chrome\", theme::CHROME),\n(\"informa
         ),
         (
             "danger",
-            LightRed,
+            Red,
         ),
         (
             "conflict foreground",
@@ -42,8 +34,34 @@ expression: "([(\"text\", theme::TEXT), (\"chrome\", theme::CHROME),\n(\"informa
                 58,
             ),
         ),
+        (
+            "code foreground",
+            Rgb(
+                248,
+                248,
+                242,
+            ),
+        ),
+        (
+            "code background",
+            Indexed(
+                235,
+            ),
+        ),
+        (
+            "diff added foreground",
+            LightGreen,
+        ),
+        (
+            "diff removed foreground",
+            LightRed,
+        ),
     ],
     [
+        Style::new().fg(Color::Reset).bg(Color::Reset).not_dim(),
+        Style::new().fg(Color::Reset).bg(Color::Reset).dim(),
+        Style::new().fg(Color::Reset).bg(Color::Reset).reversed().not_dim(),
+        Style::new().fg(Color::Rgb(248, 248, 242)).bg(Color::Indexed(235)),
         Style::new().fg(Color::Indexed(24)),
         Style::new().fg(Color::Indexed(25)),
     ],

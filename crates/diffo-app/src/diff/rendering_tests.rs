@@ -23,10 +23,10 @@ use ratatui::{
 };
 
 use super::{
-    Renderer, RendererEvent, contrast_ratio, contrasting_foreground, diff_background,
-    diff_background_rgb, diff_file_lines, diff_panel_inner, file_label, footer_control_at_position,
-    horizontal_panes, main_area, overview_position, picker_document, row_style,
-    scrollbar_position_count, should_syntax_highlight, status_line,
+    Renderer, RendererEvent, change_warning_style, contrast_ratio, contrasting_foreground,
+    diff_background, diff_background_rgb, diff_file_lines, diff_panel_inner, file_label,
+    footer_control_at_position, gutter_style, horizontal_panes, main_area, overview_position,
+    picker_document, row_style, scrollbar_position_count, should_syntax_highlight, status_line,
 };
 
 fn line_text(line: &ratatui::text::Line<'_>) -> String {
@@ -39,13 +39,13 @@ fn line_text(line: &ratatui::text::Line<'_>) -> String {
 #[test]
 fn file_picker_renders_every_git_change_kind_with_its_status_color() {
     let kinds = [
-        (ChangeKind::Added, Color::LightGreen),
+        (ChangeKind::Added, Color::Green),
         (ChangeKind::Modified, Color::Yellow),
-        (ChangeKind::Deleted, Color::LightRed),
-        (ChangeKind::Renamed, Color::LightCyan),
-        (ChangeKind::Copied, Color::LightCyan),
-        (ChangeKind::Untracked, Color::LightGreen),
-        (ChangeKind::Conflicted, Color::LightRed),
+        (ChangeKind::Deleted, Color::Red),
+        (ChangeKind::Renamed, Color::Cyan),
+        (ChangeKind::Copied, Color::Cyan),
+        (ChangeKind::Untracked, Color::Green),
+        (ChangeKind::Conflicted, Color::Red),
     ];
     let files = kinds
         .iter()
@@ -178,6 +178,22 @@ fn conflict_markers_have_a_dedicated_high_contrast_style() {
     assert_eq!(marker.bg, Some(Color::Indexed(58)));
     assert!(!marker.add_modifier.contains(Modifier::BOLD));
     assert_eq!(diff_background(RowKind::Conflict).bg, marker.bg);
+}
+
+#[test]
+fn dark_diff_controls_and_gutters_have_explicit_light_foregrounds() {
+    let warning = change_warning_style(diff_background(RowKind::Removed));
+    assert_eq!(warning.fg, Some(diffo_ui::theme::CODE_FOREGROUND));
+    assert_eq!(warning.bg, Some(Color::Indexed(52)));
+    assert!(warning.add_modifier.contains(Modifier::BOLD));
+
+    let removed = gutter_style(RowKind::Removed);
+    assert_eq!(removed.fg, Some(diffo_ui::theme::DIFF_REMOVED_FOREGROUND));
+    assert_eq!(removed.bg, Some(Color::Indexed(52)));
+
+    let added = gutter_style(RowKind::Added);
+    assert_eq!(added.fg, Some(diffo_ui::theme::DIFF_ADDED_FOREGROUND));
+    assert_eq!(added.bg, Some(Color::Indexed(22)));
 }
 
 #[test]

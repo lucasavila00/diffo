@@ -6,17 +6,26 @@ use diffo_ui::{command_progress_style, design, disabled_control_style, mouse_tar
 fn semantic_palette_is_fixed() {
     insta::assert_debug_snapshot!((
         [
-            ("text", theme::TEXT),
-            ("chrome", theme::CHROME),
+            ("navigation", theme::NAVIGATION),
             ("information", theme::INFORMATION),
-            ("selection background", theme::SELECTION_BACKGROUND),
             ("success", theme::SUCCESS),
             ("warning", theme::WARNING),
             ("danger", theme::DANGER),
             ("conflict foreground", theme::CONFLICT_FOREGROUND),
             ("conflict background", theme::CONFLICT_BACKGROUND),
+            ("code foreground", theme::CODE_FOREGROUND),
+            ("code background", theme::CODE_BACKGROUND),
+            ("diff added foreground", theme::DIFF_ADDED_FOREGROUND),
+            ("diff removed foreground", theme::DIFF_REMOVED_FOREGROUND),
         ],
-        [command_progress_style(0), command_progress_style(4)],
+        [
+            theme::text_style(),
+            theme::chrome_style(),
+            theme::selection_style(),
+            theme::code_style(),
+            command_progress_style(0),
+            command_progress_style(4),
+        ],
     ));
 }
 

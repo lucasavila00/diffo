@@ -2,7 +2,6 @@ use diffo_ui::{design, theme};
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Layout, Rect},
-    style::Style,
     widgets::{Block, Borders, Cell, Clear, Paragraph, Row, Table},
 };
 
@@ -13,7 +12,7 @@ pub(super) fn render(frame: &mut Frame, content_area: Rect, rows: Vec<(String, &
     frame.render_widget(Clear, area);
     let block = Block::default()
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(theme::CHROME))
+        .border_style(theme::chrome_style())
         .title(" Help ");
     let inner = block.inner(area).inner(design::DIALOG_INSET);
     frame.render_widget(block, area);
@@ -24,8 +23,8 @@ pub(super) fn render(frame: &mut Frame, content_area: Rect, rows: Vec<(String, &
     .split(inner);
     let rows = rows.into_iter().map(|(keys, description)| {
         Row::new([
-            Cell::from(keys).style(Style::default().fg(theme::TEXT)),
-            Cell::from(description).style(Style::default().fg(theme::TEXT)),
+            Cell::from(keys).style(theme::text_style()),
+            Cell::from(description).style(theme::text_style()),
         ])
     });
     let table = Table::new(
@@ -35,7 +34,7 @@ pub(super) fn render(frame: &mut Frame, content_area: Rect, rows: Vec<(String, &
             Constraint::Min(design::HELP_ACTION_MIN_WIDTH),
         ],
     )
-    .header(Row::new(["Shortcut", "Action"]).style(Style::default().fg(theme::TEXT)))
+    .header(Row::new(["Shortcut", "Action"]).style(theme::text_style()))
     .column_spacing(design::HELP_COLUMN_GAP);
     frame.render_widget(table, sections[0]);
     let build = format!("sha {BUILD_SHA}");
@@ -44,7 +43,7 @@ pub(super) fn render(frame: &mut Frame, content_area: Rect, rows: Vec<(String, &
         Constraint::Length(u16::try_from(build.chars().count()).unwrap_or(u16::MAX)),
     ])
     .split(sections[1]);
-    let footer_style = Style::default().fg(theme::CHROME);
+    let footer_style = theme::chrome_style();
     frame.render_widget(Paragraph::new("Esc: close").style(footer_style), footer[0]);
     frame.render_widget(
         Paragraph::new(build)

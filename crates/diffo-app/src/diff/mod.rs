@@ -42,6 +42,8 @@ mod view;
 
 pub(crate) use input::{help_rows, map_commit_event, review_help_rows};
 pub(crate) use view::ReviewRender;
+#[cfg(test)]
+use view::change_warning_style;
 pub(crate) use view::files::{FooterControl, footer_control_at_position, render_status};
 pub(crate) use view::overlays::render_commit_editor;
 
@@ -65,7 +67,8 @@ pub use view::overlays::{
 pub(crate) use view::style::raw_hunk_line;
 #[cfg(test)]
 use view::style::{
-    contrast_ratio, contrasting_foreground, diff_background, diff_background_rgb, row_style,
+    contrast_ratio, contrasting_foreground, diff_background, diff_background_rgb, gutter_style,
+    row_style,
 };
 use view::style::{
     inline_line, inline_skeleton_line, side_by_side_line, side_by_side_skeleton_line,

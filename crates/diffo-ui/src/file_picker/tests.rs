@@ -114,7 +114,7 @@ fn flat_and_tree_wheel_use_the_same_scroll_core() {
 #[test]
 fn rendering_preserves_label_style_and_owns_the_action_style() {
     let label_style = Style::default()
-        .fg(Color::LightRed)
+        .fg(Color::Red)
         .add_modifier(Modifier::CROSSED_OUT);
     let mut picker = FilePicker::default();
     picker.prepare(

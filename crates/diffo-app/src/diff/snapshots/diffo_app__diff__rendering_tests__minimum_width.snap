@@ -3,7 +3,7 @@ source: crates/diffo-app/src/diff/rendering_tests.rs
 expression: minimum
 ---
 Line::from_iter([
-    Span::default().white(),
+    Span::default().fg(Color::Reset).bg(Color::Reset).not_dim(),
     Span::default(),
-    Span::from("…").dark_gray(),
+    Span::from("…").fg(Color::Reset).bg(Color::Reset).dim(),
 ])

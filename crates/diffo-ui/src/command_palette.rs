@@ -5,7 +5,6 @@ use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, 
 use ratatui::{
     Frame,
     layout::{Constraint, Layout, Rect},
-    style::Style,
     text::Line,
     widgets::{Clear, List, ListItem, ListState, Paragraph},
 };
@@ -158,16 +157,15 @@ impl CommandPalette {
         let inner = area.inner(design::DIALOG_INSET);
         let sections = command_palette_sections(inner);
         frame.render_widget(
-            Paragraph::new(format!("> {}█", self.query)).style(Style::default().fg(theme::TEXT)),
+            Paragraph::new(format!("> {}█", self.query)).style(theme::text_style()),
             sections[0],
         );
         frame.render_widget(
-            Paragraph::new("─".repeat(usize::from(sections[1].width)))
-                .style(Style::default().fg(theme::CHROME)),
+            Paragraph::new("─".repeat(usize::from(sections[1].width))).style(theme::chrome_style()),
             sections[1],
         );
         let items = if commands.is_empty() {
-            vec![ListItem::new("No matching commands").style(Style::default().fg(theme::CHROME))]
+            vec![ListItem::new("No matching commands").style(theme::chrome_style())]
         } else {
             commands
                 .iter()
@@ -176,7 +174,7 @@ impl CommandPalette {
         };
         let list = List::new(items)
             .highlight_symbol(icons::SELECTION)
-            .highlight_style(mouse_target_style().bg(theme::SELECTION_BACKGROUND));
+            .highlight_style(mouse_target_style().patch(theme::selection_style()));
         let mut state = ListState::default().with_selected(
             (!commands.is_empty()).then_some(self.selected.min(commands.len().saturating_sub(1))),
         );
@@ -184,7 +182,7 @@ impl CommandPalette {
         frame.render_widget(
             Paragraph::new(Line::styled(
                 "↑/↓ select · Enter run · Esc close",
-                Style::default().fg(theme::CHROME),
+                theme::chrome_style(),
             )),
             sections[3],
         );

@@ -7,7 +7,6 @@ use diffo_ui::{modal_block, terminal_safe_text, theme};
 use ratatui::{
     Frame,
     layout::{Alignment, Rect},
-    style::Style,
     widgets::{Clear, Paragraph},
 };
 
@@ -66,7 +65,7 @@ impl DeleteBranchConfirmation {
         frame.render_widget(
             Paragraph::new("Arrows: select · Enter: choose · Esc: cancel")
                 .alignment(Alignment::Center)
-                .style(Style::default().fg(theme::CHROME)),
+                .style(theme::chrome_style()),
             layout.footer,
         );
     }

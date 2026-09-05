@@ -3,7 +3,7 @@ source: crates/diffo-app/src/diff/rendering_tests.rs
 expression: line
 ---
 Line::from_iter([
-    Span::from(" featu…").white(),
+    Span::from(" featu…").fg(Color::Reset).bg(Color::Reset).not_dim(),
     Span::default(),
-    Span::from("[ Sync (9 / F9) ]").white().bold(),
+    Span::from("[ Sync (9 / F9) ]").fg(Color::Reset).bg(Color::Reset).bold().not_dim(),
 ])

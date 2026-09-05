@@ -298,7 +298,7 @@ pub(super) fn render_prompt(frame: &mut Frame, modal: &PromptModal, area: Rect) 
     if !is_confirmation(&modal.prompt) {
         let field = Block::default()
             .borders(Borders::ALL)
-            .border_style(Style::default().fg(theme::CHROME));
+            .border_style(theme::chrome_style());
         let inner = field.inner(layout.input);
         let value = if secret {
             "•".repeat(modal.input.chars().count())
@@ -349,7 +349,7 @@ pub(super) fn render_prompt(frame: &mut Frame, modal: &PromptModal, area: Rect) 
             "Enter: continue · Esc: cancel"
         })
         .alignment(Alignment::Center)
-        .style(Style::default().fg(theme::CHROME)),
+        .style(theme::chrome_style()),
         layout.footer,
     );
 }
@@ -365,10 +365,10 @@ pub(super) fn prompt_button_style(selected: bool, enabled: bool) -> Style {
     let mut style = if enabled {
         mouse_target_style()
     } else {
-        Style::default().fg(theme::CHROME)
+        theme::chrome_style()
     };
     if selected {
-        style = style.bg(theme::SELECTION_BACKGROUND);
+        style = mouse_target_style().patch(theme::selection_style());
     }
     style
 }

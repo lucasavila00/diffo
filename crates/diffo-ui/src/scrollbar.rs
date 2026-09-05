@@ -49,6 +49,11 @@ pub fn render_scrollbar(
             Position::new(track_start.x.saturating_add(offset), track_start.y)
         };
         if let Some(cell) = buffer.cell_mut(position) {
+            let style = if in_thumb {
+                style.remove_modifier(ratatui::style::Modifier::DIM)
+            } else {
+                style
+            };
             cell.set_symbol(symbol).set_style(style);
         }
     }
@@ -199,5 +204,30 @@ mod tests {
             )
             .is_none()
         );
+    }
+
+    #[test]
+    fn thumb_is_undimmed_while_track_keeps_its_style() {
+        use ratatui::{Terminal, backend::TestBackend, style::Modifier};
+
+        let backend = TestBackend::new(1, 4);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal
+            .draw(|frame| {
+                render_scrollbar(
+                    frame,
+                    Rect::new(0, 0, 1, 4),
+                    &ScrollbarOrientation::VerticalRight,
+                    4,
+                    1,
+                    0,
+                    Style::default().add_modifier(Modifier::DIM),
+                );
+            })
+            .unwrap();
+
+        let buffer = terminal.backend().buffer();
+        assert!(!buffer[(0, 0)].modifier.contains(Modifier::DIM));
+        assert!(buffer[(0, 1)].modifier.contains(Modifier::DIM));
     }
 }

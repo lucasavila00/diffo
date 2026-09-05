@@ -53,6 +53,7 @@ pub(crate) fn render_full_screen(
     model: &ExplorerModel,
     skeleton: bool,
 ) {
+    frame.render_widget(Block::default().style(theme::code_style()), area);
     let Some(viewer) = model.viewer.as_ref() else {
         return;
     };
@@ -122,21 +123,18 @@ fn picker_tree_node(entry: &TreeEntry) -> PickerTreeNode<EntryId> {
 
 fn picker_entry_style(entry: &TreeEntry) -> Style {
     let Some(status) = entry.status else {
-        return Style::default().fg(theme::TEXT);
+        return theme::text_style();
     };
     let status_style = change_kind_style(status);
     if entry.directory() {
-        Style::default().fg(status_style.fg.unwrap_or(theme::TEXT))
+        Style::default().fg(status_style.fg.unwrap_or_default())
     } else {
         status_style
     }
 }
 
 pub(crate) fn entry_label(entry: &TreeEntry) -> Line<'static> {
-    Line::styled(
-        terminal_safe_text(&entry_name(entry)),
-        Style::default().fg(theme::TEXT),
-    )
+    Line::styled(terminal_safe_text(&entry_name(entry)), theme::text_style())
 }
 
 fn entry_name(entry: &TreeEntry) -> String {
@@ -222,6 +220,7 @@ fn render_viewer_lines(
     viewer: &super::model::Viewer,
     skeleton: bool,
 ) {
+    frame.render_widget(Block::default().style(theme::code_style()), area);
     let columns = Layout::horizontal([
         Constraint::Length(VIEWER_GUTTER_WIDTH.min(area.width)),
         Constraint::Min(0),
@@ -256,7 +255,10 @@ fn viewer_gutter(number: usize, viewer: &super::model::Viewer, skeleton: bool) -
         .flatten();
     let marker_text = if marker.is_some() { "▌" } else { " " };
     Line::from(vec![
-        Span::styled(format!("{number:>4} "), Style::default().fg(theme::CHROME)),
+        Span::styled(
+            format!("{number:>4} "),
+            theme::code_style().add_modifier(ratatui::style::Modifier::DIM),
+        ),
         Span::styled(marker_text, marker_style(marker)),
         Span::raw(" "),
     ])
@@ -267,15 +269,15 @@ fn viewer_code(number: usize, text: &str, viewer: &super::model::Viewer) -> Line
     if let Some(highlighted) = viewer.highlighted.get(&number) {
         Line::from(plain_syntax_spans(highlighted))
     } else {
-        Line::raw(terminal_safe_text(text))
+        Line::styled(terminal_safe_text(text), theme::code_style())
     }
 }
 
 fn marker_style(marker: Option<GutterMarker>) -> Style {
     match marker {
-        Some(GutterMarker::Added) => Style::default().fg(theme::SUCCESS),
+        Some(GutterMarker::Added) => Style::default().fg(theme::DIFF_ADDED_FOREGROUND),
         Some(GutterMarker::Modified) => Style::default().fg(theme::WARNING),
-        Some(GutterMarker::Deleted) => Style::default().fg(theme::DANGER),
+        Some(GutterMarker::Deleted) => Style::default().fg(theme::DIFF_REMOVED_FOREGROUND),
         Some(GutterMarker::Conflict) => Style::default()
             .fg(theme::CONFLICT_FOREGROUND)
             .bg(theme::CONFLICT_BACKGROUND),
@@ -355,18 +357,16 @@ mod tests {
             ],
             styles: [
                 x: 0, y: 0, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
-                x: 1, y: 0, fg: White, bg: Reset, underline: Reset, modifier: NONE,
-                x: 11, y: 0, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
-                x: 22, y: 0, fg: White, bg: Reset, underline: Reset, modifier: BOLD,
+                x: 22, y: 0, fg: Reset, bg: Reset, underline: Reset, modifier: BOLD,
                 x: 29, y: 0, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
-                x: 1, y: 1, fg: White, bg: Reset, underline: Reset, modifier: BOLD,
-                x: 3, y: 1, fg: LightRed, bg: Reset, underline: Reset, modifier: NONE,
+                x: 1, y: 1, fg: Reset, bg: Reset, underline: Reset, modifier: BOLD,
+                x: 3, y: 1, fg: Red, bg: Reset, underline: Reset, modifier: NONE,
                 x: 29, y: 1, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
-                x: 1, y: 2, fg: White, bg: Reset, underline: Reset, modifier: BOLD,
+                x: 1, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: BOLD,
                 x: 3, y: 2, fg: Yellow, bg: Reset, underline: Reset, modifier: NONE,
                 x: 29, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
-                x: 1, y: 3, fg: White, bg: Reset, underline: Reset, modifier: BOLD,
-                x: 3, y: 3, fg: LightGreen, bg: Reset, underline: Reset, modifier: NONE,
+                x: 1, y: 3, fg: Reset, bg: Reset, underline: Reset, modifier: BOLD,
+                x: 3, y: 3, fg: Green, bg: Reset, underline: Reset, modifier: NONE,
                 x: 29, y: 3, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
             ]
         }
@@ -492,7 +492,7 @@ mod tests {
     }
 
     #[test]
-    fn rust_keywords_use_the_diff_foreground_without_background_or_modifiers() {
+    fn rust_keywords_use_the_monokai_foreground_on_the_shared_dark_surface() {
         let source = "fn main() {}";
         let document =
             parse_unified_patch(&format!("@@ -0,0 +1 @@\n+{source}\n")).expect("valid patch");
@@ -536,7 +536,7 @@ mod tests {
                 keyword_foreground.blue,
             )
         );
-        assert_eq!(keyword_cell.bg, Color::Reset);
+        assert_eq!(keyword_cell.bg, theme::CODE_BACKGROUND);
         assert!(keyword_cell.modifier.is_empty());
 
         let backend = TestBackend::new(40, 5);
@@ -553,6 +553,11 @@ mod tests {
                 keyword_foreground.green,
                 keyword_foreground.blue,
             )
+        );
+        assert_eq!(keyword_cell.bg, theme::CODE_BACKGROUND);
+        assert_eq!(
+            full_screen.backend().buffer()[(39, 4)].bg,
+            theme::CODE_BACKGROUND
         );
         let screen = full_screen
             .backend()

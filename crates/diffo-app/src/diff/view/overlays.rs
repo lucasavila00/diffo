@@ -45,7 +45,7 @@ pub fn render_command_progress(
     frame.render_widget(
         Block::default()
             .borders(Borders::ALL)
-            .border_style(Style::default().fg(theme::CHROME))
+            .border_style(theme::chrome_style())
             .title(title),
         area,
     );
@@ -159,7 +159,7 @@ pub fn render_toasts(frame: &mut Frame, toasts: &[Toast], content_area: Rect) {
                 .block(
                     Block::default()
                         .borders(Borders::ALL)
-                        .border_style(Style::default().fg(theme::CHROME))
+                        .border_style(theme::chrome_style())
                         .title(
                             Line::styled(icons::DISMISS, mouse_target_style())
                                 .alignment(Alignment::Right),
@@ -216,7 +216,7 @@ pub(crate) fn render_commit_editor(frame: &mut Frame, model: &Model, content_are
     frame.render_widget(
         Block::default()
             .borders(Borders::ALL)
-            .border_style(Style::default().fg(theme::CHROME))
+            .border_style(theme::chrome_style())
             .title(" Commit message "),
         area,
     );
@@ -224,7 +224,7 @@ pub(crate) fn render_commit_editor(frame: &mut Frame, model: &Model, content_are
     let empty = model.commit_message.is_empty();
     let input_block = Block::default()
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(theme::CHROME));
+        .border_style(theme::chrome_style());
     let input_inner = input_block.inner(input);
     let field_width = usize::from(input_inner.width);
     let cursor = model.commit_message_cursor();
@@ -249,9 +249,9 @@ pub(crate) fn render_commit_editor(frame: &mut Frame, model: &Model, content_are
     };
     frame.render_widget(
         Paragraph::new(message).style(if empty {
-            Style::default().fg(theme::CHROME)
+            theme::chrome_style()
         } else {
-            Style::default().fg(theme::TEXT)
+            theme::text_style()
         }),
         input_inner,
     );
@@ -281,7 +281,7 @@ pub(crate) fn render_commit_editor(frame: &mut Frame, model: &Model, content_are
     frame.render_widget(
         Paragraph::new("Click outside to close")
             .alignment(Alignment::Center)
-            .style(Style::default().fg(theme::CHROME)),
+            .style(theme::chrome_style()),
         footer,
     );
 

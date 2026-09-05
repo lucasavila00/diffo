@@ -164,7 +164,7 @@ where
                             .alignment(Alignment::Right),
                     )
                     .borders(Borders::ALL)
-                    .border_style(Style::default().fg(theme::CHROME)),
+                    .border_style(theme::chrome_style()),
             ),
             area,
         );

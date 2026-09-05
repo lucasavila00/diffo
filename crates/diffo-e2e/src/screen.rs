@@ -25,7 +25,6 @@ const COLUMNS: u16 = 100;
 const ACTIVITY_BAR_WIDTH: u16 = 5;
 const TIMEOUT: Duration = Duration::from_secs(10);
 const STARTUP_TIMEOUT: Duration = Duration::from_secs(30);
-const SELECTION_BACKGROUND: vt100::Color = vt100::Color::Idx(8);
 
 pub struct DiffoScreen {
     parser: vt100::Parser,
@@ -491,7 +490,7 @@ impl DiffoScreen {
                     self.parser
                         .screen()
                         .cell(*row, *column)
-                        .is_some_and(|cell| cell.bgcolor() == SELECTION_BACKGROUND)
+                        .is_some_and(vt100::Cell::inverse)
                 })
                 .collect(),
             Selector::DialogAction { dialog, action } => find_dialog_action(&cells, dialog, action),

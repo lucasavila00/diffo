@@ -68,6 +68,14 @@ commit patch becomes visible only when its rows, visible syntax colors, and
 scroll state are ready. Until then, Diffo keeps showing the old complete view.
 This avoids half-built frames and stale data.
 
+Application chrome uses the terminal's default foreground and background, with
+reversed defaults for selected rows and blue for active navigation markers.
+Semantic colors reinforce Git and operation states. Source views remain an
+explicit dark surface in light and dark terminals because the fixed Monokai
+syntax palette assumes a dark background. Explorer, Diff, and History share that
+surface; unsupported and syntax-ineligible files use its explicit fallback
+foreground.
+
 ## Shared file-picker controls
 
 Diff and Explorer use the shared fixed file-picker movement controls: lowercase

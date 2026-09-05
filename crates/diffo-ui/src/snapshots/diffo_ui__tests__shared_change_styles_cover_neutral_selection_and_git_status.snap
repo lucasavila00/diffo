@@ -5,7 +5,7 @@ expression: styles
 [
     (
         Added,
-        Style::new().light_green(),
+        Style::new().green(),
     ),
     (
         Modified,
@@ -13,22 +13,22 @@ expression: styles
     ),
     (
         Deleted,
-        Style::new().light_red().crossed_out(),
+        Style::new().red().crossed_out(),
     ),
     (
         Renamed,
-        Style::new().light_cyan(),
+        Style::new().cyan(),
     ),
     (
         Copied,
-        Style::new().light_cyan(),
+        Style::new().cyan(),
     ),
     (
         Untracked,
-        Style::new().light_green(),
+        Style::new().green(),
     ),
     (
         Conflicted,
-        Style::new().light_red(),
+        Style::new().red(),
     ),
 ]

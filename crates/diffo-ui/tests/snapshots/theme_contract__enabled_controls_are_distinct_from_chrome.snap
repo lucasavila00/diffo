@@ -1,8 +1,8 @@
 ---
 source: crates/diffo-ui/tests/theme_contract.rs
-expression: "(enabled_control_style(), disabled_control_style())"
+expression: "(mouse_target_style(), disabled_control_style())"
 ---
 (
-    Style::new().white().bold(),
-    Style::new().dark_gray(),
+    Style::new().fg(Color::Reset).bg(Color::Reset).bold().not_dim(),
+    Style::new().fg(Color::Reset).bg(Color::Reset).dim(),
 )

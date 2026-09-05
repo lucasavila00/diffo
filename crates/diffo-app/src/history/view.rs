@@ -40,12 +40,9 @@ pub(super) fn commit_document(
             label: Line::from(vec![
                 Span::styled(
                     format!("{} ", commit.id.get(..7).unwrap_or(&commit.id)),
-                    Style::default().fg(theme::CHROME),
+                    theme::chrome_style(),
                 ),
-                Span::styled(
-                    terminal_safe_text(&commit.summary),
-                    Style::default().fg(theme::TEXT),
-                ),
+                Span::styled(terminal_safe_text(&commit.summary), theme::text_style()),
             ]),
             action: None,
             context_menu: false,

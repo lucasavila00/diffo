@@ -14,7 +14,6 @@ use diffo_ui::{design, icons, mouse_target_style, theme};
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Layout, Rect},
-    style::Style,
     widgets::{Block, Borders, Paragraph},
 };
 
@@ -59,7 +58,7 @@ pub fn render_activity_bar(frame: &mut Frame, area: Rect, active: Activity) {
     frame.render_widget(
         Block::default()
             .borders(Borders::RIGHT)
-            .border_style(Style::default().fg(theme::CHROME)),
+            .border_style(theme::chrome_style()),
         bar,
     );
     for (index, (activity, icon)) in [
@@ -85,7 +84,11 @@ pub fn render_activity_bar(frame: &mut Frame, area: Rect, active: Activity) {
             design::ACTIVITY_CONTROL_HEIGHT.min(bar.bottom().saturating_sub(y)),
         );
         let selected = activity == active;
-        let style = mouse_target_style();
+        let style = if selected {
+            mouse_target_style().fg(theme::NAVIGATION)
+        } else {
+            mouse_target_style()
+        };
         frame.render_widget(
             Paragraph::new(icon)
                 .alignment(Alignment::Center)

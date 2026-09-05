@@ -18,7 +18,7 @@ Display the seven-character abbreviated `HEAD` commit hash after every named
 branch:
 
 ```text
-branch main · a1b2c3d · clean
+main · a1b2c3d · clean
 ```
 
 Use the commit stored in the same immutable `RepositorySnapshot` as the branch
@@ -29,7 +29,7 @@ operations.
 Keep detached HEAD's existing seven-character display unchanged. An unborn
 branch has no commit, so continue to display `(unborn)` without a hash.
 
-Treat the branch and hash as one head label for styling, mouse interaction, and
+Treat the branch and hash as one read-only head label for styling and
 narrow-width truncation. The existing footer priority remains unchanged: omit
 divergence, repository state, command help, and transient detail before
 truncating the head label. At widths too narrow for the complete label, truncate

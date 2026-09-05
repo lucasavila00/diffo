@@ -6,8 +6,8 @@ Depends on [ADR 0052](0052-terminal-safe-footer-errors.md) and refines
 
 ## Problem
 
-Fetch, Pull, and Push run without terminal input. This keeps Git from taking
-over Diffo's terminal. It also means these normal questions fail:
+Fetch and Sync's remote Git phases run without terminal input. This keeps Git
+from taking over Diffo's terminal. It also means these normal questions fail:
 
 - HTTPS username or secret;
 - SSH key passphrase; and
@@ -30,7 +30,7 @@ internal environment marker makes startup enter a small askpass path instead of
 the TUI. This is not a command or user setting. Normal Diffo startup still
 accepts no arguments.
 
-For each Fetch, Pull, or Push:
+For each Fetch or remote Sync phase:
 
 - keep stdin closed and `GIT_TERMINAL_PROMPT=0`;
 - point `GIT_ASKPASS` and `SSH_ASKPASS` at the running image's procfs path from

@@ -1,18 +1,20 @@
-# ADR 0018: Network operation feedback
+# ADR 0018: Long-running command feedback
 
 ## Decision
 
-Fetch, Pull, and Push use one pending network-operation state.
+The workbench command queue in [ADR 0110](0110-queue-command-intents.md) owns
+long-running repository-operation state.
 
-While one runs:
+While a command runs:
 
 - animate the whole app border with a slow xterm-256 color gradient;
-- show a spinner and the operation name in the footer;
-- redraw every 16 ms;
-- disable other network and primary actions;
+- show its goal and current phase in the command queue;
+- redraw only for meaningful state changes or the bounded progress animation;
+- queue later repository intents;
 - keep keyboard input and Ctrl+C responsive.
 
-Clear the pending state after either a refreshed snapshot or an error. Show the
-error after failed operations.
+Clear the active state only after the final snapshot or failure is installed.
+Successful and informational results use the bounded toast queue; failures use
+the shared acknowledgement modal.
 
 Use indexed colors so the animation works through SSH and `xterm-256color`.

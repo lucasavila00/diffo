@@ -7,12 +7,12 @@ their current toast or acknowledgement-modal presentation.
 
 Examples:
 
-- `Pulled 3 commits`
+- `Sync complete`
 - `Already up to date`
-- `Pushed a1b2c3d to origin/main`
+- `Synced a1b2c3d to origin/main`
 - `Committed a1b2c3d`
 - `Fetch complete`
-- `Pull failed: no network`
+- `Sync failed: no network`
 
 ## Operation results
 
@@ -24,10 +24,10 @@ Change repository actions from `Result<()>` to a structured result:
 OperationResult
   Commit { hash }
   Fetch { updated_refs }
-  Pull { commits }
-  Push { hash, upstream }
+  Sync { plan }
   Stage
   Unstage
+  ...one typed variant per supported repository action
 ```
 
 Stage and Unstage results do not create toasts. Their effect is already
@@ -36,15 +36,13 @@ immediate and visible in the file lists.
 Failures are also structured:
 
 ```text
-OperationFailure { action: RepositoryAction, kind, summary, detail }
+OperationFailure { action: RepositoryAction, kind, detail }
 
 FailureKind
-  PullRequired
-  Diverged
   PushRejected
   Authentication
   Network
-  MergeConflict
+  RebaseConflict
   DirtyWorktree
   HookRejected
   NoRemote
@@ -54,7 +52,7 @@ FailureKind
 Git gets this data with stable commands after the action:
 
 - `git rev-parse HEAD` for the commit hash;
-- `git rev-list --count OLD..NEW` for pulled commit count;
+- the selected sync plan for local and upstream commit counts;
 - configured upstream data for remote and branch;
 - refs before and after Fetch to count updates.
 
@@ -64,12 +62,13 @@ detail for unknown failures.
 
 Use short seven-character hashes in the UI. Keep full hashes in the result.
 
-The refresh service must return separate events:
+The refresh service must distinguish watcher snapshots from command outcomes:
 
 ```text
-RepositoryChanged(snapshot)
-ActionCompleted(result, snapshot)
-ActionFailed(failure, snapshot)
+Snapshot(snapshot)
+CommandCompleted(id, action, result, snapshot)
+CommandFailed(id, failure, optional_snapshot)
+CommandCancelled(id, action, snapshot)
 ```
 
 A watcher refresh never creates a toast.
@@ -87,7 +86,7 @@ implicitly, or resolve conflicts without an explicit product decision.
 
 ## Failures
 
-Keep the action name in every failure: `Push failed: ...`. Never show success
+Keep the action name in every failure: `Sync failed: ...`. Never show success
 before both the Git command and result-data collection succeed. If result
-metadata cannot be collected, show a generic success such as `Push complete`; do
+metadata cannot be collected, show a generic success such as `Sync complete`; do
 not report a false hash or count.

@@ -21,14 +21,12 @@ After fetch selects a sync plan, require confirmation when both conditions are
 true:
 
 - the plan includes a push; and
-- the configured upstream destination's short branch name is exactly `main` or
+- the same-named destination derived from the local branch is exactly `main` or
   `master`.
 
-Match the destination branch, not merely the checked-out local branch. For
-example, confirm a local `work` branch configured to push to `origin/main`, but
-do not confirm a local `main` branch configured to push to `origin/archive`. The
-match is case-sensitive and does not include names such as `main-next` or
-`masterpiece`.
+Match the destination selected by the same-name sync policy in
+[ADR 0085](0085-repair-mismatched-sync-upstreams.md). The match is
+case-sensitive and does not include names such as `main-next` or `masterpiece`.
 
 Do not open the modal for a sync that only fetches, fast-forwards, or finds no
 work. Do not ask before fetch: the refreshed tips are required to know whether

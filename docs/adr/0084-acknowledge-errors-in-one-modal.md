@@ -6,9 +6,10 @@ Refines [ADR 0019](0019-commit-message-modal.md),
 
 ## Problem
 
-Diffo reports errors as persistent toasts. A toast is appropriate for a
-transient success or informational result, but an error requires the user to
-notice it, understand it, and acknowledge it before continuing.
+Before this decision, Diffo reported errors as persistent toasts. A toast is
+appropriate for a transient success or informational result, but an error
+requires the user to notice it, understand it, and acknowledge it before
+continuing.
 
 The failed-commit flow also reopens the commit-message editor. Commit failures
 can come from the repository, environment, or hooks and do not reliably mean the

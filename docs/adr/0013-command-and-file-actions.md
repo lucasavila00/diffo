@@ -14,17 +14,14 @@ Keep the footer small:
 - The palette stays at 20% from the top. Filtering does not move it.
 - Keyboard and mouse can select palette rows.
 
-## Git commands
+## Commands
 
-The palette has exactly two commands:
-
-- `Git: Fetch`
-- `Git: Pull`
-
-Enter runs the selected command. Run Git through the serialized repository
-service worker. Do not block input or rendering or give Git the terminal.
-Network prompts use the typed askpass path from ADR 0053. Refresh the snapshot
-after the command. Show failures in the shared acknowledgement modal.
+The palette presents the fixed command catalog owned by the workbench and the
+operation-specific ADRs. Enter runs the selected command. Run repository work
+through the serialized repository service worker. Do not block input or
+rendering or give Git the terminal. Network prompts use the typed askpass path
+from ADR 0053. Refresh the snapshot after commands. Show failures in the shared
+acknowledgement modal.
 
 ## File actions
 

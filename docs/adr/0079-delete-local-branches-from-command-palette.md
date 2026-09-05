@@ -42,7 +42,7 @@ Discovery is not a command and has no progress or success toast.
 
 Store the selected branch's name, full `refs/heads/...` ref, and object ID,
 never its display text. Selecting a branch enqueues one non-forced
-`Delete branch` repository action through `CommandQueue`, labeled
+`Delete branch` repository action through the workbench command queue, labeled
 `Deleting branch <name>`. The worker must recheck immediately before mutation
 that the full ref still points to the selected object ID and that it is not the
 current branch. A moved, missing, or newly current ref fails without deleting a
@@ -78,14 +78,14 @@ git branch -D -- <name>
 Recheck the captured identity and current branch again immediately before the
 forced mutation. If either changed while the warning was open, fail rather than
 deleting the replacement ref. Any safe-delete failure other than the
-not-fully-merged condition uses the normal persistent error path and never
+not-fully-merged condition uses the shared acknowledgement modal and never
 offers force.
 
 Both actions use normal command cancellation. On success, return the deleted
 local branch name and a complete repository snapshot together, show
 `Deleted branch <name>`, and install the snapshot in one frame. Failure keeps
-the previous committed snapshot and shows a persistent error. Successful
-cancellation shows no result toast.
+the previous committed snapshot and uses the shared acknowledgement modal.
+Successful cancellation shows no result toast.
 
 Put shared target, action, result, and failure types in `diffo-core`. Keep
 picker and warning state in the workbench, Git failure classification and

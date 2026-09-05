@@ -1,7 +1,7 @@
 # ADR 0081: Let Sync handle dirty files and missing upstreams
 
-Refines [ADR 0070](0070-rebase-unpushed-work-when-syncing.md). Replaces the
-Publish Branch flow from [ADR 0080](0080-complete-git-operation-coverage.md).
+Refines [ADR 0070](0070-rebase-unpushed-work-when-syncing.md) and the operation
+boundary in [ADR 0080](0080-complete-git-operation-coverage.md).
 
 ## Before
 
@@ -47,7 +47,7 @@ Sync uses the current branch name on that remote and fetches it first.
 Pushing `main` or `master` still requires the confirmation from
 [ADR 0079](0079-confirm-protected-branch-pushes.md).
 
-Remove the separate Publish Branch command. Sync now handles first push too.
+There is no separate publication command. Sync handles the first push too.
 
 ## Still blocked
 

@@ -62,10 +62,10 @@ shows the shared acknowledgement modal. This discovery is not a command and has
 no progress or success toast.
 
 Submitting a valid name closes the modal and enqueues one `Create branch`
-repository action through `CommandQueue`. For the current-`HEAD` command,
-capture the committed `HEAD` identity and object ID shown when the name modal
-becomes ready. For the explicit-base command, capture the selected branch kind,
-full ref, and object ID. The worker must recheck the captured start point
+repository action through the workbench command queue. For the current-`HEAD`
+command, capture the committed `HEAD` identity and object ID shown when the name
+modal becomes ready. For the explicit-base command, capture the selected branch
+kind, full ref, and object ID. The worker must recheck the captured start point
 immediately before mutation and fail without changing the repository if it
 moved. An unborn `HEAD` cannot supply a base commit for the current-`HEAD`
 command. Detached `HEAD` is valid there.
@@ -86,8 +86,8 @@ While queued or running, label the command `Creating branch <name>`. Allow
 normal command cancellation. On success, return the created local name and
 complete repository snapshot together, show `Created and checked out <name>`,
 and commit the new branch, content, projections, and scroll bounds in one frame.
-Failure keeps the previous committed snapshot and shows a persistent error.
-Successful cancellation shows no result toast.
+Failure keeps the previous committed snapshot and uses the shared
+acknowledgement modal. Successful cancellation shows no result toast.
 
 Put shared action and result types in `diffo-core`. Keep modal state and
 validation presentation in the workbench, Git validation and mutation in

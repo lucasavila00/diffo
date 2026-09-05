@@ -18,15 +18,16 @@ Add this command to every activity:
 Git: Checkout to...
 ```
 
-It has no key binding. It opens the same workbench modal as the branch status
-control. The picker supports local and remote branches only. No tags, commits,
-detached HEAD, new names, fetch, stash, force, or delete.
+It has no key binding. It opens a workbench modal. The picker supports local and
+remote branches only. No tags, commits, detached HEAD, new names, fetch, stash,
+force, or delete.
 
-Show `Loading branches...` while loading. Esc closes. Errors close and show a
-persistent toast. Each load gets a new ID. Ignore stale results. Drop data on
-close.
+Show `Loading branches...` while loading. Esc closes. Errors close the picker
+and use the shared acknowledgement modal. Each load gets a new ID. Ignore stale
+results. Drop data on close.
 
-Show locals first, then remotes. Sort by name. Show remotes as `origin/name`.
+Order local and remote branches by descending tip commit time as defined in
+[ADR 0076](0076-recent-checkout-branches.md). Show remotes as `origin/name`.
 Hide remote HEAD refs. Disable the current branch and its tracked remote.
 
 Use command-palette fuzzy search. Match remote full and short names. On ties,
@@ -40,8 +41,9 @@ Read refs with one machine-delimited `git for-each-ref`. Use the existing
 repository worker. Do not fetch or change the repo. Discovery is not a command.
 It shows no progress or success toast.
 
-Store the selected kind and full ref. Never use display text. Run checkout
-through `CommandQueue`. Show `Checking out <target>`. Allow cancellation.
+Store the selected kind and full ref. Never use display text. Enqueue checkout
+through the workbench command queue. Show `Checking out <target>`. Allow
+cancellation.
 
 For a local target, check out that branch. For a remote target:
 
@@ -55,8 +57,8 @@ or force. Map blocked local changes to `DirtyWorktree`.
 On success, return the local name and full snapshot together. Show
 `Checked out <branch>`. Commit branch and content in one frame.
 
-On failure or cancellation, keep the old snapshot. Failure shows a persistent
-error. Successful cancellation shows no result toast.
+On failure or cancellation, keep the old snapshot. Failure uses the shared
+acknowledgement modal. Successful cancellation shows no result toast.
 
 Put shared types in `diffo-core`. Keep picker code out of activities and
 `diffo-ui::file_picker`. Rendering never runs Git.

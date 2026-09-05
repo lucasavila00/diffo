@@ -1,9 +1,8 @@
 # ADR 0074: Reserve bold for mouse targets
 
-Refines the structural and control-style contract now consolidated in
-[ADR 0118](0118-use-terminal-defaults-for-ui-surfaces.md). Supersedes the
-interaction decision in [ADR 0036](0036-git-branch-status.md) and the wording
-examples in [ADR 0069](0069-show-commit-hash-in-footer.md).
+Refines the structural and control-style contract in
+[ADR 0118](0118-use-terminal-defaults-for-ui-surfaces.md) and the footer wording
+in [ADR 0069](0069-show-commit-hash-in-footer.md).
 
 ## Context
 

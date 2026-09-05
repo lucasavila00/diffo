@@ -23,8 +23,8 @@ transient operation and error text in the middle and command help on the right.
 Examples:
 
 ```text
-branch main · clean                         1/f1: commands  2/f2: help
-branch feature/search · changes · ↓1 ↑2    Pulling…
+main · a1b2c3d · clean                     1/f1: commands  2/f2: help
+feature/search · d4e5f6a · changes · ↓1 ↑2 Sync — Fetching
 detached a1b2c3d · conflicts               Checkout failed: local changes
 ```
 

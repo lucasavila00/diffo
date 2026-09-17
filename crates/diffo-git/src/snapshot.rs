@@ -196,6 +196,19 @@ impl GitRepositorySource {
             self.diff(&paths, true)?
         };
         let mut unstaged = if file.state.kind == ChangeKind::Untracked {
+            let full_path = self.root.join(&file.state.path);
+            let metadata = fs::symlink_metadata(&full_path).with_context(|| {
+                format!(
+                    "failed to inspect worktree file {}",
+                    file.state.path.display()
+                )
+            });
+            match metadata {
+                Ok(metadata) if metadata.is_dir() => return Ok(None),
+                Err(error) if error_is_not_found(&error) => return Ok(None),
+                Err(error) => return Err(error),
+                Ok(_) => {}
+            }
             match self.worktree_file_diff(&file.state.path) {
                 Ok(diff) => Some(diff),
                 // Git status and worktree reads are not atomic. Generators can
@@ -460,19 +473,15 @@ mod tests {
     }
 
     #[test]
-    fn non_not_found_untracked_file_errors_remain_errors() {
+    fn omits_untracked_directories() {
         let root = tempfile::tempdir().expect("repository directory");
         fs::create_dir(root.path().join("directory")).expect("create directory");
         let source = GitRepositorySource::new(root.path());
 
-        let error = source
+        let files = source
             .file_states(vec![parsed_file("directory", ChangeKind::Untracked)])
-            .expect_err("reading a directory as a file must fail");
+            .expect("collect file states");
 
-        assert!(
-            error
-                .to_string()
-                .contains("failed to read worktree file directory")
-        );
+        assert!(files.is_empty());
     }
 }
